@@ -1,5 +1,7 @@
 # Run every quality gate that exists at the current stage of the project.
-# Usage: pwsh scripts/check-all.ps1   (or: powershell -File scripts\check-all.ps1)
+# Usage (Windows PowerShell 5.1, pwsh is not installed locally; CI uses pwsh):
+#     powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check-all.ps1
+# -ExecutionPolicy Bypass applies to this one process only; system settings are not changed.
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\dev-env.ps1"
 Set-Location (Split-Path $PSScriptRoot -Parent)
@@ -14,7 +16,8 @@ if (Test-Path 'Cargo.toml') {
     Step 'cargo fmt'      { cargo fmt --all -- --check }
     Step 'cargo clippy'   { cargo clippy --workspace --all-targets -- -D warnings }
     Step 'cargo deny'     { cargo deny check }
-    Step 'cargo nextest'  { cargo nextest run --workspace }
+    # --no-tests=warn: empty crates of Stage 0 have no tests yet; nextest's default (auto) exits with code 4.
+    Step 'cargo nextest'  { cargo nextest run --workspace --no-tests=warn }
 } else { Write-Host 'No Cargo workspace yet - Rust gates skipped.' -ForegroundColor Yellow }
 
 if (Test-Path 'package.json') {

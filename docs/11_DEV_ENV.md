@@ -1,6 +1,6 @@
 # 11. Среда разработки (что установлено и как пользоваться)
 
-> Версия 1.0 · 2026-10-15 · установлено и проверено в этой сессии. Машина: Windows 11 Home 10.0.26300, AMD Ryzen 7 5800H (8C/16T), 15,4 ГБ ОЗУ, Radeon Graphics (iGPU). Диски: **C: ~10 ГБ свободно** (мало), **D: ~133 ГБ**.
+> Версия 1.3 · 2026-10-16 (уточнены команды запуска проверок) · установлено и проверено 2026-10-15. Машина: Windows 11 Home 10.0.26300, AMD Ryzen 7 5800H (8C/16T), 15,4 ГБ ОЗУ, Radeon Graphics (iGPU). Диски: **C: ~10 ГБ свободно** (мало), **D: ~133 ГБ**.
 
 ## 1. Установлено
 
@@ -35,7 +35,15 @@ rustc --version; cargo --version; pnpm --version; cmake --version; gh --version
 cargo deny --version; cargo nextest --version
 ```
 
-После появления каркаса (Этап 0): `pnpm install` · `pnpm tauri dev` · `cargo nextest run --workspace` · `cargo clippy --workspace --all-targets -- -D warnings` · `cargo deny check` · `pwsh scripts/check-all.ps1`.
+После появления каркаса (Этап 0): `pnpm install` · `pnpm tauri dev` · `cargo nextest run --workspace --no-tests=warn` · `cargo clippy --workspace --all-targets -- -D warnings` · `cargo deny check` · все проверки разом:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check-all.ps1
+```
+
+Важно (проверено 2026-10-16): **`pwsh` (PowerShell 7) локально не установлен** — используется Windows PowerShell 5.1; политика выполнения скриптов на машине не задана (по умолчанию `Restricted`), поэтому скрипты запускаются с `-ExecutionPolicy Bypass` **только для одного процесса** — системные настройки не меняются. По той же причине в обычном терминале `pnpm` может не запуститься через `pnpm.ps1` — тогда вызывать `pnpm.cmd`. `cargo nextest` без тестов по умолчанию завершается с кодом 4 — на пустых крейтах Этапа 0 нужен `--no-tests=warn` (уже в `check-all.ps1`).
+
+Прототипы спайков (`spikes/*`) — самостоятельные проекты вне workspace: `cargo test --release` и `cargo run --release` в их папке.
 
 ## 3. Ставится по мере необходимости (с разрешения владельца «установи сам»)
 

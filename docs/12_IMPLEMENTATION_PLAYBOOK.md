@@ -1,6 +1,6 @@
 # 12. Руководство по реализации (как именно мы будем строить)
 
-> Версия 1.0 · 2026-10-15 · дополняет `09_ROADMAP.md` (что и когда) и `13_BACKLOG.md` (задачи). Здесь — **процесс, конкретные настройки каркаса, шаблоны кода и схемы конфигураций**, чтобы на старте не принимать решений «на ходу».
+> Версия 1.3 · 2026-10-16 · дополняет `09_ROADMAP.md` (что и когда) и `13_BACKLOG.md` (задачи). Здесь — **процесс, конкретные настройки каркаса, шаблоны кода и схемы конфигураций**, чтобы на старте не принимать решений «на ходу».
 
 ---
 
@@ -57,7 +57,8 @@
 ```toml
 [workspace]
 resolver = "3"
-members = ["crates/*", "apps/desktop/src-tauri"]
+members = ["crates/*", "apps/desktop/src-tauri"]   # 11 крейтов sirtone-* (с sirtone-wave и sirtone-cli) + sirtone-app
+exclude = ["spikes/*"]                              # прототипы спайков — самостоятельные проекты
 
 [workspace.package]
 edition = "2024"
@@ -83,7 +84,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 anyhow = "1"
-async-trait = "0.1"          # для dyn-совместимых асинхронных трейтов (JobHandler)
+async-trait = "0.1"          # для dyn-совместимого реестра задач (ErasedJob, §3.5)
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"
@@ -91,6 +92,7 @@ uuid = { version = "1.28", features = ["v7", "serde"] }
 blake3 = "1.8"
 crossbeam-channel = "0.5"
 parking_lot = "0.12"
+arc-swap = "1.9"             # атомарная замена матрицы признаков волны и снимков настроек
 rayon = "1.12"
 reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "gzip"] }
 proptest = "1.12"
@@ -122,6 +124,7 @@ strip = "symbols"            # PDB с символами сохраняем в �
 
 `rust-toolchain.toml`: `channel = "1.99.0"`, `components = ["clippy", "rustfmt"]`, `targets = ["x86_64-pc-windows-msvc"]`.
 `rustfmt.toml`: `edition = "2024"`, `max_width = 100`, `use_field_init_shorthand = true`.
+`clippy.toml` (D-55): `allow-unwrap-in-tests = true`, `allow-expect-in-tests = true`, `allow-dbg-in-tests = true`, `allow-print-in-tests = true` — иначе `unwrap_used = "warn"` + `-D warnings` валит тесты; в `sirtone-cli` — `#![allow(clippy::print_stdout)]` (это консольная программа).
 
 ### 2.3. `deny.toml` (лицензии и источники)
 
@@ -130,12 +133,15 @@ strip = "symbols"            # PDB с символами сохраняем в �
 allow = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause",
          "ISC", "Zlib", "Unlicense", "CC0-1.0", "BSL-1.0", "MPL-2.0", "Unicode-3.0", "Unicode-DFS-2016"]
 confidence-threshold = 0.9
+private = { ignore = true }           # наши крейты publish = false, license = "UNLICENSED" до OWN-01 — иначе cargo-deny ругается на свои же
 [[licenses.exceptions]]               # пример: если появится файл без LICENSE — фиксируем явно
 allow = ["MIT"]
 crate = "rusty-chromaprint"
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+allow-wildcard-paths = true           # path-зависимости между крейтами workspace (без версии) не считаются «*»
+# НЕ включать [graph] exclude-unpublished = true: все наши крейты unpublished — проверять стало бы нечего
 [advisories]
 yanked = "deny"
 [sources]
@@ -235,13 +241,34 @@ impl From<LibraryError> for AppError {     // в sirtone-app: маппинг н�
 ### 3.5. Фоновая задача
 
 ```rust
+/// Типизированный обработчик (удобно писать и тестировать).
 #[async_trait::async_trait]
-pub trait JobHandler: Send + Sync {
-    const KIND: &'static str;
+pub trait JobHandler: Send + Sync + 'static {
     type Payload: serde::Serialize + serde::de::DeserializeOwned + Send;
+    fn kind(&self) -> &'static str;                 // значение колонки job.kind, напр. "analyze_basic"
     fn needs_network(&self) -> bool { false }
     async fn run(&self, ctx: &JobCtx, payload: Self::Payload) -> Result<JobOutcome, JobError>;
 }
+
+/// Объектно-безопасная обёртка для реестра диспетчера: payload приходит JSON-ом из таблицы `job`.
+/// (Трейт с ассоциированным типом нельзя хранить как `dyn` — поэтому два трейта.)
+#[async_trait::async_trait]
+pub trait ErasedJob: Send + Sync {
+    fn kind(&self) -> &'static str;
+    fn needs_network(&self) -> bool;
+    async fn run_json(&self, ctx: &JobCtx, payload: &str) -> Result<JobOutcome, JobError>;
+}
+
+#[async_trait::async_trait]
+impl<H: JobHandler> ErasedJob for H {
+    fn kind(&self) -> &'static str { JobHandler::kind(self) }
+    fn needs_network(&self) -> bool { JobHandler::needs_network(self) }
+    async fn run_json(&self, ctx: &JobCtx, payload: &str) -> Result<JobOutcome, JobError> {
+        let p: H::Payload = serde_json::from_str(payload).map_err(JobError::bad_payload)?;
+        self.run(ctx, p).await
+    }
+}
+// Реестр: HashMap<&'static str, Arc<dyn ErasedJob>>.
 // JobOutcome::{Done, Retry{after}, Fail{reason}}; идемпотентность обязательна; отмена — ctx.cancelled()
 ```
 
@@ -363,15 +390,30 @@ min_cyrillic_after = 0.7
 
 ### 4.6. Локализация
 
-`assets/i18n/<lang>/<namespace>.json`, пространства имён: `common, nav, wave, viz, collection, playlists, search, unknown, import, duplicates, settings, onboarding, widgets, tray, errors`. Русский — полный; английский — те же ключи с пустыми значениями (fallback на русский). Плюрали — ICU: `"{count, plural, one {# трек} few {# трека} many {# треков} other {# трека}}"`.
+`assets/i18n/<lang>/<namespace>.json`, пространства имён: `common, nav, wave, viz, fx, events, timers, themes, collection, playlists, search, unknown, import, duplicates, settings, onboarding, widgets, tray, errors` (`wave` включает профили, сезоны и их переходные названия, «почему», чипы, ползунок; `events` — названия и подписи событий; `timers` — сон и фокус). Русский — полный; английский — те же ключи с пустыми значениями (fallback на русский). Плюрали — ICU: `"{count, plural, one {# трек} few {# трека} many {# треков} other {# трека}}"`.
 
 ### 4.7. Каталог кодов ошибок → тексты
 
-`FileNotFound · UnsupportedFormat · DecodeFailed · PathTooLong · DiskFull · PermissionDenied · DeviceUnavailable · DeviceBusy · NetworkOffline · RateLimited · RemoteError · DbBusy · DbCorrupt · Cancelled · InvalidArgument · LibraryOffline · Internal` — для каждого ключ `errors.<Code>.title` и `errors.<Code>.hint` (что делать пользователю).
+`FileNotFound · UnsupportedFormat · DecodeFailed · PathTooLong · DiskFull · PermissionDenied · DeviceUnavailable · DeviceBusy · NetworkOffline · RateLimited · RemoteError · DbBusy · DbCorrupt · Cancelled · InvalidArgument · LibraryOffline · NotSupported (1.3: например, сон ПК на Modern Standby) · InvalidConfig (1.3: битый профиль волны/календарь) · Internal` — для каждого ключ `errors.<Code>.title` и `errors.<Code>.hint` (что делать пользователю). Тот же список — в `03` §5.5.
 
 ### 4.8. Настройки (`settings.json`)
 
-Схема v1 — `03` §9. Правила: при загрузке неизвестные поля сохраняются; недостающие — по умолчанию; при повышении версии — функция миграции `migrate_vN_to_vN+1`; запись атомарная (temp + rename), не чаще 1 раза/с.
+Схема v1 — `03` §9 (в 1.3 добавлены блоки `wave`, `events`, `fx`, `sleep`, `focus`, `appearance.seasonal_theme`, `duck.pause_on_call` — до первого релиза это всё ещё v1). Правила: при загрузке неизвестные поля сохраняются; недостающие — по умолчанию; при повышении версии — функция миграции `migrate_vN_to_vN+1`; запись атомарная (temp + rename), не чаще 1 раза/с.
+
+### 4.9. Ассеты движка волны (`assets/wave/`, `14` §22)
+
+| Файл | Схема | Что внутри |
+|---|---|---|
+| `profiles/<id>.json` | `sirtone.wave-profile/1` (`14` §5.1) | 6 встроенных профилей |
+| `seasons.json` | `sirtone.seasons/1` | `blend_days: 21`, `weather_nudge_cap: 0.3`, профили звучания сезонов: `[{feature, target, width, weight}]` |
+| `events.json` | `sirtone.events/1` (`14` §11.1) | календарь событий, правила дат, окна, тоны, словари, темы, эффекты, `default_on` |
+| `dict/ru.json`, `dict/en.json` | `sirtone.dict/1` | `{ "season_winter": ["зим", "снег", "мороз", …], "event:new_year": […] }` — основы слов по `norm()`; веса полей title 1,0 / album 0,7 / artist 0,3 |
+| `tones.json` | `sirtone.tones/1` | тон → диапазоны valence/arousal, теги настроения, классы AudioSet с весами |
+| `genre_universality.json` | `sirtone.genre-u/1` | жанр → 0..1 |
+| `themes.json` | `sirtone.themes/1` | тема → исходный цвет акцента + палитра визуализации 3–5 (значения — дизайн владельца, временные — `06` §4.4) |
+| `effects.json` | `sirtone.effects/1` | WMO → эффект, параметры частиц, бюджеты по пресетам (`14` §13.3) |
+
+Все файлы валидируются при загрузке (ошибка → `InvalidConfig` + откат к встроенным значениям), тесты — снапшоты `insta` на разбор.
 
 ---
 
@@ -389,13 +431,15 @@ min_cyrillic_after = 0.7
 
 | Пункт | Статус |
 |---|---|
-| Спецификация (ТЗ, архитектура, референсы, дорожная карта, решения) | ✅ готова (v1.0) |
+| Спецификация (ТЗ, архитектура, референсы, дорожная карта, решения) | ✅ готова (v1.3) |
 | Детальный бэклог Этапов 0–7 с трассировкой к FR | ✅ `13_BACKLOG.md` |
 | Тулчейн установлен и проверен сборкой Tauri | ✅ `11_DEV_ENV.md` |
 | Конфигурации каркаса определены (§2) | ✅ |
 | Шаблоны отчётов и протоколов | ✅ `docs/templates/` |
-| Исходное ТЗ владельца сохранено в проекте | ✅ `docs/source/` |
-| **Доработки владельца внесены** | ⏳ ждём ваш список (цикл §1.1) |
+| Исходное ТЗ владельца и дополнение сохранены в проекте | ✅ `docs/source/` |
+| **Доработки владельца внесены** | ✅ дополнение «Умная волна» (2026-10-16) → v1.3: `02` §26, `14`, `01c`, спайк S-17 |
+| Вопросы по дополнению (Q-1…Q-17, OWN-13) | ⏳ не блокируют Этапы 0–2; до ответа — предложения из `10` §5 |
+| Файл дизайна владельца | ⏳ следующий шаг (цикл §1.1 → `06` §1) |
 | OWN-11 (локальные коммиты) и OWN-12 (идентификатор приложения) | ✅ решены владельцем (D-36, D-37) |
 | Визуал (OWN-07) | не блокирует Этапы 0–1 |
 | Ключ AcoustID, контакт MB (OWN-02/03) | не блокируют до Этапа 3 |

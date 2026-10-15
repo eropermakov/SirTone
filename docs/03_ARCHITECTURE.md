@@ -1,7 +1,7 @@
 # 03. Архитектура SirTone
 
-> Версия 1.0 · 2026-10-15 · статус: **утверждено к реализации** (изменения — только через ADR в `10_DECISIONS.md`)
-> Связанные документы: `02_TZ.md` (что строим) · `04_AUDIO_AND_ANALYSIS.md` · `05_LIBRARY_AND_RECOGNITION.md` · `06_UX_AND_VISUALIZATION.md` · `07_WINDOWS_INTEGRATION.md`
+> Версия 1.3 · 2026-10-16 · статус: **утверждено к реализации** (изменения — только через ADR в `10_DECISIONS.md`)
+> Связанные документы: `02_TZ.md` (что строим) · `04_AUDIO_AND_ANALYSIS.md` · `05_LIBRARY_AND_RECOGNITION.md` · `06_UX_AND_VISUALIZATION.md` · `07_WINDOWS_INTEGRATION.md` · **`14_WAVE_ENGINE.md` (движок волны, сезоны, события, режимы)**
 
 Обозначения: ✅ утверждено владельцем (исходное ТЗ) · 🔧 решение проектировщика (меняется через ADR) · 🧪 проверяется спайком до фиксации (см. `09_ROADMAP.md`) · ❓ нужен ответ владельца.
 
@@ -22,6 +22,7 @@
 | События вместо опроса, но **асинхронные** | foobar2000 `play_callback`, MusicBee notifications (синхронные обработчики блокируют плеер — не повторяем) |
 | Портативность: маркер-файл, всё в папке, без реестра | foobar2000, AIMP/MusicBee Portable |
 | Обновления: фон → установка при выходе/по кнопке | electron-updater, Squirrel, Omaha, Tauri Updater |
+| Рекомендации: кандидаты → ранжирование → секвенсор; Томпсон-сэмплинг; объяснения из вкладов (`14`, D-38/D-39) | YouTube (Covington 2016), Spotify BaRT/EEE, Deezer (бандиты), Chapelle & Li, Pandora, Roon/Plexamp (офлайн-радио) |
 
 Что **не** копируем: динамически подгружаемые плагины (foobar2000/Winamp/AIMP/VLC) — в v1 модули связаны трейтами на этапе компиляции; WASM-плагины (WaveFlow) — вне скоупа.
 
@@ -54,6 +55,7 @@ flowchart LR
   APP -.-> MB[MusicBrainz]
   APP -.-> CAA[Cover Art Archive]
   APP -.-> OM[Open-Meteo + геокодер]
+  APP -.-> LBZ[ListenBrainz: популярность]
   APP -.-> GH[GitHub Releases]
   APP <-->|Core Audio, SMTC, Bluetooth, Shell, Power| WIN[Windows 10/11]
 ```
@@ -76,6 +78,7 @@ flowchart TB
       RC[sirtone-recognize: теги, имя файла, отпечаток, онлайн]
       AN[sirtone-analysis: DSP, ML, вайб, сходство]
       SE[sirtone-search: запросы, FTS, смысловой поиск]
+      WV[sirtone-wave: движок волны, календарь, обучение, темы, таймеры]
       NT[sirtone-net: HTTP, лимитеры, офлайн-менеджер]
       PL[sirtone-platform: Windows-интеграция]
       CORE[sirtone-core: типы, ошибки, события, конфиг]
@@ -94,13 +97,17 @@ flowchart TB
   RC --> NT
   AN --> LB
   SE --> LB
+  PB -.->|QueueSource| WV
+  WV -.->|WaveRepo| LB
 ```
+
+Стрелки на этой схеме — потоки данных; зависимости крейтов — только через трейты `core` (§3.1).
 
 **Окна:**
 
 | Окно (label) | Назначение | Жизненный цикл |
 |---|---|---|
-| `main` | Основное приложение, весь функционал | Создаётся на старте; при закрытии (крестик) скрывается; после 60 с в трее WebView уничтожается для экономии памяти (🔧 настройка «Быстро открывать»); при открытии — пересоздаётся со скелетоном ≤ 100 мс |
+| `main` | Основное приложение, весь функционал | Создаётся на старте; при закрытии (крестик) скрывается и сразу усыпляется (`IsVisible=false` + `TrySuspend`, D-52); после 60 с в трее WebView уничтожается для экономии памяти (🔧 настройка «Быстро открывать»); при открытии — пересоздаётся со скелетоном ≤ 100 мс |
 | `widget-desktop` | Виджет на рабочем столе (`07` §5) | Живёт, пока включён; маленькая отдельная страница (≤ 100 КБ JS) |
 | `widget-taskbar` | Мини-бар у панели задач (`07` §4) | Аналогично |
 | `fullscreen vibe` | Не отдельное окно — режим `main` | — |
@@ -134,16 +141,19 @@ SirTone/
 │  ├─ sirtone-analysis/          # громкость, пики, BPM/тональность, ML-инференс, вайб, сходство
 │  ├─ sirtone-search/            # нормализация запросов, FTS, нечёткий и смысловой поиск, лексикон
 │  ├─ sirtone-audio/             # декодирование, ресемплинг, DSP, микшер, автомикс, вывод WASAPI
-│  ├─ sirtone-playback/          # контроллер: очередь, контексты, шафл, повтор, гибридные продолжения
-│  ├─ sirtone-platform/          # Windows: SMTC, панель задач, ducking, Bluetooth, питание, геолокация
-│  └─ sirtone-cli/               # харнесс: play, render, import, analyze, bench (только dev)
+│  ├─ sirtone-playback/          # контроллер: очередь, контексты, шафл, повтор, гибридные продолжения, сон/фокус-таймеры (исполнение)
+│  ├─ sirtone-wave/              # движок волны: часы, календарь, контекст, профили, скоринг, секвенсор, обучение, сезоны, события, темы (14)
+│  ├─ sirtone-platform/          # Windows: SMTC, панель задач, ducking, звонки, Bluetooth, питание (экран/сон), ввод, геолокация
+│  └─ sirtone-cli/               # харнесс: play, render, import, analyze, bench, wave simulate (только dev)
 ├─ assets/
 │  ├─ models/                    # ONNX + MODELS.md (источник, лицензия, sha256)
 │  ├─ viz/                       # индекс пресетов, палитры, шейдеры
 │  ├─ i18n/                      # ru.json, en.json
 │  ├─ sfx/                       # звуки интерфейса
-│  └─ lexicon/                   # словари смыслового поиска (ru.json, en.json)
-├─ tools/                        # dev-инструменты: fixtures, golden-set, preset-indexer
+│  ├─ lexicon/                   # словари смыслового поиска (ru.json, en.json)
+│  └─ wave/                      # профили волн, сезоны, календарь событий, словари, тоны, темы, эффекты (14 §22)
+├─ spikes/                       # самостоятельные прототипы спайков (S-17 …), не входят в workspace
+├─ tools/                        # dev-инструменты: fixtures, golden-set, preset-indexer, synth-library (бенч движка волны)
 ├─ scripts/                      # dev-env.ps1, release.ps1, check-all.ps1
 ├─ docs/                         # эта документация
 └─ .github/workflows/            # ci.yml, release.yml
@@ -162,15 +172,16 @@ flowchart BT
   sea[sirtone-search] --> core
   aud[sirtone-audio] --> core
   plat[sirtone-platform] --> core
+  wave[sirtone-wave] --> core
   pb[sirtone-playback] --> aud
   pb --> core
-  app[sirtone-app] --> pb & lib & rec & ana & sea & plat & net
-  cli[sirtone-cli] --> aud & lib & rec & ana & pb
+  app[sirtone-app] --> pb & lib & rec & ana & sea & plat & net & wave
+  cli[sirtone-cli] --> aud & lib & rec & ana & pb & wave
 ```
 
 Жёсткие правила (проверяются `cargo deny` + `cargo tree` в CI):
 
-- `sirtone-audio`, `sirtone-analysis`, `sirtone-search`, `sirtone-recognize` **не зависят друг от друга** (общение через трейты из `core` и сборку в `app`).
+- `sirtone-audio`, `sirtone-analysis`, `sirtone-search`, `sirtone-recognize`, `sirtone-wave` **не зависят друг от друга** (общение через трейты из `core` — `WaveRepo`, `QueueSource`, `PlaybackControl`, `PowerActions`, `UserActivity`, `CallSignal` — и сборку в `app`; `14` §2.1).
 - Доменные крейты **не зависят от `tauri`**. Ни один не тянет `windows` напрямую, кроме `platform` и `audio` (WASAPI).
 - `sirtone-library` — единственный владелец SQLite-соединений. Остальные получают данные через трейты (`TrackRepo`, `ArtistRepo`, …) из `core`.
 - Любая публичная функция, вызываемая из аудио-потока, помечена `#[inline]`/документирована как RT-safe; в RT-путях запрещены `Vec::push` с ростом, `Mutex`, `println!`, `tracing::*` (кроме compile-time disabled), `Box::new` и т.п.
@@ -187,7 +198,8 @@ src/
 │  ├─ i18n/        # инициализация, форматтеры, плюрали
 │  ├─ virtual/     # VirtualList/VirtualGrid поверх @tanstack/react-virtual
 │  └─ lib/         # утилиты (цвет OKLCH, форматирование времени/размера)
-├─ features/       # wave, collection, playlists, search, unknown, import, settings, onboarding, viz, eq, bluetooth
+├─ features/       # wave (+ «Настроить волну», чипы, «Мои волны»), collection, playlists, search, unknown, import, settings,
+│                  # onboarding, viz, fx (живые эффекты), sleep, focus, events (карточки), eq, bluetooth
 ├─ entities/       # track, album, artist, playlist: типы, ячейки, карточки
 └─ widgets/        # отдельные страницы виджетов (общий минимальный код)
 ```
@@ -206,6 +218,7 @@ src/
 | **Engine thread** | above normal | декодеры, ресемплер, DSP, микшер/автомикс, лимитер → кольцо вывода; обработка команд движка | не блокируется на IO дольше 1 мс (чтение декодером идёт через предзаполняемые буферы) |
 | **Decoder threads** (по одному на «деку», до 2) | normal | чтение файла, декодирование в предзаполненное кольцо (2–4 с) | `catch_unwind`: паника парсера = ошибка трека, не краш приложения |
 | **Analysis pool** (rayon) | below normal + EcoQoS | отпечаток, громкость, BPM/ключ, ML, пики | размер пула динамический (§11.3), приостановка по батарее/полноэкранной игре |
+| **Wave worker** (1 поток) | normal | движок волны: пересборка очереди (≈ 3 мс на 50 000), обновление моделей, таймеры сна/фокуса (планы), события и темы | не блокирует UI и движок; запись в БД — батчами через DB writer (`14` §2.2) |
 | **DB writer** (1 поток) | normal | сериализованные записи SQLite (WAL), батчи | единственный писатель, очередь команд |
 | **DB readers** (пул 4) | normal | чтение для UI (списки, поиск) | только read-only соединения |
 | **FS watcher** | below normal | `ReadDirectoryChangesW` через `notify` + дебаунс | события → очередь «reconcile» |
@@ -236,7 +249,9 @@ src/
 | unknown | `list`, `accept_suggestion`, `assign(fields)`, `mark_normal`, `retry_online` |
 | playlist | `list`, `get`, `create(kind, name, rules?)`, `update`, `delete`, `add_tracks`, `remove_items`, `reorder`, `preview_hybrid(id)` |
 | search | `query(q, limits)`, `suggest(q)` |
-| wave | `get_options`, `start(wave_query)`, `update(wave_query)`, `get_context` (время суток, погода, занятие) |
+| wave | `get_options`, `start(profile_id, overrides?)`, `update(wave_query)`, `get_context` (время суток, погода, занятие, сезон, события), `set_novelty`, `get_composition`, `toggle_influence`, `why(track)`, `feedback(kind)`, `tag_track`, `profiles_*`, `learning_*` — полный список `14` §19 |
+| events / timers | `events_list`, `events_set_pref`, `events_suggestion_action`; `sleep_start/extend/cancel/get`; `focus_start/pause/resume/skip/stop/get` |
+| theme / fx | `theme_get_state`, `theme_set_override`, `fx_get_state`, `fx_set_mode` |
 | viz | `subscribe(channel)`, `unsubscribe`, `get_vibe(track)`, `get_palette(track)`, `pick_preset(vibe)`, `get_user_color` |
 | settings / perf | `settings_get`, `settings_patch`, `perf_get_state`, `perf_detect`, `perf_set_level`, `perf_restore` |
 | platform | `hotkeys_get/set`, `bluetooth_list/connect/disconnect/open_system`, `widgets_set`, `autostart_set`, `geo_set_city`, `geo_search_city` |
@@ -263,6 +278,9 @@ src/
 | `settings://changed` | по изменению | изменённые ключи |
 | `platform://hotkey-conflict` | редко | какой хоткей не зарегистрирован |
 | `update://available` | редко | версия, заметки |
+| `wave://composition`, `wave://relaxed`, `wave://suggestion` | по изменению | чипы влияний; шаги ослабления; карточка события |
+| `timer://sleep`, `timer://focus` | 1 Гц при активном таймере | фаза, остаток, «проснулся»; цикл, счётчик за сегодня |
+| `theme://state`, `fx://state`, `weather://state` | по изменению (тема — не чаще 1 раза в сутки в межсезонье) | исходный цвет и палитра; тип/плотность/ветер эффекта; погода и её свежесть |
 
 ### 5.4. Бинарные каналы (Tauri `Channel`)
 
@@ -279,7 +297,7 @@ pub struct AppError {
 }
 ```
 
-Коды (расширяемый список): `FileNotFound`, `UnsupportedFormat`, `DecodeFailed`, `PathTooLong`, `DiskFull`, `PermissionDenied`, `DeviceUnavailable`, `DeviceBusy`, `NetworkOffline`, `RateLimited`, `RemoteError`, `DbBusy`, `DbCorrupt`, `Cancelled`, `InvalidArgument`, `LibraryOffline` (корень недоступен, например флешка вынута), `Internal`. **Тексты для пользователя формирует UI по `code`** через i18n (`errors.<code>`); Rust не отдаёт локализованных строк.
+Коды (расширяемый список): `FileNotFound`, `UnsupportedFormat`, `DecodeFailed`, `PathTooLong`, `DiskFull`, `PermissionDenied`, `DeviceUnavailable`, `DeviceBusy`, `NetworkOffline`, `RateLimited`, `RemoteError`, `DbBusy`, `DbCorrupt`, `Cancelled`, `InvalidArgument`, `LibraryOffline` (корень недоступен, например флешка вынута), `NotSupported` (действие недоступно на этом ПК — например, сон на Modern Standby), `InvalidConfig` (битый профиль волны/календарь — откат к встроенным), `Internal`. **Тексты для пользователя формирует UI по `code`** через i18n (`errors.<code>`); Rust не отдаёт локализованных строк.
 
 ### 5.6. Кастомные протоколы (ассеты без IPC)
 
@@ -300,6 +318,7 @@ pub struct AppError {
 | Библиотека (треки, альбомы, исполнители, плейлисты) | Rust (`library`, SQLite) | постраничные запросы + кэш по `(queryKey, pageIndex)` в памяти WebView; инвалидация событием `library://changed` |
 | Настройки | Rust (`settings.json` с версией схемы) | `settings_get` на старте + `settings://changed` |
 | Уровень производительности | Rust (`perf`) + замеры из UI (кадры) отправляются в Rust | CSS-переменные/контекст React на основе события |
+| Волна: профиль, контекст, модели, таймеры сна/фокуса, активная тема, состояние эффекта | Rust (`wave`, поток `wave-worker`) | события `wave://*`, `timer://*`, `theme://state`, `fx://state`; цвета считает UI из исходного цвета (`06` §4.2), частицы рисует UI (`06` §7.7) |
 | Навигация, выделение, скролл, открытые панели | UI | не сохраняется между запусками ✅ (сессия не восстанавливается) |
 
 **Гидратация:** при (пере)создании окна UI вызывает `app_bootstrap` и получает: настройки, снимок плеера, счётчики, статус задач/сети/перф — окно рисует «живое» состояние за один кадр.
@@ -467,6 +486,10 @@ CREATE VIRTUAL TABLE search_fts USING fts5(title, artists, album, genre, aliases
 CREATE VIRTUAL TABLE search_tri USING fts5(text, content='', tokenize='trigram');
 ```
 
+### 7.1. Данные движка волны (миграция `0002_wave.sql`, Этап 1)
+
+Полный DDL — `14` §18.1: колонки `track.liked_at`, `track.wave_never`, `track.explicit`, `artist.wave_never`; таблицы `track_features` (вектор 32×f32, сезонные аффинности), `track_tag` (ручные метки), `play_event` + `play_event_rollup` (журнал прослушиваний со снимком контекста, свёртка через 2 года — D-40), `feedback`, `track_affinity` (бета по моделям), `taste_model`, `wave_profile`, `event_pref`/`event_state`, `theme_preset`, `weather_cache`, `popularity_cache`, `wave_state`. Все — в `library.db` рядом с медиатекой (в портативной версии — на флешке).
+
 **Индексы под списки:** все постраничные запросы используют keyset-пагинацию (`WHERE (sort_key, id) > (?, ?) ORDER BY … LIMIT 100`) по покрывающим индексам; `COUNT(*)` для текущего фильтра кэшируется до следующего `library://changed`. Цель: страница из 100 строк ≤ 10 мс на 100 000 треков.
 
 **Миграции:** только вперёд; версия в `PRAGMA user_version` и `meta.schema_version`; перед миграцией — копия `library.db` в `.sirtone/backup/library-<ver>.db` (хранится 1 штука; это защита от сбоя миграции, а не «встроенный бэкап библиотеки», который вне скоупа ✅).
@@ -520,7 +543,8 @@ CREATE VIRTUAL TABLE search_tri USING fts5(text, content='', tokenize='trigram')
 {
   "settings_version": 1,
   "language": "ru",
-  "appearance": { "theme": "dark", "accent": { "preset": "burgundy", "custom": null }, "custom_accents": [] },
+  "appearance": { "theme": "dark", "accent": { "preset": "burgundy", "custom": null }, "custom_accents": [],
+                  "seasonal_theme": false, "event_themes_auto": false },
   "performance": { "level": 3, "auto_degrade": true, "degraded_from": null,
     "overrides": { "ui_animations": null, "blur": null, "list_animations": null,
                    "viz_enabled": null, "viz_fps_cap": null, "viz_scale": null,
@@ -530,9 +554,18 @@ CREATE VIRTUAL TABLE search_tri USING fts5(text, content='', tokenize='trigram')
     "normalization": { "enabled": true, "target_lufs": -14, "album_mode": "auto" },
     "eq": { "enabled": false, "preamp_db": 0, "bands_db": [0,0,0,0,0,0,0,0,0,0], "preset": "flat" },
     "output": { "device": "default", "exclusive": false, "pause_on_device_loss": true },
-    "duck": { "enabled": true, "amount_db": -12, "sensitivity": "medium", "ignore": [] }
+    "duck": { "enabled": true, "amount_db": -12, "sensitivity": "medium", "ignore": [], "pause_on_call": false }
   },
   "viz": { "mode": "waves", "follow_theme_accent": true },
+  "fx": { "mode": "weather", "manual": null, "static_when_weak": false },
+  "wave": { "learning": true, "novelty": 50, "repeat_window_h": 24, "artist_spacing": 5,
+            "season": { "mode": "auto", "weather_nudge": true, "blend_days": 21 },
+            "influence": { "season": 1.0, "context": 1.0, "events": 1.0 } },
+  "events": { "suggest": true, "auto_play": false, "religious": true,
+              "micro": { "weather": true, "weekly": false, "astro": true } },
+  "sleep": { "fade_min": 10, "final_s": 30, "warm": false, "after": "nothing" },
+  "focus": { "work_min": 25, "break_min": 5, "long_break_min": 15, "cycles_before_long": 4,
+             "vocals": "prefer_none", "overrun_s": 90, "auto_normalize": true },
   "sfx": { "enabled": true, "volume": 0.5 },
   "hotkeys": { "play_pause": "Ctrl+Alt+Space", "next": "Ctrl+Alt+Right", "prev": "Ctrl+Alt+Left",
                "volume_up": "Ctrl+Alt+Up", "volume_down": "Ctrl+Alt+Down", "mute": null },
@@ -567,7 +600,12 @@ CREATE VIRTUAL TABLE search_tri USING fts5(text, content='', tokenize='trigram')
 | `relocate_track` | 20 | 1 | нет | перенос файла в каноническое место (после уточнения) |
 | `reconcile_fs` | 55 | 1 | нет | сверка диска и БД |
 | `dedupe_scan` | 70 | 1 | нет | поиск дублей по отпечаткам |
-| `refresh_context` | 80 | 1 | да | погода/геокодинг |
+| `refresh_weather` | 80 | 1 | да | погода Open-Meteo раз в 30–60 мин (`14` §3.3), геокодинг по запросу; первая — через ≥ 30 с после старта |
+| `refresh_popularity` | 85 | 1 (≤ 1 запр/с) | да | ListenBrainz по MBID пачками, раз в месяц на трек (`14` §16) |
+| `events_tick` | 50 | 1 | нет | проверка событий при старте и смене дня, автопредложения (`14` §11.3) |
+| `recompute_season_affinity` | 75 | 1 | нет | сезонность треков (звук/слова/история) раз в сутки и после анализа |
+| `rollup_play_events` | 90 | 1 | нет | свёртка журнала старше 2 лет, раз в неделю |
+| `rebuild_feature_matrix` | 25 | 1 | нет | пересборка матрицы признаков в памяти после `library://changed` |
 
 Правила: задачи **идемпотентны**; повторы с экспоненциальной паузой и джиттером (до 5 попыток); сетевые задачи автоматически переходят в `paused` при офлайне и возобновляются при появлении сети; видимые пользователю треки (на экране, играющие, следующие в очереди) получают приоритетный буст (−20); пользовательские действия (ручная правка) отменяют связанные задачи.
 
@@ -586,7 +624,8 @@ CREATE VIRTUAL TABLE search_tri USING fts5(text, content='', tokenize='trigram')
 | `api.acoustid.org` | ≤ 2 запр/с (потолок сервиса 3) | 90 дн. | Нужен **ключ приложения** (❓OWN-02). Бесплатно только для некоммерческого использования |
 | `musicbrainz.org/ws/2` | ≤ 0,8 запр/с | 30 дн. | **Описательный User-Agent**: `SirTone/<ver> ( <контакт> )` (❓OWN-03); 503 при превышении |
 | `coverartarchive.org` | ≤ 4 запр/с | 90 дн. | редиректы на archive.org |
-| `api.open-meteo.com`, `geocoding-api.open-meteo.com` | ≤ 1 запр/с | погода 3 ч, геокод 365 дн. | Бесплатно только для некоммерческих приложений без подписок/рекламы (R-07) |
+| `api.open-meteo.com`, `geocoding-api.open-meteo.com` | ≤ 1 запр/с; погода — 1 раз в 30–60 мин | погода 3 ч (дальше — «устарела»), геокод 365 дн. | Бесплатно только для некоммерческих приложений без подписок/рекламы (< 10 000/сут, R-07); CC BY 4.0 — атрибуция в «О программе» |
+| `api.listenbrainz.org` | ≤ 1 запр/с (правило сервиса), пачки по MBID | популярность 30 дн. | User-Agent обязателен (тот же контакт, что для MusicBrainz — OWN-03); без ключа |
 | `github.com` (releases) | 1 проверка/сутки + ручная | — | `latest.json` |
 
 - **Офлайн-менеджер:** события `INetworkListManager` + эвристика по отказам запросов (3 подряд сетевых ошибки → «офлайн», проба каждые 60 с). Состояние публикуется как `net://status`.
@@ -654,7 +693,7 @@ sequenceDiagram
     APP-->>UI: playback://position
   end
   AU-->>PB: TrackEnded (за 8 с до конца ранее: prefetch next)
-  PB->>LB: учёт прослушивания (play_count, completion)
+  PB->>LB: учёт прослушивания (play_count, completion) + play_event со снимком контекста (D-40)
 ```
 
 ### 15.2. Импорт перетаскиванием
@@ -713,3 +752,5 @@ sequenceDiagram
 | A-5 | `tract` vs `ort` для ONNX; выбор модели | S-07 | ADR D-12 |
 | A-6 | Слой виджета рабочего стола на Windows 11 25H2+ | S-09 | ADR D-18 |
 | A-7 | Portable: Fixed Runtime + запись во флешку | S-13 | ADR D-21 |
+| A-8 | Слой живых эффектов: отдельный WebGL2-canvas vs общий с визуализацией; общий бюджет кадра | S-19 | ADR D-46 |
+| A-9 | Действия после сон-таймера на Modern Standby (экран, сон, гибернация), обнаружение ввода | S-18 | ADR D-48 |

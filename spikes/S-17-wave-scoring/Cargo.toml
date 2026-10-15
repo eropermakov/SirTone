@@ -1,0 +1,15 @@
+[package]
+name = "s17-wave-scoring"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "S-17: прототип скоринга движка волны на синтетической медиатеке (docs/14_WAVE_ENGINE.md)"
+
+# Самостоятельный проект: не входит в будущий workspace приложения, без внешних зависимостей.
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+debug = false

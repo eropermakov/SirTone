@@ -1,6 +1,6 @@
 # 07. Интеграция с Windows: окно, трей, хоткеи, SMTC, панель задач, виджеты, Bluetooth, питание, установка
 
-> Версия 1.0 · 2026-10-15 · основание — `01b` F-22…F-27, F-29, F-30 (Microsoft Learn, Spotify/Discord/foobar2000/VLC/MusicBee, Rainmeter, Wallpaper Engine, Lively, ToothTray, Tauri). Всё, что зависит от конкретной сборки Windows и железа, помечено 🧪 и закрывается спайками S-09…S-14 на машине владельца (Win11 10.0.26300).
+> Версия 1.3 · 2026-10-16 · основание — `01b` F-22…F-27, F-29, F-30 и `01c` §12 (Microsoft Learn, Spotify/Discord/foobar2000/VLC/MusicBee, Rainmeter, Wallpaper Engine, Lively, ToothTray, Tauri, Kodi, Audible). Всё, что зависит от конкретной сборки Windows и железа, помечено 🧪 и закрывается спайками S-09…S-14, S-18 на машине владельца (Win11 10.0.26300, Modern Standby).
 
 ---
 
@@ -10,12 +10,12 @@
 |---|---|---|
 | Окно | `maximized: true`, `visible: false` до готовности (без белой вспышки), фон `backgroundColor` = токен; **`dragDropEnabled: true`** (нужно для путей файлов из проводника; HTML5-DnD на Windows при этом не работает ✔ docs Tauri — поэтому внутренний DnD на pointer-событиях `dnd-kit`) | Spotify, Tauri docs |
 | Закрытие | Перехват `CloseRequested` → скрыть; тот же путь для Alt+F4 и «Закрыть» из Alt+Tab (**без «исключений»**); выход — меню трея; при выходе — корректная остановка (flush БД, закрытие WASAPI, снятие хоткеев) | Spotify/Discord (минус: Alt+F4) |
-| Трей | `TrayIconBuilder`; метки меню (Русский) **кэшируются в Rust** (нужны, когда WebView главного окна уничтожен для экономии памяти); левый клик — открыть/скрыть, правый — меню: «Открыть», «Играет: …», ⏯, ⏮, ⏭, «Выход» | Spotify, Discord |
+| Трей | `TrayIconBuilder`; метки меню (Русский) **кэшируются в Rust** (нужны, когда WebView главного окна уничтожен для экономии памяти); левый клик — открыть/скрыть, правый — меню: «Открыть», «Играет: …», ⏯, ⏮, ⏭, **«Сон 30 мин» / «Сон: осталось N мин · +15 · Отменить»**, **«Фокус: работа 12:30»**, **строка предложения события** («Скоро Новый год — включить волну»), «Выход»; подсказка иконки — остаток фокуса/сна | Spotify, Discord, `01c` W-08/W-09 |
 | Один экземпляр | `tauri-plugin-single-instance`: второй запуск показывает окно и передаёт аргументы (Jump List-команды, «Открыть с помощью») | — |
 | Автозапуск | `tauri-plugin-autostart` (HKCU Run) с `--minimized`; отключён в портативном режиме (путь флешки нестабилен) | foobar2000 portable |
-| Экономия памяти | Через 60 с в трее WebView `main` уничтожается; ядро, трей, хоткеи, SMTC, виджеты работают; открытие — пересоздание ≤ 400 мс со скелетоном | 🔧 (урок LUMEN о памяти WebView) |
+| Экономия памяти | Сразу при скрытии: `ICoreWebView2Controller.IsVisible = false` + `ICoreWebView2_3::TrySuspend` (доступ через `with_webview` Tauri); через 60 с в трее WebView `main` уничтожается; ядро, трей, хоткеи, SMTC, виджеты работают; открытие — пересоздание ≤ 400 мс со скелетоном (D-52) | 🔧 (урок LUMEN о памяти WebView; Microsoft Learn — `01c` §12) |
 | DPI/мониторы | Per-Monitor v2 (по умолчанию в Tauri); виджеты запоминают монитор и координаты в долях | — |
-| Экран не засыпает | `SetThreadExecutionState(ES_CONTINUOUS|ES_DISPLAY_REQUIRED)` в «ночном вайбе» и пока играет с видимой визуализацией | WMP/VLC |
+| Экран не засыпает | `SetThreadExecutionState(ES_CONTINUOUS|ES_DISPLAY_REQUIRED)` в «ночном вайбе» и пока играет с видимой визуализацией; **снимается** в последние 10 мин сон-таймера и после него (§8.1) | WMP/VLC |
 
 ---
 
@@ -63,7 +63,7 @@
 | **C. Закрепить поверх** (запасной режим пользователя) | topmost без активации | Всегда виден | Не соответствует «скрывается под окнами» → только как опция |
 
 Общее: прозрачность per-pixel (`transparent: true`), `shadow: false`, `focus: false`, hit-test: прозрачные области — сквозные клики; перетаскивание за обложку; привязка к краям; масштаб 0,75–1,5; прозрачность; запоминание монитора/позиции; **переживает перезапуск explorer.exe** (реакция на `TaskbarCreated` → пересоздать привязку); **приостановка рендера** (Wallpaper Engine/Lively): виджет перекрыт ≥ 95 %, полноэкранное приложение, батарея ⇒ пауза анимаций/мини-визуализации (экономия GPU).
-Страница `widget-desktop` ≤ 100 КБ JS, подписка на события ядра; клик по обложке открывает приложение.
+Страница `widget-desktop` ≤ 100 КБ JS, подписка на события ядра; клик по обложке открывает приложение. **(1.3)** Кнопка «Сон 30 мин» и кольцо фокуса (остаток, фаза) — `timer://*`; живых эффектов в виджете нет (Q-8).
 
 ---
 
@@ -87,7 +87,13 @@
 
 ## 7. Монитор чужого звука для приглушения (F-04)
 
-Поток платформы (COM MTA): `IMMDeviceEnumerator` → устройство вывода → `IAudioSessionManager2` → `GetSessionEnumerator`; подписка `IAudioSessionNotification` на новые сессии; для каждой сессии — `IAudioSessionControl2` (`GetProcessId`, `IsSystemSoundsSession`), `IAudioMeterInformation::GetPeakValue` (опрос 50 мс). Дерево процессов Сиртона — снимок `CreateToolhelp32Snapshot` (обновляется при появлении/исчезновении WebView-процессов). Решение «приглушать» и огибающая — `04` §7. Лог в debug: PID, имя exe, пик, решение. Опция «не приглушать для звонков» (C).
+Поток платформы (COM MTA): `IMMDeviceEnumerator` → устройство вывода → `IAudioSessionManager2` → `GetSessionEnumerator`; подписка `IAudioSessionNotification` на новые сессии; для каждой сессии — `IAudioSessionControl2` (`GetProcessId`, `IsSystemSoundsSession`), `IAudioMeterInformation::GetPeakValue` (опрос 50 мс). Дерево процессов Сиртона — снимок `CreateToolhelp32Snapshot` (обновляется при появлении/исчезновении WebView-процессов). Решение «приглушать» и огибающая — `04` §7. Лог в debug: PID, имя exe, пик, решение.
+
+### 7.1. Звонки (D-49, FR-PLAY-011, FR-FOCUS-007)
+
+- Своя сессия: `IAudioSessionControl2::SetDuckingPreference(TRUE)` — Windows не приглушает Сиртон на 80 % при звонках сама (иначе двойное приглушение с нашим).
+- `IAudioSessionManager2::RegisterDuckNotification` (`IAudioVolumeDuckNotification`, Win7+): `OnVolumeDuckNotification` — открыт коммуникационный поток (звонок в Teams/Discord/Telegram и т.п.) → наше приглушение или **пауза** (опция «Пауза во время звонка»); `OnVolumeUnduckNotification` → снять приглушение / возобновить через 2 с, если паузу поставили мы. Регистрация — не из колбэка (требование Microsoft).
+- Проверка на 20 сценариях спайка S-11 (ложных срабатываний 0).
 
 ---
 
@@ -102,6 +108,20 @@
 | Смена устройств/дисков | `WM_DEVICECHANGE` / `RegisterDeviceNotification` | вынута флешка → библиотека «офлайн» (`05` §7) |
 | Смена сети | `INetworkListManager` | `net://status` |
 | Смена DPI/мониторов | `WM_DPICHANGED`, `WM_DISPLAYCHANGE` | пересчёт размеров, позиций виджетов |
+| Анимации Windows выкл. | `SPI_GETCLIENTAREAANIMATION` → `prefers-reduced-motion` в WebView2 (Chromium, обновление по `WM_SETTINGCHANGE`) | эффекты — статично/выкл., анимации — уровень 0 (FR-UI-008) |
+
+### 8.1. Сон-таймер: экран, сон ПК, «проснулся» (FR-SLEEP-006/007, D-48, спайк S-18)
+
+| Действие | Реализация | Ограничения |
+|---|---|---|
+| Возможности ПК | `GetPwrCapabilities` → `SYSTEM_POWER_CAPABILITIES`: `SystemS3`, `AoAc` (Modern Standby), `SystemS4` + `HiberFilePresent` | у владельца: S0 Low Power Idle, S3 нет, гибернация есть (`powercfg /a`, 2026-10-16) |
+| Отпустить систему | за 10 мин до конца и после — снять наши `SetThreadExecutionState` (`ES_DISPLAY_REQUIRED`/`ES_SYSTEM_REQUIRED`) | иначе экран/ПК не уснут по плану электропитания |
+| Выключить экран | `SendMessageW(hwnd_service, WM_SYSCOMMAND, SC_MONITORPOWER, 2)` (обрабатывает `DefWindowProc`) | на Modern Standby погашенный экран + отсутствие активности → система уходит в standby сама; 🧪 S-18 |
+| Перевести ПК в сон | S3: `SetSuspendState(FALSE, FALSE, FALSE)` после `AdjustTokenPrivileges(SE_SHUTDOWN_NAME)`; **Modern Standby: `SetSuspendState` возвращает `ERROR_NOT_SUPPORTED`** → выключить экран + отпустить систему (как выше) | 🧪 S-18: проверить время ухода в standby на ноутбуке владельца |
+| Гибернация (Q-17) | `SetSuspendState(TRUE, FALSE, FALSE)` — только если `SystemS4 && HiberFilePresent` и выбрано явно | показывается, только если доступна |
+| «Проснулся» | во время затухания — опрос `GetLastInputInfo` 1 Гц (любой ввод в системе, без хуков) + события приложения/хоткеев/трея | вне затухания не опрашиваем |
+
+Все действия после таймера — **только явной настройкой** ✅ (по умолчанию «Ничего»); пауза воспроизведения — всегда перед действием; приложение не требует прав администратора (привилегия `SE_SHUTDOWN_NAME` есть у обычного пользователя, её надо только включить в токене).
 
 ---
 
@@ -148,4 +168,6 @@
 | Deskband / встроенная в панель задач полоса | ❌ (убрано) | ⚠️ технически возможно, не делаем |
 | Слой виджета (S-09) | 🧪 | 🧪 |
 | Bluetooth-аудио connect/disconnect | 🧪 (единый HFP/A2DP эндпоинт) | 🧪 |
+| Сон ПК после таймера | S3 — `SetSuspendState`; Modern Standby — экран выкл. + отпустить систему 🧪 S-18 | то же |
+| Уведомления о звонках (`IAudioVolumeDuckNotification`) | ✅ | ✅ |
 | Поддержка ОС | основная | best effort (EOL у Microsoft) |
