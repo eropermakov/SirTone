@@ -1,0 +1,48 @@
+# Rust / Cargo
+/target/
+**/target/
+Cargo.lock.bak
+
+# Node / pnpm
+node_modules/
+.pnpm-store/
+dist/
+dist-ssr/
+coverage/
+
+# Tauri generated
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/target/
+
+# Test artifacts
+playwright-report/
+test-results/
+*.profraw
+
+# Local data (never commit user libraries or databases)
+.sirtone/
+SirToneData/
+Library/
+*.db
+*.db-wal
+*.db-shm
+fixtures/generated/
+tools/fpcalc/
+models/*.onnx
+
+# Secrets and keys
+.env
+.env.*
+*.key
+*.pem
+*.pfx
+tauri-signing*
+
+# OS / editors
+Thumbs.db
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.log
+*.tmp
