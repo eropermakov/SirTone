@@ -23,7 +23,7 @@
 | D-13 | Визуализации — **три переключаемых режима** (Волны по умолчанию, MilkDrop, Видео) с доступом по пресету | вопрос 2; `01a` §B | один режим | принято |
 | D-14 | Подача кадров viz: `Channel` Tauri, **1024×u8 L/R/mono + timestamp + beat_phase**, 60 Гц, Butterchurn `render({audioLevels})` | `01a` §B.1: WMP/iTunes/Kodi/Butterchurn | WebAudio в WebView | **спайк S-04** |
 | D-15 | Нормализация: **−14 LUFS по умолчанию**; пресеты Тихо −19 / Обычно −14 / Громко −11; по альбому; теги → измерение | `01b` F-02: Spotify, Apple, ReplayGain | −16 (Apple), −18 (RG) | принято |
-| D-16 | Отпечатки: `rusty-chromaprint` (MIT) с паритет-тестом против `fpcalc` | `01b` F-07; лицензия | C-Chromaprint через FFI (MIT с v1.4), `fpcalc` sidecar | **спайк S-06** |
+| D-16 | Отпечатки: `rusty-chromaprint` (MIT) с паритет-тестом против `fpcalc` | `01b` F-07; лицензия | C-Chromaprint через FFI (MIT с v1.4), `fpcalc` sidecar | **принято частично (S-06, `reports/spike-S-06.md`)**: порт ≡ Chromaprint (≥ 0,996), пороги `05` §8 подтверждены; AcoustID — после ключа OWN-02 (Этап 3) |
 | D-17 | Эквалайзер: 10 полос + preamp; модель на N полос; пресеты Apple | `01b` F-03 | 18 (AIMP/foobar), 31 | принято |
 | D-18 | Слой виджета рабочего стола: выбор из 3 стратегий | `01b` F-26 | нативное окно | **спайк S-09** |
 | D-19 | «Виджет панели задач» = превью-кнопки + прогресс/overlay + Jump List + SMTC (+ мини-бар опционально) | Microsoft Learn ✔: Deskband недоступен в Win11 | — | принято, мини-бар **спайк S-10** |
