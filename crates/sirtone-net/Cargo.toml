@@ -1,0 +1,15 @@
+[package]
+name = "sirtone-net"
+description = "HTTP client, rate limiters, response cache, offline manager."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sirtone-core.workspace = true

@@ -1,0 +1,17 @@
+[package]
+name = "s02-formats"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "S-02: декодирование корпуса форматов symphonia vs ffmpeg (docs/09 §4, D-06)"
+
+# Самостоятельный проект вне workspace приложения.
+[workspace]
+
+[dependencies]
+symphonia = { version = "0.6.1", features = ["aac", "alac", "isomp4", "mp3", "aiff", "caf"] }
+symphonia-adapter-libopus = "0.3"
+
+[profile.release]
+opt-level = 3
+debug = false

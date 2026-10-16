@@ -1,0 +1,514 @@
+/* Copied verbatim from DESIGN.md §13 (owner's design, D-56). Do not edit by hand — re-copy when DESIGN.md changes.
+   Deviations: font url points to src/assets/fonts; reduced-motion rule moved to extra.css (D-61). */
+@font-face {
+  font-family: "Geologica";
+  src: url("../../../assets/fonts/Geologica-Variable.ttf") format("truetype");
+  font-weight: 100 900;
+  font-display: block;
+}
+
+:root {
+  /* Шрифт: встроить Geologica-Variable.ttf через @font-face */
+  --font-sans: Geologica, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  /* spacing */
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  /* radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+  /* size */
+  --titlebar-height: 48px;
+  --sidebar-width: 260px;
+  --player-height: 84px;
+  --item-height: 40px;
+  --button-height: 36px;
+  --play-size: 44px;
+  --chip-height: 32px;
+  --row-height: 52px;
+  --icon-size: 20px;
+  --artwork-card: 184px;
+  /* shadow */
+  --shadow-flyout: 0 12px 32px rgba(0, 0, 0, 0.32);
+  --shadow-artwork: 0 4px 16px rgba(0, 0, 0, 0.24);
+  /* motion */
+  --ease-out: cubic-bezier(0.1, 0.9, 0.2, 1);
+  --dur-instant: 100ms;
+  --dur-fast: 150ms;
+  --dur-base: 250ms;
+  --dur-theme: 400ms;
+}
+
+/* Нейтрали: тёмная — по умолчанию */
+:root,
+[data-theme="dark"] {
+  --bg-base: #161111;
+  --bg-layer: #1c1616;
+  --bg-raised: #241d1d;
+  --bg-flyout: #2b2323;
+  --bg-hover: rgba(249, 246, 240, 0.07);
+  --bg-selected: rgba(249, 246, 240, 0.11);
+  --inactive: #3d3535;
+  --border: rgba(249, 246, 240, 0.1);
+  --separator: rgba(249, 246, 240, 0.1);
+  --text-primary: #f9f6f0;
+  --text-secondary: #c4bbb5;
+  --text-tertiary: #a39994;
+  --icon: #c4bbb5;
+  --focus-ring: #f9f6f0;
+  --artwork-placeholder: #2b2323;
+  --artwork-scrim: rgba(0, 0, 0, 0.45);
+  --danger: #ff6b6b;
+  --on-primary: #f9f6f0;
+}
+
+[data-theme="light"] {
+  --bg-base: #f2eee6;
+  --bg-layer: #f9f6f0;
+  --bg-raised: #fdfcf9;
+  --bg-flyout: #fdfcf9;
+  --bg-hover: rgba(28, 22, 22, 0.05);
+  --bg-selected: rgba(28, 22, 22, 0.08);
+  --inactive: #c2bcb2;
+  --border: rgba(28, 22, 22, 0.1);
+  --separator: rgba(28, 22, 22, 0.09);
+  --text-primary: #1c1616;
+  --text-secondary: #5c5351;
+  --text-tertiary: #6f6563;
+  --icon: #5c5351;
+  --focus-ring: #1c1616;
+  --artwork-placeholder: #e8e3da;
+  --artwork-scrim: rgba(0, 0, 0, 0.45);
+  --danger: #c62828;
+  --on-primary: #f9f6f0;
+}
+
+/* Цвет пользователя → 5 активных токенов (+ on-primary общий). По умолчанию data-accent="sirkov" */
+[data-theme="dark"][data-accent="sirkov"],
+:root:not([data-theme])[data-accent="sirkov"] {
+  --accent-fill: #ccff00;
+  --accent-text: #ccff00;
+  --accent-on: #1c1616;
+  --primary: #590212;
+  --primary-text: #ce7273;
+} /* Sir.kov */
+[data-theme="light"][data-accent="sirkov"] {
+  --accent-fill: #66bb00;
+  --accent-text: #407a00;
+  --accent-on: #1c1616;
+  --primary: #8c031c;
+  --primary-text: #8c031c;
+} /* Sir.kov */
+[data-theme="dark"][data-accent="lilac"],
+:root:not([data-theme])[data-accent="lilac"] {
+  --accent-fill: #b98cf0;
+  --accent-text: #b98cf0;
+  --accent-on: #1c1616;
+  --primary: #381b5b;
+  --primary-text: #9a7fc8;
+} /* Лиловый */
+[data-theme="light"][data-accent="lilac"] {
+  --accent-fill: #8a4fd6;
+  --accent-text: #874cd3;
+  --accent-on: #f9f6f0;
+  --primary: #5b3291;
+  --primary-text: #5b3291;
+} /* Лиловый */
+[data-theme="dark"][data-accent="coral"],
+:root:not([data-theme])[data-accent="coral"] {
+  --accent-fill: #ff8a73;
+  --accent-text: #ff8a73;
+  --accent-on: #1c1616;
+  --primary: #590c03;
+  --primary-text: #ca7565;
+} /* Коралловый */
+[data-theme="light"][data-accent="coral"] {
+  --accent-fill: #e5533d;
+  --accent-text: #c5341f;
+  --accent-on: #1c1616;
+  --primary: #8d1c0d;
+  --primary-text: #8d1c0d;
+} /* Коралловый */
+[data-theme="dark"][data-accent="blue"],
+:root:not([data-theme])[data-accent="blue"] {
+  --accent-fill: #6fa0ff;
+  --accent-text: #6fa0ff;
+  --accent-on: #1c1616;
+  --primary: #0d2964;
+  --primary-text: #688ccf;
+} /* Синий */
+[data-theme="light"][data-accent="blue"] {
+  --accent-fill: #2c68e7;
+  --accent-text: #2662e0;
+  --accent-on: #f9f6f0;
+  --primary: #1d469d;
+  --primary-text: #1d469d;
+} /* Синий */
+[data-theme="dark"][data-accent="gray"],
+:root:not([data-theme])[data-accent="gray"] {
+  --accent-fill: #a3a3a3;
+  --accent-text: #a3a3a3;
+  --accent-on: #1c1616;
+  --primary: #342b2b;
+  --primary-text: #f9f6f0;
+} /* Серый */
+[data-theme="light"][data-accent="gray"] {
+  --accent-fill: #6b6b6b;
+  --accent-text: #6b6b6b;
+  --accent-on: #f9f6f0;
+  --primary: #534b4b;
+  --primary-text: #1c1616;
+} /* Серый */
+[data-theme="dark"][data-accent="black"],
+:root:not([data-theme])[data-accent="black"] {
+  --accent-fill: #f9f6f0;
+  --accent-text: #f9f6f0;
+  --accent-on: #1c1616;
+  --primary: #342b2b;
+  --primary-text: #f9f6f0;
+} /* Чёрный */
+[data-theme="light"][data-accent="black"] {
+  --accent-fill: #1c1616;
+  --accent-text: #1c1616;
+  --accent-on: #f9f6f0;
+  --primary: #534b4b;
+  --primary-text: #1c1616;
+} /* Чёрный */
+[data-theme="dark"][data-accent="red"],
+:root:not([data-theme])[data-accent="red"] {
+  --accent-fill: #ff5a5a;
+  --accent-text: #ff5a5a;
+  --accent-on: #1c1616;
+  --primary: #590b0a;
+  --primary-text: #ca746a;
+} /* Красный */
+[data-theme="light"][data-accent="red"] {
+  --accent-fill: #dc1e20;
+  --accent-text: #d50f18;
+  --accent-on: #f9f6f0;
+  --primary: #8d1b18;
+  --primary-text: #8d1b18;
+} /* Красный */
+[data-theme="dark"][data-accent="brick"],
+:root:not([data-theme])[data-accent="brick"] {
+  --accent-fill: #d9765a;
+  --accent-text: #d9765a;
+  --accent-on: #1c1616;
+  --primary: #561100;
+  --primary-text: #c67762;
+} /* Кирпичный */
+[data-theme="light"][data-accent="brick"] {
+  --accent-fill: #b0482c;
+  --accent-text: #b0482c;
+  --accent-on: #f9f6f0;
+  --primary: #8a2302;
+  --primary-text: #8a2302;
+} /* Кирпичный */
+[data-theme="dark"][data-accent="violet"],
+:root:not([data-theme])[data-accent="violet"] {
+  --accent-fill: #9b7bff;
+  --accent-text: #9b7bff;
+  --accent-on: #1c1616;
+  --primary: #2c2061;
+  --primary-text: #8a85cf;
+} /* Фиолетовый */
+[data-theme="light"][data-accent="violet"] {
+  --accent-fill: #6a3df0;
+  --accent-text: #6a3df0;
+  --accent-on: #f9f6f0;
+  --primary: #4a3999;
+  --primary-text: #4a3999;
+} /* Фиолетовый */
+[data-theme="dark"][data-accent="lavender"],
+:root:not([data-theme])[data-accent="lavender"] {
+  --accent-fill: #d4a8f0;
+  --accent-text: #d4a8f0;
+  --accent-on: #1c1616;
+  --primary: #3f1855;
+  --primary-text: #a57cc0;
+} /* Сиреневый */
+[data-theme="light"][data-accent="lavender"] {
+  --accent-fill: #a86ccf;
+  --accent-text: #8c51b1;
+  --accent-on: #1c1616;
+  --primary: #662d88;
+  --primary-text: #662d88;
+} /* Сиреневый */
+[data-theme="dark"][data-accent="orange"],
+:root:not([data-theme])[data-accent="orange"] {
+  --accent-fill: #ff9a3d;
+  --accent-text: #ff9a3d;
+  --accent-on: #1c1616;
+  --primary: #4b2000;
+  --primary-text: #b68263;
+} /* Оранжевый */
+[data-theme="light"][data-accent="orange"] {
+  --accent-fill: #d76b09;
+  --accent-text: #ac5300;
+  --accent-on: #1c1616;
+  --primary: #783904;
+  --primary-text: #783904;
+} /* Оранжевый */
+[data-theme="dark"][data-accent="yellow"],
+:root:not([data-theme])[data-accent="yellow"] {
+  --accent-fill: #f5c842;
+  --accent-text: #f5c842;
+  --accent-on: #1c1616;
+  --primary: #3c2b00;
+  --primary-text: #9e8a61;
+} /* Жёлтый */
+[data-theme="light"][data-accent="yellow"] {
+  --accent-fill: #ad8103;
+  --accent-text: #88650d;
+  --accent-on: #1c1616;
+  --primary: #624802;
+  --primary-text: #624802;
+} /* Жёлтый */
+[data-theme="dark"][data-accent="ginger"],
+:root:not([data-theme])[data-accent="ginger"] {
+  --accent-fill: #f08a45;
+  --accent-text: #f08a45;
+  --accent-on: #1c1616;
+  --primary: #501a00;
+  --primary-text: #bd7d63;
+} /* Рыжий */
+[data-theme="light"][data-accent="ginger"] {
+  --accent-fill: #bf4d09;
+  --accent-text: #b54a0d;
+  --accent-on: #f9f6f0;
+  --primary: #813001;
+  --primary-text: #813001;
+} /* Рыжий */
+[data-theme="dark"][data-accent="darkred"],
+:root:not([data-theme])[data-accent="darkred"] {
+  --accent-fill: #bd2e30;
+  --accent-text: #eb5b56;
+  --accent-on: #f9f6f0;
+  --primary: #590a0e;
+  --primary-text: #ca736d;
+} /* Тёмно-красный */
+[data-theme="light"][data-accent="darkred"] {
+  --accent-fill: #a8121e;
+  --accent-text: #a8121e;
+  --accent-on: #f9f6f0;
+  --primary: #8d1a1e;
+  --primary-text: #8d1a1e;
+} /* Тёмно-красный */
+[data-theme="dark"][data-accent="lightred"],
+:root:not([data-theme])[data-accent="lightred"] {
+  --accent-fill: #ff8a8a;
+  --accent-text: #ff8a8a;
+  --accent-on: #1c1616;
+  --primary: #590a0f;
+  --primary-text: #ca736e;
+} /* Светло-красный */
+[data-theme="light"][data-accent="lightred"] {
+  --accent-fill: #f05252;
+  --accent-text: #cc2d35;
+  --accent-on: #1c1616;
+  --primary: #8d1a20;
+  --primary-text: #8d1a20;
+} /* Светло-красный */
+[data-theme="dark"][data-accent="burgundy"],
+:root:not([data-theme])[data-accent="burgundy"] {
+  --accent-fill: #ac3a61;
+  --accent-text: #dc668a;
+  --accent-on: #f9f6f0;
+  --primary: #560929;
+  --primary-text: #ca748c;
+} /* Бургунди */
+[data-theme="light"][data-accent="burgundy"] {
+  --accent-fill: #8f1d4a;
+  --accent-text: #8f1d4a;
+  --accent-on: #f9f6f0;
+  --primary: #891846;
+  --primary-text: #891846;
+} /* Бургунди */
+[data-theme="dark"][data-accent="bordeaux"],
+:root:not([data-theme])[data-accent="bordeaux"] {
+  --accent-fill: #a64641;
+  --accent-text: #d57069;
+  --accent-on: #f9f6f0;
+  --primary: #590a0d;
+  --primary-text: #ca736c;
+} /* Бордовый */
+[data-theme="light"][data-accent="bordeaux"] {
+  --accent-fill: #7a1c1c;
+  --accent-text: #7a1c1c;
+  --accent-on: #f9f6f0;
+  --primary: #852725;
+  --primary-text: #852725;
+} /* Бордовый */
+
+/* Палитра целиком — только для AccentPicker */
+:root,
+[data-theme="dark"] {
+  --accent-sirkov-fill: #ccff00;
+  --accent-sirkov-on: #1c1616;
+  --accent-sirkov-primary: #590212;
+  --accent-lilac-fill: #b98cf0;
+  --accent-lilac-on: #1c1616;
+  --accent-lilac-primary: #381b5b;
+  --accent-coral-fill: #ff8a73;
+  --accent-coral-on: #1c1616;
+  --accent-coral-primary: #590c03;
+  --accent-blue-fill: #6fa0ff;
+  --accent-blue-on: #1c1616;
+  --accent-blue-primary: #0d2964;
+  --accent-gray-fill: #a3a3a3;
+  --accent-gray-on: #1c1616;
+  --accent-gray-primary: #342b2b;
+  --accent-black-fill: #f9f6f0;
+  --accent-black-on: #1c1616;
+  --accent-black-primary: #342b2b;
+  --accent-red-fill: #ff5a5a;
+  --accent-red-on: #1c1616;
+  --accent-red-primary: #590b0a;
+  --accent-brick-fill: #d9765a;
+  --accent-brick-on: #1c1616;
+  --accent-brick-primary: #561100;
+  --accent-violet-fill: #9b7bff;
+  --accent-violet-on: #1c1616;
+  --accent-violet-primary: #2c2061;
+  --accent-lavender-fill: #d4a8f0;
+  --accent-lavender-on: #1c1616;
+  --accent-lavender-primary: #3f1855;
+  --accent-orange-fill: #ff9a3d;
+  --accent-orange-on: #1c1616;
+  --accent-orange-primary: #4b2000;
+  --accent-yellow-fill: #f5c842;
+  --accent-yellow-on: #1c1616;
+  --accent-yellow-primary: #3c2b00;
+  --accent-ginger-fill: #f08a45;
+  --accent-ginger-on: #1c1616;
+  --accent-ginger-primary: #501a00;
+  --accent-darkred-fill: #bd2e30;
+  --accent-darkred-on: #f9f6f0;
+  --accent-darkred-primary: #590a0e;
+  --accent-lightred-fill: #ff8a8a;
+  --accent-lightred-on: #1c1616;
+  --accent-lightred-primary: #590a0f;
+  --accent-burgundy-fill: #ac3a61;
+  --accent-burgundy-on: #f9f6f0;
+  --accent-burgundy-primary: #560929;
+  --accent-bordeaux-fill: #a64641;
+  --accent-bordeaux-on: #f9f6f0;
+  --accent-bordeaux-primary: #590a0d;
+}
+[data-theme="light"] {
+  --accent-sirkov-fill: #66bb00;
+  --accent-sirkov-on: #1c1616;
+  --accent-sirkov-primary: #8c031c;
+  --accent-lilac-fill: #8a4fd6;
+  --accent-lilac-on: #f9f6f0;
+  --accent-lilac-primary: #5b3291;
+  --accent-coral-fill: #e5533d;
+  --accent-coral-on: #1c1616;
+  --accent-coral-primary: #8d1c0d;
+  --accent-blue-fill: #2c68e7;
+  --accent-blue-on: #f9f6f0;
+  --accent-blue-primary: #1d469d;
+  --accent-gray-fill: #6b6b6b;
+  --accent-gray-on: #f9f6f0;
+  --accent-gray-primary: #534b4b;
+  --accent-black-fill: #1c1616;
+  --accent-black-on: #f9f6f0;
+  --accent-black-primary: #534b4b;
+  --accent-red-fill: #dc1e20;
+  --accent-red-on: #f9f6f0;
+  --accent-red-primary: #8d1b18;
+  --accent-brick-fill: #b0482c;
+  --accent-brick-on: #f9f6f0;
+  --accent-brick-primary: #8a2302;
+  --accent-violet-fill: #6a3df0;
+  --accent-violet-on: #f9f6f0;
+  --accent-violet-primary: #4a3999;
+  --accent-lavender-fill: #a86ccf;
+  --accent-lavender-on: #1c1616;
+  --accent-lavender-primary: #662d88;
+  --accent-orange-fill: #d76b09;
+  --accent-orange-on: #1c1616;
+  --accent-orange-primary: #783904;
+  --accent-yellow-fill: #ad8103;
+  --accent-yellow-on: #1c1616;
+  --accent-yellow-primary: #624802;
+  --accent-ginger-fill: #bf4d09;
+  --accent-ginger-on: #f9f6f0;
+  --accent-ginger-primary: #813001;
+  --accent-darkred-fill: #a8121e;
+  --accent-darkred-on: #f9f6f0;
+  --accent-darkred-primary: #8d1a1e;
+  --accent-lightred-fill: #f05252;
+  --accent-lightred-on: #1c1616;
+  --accent-lightred-primary: #8d1a20;
+  --accent-burgundy-fill: #8f1d4a;
+  --accent-burgundy-on: #f9f6f0;
+  --accent-burgundy-primary: #891846;
+  --accent-bordeaux-fill: #7a1c1c;
+  --accent-bordeaux-on: #f9f6f0;
+  --accent-bordeaux-primary: #852725;
+}
+
+/* Стили текста */
+.t-hero {
+  font: 700 40px / 48px var(--font-sans);
+}
+.t-page-title {
+  font: 700 28px / 36px var(--font-sans);
+}
+.t-shelf-title {
+  font: 600 20px / 28px var(--font-sans);
+}
+.t-card-title {
+  font: 600 16px / 22px var(--font-sans);
+}
+.t-body {
+  font: 400 15px / 22px var(--font-sans);
+}
+.t-body-strong {
+  font: 600 15px / 22px var(--font-sans);
+}
+.t-menu {
+  font: 400 14px / 20px var(--font-sans);
+}
+.t-caption {
+  font: 400 13px / 18px var(--font-sans);
+}
+.t-badge {
+  font: 600 11px / 14px var(--font-sans);
+}
+.t-group-label {
+  font: 600 13px / 18px var(--font-sans);
+}
+.t-timecode {
+  font: 400 12px / 16px var(--font-sans);
+}
+.t-shortcut {
+  font: 400 12px / 16px var(--font-sans);
+}
+.t-lyrics {
+  font: 700 32px / 40px var(--font-sans);
+}
+.t-badge {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.t-timecode,
+.t-shortcut,
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+html {
+  font-family: var(--font-sans);
+  font-variation-settings:
+    "CRSV" 0,
+    "SHRP" 0;
+}

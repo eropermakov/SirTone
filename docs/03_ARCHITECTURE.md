@@ -426,7 +426,8 @@ CREATE TABLE track (
 );
 CREATE INDEX ix_track_album    ON track(album_id, disc_no, track_no);
 CREATE INDEX ix_track_identity ON track(identity_state, unknown_reason);
-CREATE INDEX ix_track_added    ON track(added_at DESC);
+CREATE INDEX ix_track_added    ON track(added_at DESC, id);  -- keyset (S-15)
+CREATE INDEX ix_track_title    ON track(title_norm, id);     -- keyset «по названию» (S-15)
 CREATE INDEX ix_track_played   ON track(last_played_at);
 CREATE INDEX ix_track_hash     ON track(content_hash);
 CREATE INDEX ix_track_dur      ON track(duration_ms);        -- кандидаты дублей (05 §8)
@@ -550,6 +551,7 @@ CREATE VIRTUAL TABLE search_tri USING fts5(text, content='', tokenize='trigram')
                    "viz_enabled": null, "viz_fps_cap": null, "viz_scale": null,
                    "video_background": null, "widget_mini_viz": null, "analysis_threads": null } },
   "playback": {
+    "volume": 1.0,                                   // D-64: громкость плеера 0…1, запоминается
     "automix": { "mode": "smart", "intensity": "medium", "crossfade_s": 6, "skip_albums": true, "genre_blacklist": ["classical","live","ambient","audiobook"] },
     "normalization": { "enabled": true, "target_lufs": -14, "album_mode": "auto" },
     "eq": { "enabled": false, "preamp_db": 0, "bands_db": [0,0,0,0,0,0,0,0,0,0], "preset": "flat" },

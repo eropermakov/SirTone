@@ -1,0 +1,15 @@
+[package]
+name = "sirtone-search"
+description = "Query normalisation, FTS, fuzzy and semantic search, lexicon."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sirtone-core.workspace = true

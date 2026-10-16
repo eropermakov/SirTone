@@ -1,0 +1,17 @@
+{
+  "name": "s05-virtual-list",
+  "private": true,
+  "type": "module",
+  "description": "S-05: виртуальный список 100 000 строк с обложками (@tanstack/react-virtual), замер FPS/памяти в Edge",
+  "scripts": { "dev": "vite --host 127.0.0.1 --port 1430", "build": "vite build", "measure": "node measure.mjs" },
+  "dependencies": {
+    "@tanstack/react-virtual": "3.14.19",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@vitejs/plugin-react": "6.1.2",
+    "vite": "8.3.4"
+  }
+}

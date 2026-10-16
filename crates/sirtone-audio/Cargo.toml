@@ -1,0 +1,25 @@
+[package]
+name = "sirtone-audio"
+description = "Decoding, resampling, DSP, mixer, automix, WASAPI output."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sirtone-core.workspace = true
+symphonia.workspace = true
+symphonia-adapter-libopus.workspace = true
+wasapi.workspace = true
+rubato.workspace = true
+rtrb.workspace = true
+windows = { workspace = true, features = ["Win32_System_Threading", "Win32_Foundation"] }
+tracing.workspace = true
+
+[dev-dependencies]
+sirtone-core.workspace = true

@@ -1,0 +1,17 @@
+[package]
+name = "s06-fingerprint"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "S-06: rusty-chromaprint vs официальный Chromaprint (ffmpeg), пороги дублей (D-16)"
+
+# Самостоятельный проект вне workspace приложения.
+[workspace]
+
+[dependencies]
+rusty-chromaprint = "0.3"
+symphonia = { version = "0.6.1", features = ["aac", "alac", "isomp4", "mp3", "aiff", "caf"] }
+
+[profile.release]
+opt-level = 3
+debug = false

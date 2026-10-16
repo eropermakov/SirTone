@@ -1,0 +1,25 @@
+{
+  "name": "sirtone",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "lint": "biome check . && eslint",
+    "format": "biome format --write .",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "test": "vitest run --passWithNoTests",
+    "fixtures": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/fixtures/make-fixtures.ps1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "eslint": "10.12.0",
+    "eslint-plugin-i18next": "^6.1.5",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.2",
+    "vitest": "5.0.4"
+  },
+  "type": "module"
+}

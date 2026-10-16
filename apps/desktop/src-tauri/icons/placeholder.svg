@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="t">
+  <title id="t">SirTone</title>
+  <!-- TEMPORARY icon until the owner's logo (D-4). Colours: Sir.kov Maroon Oak + neon volt (DESIGN.md §2). -->
+  <rect width="1024" height="1024" rx="224" fill="#590212"/>
+  <text x="512" y="700" font-family="Segoe UI, Arial, sans-serif" font-size="600" font-weight="700" text-anchor="middle" fill="#ccff00">С</text>
+</svg>

@@ -1,0 +1,15 @@
+[package]
+name = "sirtone-wave"
+description = "Wave engine: clock, calendar, context, profiles, scoring, sequencer, learning (docs/14)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sirtone-core.workspace = true

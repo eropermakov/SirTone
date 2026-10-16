@@ -1,0 +1,16 @@
+[package]
+name = "sirtone-platform"
+description = "Windows integration: SMTC, taskbar, ducking, calls, Bluetooth, power, input."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sirtone-core.workspace = true
+windows = { workspace = true, features = ["Win32_Graphics_Dwm", "Win32_Foundation"] }

@@ -1,0 +1,45 @@
+# Quality gates (docs/08 §6). Private repo: Windows minutes count double against the owner's
+# GitHub quota, so CI runs on pull requests and on demand, not on every push.
+name: ci
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny,cargo-nextest
+      - run: pnpm install --frozen-lockfile
+      - name: Rust gates
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo deny check
+          cargo nextest run --workspace --no-tests=warn
+      - name: JS gates
+        run: |
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+      - name: E2E smoke (Edge)
+        run: pnpm --dir apps/desktop e2e
+      - name: Debug build (smoke)
+        run: pnpm --dir apps/desktop tauri build --debug --no-bundle

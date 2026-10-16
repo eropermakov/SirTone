@@ -1,0 +1,16 @@
+[package]
+name = "s15-sqlite"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "S-15: SQLite на 100 000 треков — импорт, страницы (keyset), FTS5 + триграммы (P-08, P-09)"
+
+# Самостоятельный проект вне workspace приложения.
+[workspace]
+
+[dependencies]
+rusqlite = { version = "0.40", features = ["bundled"] }
+
+[profile.release]
+opt-level = 3
+debug = false

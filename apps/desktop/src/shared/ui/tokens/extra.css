@@ -1,0 +1,57 @@
+/* biome-ignore-all lint/complexity/noImportantStyles: reduced motion must override every component (D-61) */
+/* Tokens DESIGN.md does not define (docs/12 §4.5). */
+:root {
+  --z-base: 0;
+  --z-overlay: 10;
+  --z-modal: 20;
+  --z-toast: 30;
+  --skeleton-pulse: 1.6s;
+}
+
+/* Smooth theme/colour change: registered colour properties animate (docs/06 §4.4). */
+@property --accent-fill {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #ccff00;
+}
+@property --accent-text {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #ccff00;
+}
+@property --accent-on {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #1c1616;
+}
+@property --primary {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #590212;
+}
+@property --primary-text {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #ce7273;
+}
+
+:root {
+  transition:
+    --accent-fill var(--dur-theme) var(--ease-out),
+    --accent-text var(--dur-theme) var(--ease-out),
+    --accent-on var(--dur-theme) var(--ease-out),
+    --primary var(--dur-theme) var(--ease-out),
+    --primary-text var(--dur-theme) var(--ease-out);
+}
+
+/* D-61: reduced motion = short fades only, no movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition-property: opacity !important;
+    transition-duration: 150ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,5 @@
+# D-55: unwrap/expect/dbg/print are fine in tests.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-dbg-in-tests = true
+allow-print-in-tests = true

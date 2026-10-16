@@ -1,0 +1,48 @@
+@import "tailwindcss";
+@import "./shared/ui/tokens/sirtone.css";
+@import "./shared/ui/tokens/extra.css";
+
+/* Tailwind utilities read only DESIGN.md tokens (no raw values in components). */
+@theme inline {
+  --font-sans: var(--font-sans);
+  --color-bg-base: var(--bg-base);
+  --color-bg-layer: var(--bg-layer);
+  --color-bg-raised: var(--bg-raised);
+  --color-bg-flyout: var(--bg-flyout);
+  --color-bg-hover: var(--bg-hover);
+  --color-bg-selected: var(--bg-selected);
+  --color-inactive: var(--inactive);
+  --color-border: var(--border);
+  --color-separator: var(--separator);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-icon: var(--icon);
+  --color-focus-ring: var(--focus-ring);
+  --color-artwork-placeholder: var(--artwork-placeholder);
+  --color-danger: var(--danger);
+  --color-accent-fill: var(--accent-fill);
+  --color-accent-text: var(--accent-text);
+  --color-accent-on: var(--accent-on);
+  --color-primary: var(--primary);
+  --color-primary-text: var(--primary-text);
+  --color-on-primary: var(--on-primary);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+body {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

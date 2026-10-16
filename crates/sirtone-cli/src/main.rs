@@ -1,0 +1,121 @@
+//! sirtone-cli — developer harness (docs/03 §3, docs/04 §1.1): the engine without UI.
+//! Console program, so stdout is its interface.
+//!
+//! ```text
+//! sirtone-cli probe <file>...            format, rate, channels, duration
+//! sirtone-cli play <file> [--volume V]   play to the default device until the end (Ctrl+C stops)
+//! sirtone-cli render <file> --out <wav>  offline render (T1.7, not yet)
+//! ```
+#![allow(clippy::print_stdout, clippy::print_stderr)]
+
+use std::path::PathBuf;
+use std::process::ExitCode;
+use std::sync::mpsc;
+use std::time::Duration;
+
+use sirtone_audio::decode::Source;
+use sirtone_audio::{EngineCmd, EngineEvent, PlayState};
+
+fn usage() -> ExitCode {
+    eprintln!(
+        "sirtone-cli {}\nusage: sirtone-cli probe <file>... | play <file> [--volume 0..1] | render <file> --out <wav>",
+        env!("CARGO_PKG_VERSION")
+    );
+    ExitCode::from(2)
+}
+
+fn probe(files: &[String]) -> ExitCode {
+    let mut failed = false;
+    for f in files {
+        match Source::open(&PathBuf::from(f)) {
+            Ok(s) => println!(
+                "{f}\t{} Hz\t{} ch\t{}",
+                s.rate,
+                s.channels,
+                s.duration_ms
+                    .map_or("? s".into(), |d| format!("{:.3} s", d as f64 / 1000.0))
+            ),
+            Err(e) => {
+                failed = true;
+                println!("{f}\terror {:?}\t{}", e.code, e.details.unwrap_or_default());
+            }
+        }
+    }
+    if failed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+fn play(file: &str, volume: f32) -> ExitCode {
+    let (tx, rx) = mpsc::channel();
+    let engine = match sirtone_audio::start(Box::new(move |ev| {
+        let _ = tx.send(ev);
+    })) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("engine: {:?}", e.code);
+            return ExitCode::FAILURE;
+        }
+    };
+    engine.send(EngineCmd::SetVolume(volume));
+    engine.send(EngineCmd::Load {
+        path: PathBuf::from(file),
+        autoplay: true,
+    });
+    let mut code = ExitCode::SUCCESS;
+    loop {
+        match rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(EngineEvent::Snapshot(s)) => {
+                print!(
+                    "\r{:?} {:>8.1} s  underruns {}   ",
+                    s.state,
+                    s.position_ms as f64 / 1000.0,
+                    s.underruns
+                );
+                if s.state == PlayState::Ended {
+                    println!();
+                    break;
+                }
+            }
+            Ok(EngineEvent::Error { error, .. }) => {
+                println!(
+                    "\nerror {:?} {}",
+                    error.code,
+                    error.details.unwrap_or_default()
+                );
+                code = ExitCode::FAILURE;
+                break;
+            }
+            Err(_) => {
+                println!("\nno events for 5 s");
+                code = ExitCode::FAILURE;
+                break;
+            }
+        }
+    }
+    engine.send(EngineCmd::Shutdown);
+    code
+}
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
+        Some("probe") if args.len() > 1 => probe(&args[1..]),
+        Some("play") if args.len() > 1 => {
+            let volume = args
+                .iter()
+                .position(|a| a == "--volume")
+                .and_then(|i| args.get(i + 1))
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.5);
+            play(&args[1], volume)
+        }
+        Some("render") => {
+            eprintln!("render: offline WAV render arrives with T1.7");
+            ExitCode::FAILURE
+        }
+        _ => usage(),
+    }
+}

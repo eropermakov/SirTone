@@ -1,0 +1,17 @@
+{
+  "name": "s04-viz",
+  "private": true,
+  "type": "module",
+  "description": "S-04: кадры визуализации через Tauri Channel 60 Гц + Butterchurn без AudioContext",
+  "scripts": { "build": "vite build", "tauri": "tauri" },
+  "dependencies": {
+    "@tauri-apps/api": "2.12.4",
+    "butterchurn": "2.6.7",
+    "butterchurn-presets": "2.4.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@tauri-apps/cli": "2.12.3",
+    "vite": "8.3.4"
+  }
+}

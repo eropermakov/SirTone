@@ -1,0 +1,31 @@
+[package]
+name = "sirtone-app"
+description = "SirTone desktop app: the only crate that knows Tauri (docs/03 §3.1)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[build-dependencies]
+tauri-build = { workspace = true, features = [] }
+
+[dependencies]
+tauri = { workspace = true, features = ["tray-icon", "image-png"] }
+serde = { workspace = true }
+sirtone-core = { workspace = true }
+sirtone-audio = { workspace = true }
+sirtone-platform = { workspace = true }
+specta = { workspace = true }
+specta-typescript = { workspace = true }
+tauri-specta = { workspace = true }
+tauri-plugin-single-instance = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+serde_json = { workspace = true }
+# Release profile (panic = "unwind") comes from the workspace root — no [profile] here.

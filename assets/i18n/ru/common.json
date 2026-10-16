@@ -1,0 +1,24 @@
+{
+  "app": {
+    "name": "Сиртон",
+    "studio": "Sir.kov Studio"
+  },
+  "count": {
+    "tracks": "{count, plural, one {# трек} few {# трека} many {# треков} other {# трека}}",
+    "albums": "{count, plural, one {# альбом} few {# альбома} many {# альбомов} other {# альбома}}",
+    "artists": "{count, plural, one {# исполнитель} few {# исполнителя} many {# исполнителей} other {# исполнителя}}"
+  },
+  "errors": {
+    "title": "Не удалось воспроизвести",
+    "retry": "Повторить",
+    "close": "Закрыть",
+    "FileNotFound": "Файл не найден",
+    "UnsupportedFormat": "Этот формат пока не поддерживается",
+    "DecodeFailed": "Файл повреждён или не читается",
+    "PermissionDenied": "Нет доступа к файлу",
+    "DeviceUnavailable": "Устройство вывода звука недоступно",
+    "DeviceBusy": "Устройство вывода занято другим приложением",
+    "Internal": "Внутренняя ошибка — подробности в журнале",
+    "generic": "Что-то пошло не так"
+  }
+}

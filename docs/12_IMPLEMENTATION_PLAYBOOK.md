@@ -49,7 +49,7 @@
 |---|---|---|
 | `productName` | `SirTone` (отображаемое имя — «Сиртон» из i18n) | имя exe и ярлыков |
 | `identifier` | `studio.serkov.sirtone` | от него зависят папки данных, WebView2-профиль, обновления — **позже менять нельзя без миграции** |
-| `publisher` | `Серков Studio` (D-37; `DESIGN.md` §0 называет бренд «Sir.kov Studio» — смена только после ответа на ❓Q-21, поле легко меняется) | установщик, свойства файла, «О программе» |
+| `publisher` | `Sir.kov Studio` (✅Q-21, `DESIGN.md` §0) | установщик, свойства файла, «О программе» |
 | Версия | `0.1.0` (SemVer) | обновления |
 
 ### 2.2. Rust workspace (`Cargo.toml`, корень)
@@ -165,7 +165,8 @@ unknown-git = "deny"
   "app": {
     "windows": [{
       "label": "main", "title": "SirTone", "maximized": true, "visible": false,
-      "dragDropEnabled": true, "minWidth": 960, "minHeight": 600, "decorations": true
+      "dragDropEnabled": true, "minWidth": 720, "minHeight": 560, "decorations": true,
+      "backgroundColor": "#161111"   // + из Rust по теме ОС; minWidth < 900, чтобы сайдбар сворачивался (DESIGN.md §7)
     }],
     "security": {
       "csp": "default-src 'self'; img-src 'self' http://sirtone-cover.localhost data: blob:; media-src 'self' http://sirtone-bg.localhost blob:; connect-src ipc: http://ipc.localhost; script-src 'self'; style-src 'self' 'unsafe-inline'",
@@ -173,7 +174,7 @@ unknown-git = "deny"
     }
   },
   "bundle": {
-    "active": true, "targets": ["nsis"], "publisher": "Серков Studio",
+    "active": true, "targets": ["nsis"], "publisher": "Sir.kov Studio",
     "windows": { "webviewInstallMode": { "type": "embedBootstrapper" },
                  "nsis": { "installMode": "currentUser" } }
   }

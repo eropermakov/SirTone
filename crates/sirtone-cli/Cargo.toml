@@ -1,0 +1,16 @@
+[package]
+name = "sirtone-cli"
+description = "Developer harness: probe, play, render, bench, wave simulate (not shipped)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sirtone-core.workspace = true
+sirtone-audio.workspace = true
