@@ -3351,6 +3351,7 @@ dependencies = [
  "serde_json",
  "sirtone-audio",
  "sirtone-core",
+ "sirtone-platform",
  "specta",
  "specta-typescript",
  "tauri",
@@ -3413,6 +3414,7 @@ name = "sirtone-platform"
 version = "0.1.2"
 dependencies = [
  "sirtone-core",
+ "windows",
 ]
 
 [[package]]

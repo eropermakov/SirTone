@@ -4,7 +4,7 @@
 
 use tauri_specta::{Builder, collect_commands, collect_events};
 
-use crate::{playback, settings_store};
+use crate::{playback, settings_store, window_chrome};
 
 /// Free-form JSON across IPC, exported as TS `unknown`. specta inlines `serde_json::Value`
 /// recursively and overflows; the UI owns the typed view of these documents.
@@ -28,6 +28,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             playback::playback_toggle,
             playback::playback_seek,
             playback::playback_set_volume,
+            window_chrome::window_set_theme,
         ])
         .events(collect_events![
             playback::PlaybackSnapshot,

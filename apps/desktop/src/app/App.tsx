@@ -9,12 +9,14 @@ import {
   type SettingsDoc,
   type SettingsPatch,
 } from "@/shared/ipc/settings";
+import { setWindowTheme } from "@/shared/ipc/window";
 import {
   ACCENT_SLUGS,
   type AccentSlug,
   type AccentSource,
   applyAppearance,
   onSystemThemeChange,
+  resolveTheme,
   type ThemePref,
 } from "@/shared/theme/theme";
 import { Toast } from "@/shared/ui/Toast";
@@ -81,9 +83,13 @@ export function App() {
   };
 
   useEffect(() => {
-    applyAppearance(appearance.theme, appearance.accent);
+    const apply = () => {
+      applyAppearance(appearance.theme, appearance.accent);
+      setWindowTheme(resolveTheme(appearance.theme));
+    };
+    apply();
     if (appearance.theme !== "system") return;
-    return onSystemThemeChange(() => applyAppearance(appearance.theme, appearance.accent));
+    return onSystemThemeChange(apply);
   }, [appearance]);
 
   useEffect(() => {

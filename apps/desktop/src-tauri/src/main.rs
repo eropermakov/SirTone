@@ -7,22 +7,14 @@ mod ipc;
 mod playback;
 mod settings_store;
 mod tray;
+mod window_chrome;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use tauri::webview::PageLoadEvent;
-use tauri::window::Color;
-use tauri::{DragDropEvent, Manager, Theme, WindowEvent};
-
-/// DESIGN.md §3 `bg-base` for the current OS theme — the native window paints this before the page.
-fn bg_base(theme: Theme) -> Color {
-    match theme {
-        Theme::Light => Color(0xf2, 0xee, 0xe6, 0xff),
-        _ => Color(0x16, 0x11, 0x11, 0xff),
-    }
-}
+use tauri::{DragDropEvent, Manager, WindowEvent};
 
 /// Fallback: if the page never reports "finished" (JS error, slow disk), show the window anyway.
 const SHOW_FALLBACK: Duration = Duration::from_secs(3);
@@ -86,8 +78,7 @@ fn main() {
                 }
             }
             if let Some(window) = app.get_webview_window("main") {
-                let theme = window.theme().unwrap_or(Theme::Dark);
-                let _ = window.set_background_color(Some(bg_base(theme)));
+                window_chrome::apply_os_theme(&window);
                 let fallback = window.clone();
                 let shown = app.state::<ShownOnce>().0.clone();
                 std::thread::spawn(move || {

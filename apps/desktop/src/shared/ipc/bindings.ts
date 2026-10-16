@@ -14,6 +14,7 @@ export const commands = {
 	playbackToggle: () => __TAURI_INVOKE<void>("playback_toggle"),
 	playbackSeek: (positionMs: number) => __TAURI_INVOKE<void>("playback_seek", { positionMs }),
 	playbackSetVolume: (volume: number | null) => __TAURI_INVOKE<void>("playback_set_volume", { volume }),
+	windowSetTheme: (dark: boolean) => __TAURI_INVOKE<void>("window_set_theme", { dark }),
 };
 
 /** Events */
