@@ -120,10 +120,10 @@
 | **(1.3)** Движок волны | Профили одного движка; кандидаты → скоринг → секвенсор; Томпсон + бета + байесовская логистическая регрессия | YouTube (two-stage), Spotify BaRT/EEE, Deezer, Chapelle & Li | Предложение владельца подтверждено прототипом S-17 (3 мс на 50 000) |
 | Обратная связь | Лайк / «не сейчас» (полка в контексте) / «никогда» (жёсткое исключение); режимы без влияния на вкус | Pandora, Deezer, Spotify Exclude/Private Session, Apple «без истории» | «Не сейчас» отменяемо (у Pandora — нет) |
 | Ползунок новизны | Квоты пяти категорий знакомости + «непохожесть» + сила исследования | YouTube Music Tuner, Pandora Modes, Spotify Repeat Rewind, Яндекс «Незнакомое» | — |
-| Сезоны и события | Личная история сезона; офлайн-календарь праздников; карточка вместо уведомления; управление отказами | Spotify Summer Rewind, Apple Photos «Feature Less», Google Photos, Doodles | Окно смены сезона ±21 день (Q-10) |
+| Сезоны и события | Личная история сезона; офлайн-календарь праздников; карточка вместо уведомления; управление отказами | Spotify Summer Rewind, Apple Photos «Feature Less», Google Photos, Doodles | Окно смены сезона ±21 день (✅Q-10) |
 | Живые эффекты | Состояния погоды как у Apple/Яндекс Погоды; опрос раз в 30–60 мин; зависимость от энергосбережения | Apple Weather, Яндекс Погода, Wallpaper Engine, Lively Weather, Telegram | Частицы без работы ЦП на кадр |
 | Сон и фокус | Пресеты + «до конца трека», продление действием во время затухания, действия после таймера; 25/5/15×4, отдельные звуки границ | Spotify, YouTube Music, Pocket Casts, Audible, Kodi; Windows Clock, Brain.fm, Pomofocus | Modern Standby — свой путь «сна» (S-18) |
-| «Для всех» | Популярность у всех (уникальные слушатели), изоляция вкуса владельца | Pandora Crowd Faves, ListenBrainz, Spotify Private Session | Только ListenBrainz (Q-7) |
+| «Для всех» | Популярность у всех (уникальные слушатели), изоляция вкуса владельца | Pandora Crowd Faves, ListenBrainz, Spotify Private Session | Только ListenBrainz (✅Q-7) |
 
 ---
 
