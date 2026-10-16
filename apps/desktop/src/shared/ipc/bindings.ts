@@ -38,6 +38,7 @@ export const commands = {
 	id: number,
 } | null, limit: number) => typedError<ArtistPage, AppError>(__TAURI_INVOKE("collection_artists", { after, limit })),
 	albumTracks: (album: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("album_tracks", { album })),
+	unknownTracks: () => typedError<TrackItem[], AppError>(__TAURI_INVOKE("unknown_tracks")),
 	artistTracks: (artist: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("artist_tracks", { artist })),
 	windowSetTheme: (dark: boolean) => __TAURI_INVOKE<void>("window_set_theme", { dark }),
 };

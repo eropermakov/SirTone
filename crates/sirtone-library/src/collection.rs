@@ -154,6 +154,19 @@ pub fn artist_tracks(conn: &Connection, artist: ArtistId) -> Result<Vec<TrackRow
     Ok(rows)
 }
 
+/// «Неизвестные» (FR-LIB-004): playable tracks without a confident identity, newest first.
+pub fn unknown_tracks(conn: &Connection, limit: u32) -> Result<Vec<TrackRow>, LibraryError> {
+    let mut st = conn.prepare_cached(&format!(
+        "SELECT {TRACK_COLS} FROM track t LEFT JOIN album al ON al.id = t.album_id
+         WHERE t.state = 'ok' AND t.identity_state = 'unknown'
+         ORDER BY t.added_at DESC, t.id DESC LIMIT ?1"
+    ))?;
+    let rows = st
+        .query_map([limit], track_row)?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
 pub fn counts(conn: &Connection) -> Result<Counts, LibraryError> {
     Ok(conn.query_row(
         "SELECT
@@ -260,6 +273,12 @@ mod tests {
         let n = counts(&c).unwrap();
         assert_eq!((n.tracks, n.artists, n.albums, n.unknown), (4, 2, 2, 1));
         assert_eq!(n.duration_ms, 800_000);
+        let unknown: Vec<_> = unknown_tracks(&c, 100)
+            .unwrap()
+            .into_iter()
+            .map(|t| t.title)
+            .collect();
+        assert_eq!(unknown, ["Track 01"]);
 
         // T1.10: search follows edits and removals.
         let hits = |c: &Connection, q: &str| -> i64 {

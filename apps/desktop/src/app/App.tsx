@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionScreen } from "@/app/library/CollectionScreen";
 import { RootPanel } from "@/app/library/RootPanel";
+import { UnknownScreen } from "@/app/library/UnknownScreen";
 import { useLibrary } from "@/app/library/useLibrary";
 import { bootstrap } from "@/shared/ipc/bootstrap";
 import { cancelImport, importPaths, type LibraryStatus, pickFolder } from "@/shared/ipc/library";
@@ -158,6 +159,8 @@ export function App() {
               library={lib.status}
               onChooseLibrary={() => lib.setRootNeeded(true)}
             />
+          ) : hasMusic && screen === "unknown" && lib.status.unknown > 0 ? (
+            <UnknownScreen version={lib.version} playingId={snap.trackId} />
           ) : hasMusic && (screen === "albums" || screen === "artists") ? (
             <CollectionScreen
               key={screen}

@@ -41,6 +41,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             library::collection_albums,
             library::collection_artists,
             library::album_tracks,
+            library::unknown_tracks,
             library::artist_tracks,
             window_chrome::window_set_theme,
         ])

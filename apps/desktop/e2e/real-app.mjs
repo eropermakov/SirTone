@@ -22,8 +22,8 @@ const root = join(import.meta.dirname, "..", "..", "..");
 const exe = process.argv[2] ?? join(root, "target", "release", "sirtone-app.exe");
 const fixtures = join(root, "fixtures", "generated");
 const dataDir = mkdtempSync(join(tmpdir(), "sirtone-smoke-"));
-// Library folder for this run only — never the owner's Music folder.
-const libDir = mkdtempSync(join(tmpdir(), "sirtone-smoke-lib-"));
+// Isolated instances default the library folder into the data dir — never the owner's Music.
+const libDir = join(dataDir, "Music", "SirTone");
 const corpus = join(fixtures, "import500");
 const PORT = 9335;
 const env = {
@@ -160,7 +160,12 @@ if (existsSync(corpus)) {
   check("import without a folder asks for one", start === "rootNeeded", String(start));
   await page.getByRole("heading", { name: "Папка для музыки" }).waitFor({ timeout: 3000 });
   check("folder panel shown", true);
-  await invoke("library_set_root", { path: libDir }); // starts the waiting import
+  // The real button: default folder → «Продолжить» → panel closes → the waiting import starts.
+  await page.getByRole("button", { name: "Продолжить" }).click();
+  await page
+    .getByRole("heading", { name: "Папка для музыки" })
+    .waitFor({ state: "detached", timeout: 5000 });
+  check("«Продолжить» closes the panel", true);
   const report = page.getByRole("status").filter({ hasText: "Музыка добавлена" });
   await report.waitFor({ timeout: 60000 });
   const text = await report.textContent();
@@ -192,6 +197,20 @@ if (existsSync(corpus)) {
   await sleep(1200);
   const second = await footer.locator(".t-body-strong").first().textContent();
   check("next plays the following track", second !== playing, `${playing} → ${second}`);
+  const attrs = spawnSync("powershell", [
+    "-NoProfile",
+    "-Command",
+    `(Get-Item -Force '${join(libDir, ".sirtone")}').Attributes`,
+  ]).stdout.toString();
+  check("service folder is hidden", /Hidden/.test(attrs), attrs.trim());
+  await page.getByRole("button", { name: "Неизвестные" }).click();
+  await page.getByText(/45 треков/).waitFor({ timeout: 5000 });
+  const unknownRows = page.getByRole("list", { name: "Треки" }).getByRole("button");
+  await unknownRows.first().dblclick();
+  await sleep(1000);
+  const unknownTitle = (await unknownRows.first().locator(".t-body").textContent())?.trim();
+  const nowPlaying = await footer.locator(".t-body-strong").first().textContent();
+  check("«Неизвестные» list plays", nowPlaying === unknownTitle, `${nowPlaying} / ${unknownTitle}`);
   await page.getByRole("button", { name: "Настройки" }).click();
   check("storage shows the folder", (await page.getByText(libDir).count()) > 0);
 } else {
@@ -220,7 +239,6 @@ await browser.close();
 app.kill();
 await sleep(500);
 rmSync(dataDir, { recursive: true, force: true });
-rmSync(libDir, { recursive: true, force: true });
 const failed = results.filter((r) => !r.ok).length;
 console.log(
   `\n${results.length - failed}/${results.length} passed (isolated data dir, owner's app untouched)`,

@@ -159,3 +159,19 @@ mod tests {
         }
     }
 }
+
+/// D-66: `0001_init.sql` is frozen since prototype 0.5 created `library.db` on the owner's PC.
+/// Schema changes go into `0002+`. Line endings are normalised so checkouts do not matter.
+#[cfg(test)]
+mod frozen {
+    #[test]
+    fn migration_0001_is_frozen() {
+        let sql = include_str!("../migrations/0001_init.sql").replace("\r\n", "\n");
+        let hash = blake3::hash(sql.as_bytes()).to_hex().to_string();
+        assert_eq!(
+            hash, FROZEN_0001,
+            "0001_init.sql changed — add a new migration instead (D-66)"
+        );
+    }
+    const FROZEN_0001: &str = "bb3f77ac9688b26753a51718a33e66a1d0149515e6b572ed310874d9e85b17d8";
+}

@@ -179,8 +179,12 @@ fn open_db(root: &Path) -> Result<Connection, AppError> {
     sirtone_library::open(&db_path(root), medium).map_err(AppError::from)
 }
 
-/// `%USERPROFILE%\Music\SirTone` (docs/03 §8.2).
+/// `%USERPROFILE%\Music\SirTone` (docs/03 §8.2). Isolated test instances (`SIRTONE_DATA_DIR`)
+/// get a folder inside their data dir, so pressing «Продолжить» never touches the owner's Music.
 pub fn default_root() -> PathBuf {
+    if let Some(dir) = std::env::var_os("SIRTONE_DATA_DIR").filter(|d| !d.is_empty()) {
+        return PathBuf::from(dir).join("Music").join("SirTone");
+    }
     std::env::var_os("USERPROFILE")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir)
@@ -257,13 +261,15 @@ impl Library {
         let service = path.join(SERVICE_DIR);
         std::fs::create_dir_all(&service)
             .map_err(|e| AppError::new(ErrorCode::PermissionDenied).with_details(e))?;
+        // docs/03 §8.1: the service folder is hidden in Explorer.
+        sirtone_platform::files::set_hidden(&service);
         let probe = service.join(".write-test");
         std::fs::write(&probe, b"ok")
             .map_err(|e| AppError::new(ErrorCode::PermissionDenied).with_details(e))?;
         let _ = std::fs::remove_file(&probe);
         let conn = open_db(path)?;
         self.settings
-            .patch(&serde_json::json!({ "library": { "root": path.to_string_lossy() } }))
+            .patch_durable(&serde_json::json!({ "library": { "root": path.to_string_lossy() } }))
             .map_err(|e| AppError::new(ErrorCode::InvalidConfig).with_details(e))?;
         let pending = {
             let mut s = lock(&self.shared);
@@ -570,6 +576,17 @@ pub fn collection_artists(
                 id: n.id as u32,
             }),
         })
+    })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn unknown_tracks(lib: State<'_, Library>) -> Result<Vec<TrackItem>, AppError> {
+    lib.with_read(|c| {
+        Ok(collection::unknown_tracks(c, 5000)?
+            .into_iter()
+            .map(track_item)
+            .collect())
     })
 }
 

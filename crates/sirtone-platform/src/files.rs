@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 
 use sirtone_core::ports::{FileOps, VolumeInfo};
 use windows::Win32::Storage::FileSystem::{
-    GetDiskFreeSpaceExW, GetDriveTypeW, GetVolumePathNameW, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+    FILE_ATTRIBUTE_HIDDEN, FILE_FLAGS_AND_ATTRIBUTES, GetDiskFreeSpaceExW, GetDriveTypeW,
+    GetFileAttributesW, GetVolumePathNameW, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+    SetFileAttributesW,
 };
 use windows::core::PCWSTR;
 
@@ -26,6 +28,21 @@ fn long(p: &Path) -> Vec<u16> {
 
 fn wide(s: &OsStr) -> Vec<u16> {
     s.encode_wide().chain(std::iter::once(0)).collect()
+}
+
+/// Marks a file or folder hidden in Explorer (best effort).
+pub fn set_hidden(path: &Path) {
+    let p = long(path);
+    // SAFETY: NUL-terminated path buffer that lives across both calls.
+    unsafe {
+        let attrs = GetFileAttributesW(PCWSTR(p.as_ptr()));
+        if attrs != u32::MAX {
+            let _ = SetFileAttributesW(
+                PCWSTR(p.as_ptr()),
+                FILE_FLAGS_AND_ATTRIBUTES(attrs | FILE_ATTRIBUTE_HIDDEN.0),
+            );
+        }
+    }
 }
 
 pub struct WinFiles;

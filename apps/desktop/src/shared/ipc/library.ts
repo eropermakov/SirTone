@@ -90,3 +90,6 @@ export const onImportFinished = (cb: (p: ImportFinished) => void) =>
   listen(events.importFinished, cb);
 export const onLibraryChanged = (cb: () => void) => listen(events.libraryChanged, () => cb());
 export const onRootNeeded = (cb: () => void) => listen(events.libraryRootNeeded, () => cb());
+
+export const unknownTracks = async (): Promise<TrackItem[]> =>
+  isTauri() ? unwrap(await commands.unknownTracks()) : [];
