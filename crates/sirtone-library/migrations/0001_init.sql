@@ -130,6 +130,18 @@ CREATE TABLE import_batch (
   stats_json TEXT, report_json TEXT                   -- отчёт о дублях и итогах (ТЗ §7.6)
 );
 
+CREATE TABLE import_item (                              -- D-66: одна строка на исходный файл пакета
+  id INTEGER PRIMARY KEY,
+  batch_id INTEGER NOT NULL REFERENCES import_batch(id) ON DELETE CASCADE,
+  src_path TEXT NOT NULL,                             -- абсолютный путь источника (только чтение)
+  size_bytes INTEGER,
+  state TEXT NOT NULL CHECK (state IN ('discovered','copied','placed','rejected','duplicate','cancelled')),
+  content_hash TEXT,                                  -- BLAKE3, совпал по записанной копии
+  track_id INTEGER REFERENCES track(id) ON DELETE SET NULL,
+  reason TEXT,                                        -- причина «Не добавлено» / класс дубля
+  UNIQUE (batch_id, src_path)
+);
+CREATE INDEX ix_import_item_state ON import_item(batch_id, state);
 CREATE TABLE job (
   id INTEGER PRIMARY KEY, kind TEXT NOT NULL, payload_json TEXT NOT NULL,
   track_id INTEGER, priority INTEGER NOT NULL DEFAULT 50,      -- меньше = важнее

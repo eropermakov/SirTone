@@ -18,5 +18,8 @@ rusqlite_migration.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 uuid.workspace = true
+unicode-normalization.workspace = true
+blake3.workspace = true
 
 [dev-dependencies]
+proptest.workspace = true

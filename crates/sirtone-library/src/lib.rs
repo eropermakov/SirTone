@@ -4,6 +4,7 @@
 pub mod collection;
 pub mod db;
 pub mod error;
+pub mod layout;
 pub mod repo;
 
 pub use db::{Medium, SCHEMA_VERSION, open, open_in_memory};
