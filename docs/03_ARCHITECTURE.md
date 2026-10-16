@@ -426,7 +426,8 @@ CREATE TABLE track (
 );
 CREATE INDEX ix_track_album    ON track(album_id, disc_no, track_no);
 CREATE INDEX ix_track_identity ON track(identity_state, unknown_reason);
-CREATE INDEX ix_track_added    ON track(added_at DESC);
+CREATE INDEX ix_track_added    ON track(added_at DESC, id);  -- keyset (S-15)
+CREATE INDEX ix_track_title    ON track(title_norm, id);     -- keyset «по названию» (S-15)
 CREATE INDEX ix_track_played   ON track(last_played_at);
 CREATE INDEX ix_track_hash     ON track(content_hash);
 CREATE INDEX ix_track_dur      ON track(duration_ms);        -- кандидаты дублей (05 §8)
