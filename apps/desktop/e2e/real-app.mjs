@@ -7,7 +7,8 @@
 // 2. node apps/desktop/e2e/real-app.mjs
 //
 // Checks: file from the command line plays, Space toggles, seek, error toast for a broken file,
-// settings round-trip to %LOCALAPPDATA%\SirTone\settings.json (theme restored afterwards).
+// settings round-trip to %LOCALAPPDATA%\SirTone\settings.json. The owner's theme and volume (D-64)
+// are recorded first and restored at the end. Volume across a restart: e2e/real-app-volume.mjs.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -26,6 +27,10 @@ const toMs = (tc) => {
   const p = tc.split(":").map(Number);
   return (p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]) * 1000;
 };
+
+const settingsFile = join(process.env.LOCALAPPDATA, "SirTone", "settings.json");
+const readSettings = () => JSON.parse(readFileSync(settingsFile, "utf8"));
+const ownerVolume = readSettings().playback?.volume ?? 1;
 
 const browser = await chromium.connectOverCDP("http://127.0.0.1:9333");
 const page = browser.contexts()[0].pages()[0];
@@ -113,7 +118,6 @@ if (process.env.SIRTONE_EXE) {
 }
 
 // 8. Settings round-trip through Rust (T0.6/T0.7).
-const settingsFile = join(process.env.LOCALAPPDATA, "SirTone", "settings.json");
 const before = JSON.parse(readFileSync(settingsFile, "utf8")).appearance.theme;
 await page.getByRole("button", { name: "Настройки" }).click();
 const target = before === "light" ? "Тёмная" : "Светлая";
@@ -129,6 +133,18 @@ const restore = { system: "Как в системе", dark: "Тёмная", ligh
 await page.getByRole("button", { name: restore }).click();
 await sleep(1600);
 check("theme restored", JSON.parse(readFileSync(settingsFile, "utf8")).appearance.theme === before);
+
+// Restore the owner's volume (the slider steps above changed it and D-64 saved it).
+await page.evaluate(
+  (v) => window.__TAURI_INTERNALS__.invoke("playback_set_volume", { volume: v }),
+  ownerVolume,
+);
+await sleep(1600);
+check(
+  "owner volume restored",
+  Math.abs((readSettings().playback?.volume ?? 1) - ownerVolume) < 1e-6,
+  String(ownerVolume),
+);
 
 await browser.close();
 const failed = results.filter((r) => !r.ok).length;
