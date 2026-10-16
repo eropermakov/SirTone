@@ -100,6 +100,28 @@ if (existsSync(loopback)) {
   );
 }
 
+// 1b. No dropped samples: the 440/660 Hz test tone (44.1 kHz → device rate) must reach the
+//     device as an unbroken sine (S-01 click detector). Catches gaps that are not silence.
+if (existsSync(loopback)) {
+  await invoke("playback_open", { paths: [join(fixtures, "signals", "tone-10s.wav")] });
+  await invoke("playback_set_volume", { volume: 0.3 });
+  await sleep(800);
+  const out = spawnSync(loopback, [
+    "--capture-pid",
+    String(app.pid),
+    "--seconds",
+    "3",
+  ]).stdout.toString();
+  const m = out.match(/clicks \(tone-10s\): L (\d+) \(worst ([\d.]+)\), R (\d+)/);
+  check(
+    "no clicks or dropped samples (resampled tone)",
+    m && m[1] === "0" && m[3] === "0",
+    m ? m[0] : out.trim(),
+  );
+  await invoke("playback_open", { paths: [join(fixtures, "long", "mix-3h.mp3")] });
+  await sleep(800);
+}
+
 // 2. Space toggles.
 await page.evaluate(() => document.activeElement?.blur());
 await page.keyboard.press("Space");

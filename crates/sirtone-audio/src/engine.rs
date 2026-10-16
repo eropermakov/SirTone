@@ -312,9 +312,14 @@ impl Engine {
             }
             let have = deck.pending.len() / ch;
             let at_end = have < need;
-            let produced = match deck.resampler.as_mut() {
+            // Exactly `need` frames go into the resampler; what the last decoded packet brought
+            // beyond that stays in `pending` for the next chunk (dropping it caused audible
+            // gaps every ~23 ms on 44.1→48 kHz). Only the very tail is padded with silence.
+            let (produced, consumed) = match deck.resampler.as_mut() {
                 Some(r) => {
-                    deck.pending.resize(need * ch, 0.0);
+                    if at_end {
+                        deck.pending.resize(need * ch, 0.0);
+                    }
                     let input = InterleavedSlice::new(&deck.pending[..need * ch], ch, need)
                         .map_err(internal)?;
                     let cap = deck.out_buf.len() / ch;
@@ -323,17 +328,17 @@ impl Engine {
                     let (_, written) = r
                         .process_into_buffer(&input, &mut output, None)
                         .map_err(internal)?;
-                    deck.pending.clear();
-                    written
+                    deck.pending.drain(..need * ch);
+                    (written, have.min(need))
                 }
                 None => {
                     let n = have.min(deck.out_buf.len() / ch);
                     deck.out_buf[..n * ch].copy_from_slice(&deck.pending[..n * ch]);
                     deck.pending.drain(..n * ch);
-                    n
+                    (n, n)
                 }
             };
-            deck.in_frames += have as u64;
+            deck.in_frames += consumed as u64;
             // Exact resampled length of this segment: the resampler's delay is skipped at the
             // start and its flushed zeros are cut at the end.
             let expected =

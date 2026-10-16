@@ -432,6 +432,31 @@ fn report(result: Result<(Vec<f32>, u32, usize), String>) {
                 silent_runs,
                 disc
             );
+            // Click detector for the 440 Hz (L) / 660 Hz (R) test tone: a pure sine obeys
+            // x[n+1] = 2·cos(w)·x[n] − x[n−1]; any dropped/duplicated samples break it.
+            let clicks = |which: usize, f: f64| -> (usize, f64) {
+                let x: Vec<f64> = body.chunks_exact(2).map(|fr| fr[which] as f64).collect();
+                let trim = (crate_rate as usize) / 10;
+                if x.len() < 3 * trim {
+                    return (0, 0.0);
+                }
+                let x = &x[trim..x.len() - trim];
+                let peak = x.iter().fold(0f64, |m, v| m.max(v.abs())).max(1e-9);
+                let c = 2.0 * (2.0 * std::f64::consts::PI * f / crate_rate as f64).cos();
+                let mut n = 0;
+                let mut worst = 0f64;
+                for i in 1..x.len() - 1 {
+                    let r = (x[i + 1] + x[i - 1] - c * x[i]).abs() / peak;
+                    worst = worst.max(r);
+                    if r > 0.02 {
+                        n += 1;
+                    }
+                }
+                (n, worst)
+            };
+            let (cl, wl) = clicks(0, 440.0);
+            let (cr, wr) = clicks(1, 660.0);
+            println!("  clicks (tone-10s): L {cl} (worst {wl:.3}), R {cr} (worst {wr:.3})");
             for (name, f) in [("440 Hz", 440.0), ("660 Hz", 660.0), ("1 kHz", 1000.0)] {
                 println!(
                     "  {name}: L {:.1} dB, R {:.1} dB",
