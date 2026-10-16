@@ -9,13 +9,11 @@ import {
   togglePlay,
 } from "@/shared/ipc/playback";
 
-/** Elements a key event must not hijack: they handle Space themselves. */
+/** Elements that handle Space themselves (sliders use arrows only, so Space still toggles). */
 function ownsSpace(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
-    target.isContentEditable ||
-    ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName) ||
-    target.getAttribute("role") === "slider"
+    target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName)
   );
 }
 

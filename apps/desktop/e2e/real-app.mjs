@@ -79,7 +79,40 @@ check(
 );
 check("still playing after error", (await playLabel()) === "Пауза");
 
-// 5. Settings round-trip through Rust (T0.6/T0.7).
+// 5. Space still toggles after the volume slider was touched (no blur).
+await footer.getByRole("slider", { name: "Громкость" }).click();
+await page.keyboard.press("Space");
+await sleep(400);
+check("space works after slider focus", (await playLabel()) === "Слушать");
+await page.keyboard.press("Space");
+await sleep(400);
+
+// 6. A folder plays its first playable file.
+await page.evaluate(
+  (path) => window.__TAURI_INTERNALS__.invoke("playback_open", { paths: [path] }),
+  join(root, "fixtures", "generated", "formats"),
+);
+await sleep(800);
+const folderTitle = await footer.locator(".t-body-strong").first().textContent();
+check("folder plays first file", folderTitle === "aac-256", folderTitle);
+
+// 7. Second launch with a file («Открыть с помощью» while running) → forwarded, plays.
+if (process.env.SIRTONE_EXE) {
+  const { spawn } = await import("node:child_process");
+  spawn(
+    process.env.SIRTONE_EXE,
+    [join(root, "fixtures", "generated", "formats", "flac-16-44.flac")],
+    {
+      detached: true,
+      stdio: "ignore",
+    },
+  ).unref();
+  await sleep(2000);
+  const t2 = await footer.locator(".t-body-strong").first().textContent();
+  check("second launch forwards the file", t2 === "flac-16-44", t2);
+}
+
+// 8. Settings round-trip through Rust (T0.6/T0.7).
 const settingsFile = join(process.env.LOCALAPPDATA, "SirTone", "settings.json");
 const before = JSON.parse(readFileSync(settingsFile, "utf8")).appearance.theme;
 await page.getByRole("button", { name: "Настройки" }).click();

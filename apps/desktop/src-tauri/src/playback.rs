@@ -108,16 +108,13 @@ impl Playback {
         Ok(Self { engine, last })
     }
 
-    /// Plays the first playable file among `paths` (folders and playlists come with import, T1.x).
+    /// Plays the first playable file among `paths`; a folder plays its first playable file by
+    /// name (import and queues come with T1.x).
     pub fn open_paths(&self, app: &AppHandle, paths: &[PathBuf]) {
-        let first = paths.iter().find(|p| {
-            p.extension()
-                .and_then(|e| e.to_str())
-                .is_some_and(|e| PLAYABLE.contains(&e.to_ascii_lowercase().as_str()))
-        });
+        let first = paths.iter().find_map(|p| first_playable(p, 4));
         match first {
             Some(p) => self.engine.send(EngineCmd::Load {
-                path: p.clone(),
+                path: p,
                 autoplay: true,
             }),
             None if !paths.is_empty() => {
@@ -134,6 +131,29 @@ impl Playback {
     pub fn shutdown(&self) {
         self.engine.send(EngineCmd::Shutdown);
     }
+}
+
+fn is_playable(p: &Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| PLAYABLE.contains(&e.to_ascii_lowercase().as_str()))
+}
+
+/// `p` itself if playable, or the first playable file inside a folder (files before subfolders,
+/// both by name, at most `depth` levels down).
+fn first_playable(p: &Path, depth: u32) -> Option<PathBuf> {
+    if p.is_file() {
+        return is_playable(p).then(|| p.to_path_buf());
+    }
+    if depth == 0 || !p.is_dir() {
+        return None;
+    }
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(p)
+        .ok()?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .collect();
+    entries.sort_by_key(|e| (e.is_dir(), e.file_name().map(|n| n.to_ascii_lowercase())));
+    entries.iter().find_map(|e| first_playable(e, depth - 1))
 }
 
 /// Paths from a command line: everything after the exe that is not a `--flag`.
@@ -182,6 +202,17 @@ pub fn playback_set_volume(pb: State<'_, Playback>, volume: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folder_plays_its_first_playable_file() {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../fixtures/generated");
+        if !dir.exists() {
+            return;
+        }
+        let got = first_playable(&dir, 4).unwrap();
+        assert!(is_playable(&got), "{got:?}");
+        assert_eq!(first_playable(&dir.join("broken/playlist.m3u"), 4), None);
+    }
 
     #[test]
     fn args_skip_exe_and_flags() {
