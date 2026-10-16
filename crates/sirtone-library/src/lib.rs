@@ -1,1 +1,9 @@
 //! sirtone-library — SQLite library: migrations, repositories, import, layout, watcher, duplicates, export.
+//! The only owner of SQLite connections (docs/03 §3.1).
+
+pub mod db;
+pub mod error;
+pub mod repo;
+
+pub use db::{Medium, SCHEMA_VERSION, open, open_in_memory};
+pub use error::LibraryError;

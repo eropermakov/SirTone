@@ -13,3 +13,10 @@ workspace = true
 
 [dependencies]
 sirtone-core.workspace = true
+rusqlite.workspace = true
+rusqlite_migration.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
