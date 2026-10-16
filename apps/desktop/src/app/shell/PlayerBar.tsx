@@ -1,6 +1,5 @@
 import {
   ListMusic,
-  Music2,
   Pause,
   Play,
   Repeat,
@@ -19,6 +18,7 @@ import {
   setVolume,
   togglePlay,
 } from "@/shared/ipc/playback";
+import { Cover } from "@/shared/ui/Cover";
 import { Slider } from "@/shared/ui/Slider";
 
 /** m:ss / h:mm:ss timecode (format, not text). */
@@ -80,9 +80,7 @@ export function PlayerBar({
   return (
     <footer className="flex h-(--player-height) shrink-0 items-center gap-4 border-t border-separator bg-bg-base px-4">
       <div className="flex w-72 min-w-0 items-center gap-3">
-        <div className="flex size-14 shrink-0 items-center justify-center rounded-(--radius-sm) bg-artwork-placeholder text-text-tertiary">
-          <Music2 size={20} strokeWidth={1.5} />
-        </div>
+        <Cover hash={snap.cover} px={56} />
         <div className="min-w-0">
           <div className="t-body-strong truncate text-text-primary" title={snap.title ?? undefined}>
             {snap.title ?? t("player.nothing")}

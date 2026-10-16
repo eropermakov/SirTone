@@ -71,6 +71,8 @@ pub struct AlbumItem {
     pub artist: String,
     pub year: Option<i32>,
     pub tracks: u32,
+    /// Cover hash: `http://sirtone-cover.localhost/<hash>/<size>`.
+    pub cover: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
@@ -141,6 +143,9 @@ pub enum ImportStart {
 
 // ---------- service ----------
 
+/// A library track ready to play: absolute path, title, artists, album cover hash.
+pub type Resolved = (PathBuf, String, String, Option<String>);
+
 struct Shared {
     root: Option<PathBuf>,
     read: Option<Connection>,
@@ -163,6 +168,7 @@ fn deps() -> ImportDeps {
         identify: Arc::new(sirtone_recognize::TagIdentify),
         fs: Arc::new(sirtone_platform::files::WinFiles),
         volume: Arc::new(sirtone_platform::files::WinVolume),
+        covers: Arc::new(sirtone_recognize::LoftyCovers),
     }
 }
 
@@ -313,8 +319,15 @@ impl Library {
         f(c).map_err(AppError::from)
     }
 
-    /// Absolute paths + display data for a list of track ids (in that order).
-    pub fn resolve(&self, ids: &[u32]) -> Result<Vec<(PathBuf, String, String)>, AppError> {
+    /// Serves `sirtone-cover://<hash>/<size>` (docs/03 §5.6): WebP bytes, generated on first use.
+    pub fn cover_bytes(&self, hash: &str, size: u32) -> Option<Vec<u8>> {
+        let root = lock(&self.shared).root.clone()?;
+        let path = sirtone_library::covers::variant(&root, hash, size).ok()?;
+        std::fs::read(path).ok()
+    }
+
+    /// Absolute paths + display data + album cover hash for track ids (in that order).
+    pub fn resolve(&self, ids: &[u32]) -> Result<Vec<Resolved>, AppError> {
         let root = lock(&self.shared)
             .root
             .clone()
@@ -324,23 +337,21 @@ impl Library {
                 "SELECT t.rel_path, t.title,
                         coalesce((SELECT group_concat(name, ', ') FROM
                           (SELECT a.name FROM track_artist ta JOIN artist a ON a.id = ta.artist_id
-                           WHERE ta.track_id = t.id ORDER BY ta.position)), '')
+                           WHERE ta.track_id = t.id ORDER BY ta.position)), ''),
+                        (SELECT cv.hash FROM album al JOIN cover cv ON cv.id = al.cover_id WHERE al.id = t.album_id)
                  FROM track t WHERE t.id = ?1",
             )?;
             let mut out = Vec::with_capacity(ids.len());
             for id in ids {
-                if let Ok((rel, title, artists)) = st.query_row([id], |r| {
+                if let Ok((rel, title, artists, cover)) = st.query_row([id], |r| {
                     Ok((
                         r.get::<_, String>(0)?,
                         r.get::<_, String>(1)?,
                         r.get::<_, String>(2)?,
+                        r.get::<_, Option<String>>(3)?,
                     ))
                 }) {
-                    out.push((
-                        rel.split('/').fold(root.clone(), |p, c| p.join(c)),
-                        title,
-                        artists,
-                    ));
+                    out.push((rel.split('/').fold(root.clone(), |p, c| p.join(c)), title, artists, cover));
                 }
             }
             Ok(out)
@@ -539,6 +550,7 @@ pub fn collection_albums(
                     artist: a.artist,
                     year: a.year,
                     tracks: a.tracks,
+                    cover: a.cover,
                 })
                 .collect(),
             next: next.map(|n| PageCursor {
@@ -610,4 +622,32 @@ pub fn artist_tracks(lib: State<'_, Library>, artist: u32) -> Result<Vec<TrackIt
             .map(track_item)
             .collect())
     })
+}
+
+/// `http://sirtone-cover.localhost/<hash>/<size>` handler: only known hashes and sizes resolve to
+/// files of the cover cache; everything else is 404 (docs/03 §5.6).
+pub fn cover_protocol(app: &AppHandle, path: &str) -> tauri::http::Response<Vec<u8>> {
+    use tauri::Manager;
+    let mut parts = path.trim_matches('/').split('/');
+    let found = match (
+        parts.next(),
+        parts.next().and_then(|s| s.parse::<u32>().ok()),
+        parts.next(),
+    ) {
+        (Some(hash), Some(size), None) => app
+            .try_state::<Library>()
+            .and_then(|l| l.cover_bytes(hash, size)),
+        _ => None,
+    };
+    match found {
+        Some(bytes) => tauri::http::Response::builder()
+            .status(200)
+            .header("Content-Type", "image/webp")
+            .header("Cache-Control", "public, max-age=31536000, immutable")
+            .body(bytes),
+        None => tauri::http::Response::builder()
+            .status(404)
+            .body(Vec::new()),
+    }
+    .unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
 }

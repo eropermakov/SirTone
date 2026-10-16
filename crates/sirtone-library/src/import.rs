@@ -14,7 +14,9 @@ use std::sync::{Arc, Mutex, mpsc};
 
 use rusqlite::{Connection, OptionalExtension, params};
 use sirtone_core::error::ErrorCode;
-use sirtone_core::ports::{FileOps, Identify, MediaInfo, MediaProbe, TagReader, VolumeInfo};
+use sirtone_core::ports::{
+    CoverReader, FileOps, Identify, MediaInfo, MediaProbe, TagReader, VolumeInfo,
+};
 
 use crate::db::now_ms;
 use crate::error::LibraryError;
@@ -60,6 +62,7 @@ pub struct ImportDeps {
     pub identify: Arc<dyn Identify>,
     pub fs: Arc<dyn FileOps>,
     pub volume: Arc<dyn VolumeInfo>,
+    pub covers: Arc<dyn CoverReader>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -699,6 +702,20 @@ fn place(
     tx.commit()?;
     if d.genre.is_some() {
         repo::search_reindex(conn, id)?;
+    }
+    // Album cover (FR-REC-009, offline part): first track that brings one wins. Best effort —
+    // a broken picture never fails the import. (docs/03 §10 `probe_cover`; inline until the
+    // job queue exists.)
+    if let Some(album) = album_id
+        && !crate::covers::album_has_cover(conn, album).unwrap_or(true)
+        && let Some((bytes, source)) = deps.covers.read(&dst, src.parent())
+    {
+        match crate::covers::store(conn, root, &bytes, source) {
+            Ok(cover) => {
+                let _ = crate::covers::link_album(conn, album, cover);
+            }
+            Err(e) => tracing::warn!(target: "sirtone::import", error = %e, "cover skipped"),
+        }
     }
     report.added += 1;
     on_event(ImportEvent::TrackAdded {

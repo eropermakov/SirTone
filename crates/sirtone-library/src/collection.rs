@@ -21,6 +21,8 @@ pub struct AlbumRow {
     pub year: Option<i32>,
     pub tracks: u32,
     pub cover_id: Option<i64>,
+    /// Cover hash for `sirtone-cover://<hash>/<size>`.
+    pub cover: Option<String>,
 }
 
 /// Keyset cursor: the sort key and id of the last row of the previous page.
@@ -88,8 +90,10 @@ pub fn albums_page(
     let c = after.cloned().unwrap_or_default();
     let mut st = conn.prepare_cached(
         "SELECT al.id, al.title, al.title_norm, a.name, al.year, al.cover_id,
-                (SELECT count(*) FROM track t WHERE t.album_id = al.id AND t.state = 'ok') AS n
+                (SELECT count(*) FROM track t WHERE t.album_id = al.id AND t.state = 'ok') AS n,
+                cv.hash
          FROM album al JOIN artist a ON a.id = al.album_artist_id
+         LEFT JOIN cover cv ON cv.id = al.cover_id
          WHERE (al.title_norm, al.id) > (?1, ?2) AND n > 0
          ORDER BY al.title_norm, al.id LIMIT ?3",
     )?;
@@ -106,6 +110,7 @@ pub fn albums_page(
             year: r.get(4)?,
             cover_id: r.get(5)?,
             tracks: r.get(6)?,
+            cover: r.get(7)?,
         });
     }
     Ok(finish(rows, last, limit))

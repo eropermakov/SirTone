@@ -14,6 +14,7 @@ export const EMPTY_SNAPSHOT: PlaybackSnapshot = {
   trackId: null,
   hasNext: false,
   hasPrev: false,
+  cover: null,
   positionMs: 0,
   durationMs: null,
   volume: 1,

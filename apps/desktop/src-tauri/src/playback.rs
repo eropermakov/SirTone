@@ -41,6 +41,8 @@ pub struct PlaybackSnapshot {
     pub track_id: Option<u32>,
     pub has_next: bool,
     pub has_prev: bool,
+    /// Album cover hash of the current track.
+    pub cover: Option<String>,
     pub position_ms: u32,
     pub duration_ms: Option<u32>,
     /// Slider value 0…1.
@@ -62,6 +64,7 @@ pub struct QueueItem {
     pub title: String,
     pub artists: Option<String>,
     pub track_id: Option<u32>,
+    pub cover: Option<String>,
 }
 
 pub struct Playback {
@@ -79,6 +82,7 @@ fn empty_snapshot() -> PlaybackSnapshot {
         track_id: None,
         has_next: false,
         has_prev: false,
+        cover: None,
         position_ms: 0,
         duration_ms: None,
         volume: 1.0,
@@ -137,6 +141,7 @@ impl Playback {
                     track_id: current.as_ref().and_then(|c| c.track_id),
                     has_next: current.is_some() && has_next,
                     has_prev: current.is_some() && has_prev,
+                    cover: current.as_ref().and_then(|c| c.cover.clone()),
                     position_ms: u32::try_from(s.position_ms).unwrap_or(u32::MAX),
                     duration_ms: s.duration_ms.map(|d| u32::try_from(d).unwrap_or(u32::MAX)),
                     volume: s.volume,
@@ -184,6 +189,7 @@ impl Playback {
                     title,
                     artists: None,
                     track_id: None,
+                    cover: None,
                 };
                 self.play_queue(vec![item], 0);
             }
@@ -373,11 +379,12 @@ pub fn play_tracks(
     let items = resolved
         .into_iter()
         .zip(ids.iter())
-        .map(|((path, title, artists), id)| QueueItem {
+        .map(|((path, title, artists, cover), id)| QueueItem {
             path,
             title,
             artists: (!artists.is_empty()).then_some(artists),
             track_id: Some(*id),
+            cover,
         })
         .collect();
     pb.play_queue(items, start as usize);

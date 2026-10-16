@@ -114,3 +114,31 @@ pub trait VolumeInfo: Send + Sync {
     fn is_removable(&self, path: &Path) -> bool;
     fn free_bytes(&self, path: &Path) -> Option<u64>;
 }
+
+/// Where a cover came from (docs/03 §7 `cover.source`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoverSource {
+    Embedded,
+    Folder,
+}
+
+impl CoverSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Embedded => "embedded",
+            Self::Folder => "folder",
+        }
+    }
+}
+
+/// Cover art for a file (FR-REC-009 offline part): embedded picture, else an image next to the
+/// source file (`cover`/`folder`/`front`). Online sources (Cover Art Archive) come with Stage 3.
+pub trait CoverReader: Send + Sync {
+    /// `file` is read for an embedded picture, `source_dir` is searched for a folder image.
+    /// Returns the raw image bytes (JPEG/PNG) and their source.
+    fn read(
+        &self,
+        file: &std::path::Path,
+        source_dir: Option<&std::path::Path>,
+    ) -> Option<(Vec<u8>, CoverSource)>;
+}

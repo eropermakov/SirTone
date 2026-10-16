@@ -58,6 +58,12 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        // Covers without IPC (docs/03 §5.6); work off the main thread.
+        .register_asynchronous_uri_scheme_protocol("sirtone-cover", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let path = request.uri().path().to_string();
+            std::thread::spawn(move || responder.respond(library::cover_protocol(&app, &path)));
+        })
         .manage(ShownOnce::default())
         .manage(settings)
         .invoke_handler(specta.invoke_handler())

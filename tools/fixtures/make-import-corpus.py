@@ -43,26 +43,35 @@ jobs = []  # (rel_path, ext, codec_args, metadata dict, seconds, freq)
 used = set()
 
 
-def audio(rel, meta, fmt=None):
+def audio(rel, meta, fmt=None, cover=None):
     ext, args = fmt or rng.choices(FORMATS, weights=FMT_WEIGHTS)[0]
     base, n = rel, 2
     while f"{rel}.{ext}".lower() in used:
         rel, n = f"{base} {n}", n + 1
     used.add(f"{rel}.{ext}".lower())
     rel = f"{rel}.{ext}"
-    jobs.append((rel, ext, args, meta, 2 + rng.random() * 2, 200 + rng.randint(0, 600)))
+    jobs.append((rel, ext, args, meta, 2 + rng.random() * 2, 200 + rng.randint(0, 600), cover))
     return rel
 
 
-# 1. Albums with full tags: 30 albums × ~11 tracks ≈ 330
+# 1. Albums with full tags: 30 albums × ~11 tracks ≈ 330. Covers (T1.26): even albums in
+#    MP3/FLAC/M4A embed a picture, the others keep a `cover.jpg` next to the tracks.
+covers = []        # (cover_path, hue)
+folder_covers = []  # album dirs that get cover.jpg
 for a in range(30):
     artist = ARTISTS[a % len(ARTISTS)]
     album, year = title(), 1985 + rng.randint(0, 39)
     fmt = rng.choices(FORMATS, weights=FMT_WEIGHTS)[0]
+    album_dir = f"{artist}/{album} ({year})"
+    embed = a % 2 == 0 and fmt[0] in ("mp3", "flac", "m4a")
+    cover = os.path.join(OUT + "-covers", f"{a:02d}.jpg") if embed else None
+    covers.append((os.path.join(OUT + "-covers", f"{a:02d}.jpg"), a * 12))
+    if not embed:
+        folder_covers.append((album_dir, a))
     for n in range(1, rng.randint(8, 13) + 1):
         t = title()
-        audio(f"{artist}/{album} ({year})/{n:02d} - {t}", {"artist": artist, "album_artist": artist, "album": album,
-                                                       "title": t, "track": str(n), "date": str(year)}, fmt)
+        audio(f"{album_dir}/{n:02d} - {t}", {"artist": artist, "album_artist": artist, "album": album,
+                                             "title": t, "track": str(n), "date": str(year)}, fmt, cover)
 # 2. Singles with feats: 40
 for i in range(40):
     a1, a2 = rng.sample(ARTISTS, 2)
@@ -83,25 +92,47 @@ for i in range(15):
           FORMATS[0])
 total_audio = len(jobs)
 dupes = rng.sample([j[0] for j in jobs], 10)
-others = 500 - total_audio - len(dupes)
+others = 500 - total_audio - len(dupes) - len(folder_covers)
 
 
 def render(job):
-    rel, ext, args, meta, secs, freq = job
+    rel, ext, args, meta, secs, freq, cover = job
     path = os.path.join(OUT, rel)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     md = []
     for k, v in meta.items():
         md += ["-metadata", f"{k}={v}"]
+    pic = []
+    if cover:
+        pic = ["-i", cover, "-map", "0:a", "-map", "1:v", "-c:v", "copy", "-disposition:v", "attached_pic"]
+        if ext == "mp3":
+            pic += ["-id3v2_version", "3"]
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i",
-                    f"sine=frequency={freq}:duration={secs:.2f}:sample_rate=44100", "-ac", "2", *args,
+                    f"sine=frequency={freq}:duration={secs:.2f}:sample_rate=44100", *pic, "-ac", "2", *args,
                     "-map_metadata", "-1", *md, "-bitexact", path], check=True)
 
 
 if os.path.exists(OUT):
     shutil.rmtree(OUT)
+shutil.rmtree(OUT + "-covers", ignore_errors=True)
+os.makedirs(OUT + "-covers")
+
+
+def make_cover(c):
+    path, hue = c
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i",
+                    f"testsrc2=size=600x600:rate=1:duration=1,hue=h={hue}", "-frames:v", "1", "-q:v", "4",
+                    "-bitexact", path], check=True)
+
+
+with ThreadPoolExecutor(8) as ex:
+    list(ex.map(make_cover, covers))
 with ThreadPoolExecutor(8) as ex:
     list(ex.map(render, jobs))
+
+for album_dir, a in folder_covers:
+    shutil.copyfile(covers[a][0], os.path.join(OUT, album_dir, "cover.jpg"))
+shutil.rmtree(OUT + "-covers", ignore_errors=True)
 
 # 6. Exact copies (different names) → duplicates
 for i, rel in enumerate(dupes):
@@ -126,4 +157,5 @@ while made < others:
     made += 1
 
 count = sum(len(f) for _, _, f in os.walk(OUT))
-print(f"import corpus: {count} files ({total_audio} audio, {len(dupes)} exact copies, {others} junk) -> {OUT}")
+print(f"import corpus: {count} files ({total_audio} audio, {len(dupes)} exact copies, "
+      f"{len(folder_covers)} folder covers, {others} junk) -> {OUT}")

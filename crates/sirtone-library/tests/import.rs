@@ -106,6 +106,13 @@ impl FileOps for Ops {
     }
 }
 
+struct NoCovers;
+impl CoverReader for NoCovers {
+    fn read(&self, _: &Path, _: Option<&Path>) -> Option<(Vec<u8>, CoverSource)> {
+        None
+    }
+}
+
 struct NoVolume;
 impl VolumeInfo for NoVolume {
     fn is_removable(&self, _: &Path) -> bool {
@@ -123,6 +130,7 @@ fn deps(ops: Ops) -> ImportDeps {
         identify: Arc::new(ByTags),
         fs: Arc::new(ops),
         volume: Arc::new(NoVolume),
+        covers: Arc::new(NoCovers),
     }
 }
 

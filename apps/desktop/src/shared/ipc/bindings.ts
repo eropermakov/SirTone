@@ -60,6 +60,8 @@ export type AlbumItem = {
 	artist: string,
 	year: number | null,
 	tracks: number,
+	/**  Cover hash: `http://sirtone-cover.localhost/<hash>/<size>`. */
+	cover: string | null,
 };
 
 export type AlbumPage = {
@@ -162,6 +164,8 @@ export type PlaybackSnapshot = {
 	trackId: number | null,
 	hasNext: boolean,
 	hasPrev: boolean,
+	/**  Album cover hash of the current track. */
+	cover: string | null,
 	positionMs: number,
 	durationMs: number | null,
 	/**  Slider value 0…1. */

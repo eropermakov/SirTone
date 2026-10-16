@@ -205,6 +205,18 @@ if (existsSync(corpus)) {
   await page.getByRole("button", { name: "Альбомы" }).click();
   await page.getByText(/Вся коллекция: 438 треков/).waitFor({ timeout: 5000 });
   check("collection summary", true);
+  // Covers (T1.26): album rows show WebP from sirtone-cover:// that really decode.
+  await sleep(800);
+  const covers = await page.evaluate(() =>
+    [...document.querySelectorAll('main img[src^="http://sirtone-cover.localhost/"]')]
+      .filter((i) => i.getBoundingClientRect().bottom < window.innerHeight) // lazy: on-screen only
+      .map((i) => i.complete && i.naturalWidth > 0),
+  );
+  check(
+    "album covers load",
+    covers.length >= 8 && covers.every(Boolean),
+    `${covers.filter(Boolean).length}/${covers.length}`,
+  );
   await page.locator("main ul li button").first().click();
   const rows = page.getByRole("list", { name: "Треки" }).getByRole("button");
   await rows.first().waitFor({ timeout: 5000 });

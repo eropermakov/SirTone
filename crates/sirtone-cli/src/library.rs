@@ -19,6 +19,7 @@ fn deps() -> ImportDeps {
         identify: Arc::new(sirtone_recognize::TagIdentify),
         fs: Arc::new(sirtone_platform::files::WinFiles),
         volume: Arc::new(sirtone_platform::files::WinVolume),
+        covers: Arc::new(sirtone_recognize::LoftyCovers),
     }
 }
 
