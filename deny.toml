@@ -17,3 +17,6 @@ yanked = "deny"
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
+
+[graph]
+targets = ["x86_64-pc-windows-msvc"]   # Windows-only app (FR-PLT-001): Linux-only GTK deps (RUSTSEC-2024-0370) are out of graph

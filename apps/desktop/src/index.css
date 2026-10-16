@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+/* Design tokens from DESIGN.md §13 and Geologica arrive in T0.9. Until then only the window background. */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+.app-root {
+  height: 100%;
+}

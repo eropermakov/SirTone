@@ -1,0 +1,52 @@
+//! SirTone desktop entry point (T0.3 scaffold).
+// No console window in release builds.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+use std::time::Duration;
+
+use tauri::webview::PageLoadEvent;
+use tauri::window::Color;
+use tauri::{Manager, Theme};
+
+/// DESIGN.md §3 `bg-base` for the current OS theme — the native window paints this before the page.
+fn bg_base(theme: Theme) -> Color {
+    match theme {
+        Theme::Light => Color(0xf2, 0xee, 0xe6, 0xff),
+        _ => Color(0x16, 0x11, 0x11, 0xff),
+    }
+}
+
+/// Fallback: if the page never reports "finished" (JS error, slow disk), show the window anyway.
+const SHOW_FALLBACK: Duration = Duration::from_secs(3);
+
+fn main() {
+    let app = tauri::Builder::default()
+        .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                let theme = window.theme().unwrap_or(Theme::Dark);
+                let _ = window.set_background_color(Some(bg_base(theme)));
+                let fallback = window.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(SHOW_FALLBACK);
+                    let _ = fallback.show();
+                });
+            }
+            Ok(())
+        })
+        // Window starts hidden (tauri.conf.json) and is shown after the first page load: no white flash.
+        .on_page_load(|webview, payload| {
+            if payload.event() == PageLoadEvent::Finished {
+                let _ = webview.window().show();
+            }
+        })
+        .build(tauri::generate_context!());
+
+    match app {
+        Ok(app) => app.run(|_, _| {}),
+        Err(err) => {
+            // Logging (tracing to file) arrives in T0.5; until then stderr is the only channel.
+            eprintln!("failed to start SirTone: {err}");
+            std::process::exit(1);
+        }
+    }
+}

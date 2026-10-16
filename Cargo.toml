@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
-# 11 crates sirtone-*; apps/desktop/src-tauri (sirtone-app) is added in T0.3.
-members = ["crates/*"]
+# 11 crates sirtone-* + apps/desktop/src-tauri (sirtone-app, the only crate that knows Tauri).
+members = ["crates/*", "apps/desktop/src-tauri"]
 exclude = ["spikes/*"]
 
 [workspace.package]

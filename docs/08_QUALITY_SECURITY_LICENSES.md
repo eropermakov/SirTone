@@ -74,7 +74,7 @@
 | — (уточнение) Chromaprint (C) | **MIT с версии 1.4** («весь код библиотеки под MIT», внутри Kiss FFT — BSD); последний релиз 1.6.2 | используем порт `rusty-chromaprint` (crates.io: MIT, но **в репозитории нет файла LICENSE** — записать в notices текст MIT от имени автора / уточнить у автора); запасной путь — C-Chromaprint через FFI (MIT, без FFmpeg). Бинарь `fpcalc` (собран с FFmpeg) — только как dev-инструмент |
 | FFmpeg «GPL/full» сборки | GPL | в sidecar — только LGPL-сборка, отдельным процессом, с лицензионным уведомлением |
 
-Автоматизация: `deny.toml` (cargo-deny 0.20.2 установлен) — `allow` список выше, `deny` `copyleft`, проверка advisories и источников; `license-checker` для npm; генерация `THIRD_PARTY_NOTICES` (cargo-about + npm) в «О программе → Лицензии»; `assets/models/MODELS.md` и `assets/viz/CREDITS.md` — источник, лицензия, sha256 каждого ассета.
+Автоматизация: `deny.toml` (cargo-deny 0.20.2 установлен; граф проверяется только для цели `x86_64-pc-windows-msvc` — приложение только для Windows, поэтому Linux-зависимости Tauri (GTK, предупреждение RUSTSEC-2024-0370 о `proc-macro-error`) в проверку не входят) — `allow` список выше, `deny` `copyleft`, проверка advisories и источников; `license-checker` для npm; генерация `THIRD_PARTY_NOTICES` (cargo-about + npm) в «О программе → Лицензии»; `assets/models/MODELS.md` и `assets/viz/CREDITS.md` — источник, лицензия, sha256 каждого ассета.
 
 **Условия внешних сервисов (не лицензии кода, но обязательные):**
 

@@ -165,7 +165,8 @@ unknown-git = "deny"
   "app": {
     "windows": [{
       "label": "main", "title": "SirTone", "maximized": true, "visible": false,
-      "dragDropEnabled": true, "minWidth": 960, "minHeight": 600, "decorations": true
+      "dragDropEnabled": true, "minWidth": 720, "minHeight": 560, "decorations": true,
+      "backgroundColor": "#161111"   // + из Rust по теме ОС; minWidth < 900, чтобы сайдбар сворачивался (DESIGN.md §7)
     }],
     "security": {
       "csp": "default-src 'self'; img-src 'self' http://sirtone-cover.localhost data: blob:; media-src 'self' http://sirtone-bg.localhost blob:; connect-src ipc: http://ipc.localhost; script-src 'self'; style-src 'self' 'unsafe-inline'",
