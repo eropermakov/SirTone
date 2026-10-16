@@ -50,6 +50,8 @@ pub struct Source {
     pub channels: usize,
     /// Track length in milliseconds, when the container knows it.
     pub duration_ms: Option<u64>,
+    /// Decoder short name (`flac`, `mp3`, `aac`, `alac`, `vorbis`, `opus`, `pcm_s16le`, …).
+    pub codec: String,
     /// After an accurate seek: drop decoded frames before this timestamp.
     skip_until: Option<i64>,
     scratch: Vec<f32>,
@@ -101,6 +103,10 @@ impl Source {
                 (Some(n), None) => Some(n * 1000 / u64::from(rate)),
                 _ => None,
             };
+            let codec = codecs()
+                .get_audio_decoder(params.codec)
+                .map(|d| d.codec.info.short_name.to_ascii_lowercase())
+                .unwrap_or_default();
             let decoder = codecs()
                 .make_audio_decoder(&params, &AudioDecoderOptions::default())
                 .map_err(|e| AppError::new(ErrorCode::UnsupportedFormat).with_details(e))?;
@@ -111,6 +117,7 @@ impl Source {
                 rate,
                 channels,
                 duration_ms,
+                codec,
                 skip_until: None,
                 scratch: Vec::new(),
             })

@@ -1,1 +1,7 @@
-//! sirtone-recognize — Tag and filename parsing, fingerprints, AcoustID/MusicBrainz/CAA, confidence model.
+//! sirtone-recognize — tags, name parser, fingerprints, AcoustID/MusicBrainz, identity decisions.
+
+pub mod identify;
+pub mod tags;
+
+pub use identify::{TagIdentify, split_artists};
+pub use tags::LoftyTags;

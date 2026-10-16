@@ -13,4 +13,5 @@ workspace = true
 
 [dependencies]
 sirtone-core.workspace = true
-windows = { workspace = true, features = ["Win32_Graphics_Dwm", "Win32_Foundation"] }
+windows = { workspace = true, features = ["Win32_Graphics_Dwm", "Win32_Foundation", "Win32_Storage_FileSystem"] }
+trash.workspace = true

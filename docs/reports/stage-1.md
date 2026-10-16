@@ -55,5 +55,7 @@
 
 - [x] Импорт, ядро (T1.11–T1.13 в `sirtone-library`): трейты в `core::ports`, `import_item` (D-66), раскладка и санитизация (property-тест), конвейер «проба → копия с BLAKE3 + `sync_all` + перехэш → личность → дубль → размещение через журнал → БД», отмена, отчёт «Не добавлено», восстановление по состоянию журнала. Тесты: полный импорт, повтор (всё — дубли), отмена, **убийство на каждом из 9 перемещений → восстановление → 4/4 трека, staging пуст, источники не изменились**
 
+- [x] Реальные трейты: `platform::files` (`MoveFileExW` + `MOVEFILE_WRITE_THROUGH`, `\?\`-пути, Корзина через `trash`, тип носителя и свободное место), `audio::probe::SymphoniaProbe` (кодек, lossless, длительность), `recognize` T1.15: `LoftyTags` (кракозябры cp1251/cp866/koi8-r, мусорные значения) и `TagIdentify` (разбор исполнителей, FR-IMP-007 длинные файлы)
+
 ## Сейчас
-- [ ] Реальные реализации трейтов: `platform` (`FileOps` с `MOVEFILE_WRITE_THROUGH` + Корзина, `VolumeInfo`), `audio` (`MediaProbe`), `recognize` (T1.15 теги lofty + базовый `Identify`) → корпус 500 файлов → P-10 в `core` (`MediaProbe`, `TagReader`, `VolumeInfo`) → T1.11 обход и проба → корпус импорта на 500 файлов
+- [ ] Корпус импорта 500 файлов → `sirtone-cli import`/`bench import` (P-10) → харнесс убийства процесса в `core` (`MediaProbe`, `TagReader`, `VolumeInfo`) → T1.11 обход и проба → корпус импорта на 500 файлов

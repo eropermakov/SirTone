@@ -6,5 +6,6 @@
 pub mod decode;
 pub mod engine;
 pub mod output;
+pub mod probe;
 
 pub use engine::{EngineCmd, EngineEvent, EngineHandle, PlayState, Snapshot, start};
