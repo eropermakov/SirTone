@@ -2,6 +2,8 @@
 // No console window in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod diagnostics;
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -27,6 +29,12 @@ const SHOW_FALLBACK: Duration = Duration::from_secs(3);
 struct ShownOnce(Arc<AtomicBool>);
 
 fn main() {
+    let data_dir = diagnostics::data_dir();
+    let debug = cfg!(debug_assertions) || std::env::args().any(|a| a == "--debug");
+    let _log_guard = diagnostics::init_logging(&data_dir, debug);
+    diagnostics::install_panic_hook(data_dir.clone());
+    tracing::info!(target: "sirtone::startup", version = env!("CARGO_PKG_VERSION"), "starting");
+
     let app = tauri::Builder::default()
         // Second launch (or Jump List command) focuses the existing window (FR-SHELL-004).
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -66,7 +74,7 @@ fn main() {
     match app {
         Ok(app) => app.run(|_, _| {}),
         Err(err) => {
-            // Logging (tracing to file) arrives in T0.5; until then stderr is the only channel.
+            tracing::error!(target: "sirtone::startup", error = %err, "failed to start");
             eprintln!("failed to start SirTone: {err}");
             std::process::exit(1);
         }
