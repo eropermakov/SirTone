@@ -2,9 +2,9 @@
 //! are forbidden: `shared/ipc/bindings.ts` is generated from these commands, and a test fails
 //! when the committed file differs (regenerate with `UPDATE_BINDINGS=1 cargo test -p sirtone-app`).
 
-use tauri_specta::{Builder, collect_commands};
+use tauri_specta::{Builder, collect_commands, collect_events};
 
-use crate::settings_store;
+use crate::{playback, settings_store};
 
 /// Free-form JSON across IPC, exported as TS `unknown`. specta inlines `serde_json::Value`
 /// recursively and overflows; the UI owns the typed view of these documents.
@@ -19,10 +19,20 @@ impl specta::Type for Json {
 }
 
 pub fn builder() -> Builder<tauri::Wry> {
-    Builder::<tauri::Wry>::new().commands(collect_commands![
-        settings_store::settings_get,
-        settings_store::settings_patch,
-    ])
+    Builder::<tauri::Wry>::new()
+        .commands(collect_commands![
+            settings_store::settings_get,
+            settings_store::settings_patch,
+            playback::playback_snapshot,
+            playback::playback_open,
+            playback::playback_toggle,
+            playback::playback_seek,
+            playback::playback_set_volume,
+        ])
+        .events(collect_events![
+            playback::PlaybackSnapshot,
+            playback::PlaybackError
+        ])
 }
 
 #[cfg(test)]

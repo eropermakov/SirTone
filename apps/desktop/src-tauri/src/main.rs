@@ -4,6 +4,7 @@
 
 mod diagnostics;
 mod ipc;
+mod playback;
 mod settings_store;
 
 use std::sync::Arc;
@@ -12,7 +13,7 @@ use std::time::Duration;
 
 use tauri::webview::PageLoadEvent;
 use tauri::window::Color;
-use tauri::{Manager, Theme};
+use tauri::{DragDropEvent, Manager, Theme, WindowEvent};
 
 /// DESIGN.md §3 `bg-base` for the current OS theme — the native window paints this before the page.
 fn bg_base(theme: Theme) -> Color {
@@ -38,19 +39,43 @@ fn main() {
     tracing::info!(target: "sirtone::startup", version = env!("CARGO_PKG_VERSION"), "starting");
     let settings = settings_store::SettingsStore::open(&data_dir);
 
+    let specta = ipc::builder();
     let app = tauri::Builder::default()
-        // Second launch (or Jump List command) focuses the existing window (FR-SHELL-004).
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        // Second launch (or Jump List command, «Открыть с помощью») focuses the existing window
+        // and plays the files it was given (FR-SHELL-004).
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
                 let _ = window.show();
                 let _ = window.set_focus();
             }
+            if let Some(pb) = app.try_state::<playback::Playback>() {
+                pb.open_paths(app, &playback::paths_from_args(&args));
+            }
         }))
         .manage(ShownOnce::default())
         .manage(settings)
-        .invoke_handler(ipc::builder().invoke_handler())
-        .setup(|app| {
+        .invoke_handler(specta.invoke_handler())
+        // Native file drop (D-07): paths stay in Rust, the engine plays the first playable one.
+        .on_window_event(|window, event| {
+            if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event
+                && let Some(pb) = window.try_state::<playback::Playback>()
+            {
+                pb.open_paths(window.app_handle(), paths);
+            }
+        })
+        .setup(move |app| {
+            specta.mount_events(app);
+            match playback::Playback::start(app.handle().clone()) {
+                Ok(pb) => {
+                    let args: Vec<String> = std::env::args().collect();
+                    pb.open_paths(app.handle(), &playback::paths_from_args(&args));
+                    app.manage(pb);
+                }
+                Err(e) => {
+                    tracing::error!(target: "sirtone::startup", code = ?e.code, "audio engine failed to start");
+                }
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let theme = window.theme().unwrap_or(Theme::Dark);
                 let _ = window.set_background_color(Some(bg_base(theme)));
@@ -77,7 +102,13 @@ fn main() {
         .build(tauri::generate_context!());
 
     match app {
-        Ok(app) => app.run(|_, _| {}),
+        Ok(app) => app.run(|handle, event| {
+            if let tauri::RunEvent::Exit = event
+                && let Some(pb) = handle.try_state::<playback::Playback>()
+            {
+                pb.shutdown();
+            }
+        }),
         Err(err) => {
             tracing::error!(target: "sirtone::startup", error = %err, "failed to start");
             eprintln!("failed to start SirTone: {err}");

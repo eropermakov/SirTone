@@ -37,16 +37,18 @@ struct Args {
     seconds: f64,
     gain_db: f32,
     stress: bool,
+    capture_pid: Option<u32>,
 }
 
 fn parse_args() -> Args {
     let mut a = std::env::args().skip(1);
-    let mut args = Args { file: PathBuf::new(), seconds: 6.0, gain_db: -30.0, stress: false };
+    let mut args = Args { file: PathBuf::new(), seconds: 6.0, gain_db: -30.0, stress: false, capture_pid: None };
     while let Some(x) = a.next() {
         match x.as_str() {
             "--seconds" => args.seconds = a.next().and_then(|v| v.parse().ok()).unwrap_or(6.0),
             "--gain-db" => args.gain_db = a.next().and_then(|v| v.parse().ok()).unwrap_or(-30.0),
             "--stress" => args.stress = true,
+            "--capture-pid" => args.capture_pid = a.next().and_then(|v| v.parse().ok()),
             _ => args.file = PathBuf::from(x),
         }
     }
@@ -227,10 +229,10 @@ fn render(
 }
 
 /// Captures this process's own audio (application loopback) for analysis.
-fn capture_self(stats: Arc<Stats>) -> Result<(Vec<f32>, u32, usize), String> {
+fn capture_self(stats: Arc<Stats>, pid: u32) -> Result<(Vec<f32>, u32, usize), String> {
     wasapi::initialize_mta().ok().map_err(|e| e.to_string())?;
     let fmt = WaveFormat::new(32, 32, &SampleType::Float, 48000, 2, None);
-    let mut client = AudioClient::new_application_loopback_client(std::process::id(), true).map_err(|e| e.to_string())?;
+    let mut client = AudioClient::new_application_loopback_client(pid, true).map_err(|e| e.to_string())?;
     client
         .initialize_client(&fmt, &Direction::Capture, &StreamMode::EventsShared { autoconvert: true, buffer_duration_hns: 200_000 })
         .map_err(|e| e.to_string())?;
@@ -307,6 +309,16 @@ fn goertzel(x: &[f32], ch: usize, which: usize, rate: f32, freq: f32) -> f64 {
 
 fn main() {
     let args = parse_args();
+    if let Some(pid) = args.capture_pid {
+        // Verify another process (the app): capture its audio for --seconds and analyse.
+        let stats = Arc::new(Stats::default());
+        let st = stats.clone();
+        let t = std::thread::spawn(move || capture_self(st, pid));
+        std::thread::sleep(Duration::from_secs_f64(args.seconds));
+        stats.stop.store(true, Ordering::Relaxed);
+        report(t.join().expect("capture join"));
+        return;
+    }
     wasapi::initialize_mta().ok().expect("COM");
     let enumerator = DeviceEnumerator::new().expect("enumerator");
     println!("render endpoints:");
@@ -348,7 +360,7 @@ fn main() {
     };
     let (prod, cons) = rtrb::RingBuffer::<f32>::new(rate as usize * ch / 5); // 200 ms
     let cap_stats = stats.clone();
-    let capture = std::thread::spawn(move || capture_self(cap_stats));
+    let capture = std::thread::spawn(move || capture_self(cap_stats, std::process::id()));
     std::thread::sleep(Duration::from_millis(200));
 
     let eng_stats = stats.clone();
@@ -397,7 +409,11 @@ fn main() {
         stats.max_loop_us.load(Ordering::Relaxed)
     );
 
-    match capture.join().expect("capture join") {
+    report(capture.join().expect("capture join"));
+}
+
+fn report(result: Result<(Vec<f32>, u32, usize), String>) {
+    match result {
         Ok((cap, crate_rate, disc)) => {
             let frames = cap.len() / 2;
             // Ignore leading silence before the first non-zero sample.

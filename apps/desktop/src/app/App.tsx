@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { togglePlay } from "@/shared/ipc/playback";
 import {
   getSettings,
   migrateLegacyAppearance,
@@ -16,10 +17,12 @@ import {
   onSystemThemeChange,
   type ThemePref,
 } from "@/shared/theme/theme";
+import { Toast } from "@/shared/ui/Toast";
 import { EmptyScreen } from "./shell/EmptyScreen";
 import { PlayerBar } from "./shell/PlayerBar";
 import { SettingsScreen } from "./shell/SettingsScreen";
 import { type Screen, Sidebar } from "./shell/Sidebar";
+import { usePlayback } from "./shell/usePlayback";
 
 /** Shell (prototype slice of T2.1/T2.2): three zones from DESIGN.md §7. Appearance lives in Rust settings (T0.6). */
 type Appearance = { theme: ThemePref; accent: AccentSource };
@@ -51,6 +54,8 @@ const NARROW = "(max-width: 899px)";
 
 export function App() {
   const { t } = useTranslation("shell");
+  const { t: tc } = useTranslation("common");
+  const { snap, receivedAt, error, clearError } = usePlayback();
   const [screen, setScreen] = useState<Screen>("wave");
   const [appearance, setAppearanceState] = useState<Appearance>(DEFAULT);
   const [manualCollapsed, setManualCollapsed] = useState(false);
@@ -114,7 +119,31 @@ export function App() {
       <div className="t-caption bg-bg-base px-4 pt-1 text-center text-text-tertiary">
         {t("proto")}
       </div>
-      <PlayerBar />
+      <PlayerBar snap={snap} receivedAt={receivedAt} />
+      {error && (
+        <Toast
+          heading={tc("errors.title")}
+          message={[
+            tc(`errors.${error.error.code}`, { defaultValue: tc("errors.generic") }),
+            error.file,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+          closeLabel={tc("errors.close")}
+          action={
+            error.error.retryable
+              ? {
+                  label: tc("errors.retry"),
+                  onClick: () => {
+                    clearError();
+                    togglePlay();
+                  },
+                }
+              : undefined
+          }
+          onClose={clearError}
+        />
+      )}
     </div>
   );
 }

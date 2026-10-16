@@ -3314,6 +3314,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "sirtone-audio",
  "sirtone-core",
  "specta",
  "specta-typescript",

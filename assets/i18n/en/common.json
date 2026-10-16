@@ -7,5 +7,18 @@
     "tracks": "",
     "albums": "",
     "artists": ""
+  },
+  "errors": {
+    "title": "",
+    "retry": "",
+    "close": "",
+    "FileNotFound": "",
+    "UnsupportedFormat": "",
+    "DecodeFailed": "",
+    "PermissionDenied": "",
+    "DeviceUnavailable": "",
+    "DeviceBusy": "",
+    "Internal": "",
+    "generic": ""
   }
 }

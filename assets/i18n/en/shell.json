@@ -41,7 +41,10 @@
     "next": "",
     "repeat": "",
     "queue": "",
-    "volume": ""
+    "volume": "",
+    "pause": "",
+    "seek": "",
+    "ended": ""
   },
   "settings": {
     "title": "",

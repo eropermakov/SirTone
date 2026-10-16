@@ -14,6 +14,7 @@ authors = ["Sir.kov Studio"]
 
 [workspace.dependencies]     # versions checked 2026-10-15 (docs/08 §5.1)
 sirtone-core = { path = "crates/sirtone-core" }
+sirtone-audio = { path = "crates/sirtone-audio" }
 tauri = { version = "2.12", features = [] }
 tauri-build = "2.7"
 tauri-plugin-single-instance = "2.5"
