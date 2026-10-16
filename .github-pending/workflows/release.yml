@@ -1,0 +1,32 @@
+# DRAFT (T0.12 → finalised in T6.2). Builds the NSIS installer on a version tag and attaches it to a
+# GitHub prerelease. Updater signing (TAURI_SIGNING_PRIVATE_KEY) is added in T6.1 (OWN-04).
+name: release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir apps/desktop tauri build
+      - name: Prerelease with installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem target/release/bundle/nsis/*.exe | Select-Object -First 1
+          gh release create "${{ github.ref_name }}" $exe.FullName --prerelease --title "SirTone ${{ github.ref_name }}" --notes "Тестовая сборка, не подписана (OWN-05)."
