@@ -24,7 +24,8 @@
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; img-src 'self' http://sirtone-cover.localhost data: blob:; media-src 'self' http://sirtone-bg.localhost blob:; connect-src ipc: http://ipc.localhost; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'",
+      "devCsp": "default-src 'self'; img-src 'self' http://sirtone-cover.localhost data: blob:; media-src 'self' http://sirtone-bg.localhost blob:; connect-src ipc: http://ipc.localhost ws://localhost:1420; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'",
       "freezePrototype": true
     }
   },
@@ -34,8 +35,12 @@
     "publisher": "Sir.kov Studio",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
     "windows": {
-      "webviewInstallMode": { "type": "embedBootstrapper" },
-      "nsis": { "installMode": "currentUser" }
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
+      "nsis": {
+        "installMode": "currentUser"
+      }
     }
   }
 }

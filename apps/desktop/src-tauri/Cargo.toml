@@ -17,5 +17,6 @@ tauri-build = { workspace = true, features = [] }
 [dependencies]
 tauri = { workspace = true, features = [] }
 serde = { workspace = true }
+tauri-plugin-single-instance = { workspace = true }
 serde_json = { workspace = true }
 # Release profile (panic = "unwind") comes from the workspace root — no [profile] here.

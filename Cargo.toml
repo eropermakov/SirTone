@@ -16,6 +16,7 @@ authors = ["Sir.kov Studio"]
 sirtone-core = { path = "crates/sirtone-core" }
 tauri = { version = "2.12", features = [] }
 tauri-build = "2.7"
+tauri-plugin-single-instance = "2.5"
 symphonia = { version = "0.6.1", features = ["aac", "alac", "isomp4", "mp3", "aiff", "caf"] }
 symphonia-adapter-libopus = "0.3"
 wasapi = "0.26"

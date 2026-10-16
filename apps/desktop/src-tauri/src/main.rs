@@ -28,6 +28,14 @@ struct ShownOnce(Arc<AtomicBool>);
 
 fn main() {
     let app = tauri::Builder::default()
+        // Second launch (or Jump List command) focuses the existing window (FR-SHELL-004).
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .manage(ShownOnce::default())
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
