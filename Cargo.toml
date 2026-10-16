@@ -10,7 +10,7 @@ edition = "2024"
 rust-version = "1.95"
 license = "UNLICENSED"       # until OWN-01
 publish = false
-authors = ["Серков Studio"]
+authors = ["Sir.kov Studio"]
 
 [workspace.dependencies]     # versions checked 2026-10-15 (docs/08 §5.1)
 sirtone-core = { path = "crates/sirtone-core" }
