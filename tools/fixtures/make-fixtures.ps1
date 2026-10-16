@@ -46,6 +46,7 @@ FF @('-ss', '4', '-i', "$out\signals\gapless-full.wav", '-c:a', 'libmp3lame', '-
 # Lossless halves of the same sine: the gapless joint must be bit-continuous (T1.5).
 FF @('-i', "$out\signals\gapless-full.wav", '-t', '4', '-c:a', 'pcm_s16le', '-bitexact', "$out\signals\gapless-a.wav")
 FF @('-ss', '4', '-i', "$out\signals\gapless-full.wav", '-c:a', 'pcm_s16le', '-bitexact', "$out\signals\gapless-b.wav")
+FF @('-i', "$out\signals\gapless-b.wav", '-ar', '48000', '-c:a', 'pcm_s16le', '-bitexact', "$out\signals\gapless-b48.wav")
 
 # --- signals: log sweep (EQ/resampler), click tracks for BPM, loudness steps ---
 FF @('-f', 'lavfi', '-i', 'aevalsrc=sin(2*PI*20*(pow(1000\,t/10)-1)/log(1000)*10):s=48000:d=10', '-c:a', 'pcm_f32le', '-bitexact', "$out\signals\sweep-20-20k-10s.wav")

@@ -15,6 +15,7 @@ export const EMPTY_SNAPSHOT: PlaybackSnapshot = {
   hasNext: false,
   hasPrev: false,
   cover: null,
+  underruns: 0,
   positionMs: 0,
   durationMs: null,
   volume: 1,

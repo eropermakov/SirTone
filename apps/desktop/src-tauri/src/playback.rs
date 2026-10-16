@@ -43,6 +43,8 @@ pub struct PlaybackSnapshot {
     pub has_prev: bool,
     /// Album cover hash of the current track.
     pub cover: Option<String>,
+    /// Output underruns since start (diagnostics, P-13).
+    pub underruns: u32,
     pub position_ms: u32,
     pub duration_ms: Option<u32>,
     /// Slider value 0…1.
@@ -83,6 +85,7 @@ fn empty_snapshot() -> PlaybackSnapshot {
         has_next: false,
         has_prev: false,
         cover: None,
+        underruns: 0,
         position_ms: 0,
         duration_ms: None,
         volume: 1.0,
@@ -152,6 +155,7 @@ impl Playback {
                     has_next: current.is_some() && has_next,
                     has_prev: current.is_some() && has_prev,
                     cover: current.as_ref().and_then(|c| c.cover.clone()),
+                    underruns: u32::try_from(s.underruns).unwrap_or(u32::MAX),
                     position_ms: u32::try_from(s.position_ms).unwrap_or(u32::MAX),
                     duration_ms: s.duration_ms.map(|d| u32::try_from(d).unwrap_or(u32::MAX)),
                     volume: s.volume,

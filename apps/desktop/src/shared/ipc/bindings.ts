@@ -166,6 +166,8 @@ export type PlaybackSnapshot = {
 	hasPrev: boolean,
 	/**  Album cover hash of the current track. */
 	cover: string | null,
+	/**  Output underruns since start (diagnostics, P-13). */
+	underruns: number,
 	positionMs: number,
 	durationMs: number | null,
 	/**  Slider value 0…1. */

@@ -236,14 +236,9 @@ impl Identify for TagIdentify {
                     d.album = folder_album.clone().filter(|a| similarity(a, fa) < AGREE);
                     d
                 }
-                // «Исполнитель/Альбом/03 Название»: numbered title inside an artist/album tree.
-                (None, Some(ft), Some(pa))
-                    if f.track.is_some() && folder_album.is_some() && grand.is_some() =>
-                {
-                    let mut d = base(ft.clone(), split_artists(pa), 0.8, None);
-                    d.album = folder_album.clone();
-                    d
-                }
+                // «Исполнитель/Альбом/03 Название» with no tags: the name carries no artist, so
+                // nothing agrees with the folders (row 3) — CD1/genre/year folders would put it in
+                // a wrong place. It goes to «Неизвестные»; the folder guess is only a hint.
                 _ => {
                     let title = t
                         .title
@@ -355,29 +350,27 @@ mod tests {
             (d.unknown, d.artists[0].as_str(), d.title.as_str()),
             (None, "Сплин", "Романс")
         );
-        // Artist/Album (year)/NN Title.
-        let d = TagIdentify.identify(
-            &bare,
-            "03 Романс.mp3",
-            &hints("Гранатовый альбом (1998)", "Сплин"),
-            &info(200_000),
-        );
-        assert_eq!(
-            (
+        // Artist/Album (year)/NN Title without tags: only folders say who it is → unknown,
+        // and the risky layouts (CD1, genre, year folders) with it.
+        for (parent, grand) in [
+            ("Гранатовый альбом (1998)", "Сплин"),
+            ("CD1", "Гранатовый альбом"),
+            ("Гранатовый альбом", "Rock"),
+            ("Гранатовый альбом", "2010"),
+        ] {
+            let d = TagIdentify.identify(
+                &bare,
+                "03 Романс.mp3",
+                &hints(parent, grand),
+                &info(200_000),
+            );
+            assert_eq!(
                 d.unknown,
-                d.artists[0].as_str(),
-                d.album.as_deref(),
-                d.year,
-                d.track_no
-            ),
-            (
-                None,
-                "Сплин",
-                Some("Гранатовый альбом"),
-                Some(1998),
-                Some(3)
-            )
-        );
+                Some(UnknownReason::NoMetadata),
+                "{grand}/{parent}"
+            );
+            assert_eq!(d.title, "Романс");
+        }
         // Generic folders never become artists.
         let d = TagIdentify.identify(
             &bare,

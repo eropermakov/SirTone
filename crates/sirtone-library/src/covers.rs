@@ -13,6 +13,9 @@ use crate::error::LibraryError;
 use crate::import::SERVICE_DIR;
 use crate::repo::AlbumId;
 
+/// Largest cover accepted (≈ 6300 × 6300): limits memory when it is decoded for a variant.
+pub const MAX_PIXELS: u64 = 40_000_000;
+
 /// Sizes the protocol serves (docs/03 §5.6).
 pub const SIZES: &[u32] = &[64, 128, 256, 512, 1024];
 
@@ -66,6 +69,10 @@ pub fn store(
         .ok()
         .and_then(|r| r.into_dimensions().ok())
         .ok_or_else(|| LibraryError::Invalid("not a decodable image".into()))?;
+    // docs/08 §6: a tiny file can declare enormous dimensions; never decode those.
+    if u64::from(w) * u64::from(h) > MAX_PIXELS {
+        return Err(LibraryError::Invalid("cover too large".into()));
+    }
     let path = covers_dir(root)
         .join("orig")
         .join(format!("{hash}.{}", ext_of(bytes)));
@@ -92,6 +99,35 @@ pub fn album_has_cover(conn: &Connection, album: AlbumId) -> Result<bool, Librar
         [album],
         |r| r.get(0),
     )?)
+}
+
+/// Albums imported before covers existed (or whose first track had none) get one from the
+/// embedded art of their files in the library. Runs at startup; at most `limit` albums per call.
+pub fn backfill(
+    conn: &Connection,
+    root: &Path,
+    reader: &dyn sirtone_core::ports::CoverReader,
+    limit: usize,
+) -> Result<usize, LibraryError> {
+    let mut st = conn.prepare(
+        "SELECT al.id, t.rel_path FROM album al JOIN track t ON t.album_id = al.id
+         WHERE al.cover_id IS NULL AND al.cover_locked = 0 AND t.state = 'ok'
+         GROUP BY al.id LIMIT ?1",
+    )?;
+    let todo: Vec<(AlbumId, String)> = st
+        .query_map([limit as i64], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    let mut done = 0;
+    for (album, rel) in todo {
+        let file = rel.split('/').fold(root.to_path_buf(), |p, c| p.join(c));
+        if let Some((bytes, source)) = reader.read(&file, None)
+            && let Ok(cover) = store(conn, root, &bytes, source)
+        {
+            link_album(conn, album, cover)?;
+            done += 1;
+        }
+    }
+    Ok(done)
 }
 
 fn valid_hash(h: &str) -> bool {
@@ -189,6 +225,9 @@ mod tests {
         assert!(variant(&dir, &hash, 100).is_err(), "unknown size");
         assert!(variant(&dir, "../../etc", 128).is_err(), "path tricks");
         assert!(store(&c, &dir, b"not an image", CoverSource::Folder).is_err());
+        // A small PNG that declares 8000×8000 pixels is refused before any decoding.
+        let huge = png(8000, 8000);
+        assert!(store(&c, &dir, &huge, CoverSource::Folder).is_err());
         let _ = fs::remove_dir_all(&dir);
     }
 }

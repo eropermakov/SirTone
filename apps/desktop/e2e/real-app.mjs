@@ -147,6 +147,39 @@ if (existsSync(loopback) && existsSync(cli) && halves.every((h) => existsSync(h)
   );
 }
 
+// 1d. Gapless across formats: a 44.1 kHz half then a 48 kHz half (second deck path).
+const mixed = ["gapless-a.wav", "gapless-b48.wav"].map((f) => join(fixtures, "signals", f));
+if (existsSync(loopback) && existsSync(cli) && mixed.every((h) => existsSync(h))) {
+  let printed = "";
+  const player = spawn(cli, ["play", ...mixed, "--volume", "0.3"]);
+  player.stdout.on("data", (d) => {
+    printed += d.toString();
+  });
+  await sleep(300);
+  const out = spawnSync(loopback, [
+    "--capture-pid",
+    String(player.pid),
+    "--seconds",
+    "7",
+    "--sine-hz",
+    "1000",
+  ]).stdout.toString();
+  await sleep(1500);
+  player.kill();
+  const m = out.match(/clicks \(1000 Hz\): L (\d+) \(worst ([\d.]+)\)/);
+  const sig = out.match(/signal ([\d.]+) s/);
+  check(
+    "gapless joint across sample rates",
+    m &&
+      Number(m[2]) < 0.05 &&
+      sig &&
+      Number(sig[1]) > 6.5 &&
+      /gapless-b48/.test(printed) &&
+      /underruns 0\s*$/.test(printed.trim()),
+    m ? `${m[0]}; ${sig?.[0]}; switched ${/gapless-b48/.test(printed)}` : out.trim(),
+  );
+}
+
 // 2. Space toggles.
 await page.evaluate(() => document.activeElement?.blur());
 await page.keyboard.press("Space");
@@ -250,6 +283,23 @@ if (existsSync(corpus)) {
   await sleep(1200);
   const playing = await footer.locator(".t-body-strong").first().textContent();
   check("double click plays the track", playing === firstTitle, `${playing} / ${firstTitle}`);
+  // The album continues by itself (gapless handoff from the queue): no button pressed.
+  const auto = await page
+    .waitForFunction(
+      (t) => document.querySelector("footer .t-body-strong")?.textContent !== t,
+      playing,
+      { timeout: 8000 },
+    )
+    .then(
+      () => true,
+      () => false,
+    );
+  const snapAfter = await invoke("playback_snapshot", {});
+  check(
+    "album plays on by itself, no underruns",
+    auto && snapAfter.underruns === 0 && snapAfter.state === "playing",
+    `${snapAfter.title}, underruns ${snapAfter.underruns}`,
+  );
   const nextBtn = footer.getByRole("button", { name: "Вперёд" });
   check("next enabled in an album", await nextBtn.isEnabled());
   await nextBtn.click();
@@ -263,7 +313,7 @@ if (existsSync(corpus)) {
   ]).stdout.toString();
   check("service folder is hidden", /Hidden/.test(attrs), attrs.trim());
   await page.getByRole("button", { name: "Неизвестные" }).click();
-  await page.getByText(/25 треков/).waitFor({ timeout: 5000 });
+  await page.getByText(/35 треков/).waitFor({ timeout: 5000 });
   const unknownRows = page.getByRole("list", { name: "Треки" }).getByRole("button");
   await unknownRows.first().dblclick();
   await sleep(1000);

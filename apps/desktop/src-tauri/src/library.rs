@@ -382,6 +382,13 @@ fn import_worker(
         if let Err(e) = import::recover(db, &root, deps.fs.as_ref()) {
             tracing::error!(target: "sirtone::import", error = %e, "recovery failed");
         }
+        // Covers for albums imported before T1.26 (or without art on their first track).
+        if let Ok(n) = sirtone_library::covers::backfill(db, &root, deps.covers.as_ref(), 500)
+            && n > 0
+        {
+            tracing::info!(target: "sirtone::import", albums = n, "covers backfilled");
+            emit_changed(&app, &shared);
+        }
         let mut batches = import::unfinished_batches(db).unwrap_or_default();
         if !paths.is_empty() {
             match import::start_batch(db, &paths, "drop") {

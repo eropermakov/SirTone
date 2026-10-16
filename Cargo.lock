@@ -3714,14 +3714,14 @@ checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
 name = "sirtone-analysis"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "sirtone-core",
 ]
 
 [[package]]
 name = "sirtone-app"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "rusqlite",
  "serde",
@@ -3746,7 +3746,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-audio"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "rtrb",
  "rubato",
@@ -3760,7 +3760,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-cli"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "rusqlite",
  "sirtone-audio",
@@ -3772,7 +3772,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-core"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "serde",
  "serde_json",
@@ -3783,7 +3783,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-library"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "blake3",
  "image",
@@ -3800,14 +3800,14 @@ dependencies = [
 
 [[package]]
 name = "sirtone-net"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "sirtone-core",
 ]
 
 [[package]]
 name = "sirtone-platform"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "sirtone-core",
  "trash",
@@ -3816,14 +3816,14 @@ dependencies = [
 
 [[package]]
 name = "sirtone-playback"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "sirtone-core",
 ]
 
 [[package]]
 name = "sirtone-recognize"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "encoding_rs",
  "lofty",
@@ -3833,14 +3833,14 @@ dependencies = [
 
 [[package]]
 name = "sirtone-search"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "sirtone-core",
 ]
 
 [[package]]
 name = "sirtone-wave"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "sirtone-core",
 ]

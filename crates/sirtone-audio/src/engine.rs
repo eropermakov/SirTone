@@ -146,6 +146,8 @@ struct Engine {
     next_failed: bool,
     /// The next track is attached to the current deck's chain (same format).
     next_attached: bool,
+    /// The next track in another format, opened early (docs/04 §3) and used at the joint.
+    next_source: Option<(Source, PathBuf)>,
 }
 
 impl Engine {
@@ -164,6 +166,7 @@ impl Engine {
             feeding: None,
             next_failed: false,
             next_attached: false,
+            next_source: None,
         }
     }
 
@@ -226,6 +229,7 @@ impl Engine {
                     self.feeding = None;
                     self.next_failed = false;
                     self.next_attached = false;
+                    self.next_source = None;
                     if let Some(d) = self.deck.as_mut() {
                         d.chained = None;
                     }
@@ -258,6 +262,7 @@ impl Engine {
         self.feeding = None;
         self.next_failed = false;
         self.next_attached = false;
+        self.next_source = None;
         tracing::info!(target: "sirtone::audio", "track loaded");
         self.state = if autoplay {
             PlayState::Playing
@@ -316,6 +321,7 @@ impl Engine {
         self.feeding = None;
         self.next_failed = false;
         self.next_attached = false;
+        self.next_source = None;
         if self.state == PlayState::Ended {
             self.state = PlayState::Paused;
         }
@@ -362,7 +368,8 @@ impl Engine {
                 {
                     deck.chained = Some((next, path));
                 }
-                Ok(_) => {} // other format: a second deck takes over at the end (below)
+                // Other format: kept open, a second deck built from it takes over at the end.
+                Ok(next) => self.next_source = Some((next, path)),
                 Err(error) => {
                     self.next_failed = true;
                     (self.events)(EngineEvent::Error {
@@ -378,7 +385,11 @@ impl Engine {
             && !self.next_failed
             && let Some(path) = self.next_path.clone()
         {
-            match Source::open(&path).and_then(|src| new_deck(src, path.clone(), out.format, 0)) {
+            let opened = match self.next_source.take() {
+                Some((src, p)) if p == path => Ok(src),
+                _ => Source::open(&path),
+            };
+            match opened.and_then(|src| new_deck(src, path.clone(), out.format, 0)) {
                 Ok(mut next) => {
                     // Audible once everything of the current track has been played.
                     next.base_consumed = deck.base_consumed + deck.pushed;
@@ -420,6 +431,7 @@ impl Engine {
             }
             self.next_path = None;
             self.next_attached = false;
+            self.next_source = None;
             self.next_failed = false;
             self.emit_snapshot();
             return;
