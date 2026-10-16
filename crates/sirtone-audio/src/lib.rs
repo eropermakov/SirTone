@@ -4,6 +4,7 @@
 //! [`output`] (WASAPI shared, event-driven, MMCSS) and the [`engine`] thread.
 
 pub mod decode;
+pub mod devices;
 pub mod engine;
 pub mod gapless;
 pub mod output;

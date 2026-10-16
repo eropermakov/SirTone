@@ -179,6 +179,11 @@ impl Playback {
         }))?;
         let volume = settings.get()["playback"]["volume"].as_f64().unwrap_or(1.0) as f32;
         engine.send(EngineCmd::SetVolume(volume));
+        // FR-PLAY-012: pause when the output device disappears (setting, default on).
+        let pause_on_loss = settings.get()["playback"]["output"]["pause_on_device_loss"]
+            .as_bool()
+            .unwrap_or(true);
+        engine.send(EngineCmd::SetPauseOnDeviceLoss(pause_on_loss));
         let _ = handle.set(engine.clone());
         Ok(Self {
             engine,

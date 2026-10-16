@@ -139,3 +139,119 @@ fn broken_file_reports_error_and_engine_survives() {
     );
     engine.send(EngineCmd::Shutdown);
 }
+
+fn start_with(path: PathBuf) -> (sirtone_audio::EngineHandle, Arc<Mutex<Option<Snapshot>>>) {
+    let last = Arc::new(Mutex::new(None::<Snapshot>));
+    let l = last.clone();
+    let engine = sirtone_audio::start(Box::new(move |ev| {
+        if let EngineEvent::Snapshot(s) = ev {
+            *l.lock().unwrap() = Some(s);
+        }
+    }))
+    .unwrap();
+    engine.send(EngineCmd::SetVolume(0.2));
+    engine.send(EngineCmd::Load {
+        path,
+        autoplay: true,
+    });
+    (engine, last)
+}
+
+/// T1.6: the default device changed while ours is still alive → move and keep playing from the
+/// same position (FR-PLAY-012: «смена default → продолжение ≤ 1 с»).
+#[test]
+#[ignore = "needs an audio device"]
+fn default_change_keeps_playing_from_the_same_place() {
+    let Some(path) = fixture("long/mix-3h.mp3") else {
+        return;
+    };
+    let (engine, last) = start_with(path);
+    let before = wait_for(&last, Duration::from_secs(3), |s| {
+        s.state == PlayState::Playing && s.position_ms > 1000
+    });
+    engine.send(EngineCmd::DefaultDeviceChanged);
+    std::thread::sleep(Duration::from_millis(700));
+    engine.send(EngineCmd::SetVolume(0.2)); // forces a snapshot
+    let after = wait_for(&last, Duration::from_secs(1), |_| true);
+    assert_eq!(after.state, PlayState::Playing);
+    assert!(
+        after.position_ms + 300 >= before.position_ms,
+        "{} → {}",
+        before.position_ms,
+        after.position_ms
+    );
+    assert!(
+        after.position_ms < before.position_ms + 1500,
+        "no jump: {} → {}",
+        before.position_ms,
+        after.position_ms
+    );
+    let t = after.position_ms;
+    std::thread::sleep(Duration::from_millis(800));
+    engine.send(EngineCmd::SetVolume(0.2));
+    let later = wait_for(&last, Duration::from_secs(1), |_| true);
+    assert!(
+        later.position_ms > t + 400,
+        "still advancing: {t} → {}",
+        later.position_ms
+    );
+    engine.send(EngineCmd::Shutdown);
+}
+
+/// T1.6: our device disappears (pulled headphones) → pause at the same position; Play resumes there.
+#[test]
+#[ignore = "needs an audio device"]
+fn device_loss_pauses_and_play_resumes_there() {
+    let Some(path) = fixture("long/mix-3h.mp3") else {
+        return;
+    };
+    let (engine, last) = start_with(path);
+    let s = wait_for(&last, Duration::from_secs(3), |s| {
+        s.state == PlayState::Playing && s.position_ms > 1000
+    });
+    engine.send(EngineCmd::DeviceLost("{not-ours}".into()));
+    std::thread::sleep(Duration::from_millis(300));
+    engine.send(EngineCmd::SetVolume(0.2));
+    assert_eq!(
+        wait_for(&last, Duration::from_secs(1), |_| true).state,
+        PlayState::Playing,
+        "other device ignored"
+    );
+    engine.send(EngineCmd::DeviceLost(s.device.clone().unwrap()));
+    let paused = wait_for(&last, Duration::from_secs(1), |s| {
+        s.state == PlayState::Paused
+    });
+    assert!(paused.position_ms + 300 >= s.position_ms);
+    engine.send(EngineCmd::Play);
+    let resumed = wait_for(&last, Duration::from_secs(2), |s| {
+        s.state == PlayState::Playing
+    });
+    assert!(
+        resumed.position_ms.abs_diff(paused.position_ms) < 600,
+        "{} vs {}",
+        resumed.position_ms,
+        paused.position_ms
+    );
+    engine.send(EngineCmd::Shutdown);
+}
+
+/// With «пауза при потере» off the music follows the new default instead.
+#[test]
+#[ignore = "needs an audio device"]
+fn device_loss_without_pause_keeps_playing() {
+    let Some(path) = fixture("long/mix-3h.mp3") else {
+        return;
+    };
+    let (engine, last) = start_with(path);
+    engine.send(EngineCmd::SetPauseOnDeviceLoss(false));
+    let s = wait_for(&last, Duration::from_secs(3), |s| {
+        s.state == PlayState::Playing && s.position_ms > 1000
+    });
+    engine.send(EngineCmd::DeviceLost(s.device.clone().unwrap()));
+    std::thread::sleep(Duration::from_millis(800));
+    engine.send(EngineCmd::SetVolume(0.2));
+    let after = wait_for(&last, Duration::from_secs(1), |_| true);
+    assert_eq!(after.state, PlayState::Playing);
+    assert!(after.position_ms >= s.position_ms);
+    engine.send(EngineCmd::Shutdown);
+}

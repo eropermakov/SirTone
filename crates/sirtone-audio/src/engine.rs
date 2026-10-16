@@ -34,6 +34,12 @@ pub enum EngineCmd {
     /// The track to continue with when the current one ends, without a gap (T1.5, docs/04 §3:
     /// pre-opened and fed into the same ring). `None` clears it.
     SetNext(Option<PathBuf>),
+    /// FR-PLAY-012: pause when the output device disappears (default on), else follow the new default.
+    SetPauseOnDeviceLoss(bool),
+    /// From the device watcher: the system default output changed.
+    DefaultDeviceChanged,
+    /// From the device watcher: an endpoint was unplugged, disabled or removed.
+    DeviceLost(String),
     Shutdown,
 }
 
@@ -53,6 +59,8 @@ pub struct Snapshot {
     pub duration_ms: Option<u64>,
     pub volume: f32,
     pub underruns: u64,
+    /// Endpoint id of the current output device.
+    pub device: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -81,12 +89,23 @@ impl EngineHandle {
 /// Starts the engine thread. The output device is opened lazily on the first `Load`.
 pub fn start(events: EventSink) -> Result<EngineHandle, AppError> {
     let (tx, rx) = mpsc::channel();
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let watcher_stop = stop.clone();
     std::thread::Builder::new()
         .name("sirtone-engine".into())
-        .spawn(move || Engine::new(events).run(rx))
+        .spawn(move || {
+            Engine::new(events).run(rx);
+            stop.store(true, Ordering::Relaxed);
+        })
         .map_err(|e| AppError::new(ErrorCode::Internal).with_details(e))?;
-    Ok(EngineHandle { tx })
+    let handle = EngineHandle { tx };
+    crate::devices::watch(handle.clone(), watcher_stop);
+    Ok(handle)
 }
+
+/// Windows sends «default changed» and «device gone» in either order when headphones are pulled:
+/// decide after this delay whether the old device is still there (follow) or gone (pause).
+const DEVICE_SETTLE: Duration = Duration::from_millis(250);
 
 const CHUNK: usize = 1024;
 const SNAPSHOT_EVERY: Duration = Duration::from_millis(250);
@@ -148,6 +167,9 @@ struct Engine {
     next_attached: bool,
     /// The next track in another format, opened early (docs/04 §3) and used at the joint.
     next_source: Option<(Source, PathBuf)>,
+    pause_on_device_loss: bool,
+    /// A default-device change waiting to settle (see `DEVICE_SETTLE`).
+    default_changed_at: Option<Instant>,
 }
 
 impl Engine {
@@ -167,6 +189,8 @@ impl Engine {
             next_failed: false,
             next_attached: false,
             next_source: None,
+            pause_on_device_loss: true,
+            default_changed_at: None,
         }
     }
 
@@ -187,6 +211,13 @@ impl Engine {
             }
             if self.shared.failed.load(Ordering::Acquire) {
                 self.on_device_lost();
+            }
+            if self
+                .default_changed_at
+                .is_some_and(|t| t.elapsed() >= DEVICE_SETTLE)
+            {
+                self.default_changed_at = None;
+                self.on_default_changed();
             }
             if let Err(e) = self.pump() {
                 self.fail(e);
@@ -233,6 +264,20 @@ impl Engine {
                     if let Some(d) = self.deck.as_mut() {
                         d.chained = None;
                     }
+                }
+                return;
+            }
+            EngineCmd::SetPauseOnDeviceLoss(on) => {
+                self.pause_on_device_loss = on;
+                return;
+            }
+            EngineCmd::DefaultDeviceChanged => {
+                self.default_changed_at = Some(Instant::now());
+                return;
+            }
+            EngineCmd::DeviceLost(id) => {
+                if self.output.as_ref().is_some_and(|(o, _)| o.device_id == id) {
+                    self.on_output_gone();
                 }
                 return;
             }
@@ -461,6 +506,56 @@ impl Engine {
         }
     }
 
+    /// The system default changed. If our device is still alive the user switched outputs on
+    /// purpose: continue there at the same position (≤ 1 s, FR-PLAY-012). If it is gone (pulled
+    /// headphones) it is a loss.
+    fn on_default_changed(&mut self) {
+        let Some(id) = self.output.as_ref().map(|(o, _)| o.device_id.clone()) else {
+            return;
+        };
+        if !crate::devices::is_active(&id) {
+            self.on_output_gone();
+            return;
+        }
+        if self.deck.is_none() {
+            self.output = None; // reopened lazily on the next Load
+            return;
+        }
+        let pos = self.position_ms();
+        self.output = None;
+        match self.ensure_output().and_then(|_| self.seek(pos)) {
+            Ok(()) => {
+                tracing::info!(target: "sirtone::audio", "output moved to the new default device");
+                self.emit_snapshot();
+            }
+            Err(e) => self.fail(e),
+        }
+    }
+
+    /// Our output device disappeared: pause (default) so the music does not jump to the speakers,
+    /// or follow the new default when the user turned that off.
+    fn on_output_gone(&mut self) {
+        let pos = self.position_ms();
+        self.output = None;
+        self.default_changed_at = None;
+        if self.deck.is_none() {
+            return;
+        }
+        self.lost_position = Some(pos);
+        if self.pause_on_device_loss || self.state != PlayState::Playing {
+            if self.state == PlayState::Playing {
+                self.state = PlayState::Paused;
+            }
+            self.shared.playing.store(false, Ordering::Relaxed);
+            tracing::info!(target: "sirtone::audio", "output device lost — paused");
+            self.emit_snapshot();
+        } else if let Err(e) = self.ensure_output().and_then(|_| self.seek(pos)) {
+            self.fail(e);
+        } else {
+            self.emit_snapshot();
+        }
+    }
+
     fn on_device_lost(&mut self) {
         // Remember where we were; Play reopens the device and seeks here.
         self.lost_position = Some(self.position_ms());
@@ -514,6 +609,7 @@ impl Engine {
             duration_ms: self.deck.as_ref().and_then(|d| d.duration_ms),
             volume: self.volume,
             underruns: self.shared.underruns.load(Ordering::Relaxed),
+            device: self.output.as_ref().map(|(o, _)| o.device_id.clone()),
         };
         (self.events)(EngineEvent::Snapshot(snap));
     }
