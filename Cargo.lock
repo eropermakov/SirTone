@@ -3303,14 +3303,14 @@ checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
 name = "sirtone-analysis"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "sirtone-core",
 ]
 
 [[package]]
 name = "sirtone-app"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -3329,7 +3329,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-audio"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "rtrb",
  "rubato",
@@ -3343,14 +3343,14 @@ dependencies = [
 
 [[package]]
 name = "sirtone-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "sirtone-core",
 ]
 
 [[package]]
 name = "sirtone-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -3360,49 +3360,49 @@ dependencies = [
 
 [[package]]
 name = "sirtone-library"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "sirtone-core",
 ]
 
 [[package]]
 name = "sirtone-net"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "sirtone-core",
 ]
 
 [[package]]
 name = "sirtone-platform"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "sirtone-core",
 ]
 
 [[package]]
 name = "sirtone-playback"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "sirtone-core",
 ]
 
 [[package]]
 name = "sirtone-recognize"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "sirtone-core",
 ]
 
 [[package]]
 name = "sirtone-search"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "sirtone-core",
 ]
 
 [[package]]
 name = "sirtone-wave"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "sirtone-core",
 ]
