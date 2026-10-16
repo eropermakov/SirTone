@@ -10,7 +10,8 @@
     "lint": "biome check . && eslint",
     "format": "biome format --write .",
     "typecheck": "pnpm -r --if-present run typecheck",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "fixtures": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/fixtures/make-fixtures.ps1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
