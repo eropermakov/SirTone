@@ -17,6 +17,7 @@ tauri-build = { workspace = true, features = [] }
 [dependencies]
 tauri = { workspace = true, features = [] }
 serde = { workspace = true }
+sirtone-core = { workspace = true }
 tauri-plugin-single-instance = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod diagnostics;
+mod settings_store;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -34,6 +35,7 @@ fn main() {
     let _log_guard = diagnostics::init_logging(&data_dir, debug);
     diagnostics::install_panic_hook(data_dir.clone());
     tracing::info!(target: "sirtone::startup", version = env!("CARGO_PKG_VERSION"), "starting");
+    let settings = settings_store::SettingsStore::open(&data_dir);
 
     let app = tauri::Builder::default()
         // Second launch (or Jump List command) focuses the existing window (FR-SHELL-004).
@@ -45,6 +47,11 @@ fn main() {
             }
         }))
         .manage(ShownOnce::default())
+        .manage(settings)
+        .invoke_handler(tauri::generate_handler![
+            settings_store::settings_get,
+            settings_store::settings_patch
+        ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 let theme = window.theme().unwrap_or(Theme::Dark);
