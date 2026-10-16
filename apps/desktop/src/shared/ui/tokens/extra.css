@@ -1,3 +1,4 @@
+/* biome-ignore-all lint/complexity/noImportantStyles: reduced motion must override every component (D-61) */
 /* Tokens DESIGN.md does not define (docs/12 §4.5). */
 :root {
   --z-base: 0;

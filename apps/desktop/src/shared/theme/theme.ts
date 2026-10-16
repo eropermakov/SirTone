@@ -45,7 +45,9 @@ export function applyAppearance(pref: ThemePref, accent: AccentSource): void {
     root.dataset.accent = "custom";
     const s = generateAccentSet(accent.hex, theme);
     const values = [s.accentFill, s.accentText, s.accentOn, s.primary, s.primaryText];
-    CUSTOM_VARS.forEach((v, i) => root.style.setProperty(`--${v}`, values[i] ?? null));
+    for (const [i, v] of CUSTOM_VARS.entries()) {
+      root.style.setProperty(`--${v}`, values[i] ?? null);
+    }
   }
 }
 
