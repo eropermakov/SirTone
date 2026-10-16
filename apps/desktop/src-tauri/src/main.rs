@@ -6,6 +6,7 @@ mod diagnostics;
 mod ipc;
 mod playback;
 mod settings_store;
+mod tray;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -44,11 +45,7 @@ fn main() {
         // Second launch (or Jump List command, «Открыть с помощью») focuses the existing window
         // and plays the files it was given (FR-SHELL-004).
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            tray::show_main(app);
             if let Some(pb) = app.try_state::<playback::Playback>() {
                 pb.open_paths(app, &playback::paths_from_args(&args));
             }
@@ -58,6 +55,14 @@ fn main() {
         .invoke_handler(specta.invoke_handler())
         // Native file drop (D-07): paths stay in Rust, the engine plays the first playable one.
         .on_window_event(|window, event| {
+            // Close button / Alt+F4 hide to the tray; music keeps playing (FR-SHELL-003).
+            if let WindowEvent::CloseRequested { api, .. } = event
+                && window.label() == "main"
+            {
+                api.prevent_close();
+                let _ = window.hide();
+                return;
+            }
             if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event
                 && let Some(pb) = window.try_state::<playback::Playback>()
             {
@@ -66,7 +71,11 @@ fn main() {
         })
         .setup(move |app| {
             specta.mount_events(app);
-            match playback::Playback::start(app.handle().clone()) {
+            if let Err(e) = tray::build(app.handle()) {
+                tracing::error!(target: "sirtone::startup", error = %e, "tray failed");
+            }
+            let store = app.state::<Arc<settings_store::SettingsStore>>().inner().clone();
+            match playback::Playback::start(app.handle().clone(), store) {
                 Ok(pb) => {
                     let args: Vec<String> = std::env::args().collect();
                     pb.open_paths(app.handle(), &playback::paths_from_args(&args));

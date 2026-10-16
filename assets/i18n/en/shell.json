@@ -79,5 +79,11 @@
     "darkred": "",
     "burgundy": "",
     "bordeaux": ""
+  },
+  "tray": {
+    "open": "",
+    "playPause": "",
+    "quit": "",
+    "tooltip": ""
   }
 }

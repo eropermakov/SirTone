@@ -13,3 +13,4 @@ workspace = true
 
 [dependencies]
 sirtone-core.workspace = true
+sirtone-audio.workspace = true

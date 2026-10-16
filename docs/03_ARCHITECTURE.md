@@ -550,6 +550,7 @@ CREATE VIRTUAL TABLE search_tri USING fts5(text, content='', tokenize='trigram')
                    "viz_enabled": null, "viz_fps_cap": null, "viz_scale": null,
                    "video_background": null, "widget_mini_viz": null, "analysis_threads": null } },
   "playback": {
+    "volume": 1.0,                                   // D-64: громкость плеера 0…1, запоминается
     "automix": { "mode": "smart", "intensity": "medium", "crossfade_s": 6, "skip_albums": true, "genre_blacklist": ["classical","live","ambient","audiobook"] },
     "normalization": { "enabled": true, "target_lufs": -14, "album_mode": "auto" },
     "eq": { "enabled": false, "preamp_db": 0, "bands_db": [0,0,0,0,0,0,0,0,0,0], "preset": "flat" },

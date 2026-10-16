@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use sirtone_audio::{EngineCmd, EngineEvent, EngineHandle, PlayState};
 use sirtone_core::error::{AppError, ErrorCode};
 use tauri::{AppHandle, State};
+
+use crate::settings_store::SettingsStore;
 use tauri_specta::Event;
 
 /// Extensions the prototype opens (docs/04 §2 minus WMA/APE/WV, which need T1.2).
@@ -49,6 +51,7 @@ pub struct PlaybackError {
 
 pub struct Playback {
     engine: EngineHandle,
+    settings: Arc<SettingsStore>,
     last: Arc<Mutex<PlaybackSnapshot>>,
 }
 
@@ -67,7 +70,7 @@ fn file_name(p: &Path) -> Option<String> {
 }
 
 impl Playback {
-    pub fn start(app: AppHandle) -> Result<Self, AppError> {
+    pub fn start(app: AppHandle, settings: Arc<SettingsStore>) -> Result<Self, AppError> {
         let last = Arc::new(Mutex::new(empty_snapshot()));
         let sink_last = last.clone();
         let engine = sirtone_audio::start(Box::new(move |ev| match ev {
@@ -105,7 +108,13 @@ impl Playback {
                 .emit(&app);
             }
         }))?;
-        Ok(Self { engine, last })
+        let volume = settings.get()["playback"]["volume"].as_f64().unwrap_or(1.0) as f32;
+        engine.send(EngineCmd::SetVolume(volume));
+        Ok(Self {
+            engine,
+            settings,
+            last,
+        })
     }
 
     /// Plays the first playable file among `paths`; a folder plays its first playable file by
@@ -126,6 +135,10 @@ impl Playback {
             }
             None => {}
         }
+    }
+
+    pub fn toggle(&self) {
+        self.engine.send(EngineCmd::Toggle);
     }
 
     pub fn shutdown(&self) {
@@ -196,7 +209,16 @@ pub fn playback_seek(pb: State<'_, Playback>, position_ms: u32) {
 #[tauri::command]
 #[specta::specta]
 pub fn playback_set_volume(pb: State<'_, Playback>, volume: f32) {
+    let volume = if volume.is_finite() {
+        volume.clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
     pb.engine.send(EngineCmd::SetVolume(volume));
+    // Remembered between launches (D-64); the store debounces disk writes to 1/s.
+    let _ = pb
+        .settings
+        .patch(&serde_json::json!({ "playback": { "volume": volume } }));
 }
 
 #[cfg(test)]

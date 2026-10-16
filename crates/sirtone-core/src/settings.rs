@@ -138,9 +138,11 @@ impl Default for Performance {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Playback {
+    /// Player slider 0…1 (cubic curve in the engine), remembered between launches (D-64).
+    pub volume: f32,
     pub automix: Automix,
     pub normalization: Normalization,
     pub eq: Eq,
@@ -505,6 +507,19 @@ pub fn deep_merge(base: &mut Value, patch: &Value) {
 }
 
 /// Validates the semantic rules serde types cannot express.
+impl Default for Playback {
+    fn default() -> Self {
+        Self {
+            volume: 1.0,
+            automix: Automix::default(),
+            normalization: Normalization::default(),
+            eq: Eq::default(),
+            output: Output::default(),
+            duck: Duck::default(),
+        }
+    }
+}
+
 fn validate(s: &Settings) -> Result<(), SettingsError> {
     let a = &s.appearance.accent;
     if !ACCENT_PRESETS.contains(&a.preset.as_str()) {
@@ -521,6 +536,11 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
     if s.performance.level > 4 {
         return Err(SettingsError::Invalid(
             "performance.level must be 0..=4".into(),
+        ));
+    }
+    if !(0.0..=1.0).contains(&s.playback.volume) {
+        return Err(SettingsError::Invalid(
+            "playback.volume must be 0..=1".into(),
         ));
     }
     if s.wave.novelty > 100 {
