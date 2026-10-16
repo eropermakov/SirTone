@@ -61,8 +61,14 @@ pub fn fix_mojibake(s: &str) -> Option<String> {
         .iter()
         .filter(|&&c| ('\u{00C0}'..='\u{00FF}').contains(&c))
         .count();
-    if letters == 0 || high * 10 < letters * 6 {
-        return None; // < 60 % of letters in U+00C0–U+00FF: genuine Latin text
+    let is_high = |c: char| ('\u{00C0}'..='\u{00FF}').contains(&c);
+    // D-67: a whole word of ≥ 3 letters made only of U+00C0–U+00FF is mojibake even in mixed
+    // strings («Echo Âåòåð», «AC/DC - Ìîÿ ïåñíÿ»); single accents («Café», «Björk») are not.
+    let mojibake_word = s
+        .split(|c: char| !c.is_alphabetic())
+        .any(|w| w.chars().count() >= 3 && w.chars().all(is_high));
+    if letters == 0 || (high * 10 < letters * 6 && !mojibake_word) {
+        return None; // genuine Latin text
     }
     let bytes: Vec<u8> = chars.iter().map(|&c| c as u32 as u8).collect();
     for enc in [
@@ -74,9 +80,13 @@ pub fn fix_mojibake(s: &str) -> Option<String> {
         if had_errors {
             continue;
         }
-        let letters = decoded.chars().filter(|c| c.is_alphabetic()).count();
+        // Only the formerly non-ASCII letters must turn Cyrillic (ASCII words stay as they are).
+        let letters = decoded
+            .chars()
+            .filter(|c| c.is_alphabetic() && !c.is_ascii())
+            .count();
         let cyr = decoded.chars().filter(|&c| is_cyrillic(c)).count();
-        if letters > 0 && cyr * 10 >= letters * 7 {
+        if letters > 0 && cyr >= 3.min(letters) && cyr * 10 >= letters * 7 {
             return Some(decoded.into_owned());
         }
     }
@@ -135,7 +145,24 @@ mod tests {
         {
             assert_eq!(fix_mojibake(&latin1_of_cp1251(s)).as_deref(), Some(s));
         }
-        for s in ["Beyoncé", "Mötley Crüe", "Sigur Rós", "AC/DC", "Би-2"] {
+        // Mixed with ASCII words (D-67).
+        for (plain, cyr) in [("Echo ", "Ветер"), ("AC/DC - ", "Моя песня")] {
+            let broken = format!("{plain}{}", latin1_of_cp1251(cyr));
+            assert_eq!(
+                fix_mojibake(&broken).as_deref(),
+                Some(format!("{plain}{cyr}").as_str())
+            );
+        }
+        for s in [
+            "Beyoncé",
+            "Mötley Crüe",
+            "Sigur Rós",
+            "AC/DC",
+            "Би-2",
+            "Café Society",
+            "Ñandú",
+            "Björk",
+        ] {
             assert_eq!(fix_mojibake(s), None, "{s}");
         }
     }

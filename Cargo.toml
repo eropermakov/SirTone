@@ -16,6 +16,8 @@ authors = ["Sir.kov Studio"]
 sirtone-core = { path = "crates/sirtone-core" }
 sirtone-audio = { path = "crates/sirtone-audio" }
 sirtone-platform = { path = "crates/sirtone-platform" }
+sirtone-library = { path = "crates/sirtone-library" }
+sirtone-recognize = { path = "crates/sirtone-recognize" }
 tauri = { version = "2.12", features = [] }
 tauri-build = "2.7"
 tauri-plugin-single-instance = "2.5"

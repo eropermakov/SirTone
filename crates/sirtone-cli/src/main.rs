@@ -5,8 +5,12 @@
 //! sirtone-cli probe <file>...            format, rate, channels, duration
 //! sirtone-cli play <file> [--volume V]   play to the default device until the end (Ctrl+C stops)
 //! sirtone-cli render <file> --out <wav>  offline render (T1.7, not yet)
+//! sirtone-cli import <library_root> [sources...]  import (recover + resume first), P-10 numbers
+//! sirtone-cli verify <library_root>      database and disk agree
 //! ```
 #![allow(clippy::print_stdout, clippy::print_stderr)]
+
+mod library;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -112,6 +116,8 @@ fn main() -> ExitCode {
                 .unwrap_or(0.5);
             play(&args[1], volume)
         }
+        Some("import") if args.len() > 1 => library::import(&args[1], &args[2..]),
+        Some("verify") if args.len() > 1 => library::verify(&args[1]),
         Some("render") => {
             eprintln!("render: offline WAV render arrives with T1.7");
             ExitCode::FAILURE
