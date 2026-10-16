@@ -22,3 +22,9 @@
 *.ogg  binary
 *.webm binary
 *.mp4  binary
+*.ttf  binary
+*.otf  binary
+*.flac binary
+*.mp3  binary
+*.lock text eol=lf
+fonts/OFL.txt text eol=lf

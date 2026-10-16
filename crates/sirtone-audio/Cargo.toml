@@ -1,0 +1,15 @@
+[package]
+name = "sirtone-audio"
+description = "Decoding, resampling, DSP, mixer, automix, WASAPI output."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sirtone-core.workspace = true
