@@ -26,7 +26,14 @@ const SHOW_FALLBACK: Duration = Duration::from_secs(3);
 struct ShownOnce(Arc<AtomicBool>);
 
 fn main() {
+    // Test isolation (stage-1 plan): with SIRTONE_DATA_DIR the instance has its own settings, logs,
+    // WebView2 profile and identity, and never joins or forwards to the owner's running Сиртон.
+    let isolated = std::env::var_os("SIRTONE_DATA_DIR").is_some_and(|d| !d.is_empty());
     let data_dir = diagnostics::data_dir();
+    if isolated {
+        // SAFETY: first statement of `main`, before any other thread exists.
+        unsafe { std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", data_dir.join("webview")) };
+    }
     let debug = cfg!(debug_assertions) || std::env::args().any(|a| a == "--debug");
     let _log_guard = diagnostics::init_logging(&data_dir, debug);
     diagnostics::install_panic_hook(data_dir.clone());
@@ -34,6 +41,12 @@ fn main() {
     let settings = settings_store::SettingsStore::open(&data_dir);
 
     let specta = ipc::builder();
+    let mut context = tauri::generate_context!();
+    if isolated {
+        // Test instances get their own identity: the single-instance lock and forwarding work
+        // between test instances only and never reach the owner's app (D-37 id is untouched).
+        context.config_mut().identifier = "studio.serkov.sirtone.test".into();
+    }
     let app = tauri::Builder::default()
         // Second launch (or Jump List command, «Открыть с помощью») focuses the existing window
         // and plays the files it was given (FR-SHELL-004).
@@ -100,7 +113,7 @@ fn main() {
                 }
             }
         })
-        .build(tauri::generate_context!());
+        .build(context);
 
     match app {
         Ok(app) => app.run(|handle, event| {
