@@ -109,7 +109,7 @@
     "cancel": "Отменить",
     "doneTitle": "Музыка добавлена",
     "report": "Добавлено {added} · В «Неизвестные» {unknown} · Дубли {duplicates} · Не добавлено {rejected}",
-    "reasons": "Не добавлено: {list}",
+    "reasons": "причины: {list}",
     "reason": {
       "not_audio": "не аудио",
       "corrupt": "повреждённые",

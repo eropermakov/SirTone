@@ -22,6 +22,9 @@ const root = join(import.meta.dirname, "..", "..", "..");
 const exe = process.argv[2] ?? join(root, "target", "release", "sirtone-app.exe");
 const fixtures = join(root, "fixtures", "generated");
 const dataDir = mkdtempSync(join(tmpdir(), "sirtone-smoke-"));
+// Library folder for this run only — never the owner's Music folder.
+const libDir = mkdtempSync(join(tmpdir(), "sirtone-smoke-lib-"));
+const corpus = join(fixtures, "import500");
 const PORT = 9335;
 const env = {
   ...process.env,
@@ -150,6 +153,51 @@ await sleep(2000);
 const t2 = await footer.locator(".t-body-strong").first().textContent();
 check("second launch forwards the file", t2 === "flac-16-44", t2);
 
+// 9. Library (Stage 1): import without a folder → «Папка для музыки»; folder set → import runs,
+//    report; Albums → album → double click plays the context; «вперёд» moves on.
+if (existsSync(corpus)) {
+  const start = await invoke("import_paths", { paths: [corpus] });
+  check("import without a folder asks for one", start === "rootNeeded", String(start));
+  await page.getByRole("heading", { name: "Папка для музыки" }).waitFor({ timeout: 3000 });
+  check("folder panel shown", true);
+  await invoke("library_set_root", { path: libDir }); // starts the waiting import
+  const report = page.getByRole("status").filter({ hasText: "Музыка добавлена" });
+  await report.waitFor({ timeout: 60000 });
+  const text = await report.textContent();
+  check(
+    "import report",
+    /Добавлено 438/.test(text) && /Дубли 10/.test(text) && /Не добавлено 52/.test(text),
+    text,
+  );
+  const st = await invoke("library_status", {});
+  check(
+    "library counters",
+    st.tracks === 438 && st.albums > 30,
+    `${st.tracks} tracks, ${st.albums} albums`,
+  );
+  await page.getByRole("button", { name: "Альбомы" }).click();
+  await page.getByText(/Вся коллекция: 438 треков/).waitFor({ timeout: 5000 });
+  check("collection summary", true);
+  await page.locator("main ul li button").first().click();
+  const rows = page.getByRole("list", { name: "Треки" }).getByRole("button");
+  await rows.first().waitFor({ timeout: 5000 });
+  const firstTitle = (await rows.first().locator(".t-body").textContent())?.trim();
+  await rows.first().dblclick();
+  await sleep(1200);
+  const playing = await footer.locator(".t-body-strong").first().textContent();
+  check("double click plays the track", playing === firstTitle, `${playing} / ${firstTitle}`);
+  const nextBtn = footer.getByRole("button", { name: "Вперёд" });
+  check("next enabled in an album", await nextBtn.isEnabled());
+  await nextBtn.click();
+  await sleep(1200);
+  const second = await footer.locator(".t-body-strong").first().textContent();
+  check("next plays the following track", second !== playing, `${playing} → ${second}`);
+  await page.getByRole("button", { name: "Настройки" }).click();
+  check("storage shows the folder", (await page.getByText(libDir).count()) > 0);
+} else {
+  console.log("SKIP  library checks (run tools/fixtures/make-import-corpus.py)");
+}
+
 // 8. Theme and volume persist through Rust settings (T0.6/T0.7, D-64) and survive a restart.
 await page.getByRole("button", { name: "Настройки" }).click();
 await page.getByRole("button", { name: "Светлая" }).click();
@@ -172,6 +220,7 @@ await browser.close();
 app.kill();
 await sleep(500);
 rmSync(dataDir, { recursive: true, force: true });
+rmSync(libDir, { recursive: true, force: true });
 const failed = results.filter((r) => !r.ok).length;
 console.log(
   `\n${results.length - failed}/${results.length} passed (isolated data dir, owner's app untouched)`,
