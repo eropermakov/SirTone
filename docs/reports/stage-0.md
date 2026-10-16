@@ -7,6 +7,10 @@
 - [x] T0.1 Rust-workspace, 11 крейтов, гейты (fmt, clippy, deny, nextest) — `94431fc`
 - [x] T0.2 JS-workspace (pnpm, Biome, TypeScript, Vitest) — `e0003e4`
 - [x] T0.3 Каркас Tauri 2 + React 19 + Vite + Tailwind 4; окно без белой вспышки (видно через 0,46 с) — `05aafa7`, `6465ed1`
+- [x] T0.4 CSP, capabilities, single-instance — `a14ef72`
+- [x] T0.8 i18n (ICU, русские формы), правило «нет строк в JSX» — `0bc39ba`
+- [x] T0.9 токены `DESIGN.md`, Geologica, системная тема, генератор цвета, тест контраста 17×2 — `4840590`, `2b8dfa5`
+- [x] T2.0 прототип 0.1: оболочка, тема и цвет (проверено в браузере: токены, шрифт, 260/64 px, плеер 84 px)
 
 ## Сейчас
 - [ ] Прототип 0.1 «можно потыкать»: T0.4 (CSP, capabilities) → T0.8 (i18n, минимум) → T0.9 (токены `DESIGN.md` + Geologica) → срез оболочки из T2.1/T2.2 (сайдбар, плеер-заглушка, пустое состояние, тема, AccentPicker) → установщик NSIS на рабочий стол + пререлиз на GitHub

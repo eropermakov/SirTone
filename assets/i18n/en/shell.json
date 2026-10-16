@@ -1,0 +1,80 @@
+{
+  "proto": "",
+  "empty": {
+    "wave": {
+      "title": "",
+      "text": ""
+    },
+    "collection": {
+      "title": "",
+      "text": ""
+    },
+    "artists": {
+      "title": "",
+      "text": ""
+    },
+    "albums": {
+      "title": "",
+      "text": ""
+    },
+    "playlists": {
+      "title": "",
+      "text": ""
+    },
+    "unknown": {
+      "title": "",
+      "text": ""
+    },
+    "search": {
+      "title": "",
+      "text": ""
+    },
+    "action": "",
+    "soon": ""
+  },
+  "player": {
+    "nothing": "",
+    "hint": "",
+    "shuffle": "",
+    "prev": "",
+    "play": "",
+    "next": "",
+    "repeat": "",
+    "queue": "",
+    "volume": ""
+  },
+  "settings": {
+    "title": "",
+    "appearance": "",
+    "theme": "",
+    "themeSystem": "",
+    "themeDark": "",
+    "themeLight": "",
+    "color": "",
+    "custom": "",
+    "preview": "",
+    "previewButton": "",
+    "about": "",
+    "version": "",
+    "badge": ""
+  },
+  "accent": {
+    "sirkov": "",
+    "blue": "",
+    "violet": "",
+    "lilac": "",
+    "lavender": "",
+    "gray": "",
+    "black": "",
+    "yellow": "",
+    "orange": "",
+    "ginger": "",
+    "coral": "",
+    "brick": "",
+    "lightred": "",
+    "red": "",
+    "darkred": "",
+    "burgundy": "",
+    "bordeaux": ""
+  }
+}

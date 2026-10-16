@@ -8,6 +8,14 @@ export default [
     files: ["apps/desktop/src/**/*.tsx"],
     languageOptions: { parser: tseslint.parser },
     plugins: { i18next },
-    rules: { "i18next/no-literal-string": ["error", { mode: "jsx-only" }] },
+    rules: {
+      "i18next/no-literal-string": [
+        "error",
+        {
+          mode: "jsx-only",
+          "jsx-attributes": { include: ["title", "aria-label", "alt", "placeholder"] },
+        },
+      ],
+    },
   },
 ];
