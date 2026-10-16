@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   EMPTY_SNAPSHOT,
-  getSnapshot,
   onPlaybackError,
   onSnapshot,
   type PlaybackError,
@@ -33,7 +32,6 @@ export function usePlayback() {
       receivedAt.current = performance.now();
       setSnap(s);
     };
-    getSnapshot().then((s) => alive && apply(s));
     onSnapshot(apply).then((off) => (alive ? offs.push(off) : off()));
     onPlaybackError(setError).then((off) => (alive ? offs.push(off) : off()));
     return () => {
@@ -54,5 +52,10 @@ export function usePlayback() {
   }, []);
 
   const clearError = useCallback(() => setError(null), []);
-  return { snap, receivedAt, error, clearError };
+  /** Initial state from `app_bootstrap`; later snapshots arrive as events. */
+  const hydrate = useCallback((s: PlaybackSnapshot) => {
+    receivedAt.current = performance.now();
+    setSnap(s);
+  }, []);
+  return { snap, receivedAt, error, clearError, hydrate };
 }

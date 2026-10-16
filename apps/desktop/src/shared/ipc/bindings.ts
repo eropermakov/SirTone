@@ -7,6 +7,7 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 
 /** Commands */
 export const commands = {
+	appBootstrap: () => __TAURI_INVOKE<Bootstrap>("app_bootstrap"),
 	settingsGet: () => __TAURI_INVOKE<unknown>("settings_get"),
 	settingsPatch: (patch: unknown) => typedError<unknown, AppError>(__TAURI_INVOKE("settings_patch", { patch })),
 	playbackSnapshot: () => __TAURI_INVOKE<PlaybackSnapshot>("playback_snapshot"),
@@ -29,6 +30,12 @@ export type AppError = {
 	retryable: boolean,
 	/**  For logs/diagnostics, never shown to the user as-is. */
 	details: string | null,
+};
+
+export type Bootstrap = {
+	version: string,
+	settings: unknown,
+	playback: PlaybackSnapshot | null,
 };
 
 export type ErrorCode = "FileNotFound" | "UnsupportedFormat" | "DecodeFailed" | "PathTooLong" | "DiskFull" | "PermissionDenied" | "DeviceUnavailable" | "DeviceBusy" | "NetworkOffline" | "RateLimited" | "RemoteError" | "DbBusy" | "DbCorrupt" | "Cancelled" | "InvalidArgument" | "LibraryOffline" | "NotSupported" | "InvalidConfig" | "Internal";

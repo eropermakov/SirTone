@@ -137,6 +137,13 @@ impl Playback {
         }
     }
 
+    pub fn snapshot(&self) -> PlaybackSnapshot {
+        self.last
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or_else(|_| empty_snapshot())
+    }
+
     pub fn toggle(&self) {
         self.engine.send(EngineCmd::Toggle);
     }

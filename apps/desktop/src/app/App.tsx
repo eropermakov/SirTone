@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { bootstrap } from "@/shared/ipc/bootstrap";
 import { togglePlay } from "@/shared/ipc/playback";
 import {
   getSettings,
@@ -57,7 +58,7 @@ const NARROW = "(max-width: 899px)";
 export function App() {
   const { t } = useTranslation("shell");
   const { t: tc } = useTranslation("common");
-  const { snap, receivedAt, error, clearError } = usePlayback();
+  const { snap, receivedAt, error, clearError, hydrate } = usePlayback();
   const [screen, setScreen] = useState<Screen>("wave");
   const [appearance, setAppearanceState] = useState<Appearance>(DEFAULT);
   const [manualCollapsed, setManualCollapsed] = useState(false);
@@ -67,12 +68,17 @@ export function App() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     const reload = () => getSettings().then((doc) => setAppearanceState(fromDoc(doc)));
-    migrateLegacyAppearance().finally(reload);
+    migrateLegacyAppearance().finally(() =>
+      bootstrap().then((b) => {
+        setAppearanceState(fromDoc(b.settings));
+        hydrate(b.playback);
+      }),
+    );
     onSettingsChanged(reload).then((u) => {
       unlisten = u;
     });
     return () => unlisten?.();
-  }, []);
+  }, [hydrate]);
 
   /** Optimistic UI (DESIGN.md §1): apply at once, persist in the background, roll back on error. */
   const setAppearance = (next: (a: Appearance) => Appearance) => {

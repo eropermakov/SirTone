@@ -4,7 +4,7 @@
 
 use tauri_specta::{Builder, collect_commands, collect_events};
 
-use crate::{playback, settings_store, window_chrome};
+use crate::{bootstrap, playback, settings_store, window_chrome};
 
 /// Free-form JSON across IPC, exported as TS `unknown`. specta inlines `serde_json::Value`
 /// recursively and overflows; the UI owns the typed view of these documents.
@@ -21,6 +21,7 @@ impl specta::Type for Json {
 pub fn builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new()
         .commands(collect_commands![
+            bootstrap::app_bootstrap,
             settings_store::settings_get,
             settings_store::settings_patch,
             playback::playback_snapshot,

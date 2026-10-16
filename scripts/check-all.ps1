@@ -1,4 +1,4 @@
-# Run every quality gate that exists at the current stage of the project.
+﻿# Run every quality gate that exists at the current stage of the project.
 # Usage (Windows PowerShell 5.1, pwsh is not installed locally; CI uses pwsh):
 #     powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check-all.ps1
 # -ExecutionPolicy Bypass applies to this one process only; system settings are not changed.
@@ -25,6 +25,8 @@ if (Test-Path 'package.json') {
     Step 'pnpm lint'      { pnpm run --if-present lint }
     Step 'pnpm typecheck' { pnpm run --if-present typecheck }
     Step 'pnpm test'      { pnpm run --if-present test }
+    # UI smoke in Edge (same engine as WebView2) against a mocked Tauri bridge (T0.11).
+    Step 'pnpm e2e'       { pnpm --filter ./apps/desktop run e2e }
 } else { Write-Host 'No package.json yet - JS gates skipped.' -ForegroundColor Yellow }
 
 Write-Host "`nAll available gates passed." -ForegroundColor Green
