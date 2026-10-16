@@ -39,5 +39,13 @@
 - [x] T1.10 поиск следует за правками: `search_reindex`, `track_edit`, `track_remove`; FTS5 `contentless_delete=1` (D-65)
 - [x] T1.25 API коллекции: исполнители и альбомы (keyset), треки альбома/исполнителя, счётчики. **P-08 на 100 000 треков: p95 0,69 / 1,58 / 1,17 мс** (треки / исполнители / альбомы, `tests/scale.rs`). Счётчики — 163 мс → кэшировать до `library://changed` (`03` §7) при подключении к IPC
 
+## Проект импорта (T1.11–T1.14, `05` §3, `03` §15.2)
+- **Трейты в `core`** (реализации подключает `app`): `MediaProbe::probe(path) → MediaInfo` (`audio`, symphonia), `TagReader::read(path) → Tags` (`recognize`, lofty — T1.15; до него — пустые теги), `Identify::identify(tags, file_name, folder) → Identity` (`recognize`, T1.16–T1.17; до него — всё в `_Unknown` с причиной `no_metadata`), `VolumeInfo` (`platform`: съёмный ли носитель, свободное место).
+- **Таблица `import_item`** (новая, в `0001`, D-66): строка на исходный файл — `batch_id, src_path, size, state (discovered|copied|placed|rejected|duplicate|cancelled), staged_name, content_hash, track_id, reason`. Это даёт возобновление после убийства процесса без повторного чтения уже скопированного и честный отчёт.
+- **Шаги одного файла:** проба → копия в `staging/<batch>/<n>.part` с BLAKE3 на лету → `rename` → `state=copied` → личность → дубль по `content_hash` → размещение через `fs_journal` (planned → `rename` в каноническое место или `_Unknown` → в одной транзакции: трек в БД + журнал `done` + `state=placed`) → событие «трек играбелен».
+- **Восстановление при старте:** журнал `planned` без `done` откатывается (файл назад в staging), `.part` удаляются; незавершённые пакеты продолжаются с `discovered`/`copied`.
+- **Параллельность:** 3 потока «проба + копия», один поток пишет в БД и размещает (SQLite — один писатель).
+- Источник не изменяется никогда; удаление — только staging.
+
 ## Сейчас
 - [ ] Трейты импорта в `core` (`MediaProbe`, `TagReader`, `VolumeInfo`) → T1.11 обход и проба → корпус импорта на 500 файлов
