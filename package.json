@@ -1,0 +1,20 @@
+{
+  "name": "sirtone",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "typescript": "~6.0.3",
+    "vitest": "5.0.4"
+  }
+}
