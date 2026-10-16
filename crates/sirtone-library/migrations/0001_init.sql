@@ -45,6 +45,7 @@ CREATE TABLE album (
   folder_name TEXT, created_at INTEGER NOT NULL
 );
 CREATE INDEX ix_album_artist ON album(album_artist_id, title_norm);
+CREATE INDEX ix_album_title  ON album(title_norm, id);           -- keyset «альбомы по названию» (S-15)
 
 CREATE TABLE track (
   id INTEGER PRIMARY KEY, uid TEXT NOT NULL UNIQUE,
@@ -149,5 +150,5 @@ CREATE TABLE http_cache (key TEXT PRIMARY KEY, body BLOB NOT NULL, fetched_at IN
 
 -- Поиск (05 §11): две контентless-таблицы, обновляются из кода импорта/правок
 CREATE VIRTUAL TABLE search_fts USING fts5(title, artists, album, genre, aliases,
-  content='', tokenize='unicode61 remove_diacritics 2');
-CREATE VIRTUAL TABLE search_tri USING fts5(text, content='', tokenize='trigram');
+  content='', contentless_delete=1, tokenize='unicode61 remove_diacritics 2');  -- D-65
+CREATE VIRTUAL TABLE search_tri USING fts5(text, content='', contentless_delete=1, tokenize='trigram');

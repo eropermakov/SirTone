@@ -155,36 +155,112 @@ pub fn track_insert(conn: &mut Connection, t: &NewTrack) -> Result<TrackId, Libr
         ],
     )?;
     let id = tx.last_insert_rowid();
-    let mut names = Vec::with_capacity(t.artists.len());
-    for (pos, a) in t.artists.iter().enumerate() {
+    set_track_artists(&tx, id, &t.artists)?;
+    search_reindex(&tx, id)?;
+    tx.commit()?;
+    Ok(id)
+}
+
+fn set_track_artists(
+    conn: &Connection,
+    id: TrackId,
+    artists: &[ArtistId],
+) -> Result<(), LibraryError> {
+    conn.execute(
+        "DELETE FROM track_artist WHERE track_id = ?1 AND role IN ('primary','featured')",
+        [id],
+    )?;
+    for (pos, a) in artists.iter().enumerate() {
         let role = if pos == 0 { "primary" } else { "featured" };
-        tx.execute(
+        conn.execute(
             "INSERT OR IGNORE INTO track_artist(track_id, artist_id, role, position) VALUES (?1, ?2, ?3, ?4)",
             params![id, a, role, pos as i64],
         )?;
-        let name: String =
-            tx.query_row("SELECT name FROM artist WHERE id = ?1", [a], |r| r.get(0))?;
-        names.push(name);
     }
-    let album: Option<String> = match t.album_id {
-        Some(a) => tx
-            .query_row("SELECT title FROM album WHERE id = ?1", [a], |r| r.get(0))
-            .optional()?,
-        None => None,
+    Ok(())
+}
+
+/// Rebuilds both search rows of one track from the current data (T1.10). Contentless tables with
+/// `contentless_delete=1` (D-65) allow replacing a row by `rowid`.
+pub fn search_reindex(conn: &Connection, id: TrackId) -> Result<(), LibraryError> {
+    conn.execute("DELETE FROM search_fts WHERE rowid = ?1", [id])?;
+    conn.execute("DELETE FROM search_tri WHERE rowid = ?1", [id])?;
+    let row = conn
+        .query_row(
+            "SELECT t.title, coalesce(al.title, ''), coalesce(t.genre_main, ''),
+                    coalesce((SELECT group_concat(name, ' ') FROM
+                      (SELECT a.name FROM track_artist ta JOIN artist a ON a.id = ta.artist_id
+                       WHERE ta.track_id = t.id ORDER BY ta.position)), ''),
+                    coalesce((SELECT group_concat(alias_norm, ' ') FROM artist_alias aa
+                       JOIN track_artist ta ON ta.artist_id = aa.artist_id WHERE ta.track_id = t.id), ''),
+                    t.state
+             FROM track t LEFT JOIN album al ON al.id = t.album_id WHERE t.id = ?1",
+            [id],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                ))
+            },
+        )
+        .optional()?;
+    // Deleted or not playable tracks are not searchable.
+    let Some((title, album, genre, artists, aliases, state)) = row else {
+        return Ok(());
     };
-    let artists = names.join(" ");
-    let album = album.unwrap_or_default();
-    tx.execute(
-        "INSERT INTO search_fts(rowid, title, artists, album, genre, aliases) VALUES (?1, ?2, ?3, ?4, '', '')",
-        params![id, t.title, artists, album],
+    if state != "ok" {
+        return Ok(());
+    }
+    conn.execute(
+        "INSERT INTO search_fts(rowid, title, artists, album, genre, aliases) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![id, title, artists, album, genre, aliases],
     )?;
-    let tri = norm(&format!("{} {} {}", t.title, artists, album)).unwrap_or_default();
-    tx.execute(
+    let tri = norm(&format!("{title} {artists} {album}")).unwrap_or_default();
+    conn.execute(
         "INSERT INTO search_tri(rowid, text) VALUES (?1, ?2)",
         params![id, tri],
     )?;
+    Ok(())
+}
+
+/// User or recognition edit of a track's identity (FR-REC, «Неизвестные»).
+#[derive(Debug, Clone)]
+pub struct TrackEdit {
+    pub title: String,
+    pub album_id: Option<AlbumId>,
+    pub artists: Vec<ArtistId>,
+    pub genre_main: Option<String>,
+    pub identity: Identity,
+}
+
+pub fn track_edit(conn: &mut Connection, id: TrackId, e: &TrackEdit) -> Result<(), LibraryError> {
+    let tx = conn.transaction()?;
+    let n = tx.execute(
+        "UPDATE track SET title = ?2, title_norm = ?3, album_id = ?4, genre_main = ?5, identity_state = ?6
+         WHERE id = ?1",
+        params![id, e.title, norm(&e.title).unwrap_or_default(), e.album_id, e.genre_main, e.identity.as_str()],
+    )?;
+    if n == 0 {
+        return Err(LibraryError::Invalid(format!("no track {id}")));
+    }
+    set_track_artists(&tx, id, &e.artists)?;
+    search_reindex(&tx, id)?;
     tx.commit()?;
-    Ok(id)
+    Ok(())
+}
+
+/// «Только убрать из приложения» (FR-DATA-001): the row goes, the file stays.
+pub fn track_remove(conn: &mut Connection, id: TrackId) -> Result<(), LibraryError> {
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM search_fts WHERE rowid = ?1", [id])?;
+    tx.execute("DELETE FROM search_tri WHERE rowid = ?1", [id])?;
+    tx.execute("DELETE FROM track WHERE id = ?1", [id])?;
+    tx.commit()?;
+    Ok(())
 }
 
 /// A row as the track list shows it (TrackRow, DESIGN.md §9).

@@ -35,3 +35,4 @@ fonts/OFL.txt text eol=lf
 *.js   text eol=lf
 *.jsx  text eol=lf
 *.html text eol=lf
+*.sql  text eol=lf
