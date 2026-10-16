@@ -15,16 +15,57 @@ export const commands = {
 	playbackToggle: () => __TAURI_INVOKE<void>("playback_toggle"),
 	playbackSeek: (positionMs: number) => __TAURI_INVOKE<void>("playback_seek", { positionMs }),
 	playbackSetVolume: (volume: number | null) => __TAURI_INVOKE<void>("playback_set_volume", { volume }),
+	playbackNext: () => __TAURI_INVOKE<void>("playback_next"),
+	playbackPrev: () => __TAURI_INVOKE<void>("playback_prev"),
+	/**  Plays library tracks `ids` as one context starting at `start` (double-click in a list). */
+	playTracks: (ids: number[], start: number) => typedError<null, AppError>(__TAURI_INVOKE("play_tracks", { ids, start })),
+	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
+	/**  Folder picker (native dialog); `None` when the user cancels. */
+	libraryPickFolder: () => __TAURI_INVOKE<string | null>("library_pick_folder"),
+	librarySetRoot: (path: string) => typedError<LibraryStatus, AppError>(__TAURI_INVOKE("library_set_root", { path })),
+	importPaths: (paths: string[]) => __TAURI_INVOKE<ImportStart>("import_paths", { paths }),
+	importCancel: () => __TAURI_INVOKE<void>("import_cancel"),
+	collectionTracks: (after: {
+	key: string,
+	id: number,
+} | null, limit: number) => typedError<TrackPage, AppError>(__TAURI_INVOKE("collection_tracks", { after, limit })),
+	collectionAlbums: (after: {
+	key: string,
+	id: number,
+} | null, limit: number) => typedError<AlbumPage, AppError>(__TAURI_INVOKE("collection_albums", { after, limit })),
+	collectionArtists: (after: {
+	key: string,
+	id: number,
+} | null, limit: number) => typedError<ArtistPage, AppError>(__TAURI_INVOKE("collection_artists", { after, limit })),
+	albumTracks: (album: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("album_tracks", { album })),
+	artistTracks: (artist: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("artist_tracks", { artist })),
 	windowSetTheme: (dark: boolean) => __TAURI_INVOKE<void>("window_set_theme", { dark }),
 };
 
 /** Events */
 export const events = {
+	importFinished: makeEvent<ImportFinished>("import-finished"),
+	importProgress: makeEvent<ImportProgress>("import-progress"),
+	libraryChanged: makeEvent<LibraryChanged>("library-changed"),
+	libraryRootNeeded: makeEvent<LibraryRootNeeded>("library-root-needed"),
 	playbackError: makeEvent<PlaybackError>("playback-error"),
 	playbackSnapshot: makeEvent<PlaybackSnapshot>("playback-snapshot"),
 };
 
 /* Types */
+export type AlbumItem = {
+	id: number,
+	title: string,
+	artist: string,
+	year: number | null,
+	tracks: number,
+};
+
+export type AlbumPage = {
+	rows: AlbumItem[],
+	next: PageCursor | null,
+};
+
 export type AppError = {
 	code: ErrorCode,
 	retryable: boolean,
@@ -32,13 +73,77 @@ export type AppError = {
 	details: string | null,
 };
 
+export type ArtistItem = {
+	id: number,
+	name: string,
+	tracks: number,
+};
+
+export type ArtistPage = {
+	rows: ArtistItem[],
+	next: PageCursor | null,
+};
+
 export type Bootstrap = {
 	version: string,
 	settings: unknown,
 	playback: PlaybackSnapshot | null,
+	library: LibraryStatus | null,
 };
 
-export type ErrorCode = "FileNotFound" | "UnsupportedFormat" | "DecodeFailed" | "PathTooLong" | "DiskFull" | "PermissionDenied" | "DeviceUnavailable" | "DeviceBusy" | "NetworkOffline" | "RateLimited" | "RemoteError" | "DbBusy" | "DbCorrupt" | "Cancelled" | "InvalidArgument" | "LibraryOffline" | "NotSupported" | "InvalidConfig" | "Internal";
+export type ErrorCode = "FileNotFound" | "UnsupportedFormat" | "DecodeFailed" | "PathTooLong" | "DiskFull" | "PermissionDenied" | "DeviceUnavailable" | "DeviceBusy" | "NetworkOffline" | "RateLimited" | "RemoteError" | "DbBusy" | "DbCorrupt" | "Cancelled" | "InvalidArgument" | "LibraryOffline" | 
+/**  No library folder chosen yet (docs/03 §8.2): the UI asks for one. */
+"LibraryRootNotSet" | "NotSupported" | "InvalidConfig" | "Internal";
+
+/**  Batch report (docs/05 §3.2): «Добавлено · Неизвестные · Дубли · Не добавлено». */
+export type ImportFinished = {
+	added: number,
+	unknown: number,
+	duplicates: number,
+	rejected: number,
+	rejectedReasons: string[],
+	cancelled: number,
+	canEject: boolean,
+};
+
+/**  Import progress for the sidebar line (DESIGN.md §9 Sidebar, Зейгарник). ~5 per second. */
+export type ImportProgress = {
+	done: number,
+	total: number,
+	/**  All source files copied and verified: the medium can be removed (docs/05 §3.2). */
+	sourcesReleased: boolean,
+};
+
+export type ImportStart = "started" | "rootNeeded";
+
+/**  The collection changed (tracks added/removed): lists and counters refresh. Throttled. */
+export type LibraryChanged = {
+	tracks: number,
+};
+
+/**  Files were dropped before a library folder was chosen: the UI asks for one. */
+export type LibraryRootNeeded = {
+	pending: number,
+};
+
+export type LibraryStatus = {
+	/**  `None` until the user chose a folder (docs/03 §8.2). */
+	root: string | null,
+	defaultRoot: string,
+	tracks: number,
+	artists: number,
+	albums: number,
+	unknown: number,
+	durationSec: number,
+	/**  Bytes as f64 (u64 is not representable in JS numbers). */
+	bytes: number | null,
+	importing: boolean,
+};
+
+export type PageCursor = {
+	key: string,
+	id: number,
+};
 
 /**  A track or device error; the UI shows `errors.<code>` in a toast (DESIGN.md §9). */
 export type PlaybackError = {
@@ -49,8 +154,13 @@ export type PlaybackError = {
 /**  Engine state for the player bar. Emitted on every change and every 250 ms while playing. */
 export type PlaybackSnapshot = {
 	state: PlaybackState,
-	/**  File name without extension until tags arrive (T1.15). */
+	/**  Track title from the library, or the file name for a file opened directly. */
 	title: string | null,
+	artists: string | null,
+	/**  Library track id when playing from the collection. */
+	trackId: number | null,
+	hasNext: boolean,
+	hasPrev: boolean,
 	positionMs: number,
 	durationMs: number | null,
 	/**  Slider value 0…1. */
@@ -58,6 +168,19 @@ export type PlaybackSnapshot = {
 };
 
 export type PlaybackState = "empty" | "playing" | "paused" | "ended";
+
+export type TrackItem = {
+	id: number,
+	title: string,
+	artists: string,
+	album: string | null,
+	durationMs: number,
+};
+
+export type TrackPage = {
+	rows: TrackItem[],
+	next: PageCursor | null,
+};
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

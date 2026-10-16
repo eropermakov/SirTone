@@ -18,9 +18,11 @@ sirtone-audio = { path = "crates/sirtone-audio" }
 sirtone-platform = { path = "crates/sirtone-platform" }
 sirtone-library = { path = "crates/sirtone-library" }
 sirtone-recognize = { path = "crates/sirtone-recognize" }
+sirtone-playback = { path = "crates/sirtone-playback" }
 tauri = { version = "2.12", features = [] }
 tauri-build = "2.7"
 tauri-plugin-single-instance = "2.5"
+tauri-plugin-dialog = "2.8"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 specta = { version = "=2.0.0-rc.25", features = ["derive", "serde_json"] }
 specta-typescript = "=0.0.12"

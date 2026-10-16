@@ -4,7 +4,7 @@
 
 use tauri_specta::{Builder, collect_commands, collect_events};
 
-use crate::{bootstrap, playback, settings_store, window_chrome};
+use crate::{bootstrap, library, playback, settings_store, window_chrome};
 
 /// Free-form JSON across IPC, exported as TS `unknown`. specta inlines `serde_json::Value`
 /// recursively and overflows; the UI owns the typed view of these documents.
@@ -29,11 +29,28 @@ pub fn builder() -> Builder<tauri::Wry> {
             playback::playback_toggle,
             playback::playback_seek,
             playback::playback_set_volume,
+            playback::playback_next,
+            playback::playback_prev,
+            playback::play_tracks,
+            library::library_status,
+            library::library_pick_folder,
+            library::library_set_root,
+            library::import_paths,
+            library::import_cancel,
+            library::collection_tracks,
+            library::collection_albums,
+            library::collection_artists,
+            library::album_tracks,
+            library::artist_tracks,
             window_chrome::window_set_theme,
         ])
         .events(collect_events![
             playback::PlaybackSnapshot,
-            playback::PlaybackError
+            playback::PlaybackError,
+            library::ImportProgress,
+            library::ImportFinished,
+            library::LibraryChanged,
+            library::LibraryRootNeeded
         ])
 }
 

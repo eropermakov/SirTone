@@ -5,6 +5,7 @@
 mod bootstrap;
 mod diagnostics;
 mod ipc;
+mod library;
 mod playback;
 mod settings_store;
 mod tray;
@@ -56,10 +57,11 @@ fn main() {
                 pb.open_paths(app, &playback::paths_from_args(&args));
             }
         }))
+        .plugin(tauri_plugin_dialog::init())
         .manage(ShownOnce::default())
         .manage(settings)
         .invoke_handler(specta.invoke_handler())
-        // Native file drop (D-07): paths stay in Rust, the engine plays the first playable one.
+        // Native file drop (D-07): paths stay in Rust and go to the library import (FR-IMP-001).
         .on_window_event(|window, event| {
             // Close button / Alt+F4 hide to the tray; music keeps playing (FR-SHELL-003).
             if let WindowEvent::CloseRequested { api, .. } = event
@@ -70,9 +72,9 @@ fn main() {
                 return;
             }
             if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event
-                && let Some(pb) = window.try_state::<playback::Playback>()
+                && let Some(lib) = window.try_state::<library::Library>()
             {
-                pb.open_paths(window.app_handle(), paths);
+                lib.import_paths(window.app_handle(), paths.clone());
             }
         })
         .setup(move |app| {
@@ -81,6 +83,7 @@ fn main() {
                 tracing::error!(target: "sirtone::startup", error = %e, "tray failed");
             }
             let store = app.state::<Arc<settings_store::SettingsStore>>().inner().clone();
+            app.manage(library::Library::start(app.handle().clone(), store.clone()));
             match playback::Playback::start(app.handle().clone(), store) {
                 Ok(pb) => {
                     let args: Vec<String> = std::env::args().collect();
