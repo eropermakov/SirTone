@@ -1,6 +1,6 @@
 # 12. Руководство по реализации (как именно мы будем строить)
 
-> Версия 1.3 · 2026-10-16 · дополняет `09_ROADMAP.md` (что и когда) и `13_BACKLOG.md` (задачи). Здесь — **процесс, конкретные настройки каркаса, шаблоны кода и схемы конфигураций**, чтобы на старте не принимать решений «на ходу».
+> Версия 1.5 · 2026-10-16 · дополняет `09_ROADMAP.md` (что и когда) и `13_BACKLOG.md` (задачи). Здесь — **процесс, конкретные настройки каркаса, шаблоны кода и схемы конфигураций**, чтобы на старте не принимать решений «на ходу».
 
 ---
 
@@ -49,7 +49,7 @@
 |---|---|---|
 | `productName` | `SirTone` (отображаемое имя — «Сиртон» из i18n) | имя exe и ярлыков |
 | `identifier` | `studio.serkov.sirtone` | от него зависят папки данных, WebView2-профиль, обновления — **позже менять нельзя без миграции** |
-| `publisher` | `Серков Studio` | установщик, свойства файла |
+| `publisher` | `Sir.kov Studio` (бренд из `DESIGN.md` §0; было «Серков Studio» — ❓Q-21) | установщик, свойства файла, «О программе» |
 | Версия | `0.1.0` (SemVer) | обновления |
 
 ### 2.2. Rust workspace (`Cargo.toml`, корень)
@@ -173,7 +173,7 @@ unknown-git = "deny"
     }
   },
   "bundle": {
-    "active": true, "targets": ["nsis"], "publisher": "Серков Studio",
+    "active": true, "targets": ["nsis"], "publisher": "Sir.kov Studio",
     "windows": { "webviewInstallMode": { "type": "embedBootstrapper" },
                  "nsis": { "installMode": "currentUser" } }
   }
@@ -384,9 +384,9 @@ min_cyrillic_after = 0.7
 
 `{ "version": 1, "bands_hz": [31.25,62.5,125,250,500,1000,2000,4000,8000,16000], "presets": { "flat": [0,0,0,0,0,0,0,0,0,0], "bass_booster": [6,5,4,2,0,0,0,0,0,0], … } }` — значения тюнингуются на слух (Этап 4).
 
-### 4.5. `design-tokens.json` (DTCG; значения — от владельца)
+### 4.5. Токены дизайна (`DESIGN.md` §13, D-56)
 
-Обязательные группы: `color.surface.{0..3}`, `color.text.{1..3}`, `color.border.{default,strong}`, `color.accent.{50..950}` (генерируется), `color.semantic.{success,warning,danger,info}`, `radius.{xs,sm,md,lg,xl,full}`, `space.{0..12}`, `font.family.{ui,display,mono}`, `font.size.{xs..4xl}`, `font.weight.{regular,medium,semibold,bold}`, `shadow.{1..3}`, `blur.{sm,md,lg}`, `motion.duration.{micro,element,screen,hero}`, `motion.easing.{standard,emphasized,exit}`, `z.{base,overlay,modal,toast}`. Темы: `light` / `dark` переопределяют только `color.*`. До макетов — нейтральные значения (серые, системный шрифт).
+Источник — CSS из `DESIGN.md` §13 **без изменений** → `apps/desktop/src/shared/ui/tokens/sirtone.css` (копирует T0.9; при обновлении `DESIGN.md` — перекопировать и прогнать тест контраста). Поверх него в отдельном файле `tokens/extra.css` — только то, чего в `DESIGN.md` нет: уровни `z.*`, параметры скелетона, `@property`-регистрация 6 цветовых токенов для плавной смены темы (`06` §4.4). Tailwind 4 `@theme` ссылается на переменные (`--color-accent-fill: var(--accent-fill)` и т.д.). Шрифт: `@font-face` Geologica из `src/assets/fonts/Geologica-Variable.ttf` (переименованная копия `fonts/Geologica-VariableFont_CRSV,SHRP,slnt,wght.ttf`), `font-display: block`, `font-variation-settings: "CRSV" 0, "SHRP" 0`. Наборы цвета: `data-accent="<slug>"`; для «Своего», «Авто» вне 17 наборов не бывает, а сезонные темы и «Свой» пишут 6 переменных в `style` корня одним присваиванием.
 
 ### 4.6. Локализация
 
