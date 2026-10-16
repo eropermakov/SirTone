@@ -4,6 +4,7 @@
 //! Prototype scope (0.2): one deck, shared mode, default device. Gapless, automix, EQ, normaliser
 //! and the visualiser tap come with T1.5+ and Stage 4.
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -30,6 +31,9 @@ pub enum EngineCmd {
     Seek(u64),
     /// Slider value 0…1; the engine applies the cubic curve (docs/04 §7).
     SetVolume(f32),
+    /// The track to continue with when the current one ends, without a gap (T1.5, docs/04 §3:
+    /// pre-opened and fed into the same ring). `None` clears it.
+    SetNext(Option<PathBuf>),
     Shutdown,
 }
 
@@ -107,6 +111,22 @@ struct Deck {
     /// Segment start: track position (device frames) and `Shared::consumed` at that moment.
     base_frames: u64,
     base_consumed: u64,
+    /// Length of the track that is audible now (the source may already be the next one).
+    duration_ms: Option<u64>,
+    /// Source frames decoded since the deck start.
+    decoded_in: u64,
+    /// Gapless chain (T1.5): the next track with the same rate and channels continues through the
+    /// same resampler, so the joint is exactly as continuous as one file would be.
+    chained: Option<(Source, PathBuf)>,
+    /// Where chained tracks begin, in deck frames (output and input), oldest first.
+    boundaries: VecDeque<Boundary>,
+}
+
+struct Boundary {
+    at_out: u64,
+    at_in: u64,
+    path: PathBuf,
+    duration_ms: Option<u64>,
 }
 
 struct Engine {
@@ -119,6 +139,13 @@ struct Engine {
     last_snapshot: Instant,
     flush_seq: u64,
     lost_position: Option<u64>,
+    /// Gapless continuation: path from `SetNext`, the deck being fed after the current one ended
+    /// (it becomes audible at its `base_consumed`), and whether opening it already failed.
+    next_path: Option<PathBuf>,
+    feeding: Option<Deck>,
+    next_failed: bool,
+    /// The next track is attached to the current deck's chain (same format).
+    next_attached: bool,
 }
 
 impl Engine {
@@ -133,13 +160,18 @@ impl Engine {
             last_snapshot: Instant::now(),
             flush_seq: 0,
             lost_position: None,
+            next_path: None,
+            feeding: None,
+            next_failed: false,
+            next_attached: false,
         }
     }
 
     fn run(mut self, rx: mpsc::Receiver<EngineCmd>) {
         loop {
-            let busy =
-                self.state == PlayState::Playing && self.deck.as_ref().is_some_and(|d| !d.eof);
+            let busy = self.state == PlayState::Playing
+                && (self.deck.as_ref().is_some_and(|d| !d.eof)
+                    || self.feeding.as_ref().is_some_and(|d| !d.eof));
             let wait = if busy {
                 Duration::from_millis(5)
             } else {
@@ -188,6 +220,18 @@ impl Engine {
                     .gain_bits
                     .store(self.volume.powi(3).to_bits(), Ordering::Relaxed);
             }
+            EngineCmd::SetNext(path) => {
+                if self.next_path != path {
+                    self.next_path = path;
+                    self.feeding = None;
+                    self.next_failed = false;
+                    self.next_attached = false;
+                    if let Some(d) = self.deck.as_mut() {
+                        d.chained = None;
+                    }
+                }
+                return;
+            }
             EngineCmd::Shutdown => {}
         }
         self.emit_snapshot();
@@ -211,6 +255,9 @@ impl Engine {
         let mut deck = new_deck(source, path, fmt, 0)?;
         deck.base_consumed = self.shared.consumed.load(Ordering::Relaxed);
         self.deck = Some(deck);
+        self.feeding = None;
+        self.next_failed = false;
+        self.next_attached = false;
         tracing::info!(target: "sirtone::audio", "track loaded");
         self.state = if autoplay {
             PlayState::Playing
@@ -252,8 +299,13 @@ impl Engine {
         let Some(old) = self.deck.take() else {
             return Ok(());
         };
-        let ms = old.source.duration_ms.map_or(ms, |d| ms.min(d));
-        let mut source = old.source;
+        let ms = old.duration_ms.map_or(ms, |d| ms.min(d));
+        // After a chain switch the deck's source is already the next track: reopen this one.
+        let mut source = if old.boundaries.is_empty() {
+            old.source
+        } else {
+            Source::open(&old.path)?
+        };
         source.seek(ms)?;
         self.flush();
         self.lost_position = None;
@@ -261,6 +313,9 @@ impl Engine {
         let mut deck = new_deck(source, old.path, fmt, base)?;
         deck.base_consumed = self.shared.consumed.load(Ordering::Relaxed);
         self.deck = Some(deck);
+        self.feeding = None;
+        self.next_failed = false;
+        self.next_attached = false;
         if self.state == PlayState::Ended {
             self.state = PlayState::Paused;
         }
@@ -284,92 +339,105 @@ impl Engine {
         }
     }
 
-    /// Decodes and pushes while the ring has room for a whole resampled chunk.
+    /// Decodes and pushes while the ring has room: the current deck, then — once it has ended
+    /// and a next track is set — the next deck straight after it in the same ring (gapless).
     fn pump(&mut self) -> Result<(), AppError> {
         if !matches!(self.state, PlayState::Playing | PlayState::Paused) {
             return Ok(());
         }
+        let playing = self.state == PlayState::Playing;
         let (Some(deck), Some((out, prod))) = (self.deck.as_mut(), self.output.as_mut()) else {
             return Ok(());
         };
-        let ch = out.format.channels;
-        while !deck.eof {
-            let room = prod.slots();
-            if room < deck.out_buf.len() {
-                break;
-            }
-            // Fill one resampler chunk of channel-mapped input.
-            let need = deck
-                .resampler
-                .as_ref()
-                .map_or(CHUNK, |r| r.input_frames_next());
-            while deck.pending.len() < need * ch {
-                deck.decoded.clear();
-                if !deck.source.next_into(&mut deck.decoded)? {
-                    break;
+        if !self.next_attached
+            && !self.next_failed
+            && !deck.eof
+            && deck.boundaries.is_empty()
+            && let Some(path) = self.next_path.clone()
+        {
+            self.next_attached = true;
+            match Source::open(&path) {
+                Ok(next)
+                    if next.rate == deck.source.rate && next.channels == deck.source.channels =>
+                {
+                    deck.chained = Some((next, path));
                 }
-                map_channels(&deck.decoded, deck.source.channels, ch, &mut deck.pending);
-            }
-            let have = deck.pending.len() / ch;
-            let at_end = have < need;
-            // Exactly `need` frames go into the resampler; what the last decoded packet brought
-            // beyond that stays in `pending` for the next chunk (dropping it caused audible
-            // gaps every ~23 ms on 44.1→48 kHz). Only the very tail is padded with silence.
-            let (produced, consumed) = match deck.resampler.as_mut() {
-                Some(r) => {
-                    if at_end {
-                        deck.pending.resize(need * ch, 0.0);
-                    }
-                    let input = InterleavedSlice::new(&deck.pending[..need * ch], ch, need)
-                        .map_err(internal)?;
-                    let cap = deck.out_buf.len() / ch;
-                    let mut output =
-                        InterleavedSlice::new_mut(&mut deck.out_buf, ch, cap).map_err(internal)?;
-                    let (_, written) = r
-                        .process_into_buffer(&input, &mut output, None)
-                        .map_err(internal)?;
-                    deck.pending.drain(..need * ch);
-                    (written, have.min(need))
-                }
-                None => {
-                    let n = have.min(deck.out_buf.len() / ch);
-                    deck.out_buf[..n * ch].copy_from_slice(&deck.pending[..n * ch]);
-                    deck.pending.drain(..n * ch);
-                    (n, n)
-                }
-            };
-            deck.in_frames += consumed as u64;
-            // Exact resampled length of this segment: the resampler's delay is skipped at the
-            // start and its flushed zeros are cut at the end.
-            let expected =
-                deck.in_frames * u64::from(out.format.rate) / u64::from(deck.source.rate);
-            let start = deck.skip_out.min(produced);
-            deck.skip_out -= start;
-            let allowed = expected.saturating_sub(deck.pushed) as usize;
-            let end = produced.min(start + allowed);
-            let frames = &deck.out_buf[start * ch..end * ch];
-            if let Ok(chunk) = prod.write_chunk_uninit(frames.len()) {
-                chunk.fill_from_iter(frames.iter().copied());
-            }
-            deck.pushed += (end - start) as u64;
-            if self.state == PlayState::Playing && end > start {
-                self.shared.starving_ok.store(false, Ordering::Relaxed);
-            }
-            if at_end {
-                deck.tail_chunks += 1;
-                if deck.resampler.is_none() || deck.pushed >= expected || deck.tail_chunks > 16 {
-                    deck.eof = true;
+                Ok(_) => {} // other format: a second deck takes over at the end (below)
+                Err(error) => {
+                    self.next_failed = true;
+                    (self.events)(EngineEvent::Error {
+                        error,
+                        path: Some(path),
+                    });
                 }
             }
+        }
+        fill(deck, out.format, prod, &self.shared, playing)?;
+        if deck.eof
+            && self.feeding.is_none()
+            && !self.next_failed
+            && let Some(path) = self.next_path.clone()
+        {
+            match Source::open(&path).and_then(|src| new_deck(src, path.clone(), out.format, 0)) {
+                Ok(mut next) => {
+                    // Audible once everything of the current track has been played.
+                    next.base_consumed = deck.base_consumed + deck.pushed;
+                    self.feeding = Some(next);
+                }
+                Err(error) => {
+                    self.next_failed = true;
+                    (self.events)(EngineEvent::Error {
+                        error,
+                        path: Some(path),
+                    });
+                }
+            }
+        }
+        if let Some(next) = self.feeding.as_mut() {
+            fill(next, out.format, prod, &self.shared, playing)?;
         }
         Ok(())
     }
 
     fn check_end(&mut self) {
+        let consumed_now = self.shared.consumed.load(Ordering::Relaxed);
+        if let Some(deck) = self.deck.as_mut()
+            && let Some(b) = deck.boundaries.front()
+            && consumed_now.saturating_sub(deck.base_consumed) >= b.at_out
+            && let Some(b) = deck.boundaries.pop_front()
+        {
+            // The chained track's first frame reached the device: rebase the deck on it.
+            deck.path = b.path;
+            deck.duration_ms = b.duration_ms;
+            deck.base_consumed += b.at_out;
+            deck.base_frames = 0;
+            deck.pushed = deck.pushed.saturating_sub(b.at_out);
+            deck.in_frames = deck.in_frames.saturating_sub(b.at_in);
+            deck.decoded_in = deck.decoded_in.saturating_sub(b.at_in);
+            for rest in deck.boundaries.iter_mut() {
+                rest.at_out -= b.at_out;
+                rest.at_in -= b.at_in;
+            }
+            self.next_path = None;
+            self.next_attached = false;
+            self.next_failed = false;
+            self.emit_snapshot();
+            return;
+        }
+        if let Some(next) = self.feeding.as_ref()
+            && consumed_now >= next.base_consumed
+        {
+            // The first frame of the next track reached the device: it is the current one now.
+            self.deck = self.feeding.take();
+            self.next_path = None;
+            self.next_failed = false;
+            self.emit_snapshot();
+            return;
+        }
         let Some(deck) = self.deck.as_ref() else {
             return;
         };
-        if self.state != PlayState::Playing || !deck.eof {
+        if self.state != PlayState::Playing || !deck.eof || self.feeding.is_some() {
             return;
         }
         self.shared.starving_ok.store(true, Ordering::Relaxed);
@@ -408,7 +476,7 @@ impl Engine {
             .saturating_sub(padding)
             .min(deck.pushed);
         let ms = (deck.base_frames + played) * 1000 / u64::from(out.format.rate);
-        deck.source.duration_ms.map_or(ms, |d| ms.min(d))
+        deck.duration_ms.map_or(ms, |d| ms.min(d))
     }
 
     fn fail(&mut self, error: AppError) {
@@ -427,19 +495,109 @@ impl Engine {
             state: self.state,
             path: self.deck.as_ref().map(|d| d.path.clone()),
             position_ms: if self.state == PlayState::Ended {
-                self.deck
-                    .as_ref()
-                    .and_then(|d| d.source.duration_ms)
-                    .unwrap_or(0)
+                self.deck.as_ref().and_then(|d| d.duration_ms).unwrap_or(0)
             } else {
                 self.position_ms()
             },
-            duration_ms: self.deck.as_ref().and_then(|d| d.source.duration_ms),
+            duration_ms: self.deck.as_ref().and_then(|d| d.duration_ms),
             volume: self.volume,
             underruns: self.shared.underruns.load(Ordering::Relaxed),
         };
         (self.events)(EngineEvent::Snapshot(snap));
     }
+}
+
+/// Decodes, maps channels, resamples and pushes `deck` while the ring has room for a chunk.
+fn fill(
+    deck: &mut Deck,
+    fmt: DeviceFormat,
+    prod: &mut rtrb::Producer<f32>,
+    shared: &Shared,
+    playing: bool,
+) -> Result<(), AppError> {
+    let ch = fmt.channels;
+    while !deck.eof {
+        let room = prod.slots();
+        if room < deck.out_buf.len() {
+            break;
+        }
+        // Fill one resampler chunk of channel-mapped input.
+        let need = deck
+            .resampler
+            .as_ref()
+            .map_or(CHUNK, |r| r.input_frames_next());
+        while deck.pending.len() < need * ch {
+            deck.decoded.clear();
+            if !deck.source.next_into(&mut deck.decoded)? {
+                if let Some((next, path)) = deck.chained.take() {
+                    // Same rate: the next track's first frame follows this one's last frame.
+                    let at_in = deck.decoded_in;
+                    deck.boundaries.push_back(Boundary {
+                        at_out: at_in * u64::from(fmt.rate) / u64::from(deck.source.rate),
+                        at_in,
+                        path,
+                        duration_ms: next.duration_ms,
+                    });
+                    deck.source = next;
+                    continue;
+                }
+                break;
+            }
+            deck.decoded_in += (deck.decoded.len() / deck.source.channels.max(1)) as u64;
+            map_channels(&deck.decoded, deck.source.channels, ch, &mut deck.pending);
+        }
+        let have = deck.pending.len() / ch;
+        let at_end = have < need;
+        // Exactly `need` frames go into the resampler; what the last decoded packet brought
+        // beyond that stays in `pending` for the next chunk (dropping it caused audible
+        // gaps every ~23 ms on 44.1→48 kHz). Only the very tail is padded with silence.
+        let (produced, consumed) = match deck.resampler.as_mut() {
+            Some(r) => {
+                if at_end {
+                    deck.pending.resize(need * ch, 0.0);
+                }
+                let input = InterleavedSlice::new(&deck.pending[..need * ch], ch, need)
+                    .map_err(internal)?;
+                let cap = deck.out_buf.len() / ch;
+                let mut output =
+                    InterleavedSlice::new_mut(&mut deck.out_buf, ch, cap).map_err(internal)?;
+                let (_, written) = r
+                    .process_into_buffer(&input, &mut output, None)
+                    .map_err(internal)?;
+                deck.pending.drain(..need * ch);
+                (written, have.min(need))
+            }
+            None => {
+                let n = have.min(deck.out_buf.len() / ch);
+                deck.out_buf[..n * ch].copy_from_slice(&deck.pending[..n * ch]);
+                deck.pending.drain(..n * ch);
+                (n, n)
+            }
+        };
+        deck.in_frames += consumed as u64;
+        // Exact resampled length of this segment: the resampler's delay is skipped at the
+        // start and its flushed zeros are cut at the end.
+        let expected = deck.in_frames * u64::from(fmt.rate) / u64::from(deck.source.rate);
+        let start = deck.skip_out.min(produced);
+        deck.skip_out -= start;
+        let allowed = expected.saturating_sub(deck.pushed) as usize;
+        let end = produced.min(start + allowed);
+        let frames = &deck.out_buf[start * ch..end * ch];
+        if let Ok(chunk) = prod.write_chunk_uninit(frames.len()) {
+            chunk.fill_from_iter(frames.iter().copied());
+        }
+        deck.pushed += (end - start) as u64;
+        if playing && end > start {
+            shared.starving_ok.store(false, Ordering::Relaxed);
+        }
+        if at_end {
+            deck.tail_chunks += 1;
+            if deck.resampler.is_none() || deck.pushed >= expected || deck.tail_chunks > 16 {
+                deck.eof = true;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn internal(e: impl std::fmt::Display) -> AppError {
@@ -468,7 +626,12 @@ fn new_deck(
         let delay = r.output_delay();
         (Some(r), max, delay)
     };
+    let duration_ms = source.duration_ms;
     Ok(Deck {
+        duration_ms,
+        decoded_in: 0,
+        chained: None,
+        boundaries: VecDeque::new(),
         source,
         path,
         resampler,

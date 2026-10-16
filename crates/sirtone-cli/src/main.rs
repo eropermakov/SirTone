@@ -52,7 +52,9 @@ fn probe(files: &[String]) -> ExitCode {
     }
 }
 
-fn play(file: &str, volume: f32) -> ExitCode {
+/// Plays `files` as one gapless sequence (T1.5): each next file is handed to the engine in
+/// advance with `SetNext`, the engine switches at the exact frame.
+fn play(files: &[String], volume: f32) -> ExitCode {
     let (tx, rx) = mpsc::channel();
     let engine = match sirtone_audio::start(Box::new(move |ev| {
         let _ = tx.send(ev);
@@ -65,13 +67,24 @@ fn play(file: &str, volume: f32) -> ExitCode {
     };
     engine.send(EngineCmd::SetVolume(volume));
     engine.send(EngineCmd::Load {
-        path: PathBuf::from(file),
+        path: PathBuf::from(&files[0]),
         autoplay: true,
     });
+    let mut current = 0usize;
+    engine.send(EngineCmd::SetNext(files.get(1).map(PathBuf::from)));
     let mut code = ExitCode::SUCCESS;
     loop {
         match rx.recv_timeout(Duration::from_secs(5)) {
             Ok(EngineEvent::Snapshot(s)) => {
+                if let Some(next) = files.get(current + 1)
+                    && s.path.as_deref() == Some(std::path::Path::new(next))
+                {
+                    current += 1;
+                    println!("\n→ {next}");
+                    engine.send(EngineCmd::SetNext(
+                        files.get(current + 1).map(PathBuf::from),
+                    ));
+                }
                 print!(
                     "\r{:?} {:>8.1} s  underruns {}   ",
                     s.state,
@@ -108,13 +121,18 @@ fn main() -> ExitCode {
     match args.first().map(String::as_str) {
         Some("probe") if args.len() > 1 => probe(&args[1..]),
         Some("play") if args.len() > 1 => {
+            let files: Vec<String> = args[1..]
+                .iter()
+                .take_while(|a| *a != "--volume")
+                .cloned()
+                .collect();
             let volume = args
                 .iter()
                 .position(|a| a == "--volume")
                 .and_then(|i| args.get(i + 1))
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(0.5);
-            play(&args[1], volume)
+            play(&files, volume)
         }
         Some("import") if args.len() > 1 => library::import(&args[1], &args[2..]),
         Some("verify") if args.len() > 1 => library::verify(&args[1]),

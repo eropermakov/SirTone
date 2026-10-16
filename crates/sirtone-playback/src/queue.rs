@@ -41,6 +41,11 @@ impl<T: Clone> Queue<T> {
         self.items.get(self.index)
     }
 
+    /// The item after the current one (handed to the engine in advance for gapless play).
+    pub fn peek_next(&self) -> Option<&T> {
+        self.items.get(self.index + 1)
+    }
+
     pub fn has_next(&self) -> bool {
         self.index + 1 < self.items.len()
     }

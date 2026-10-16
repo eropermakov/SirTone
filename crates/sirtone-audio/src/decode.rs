@@ -55,6 +55,12 @@ pub struct Source {
     /// After an accurate seek: drop decoded frames before this timestamp.
     skip_until: Option<i64>,
     scratch: Vec<f32>,
+    /// MP4 encoder delay/padding (T1.5): frames still to drop at the start, frames left to emit.
+    trim: Option<crate::gapless::Trim>,
+    drop_left: u64,
+    valid_left: Option<u64>,
+    /// Opus pre-skip (frames) — applied again after every seek.
+    pre_skip: u64,
 }
 
 impl Source {
@@ -68,6 +74,7 @@ impl Source {
             AppError::new(code).with_details(e)
         })?;
         let ext = path.extension().and_then(|e| e.to_str()).map(str::to_owned);
+        let path_buf = path.to_path_buf();
         guarded(move || {
             let mss = MediaSourceStream::new(Box::new(file), Default::default());
             let mut hint = Hint::new();
@@ -96,7 +103,7 @@ impl Source {
                 .sample_rate
                 .ok_or_else(|| decode_failed("unknown sample rate"))?;
             let channels = params.channels.as_ref().map_or(0, |c| c.count());
-            let duration_ms = match (track.num_frames, track.time_base) {
+            let mut duration_ms = match (track.num_frames, track.time_base) {
                 (Some(n), Some(tb)) => {
                     Some(n * 1000 * u64::from(tb.numer.get()) / u64::from(tb.denom.get()))
                 }
@@ -110,6 +117,15 @@ impl Source {
             let decoder = codecs()
                 .make_audio_decoder(&params, &AudioDecoderOptions::default())
                 .map_err(|e| AppError::new(ErrorCode::UnsupportedFormat).with_details(e))?;
+            let trim = crate::gapless::mp4_trim(&path_buf, rate);
+            if let Some(valid) = trim.and_then(|t| t.valid) {
+                duration_ms = Some(valid * 1000 / u64::from(rate));
+            }
+            let pre_skip = if codec == "opus" {
+                crate::gapless::opus_pre_skip(params.extra_data.as_deref())
+            } else {
+                0
+            };
             Ok(Self {
                 format,
                 decoder,
@@ -120,6 +136,10 @@ impl Source {
                 codec,
                 skip_until: None,
                 scratch: Vec::new(),
+                trim,
+                drop_left: trim.map_or(0, |t| t.start),
+                valid_left: trim.and_then(|t| t.valid),
+                pre_skip,
             })
         })
     }
@@ -130,6 +150,9 @@ impl Source {
     pub fn next_into(&mut self, out: &mut Vec<f32>) -> Result<bool, AppError> {
         guarded(|| {
             loop {
+                if self.valid_left == Some(0) {
+                    return Ok(false); // encoder padding reached (T1.5)
+                }
                 let packet = match self.format.next_packet() {
                     Ok(Some(p)) => p,
                     Ok(None) => return Ok(false),
@@ -160,7 +183,21 @@ impl Source {
                     start = (target - pts).max(0) as usize * ch;
                     self.skip_until = None;
                 }
-                out.extend_from_slice(&self.scratch[start..]);
+                // Encoder delay at the start (MP4 elst/iTunSMPB).
+                let avail = (self.scratch.len() - start) / ch;
+                let drop = (self.drop_left as usize).min(avail);
+                self.drop_left -= drop as u64;
+                start += drop * ch;
+                let mut end = self.scratch.len();
+                if let Some(left) = self.valid_left.as_mut() {
+                    let take = ((end - start) / ch).min(*left as usize);
+                    *left -= take as u64;
+                    end = start + take * ch;
+                }
+                if end == start {
+                    continue;
+                }
+                out.extend_from_slice(&self.scratch[start..end]);
                 return Ok(true);
             }
         })
@@ -169,7 +206,10 @@ impl Source {
     /// Sample-accurate seek (`SeekMode::Accurate`); the next `next_into` starts at `ms`.
     pub fn seek(&mut self, ms: u64) -> Result<(), AppError> {
         guarded(|| {
-            let time = Time::try_from_secs_f64(ms as f64 / 1000.0)
+            // MP4: the media timeline starts with the encoder delay; seek past it.
+            let priming = self.trim.map_or(0, |t| t.start);
+            let media_ms = ms as f64 / 1000.0 + priming as f64 / f64::from(self.rate);
+            let time = Time::try_from_secs_f64(media_ms)
                 .ok_or_else(|| AppError::new(ErrorCode::InvalidArgument))?;
             let seeked = self
                 .format
@@ -181,8 +221,13 @@ impl Source {
                     },
                 )
                 .map_err(decode_failed)?;
-            self.skip_until = Some(seeked.required_ts.get());
+            // Opus: the decoder trims pre-skip only once; after a reset it is ours to drop.
+            self.skip_until = Some(seeked.required_ts.get() + self.pre_skip as i64);
             self.decoder.reset();
+            self.drop_left = 0;
+            if let Some(valid) = self.trim.and_then(|t| t.valid) {
+                self.valid_left = Some(valid.saturating_sub(ms * u64::from(self.rate) / 1000));
+            }
             Ok(())
         })
     }
@@ -226,6 +271,47 @@ mod tests {
         let (s, out) = decode_all(&p).unwrap();
         assert_eq!(s.rate, 48000);
         assert_eq!(out.len() / 2, 480_000);
+    }
+
+    #[test]
+    fn aac_encoder_delay_is_trimmed() {
+        // ffmpeg reference: 441 000 frames (S-02: symphonia alone gave 442 368).
+        let Some(p) = fixture("formats/aac-256.m4a") else {
+            return;
+        };
+        let (s, out) = decode_all(&p).unwrap();
+        assert_eq!(out.len() / s.channels, 441_000);
+        assert_eq!(s.duration_ms, Some(10_000));
+    }
+
+    /// After seeking to 3 s the audio equals the full decode from 3 s (lossy codecs: within the
+    /// first 2048 frames the bit reservoir/overlap may differ, so compare a later window).
+    fn seek_matches(rel: &str, rate: usize) {
+        let Some(p) = fixture(rel) else { return };
+        let (s, full) = decode_all(&p).unwrap();
+        let ch = s.channels;
+        let mut src = Source::open(&p).unwrap();
+        src.seek(3000).unwrap();
+        let mut out = Vec::new();
+        while out.len() < 8192 * ch && src.next_into(&mut out).unwrap() {}
+        let best = (-400i64..=400)
+            .min_by(|&a, &b| {
+                let err = |lag: i64| -> f32 {
+                    let off = ((3 * rate) as i64 + 2048 + lag) as usize * ch;
+                    (0..4096 * ch)
+                        .map(|i| (out[2048 * ch + i] - full[off + i]).abs())
+                        .sum()
+                };
+                err(a).total_cmp(&err(b))
+            })
+            .unwrap();
+        assert_eq!(best, 0, "{rel}: seek lands {best} frames off");
+    }
+
+    #[test]
+    fn aac_and_opus_seek_are_sample_accurate() {
+        seek_matches("formats/aac-256.m4a", 44100);
+        seek_matches("formats/opus-160.opus", 48000);
     }
 
     #[test]

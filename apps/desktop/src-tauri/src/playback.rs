@@ -105,6 +105,15 @@ impl Playback {
         let engine = sirtone_audio::start(Box::new(move |ev| match ev {
             EngineEvent::Snapshot(s) => {
                 let mut q = sink_queue.lock().unwrap_or_else(|p| p.into_inner());
+                // Gapless (T1.5): the engine moved on to the track we handed it in advance.
+                if q.peek_next()
+                    .is_some_and(|n| Some(n.path.as_path()) == s.path.as_deref())
+                {
+                    q.advance();
+                    if let Some(h) = sink_handle.get() {
+                        h.send(EngineCmd::SetNext(q.peek_next().map(|i| i.path.clone())));
+                    }
+                }
                 // End of a track with more in the context: the next one (FR-PLAY-005).
                 if s.state == PlayState::Ended
                     && q.current()
@@ -116,6 +125,7 @@ impl Playback {
                         path: next.path,
                         autoplay: true,
                     });
+                    h.send(EngineCmd::SetNext(q.peek_next().map(|i| i.path.clone())));
                     return;
                 }
                 let current = q
@@ -208,6 +218,12 @@ impl Playback {
         self.queue.lock().unwrap_or_else(|p| p.into_inner())
     }
 
+    /// Tells the engine what follows the current track, so it continues without a gap.
+    fn hand_next(&self) {
+        let next = self.queue().peek_next().map(|i| i.path.clone());
+        self.engine.send(EngineCmd::SetNext(next));
+    }
+
     /// Plays `items` as the new context from `start` (FR-PLAY-006: replaces the queue).
     pub fn play_queue(&self, items: Vec<QueueItem>, start: usize) {
         if let Step::Play(item) = self.queue().replace(items, start) {
@@ -216,6 +232,7 @@ impl Playback {
                 autoplay: true,
             });
         }
+        self.hand_next();
     }
 
     pub fn next(&self) {
@@ -225,6 +242,7 @@ impl Playback {
                 autoplay: true,
             });
         }
+        self.hand_next();
     }
 
     pub fn prev(&self) {
@@ -236,6 +254,7 @@ impl Playback {
             Step::Restart => self.engine.send(EngineCmd::Seek(0)),
             Step::End => {}
         }
+        self.hand_next();
     }
 
     pub fn snapshot(&self) -> PlaybackSnapshot {

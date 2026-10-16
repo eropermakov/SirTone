@@ -38,17 +38,19 @@ struct Args {
     gain_db: f32,
     stress: bool,
     capture_pid: Option<u32>,
+    sine_hz: Option<f64>,
 }
 
 fn parse_args() -> Args {
     let mut a = std::env::args().skip(1);
-    let mut args = Args { file: PathBuf::new(), seconds: 6.0, gain_db: -30.0, stress: false, capture_pid: None };
+    let mut args = Args { file: PathBuf::new(), seconds: 6.0, gain_db: -30.0, stress: false, capture_pid: None, sine_hz: None };
     while let Some(x) = a.next() {
         match x.as_str() {
             "--seconds" => args.seconds = a.next().and_then(|v| v.parse().ok()).unwrap_or(6.0),
             "--gain-db" => args.gain_db = a.next().and_then(|v| v.parse().ok()).unwrap_or(-30.0),
             "--stress" => args.stress = true,
             "--capture-pid" => args.capture_pid = a.next().and_then(|v| v.parse().ok()),
+            "--sine-hz" => args.sine_hz = a.next().and_then(|v| v.parse().ok()),
             _ => args.file = PathBuf::from(x),
         }
     }
@@ -316,7 +318,7 @@ fn main() {
         let t = std::thread::spawn(move || capture_self(st, pid));
         std::thread::sleep(Duration::from_secs_f64(args.seconds));
         stats.stop.store(true, Ordering::Relaxed);
-        report(t.join().expect("capture join"));
+        report(t.join().expect("capture join"), args.sine_hz);
         return;
     }
     wasapi::initialize_mta().ok().expect("COM");
@@ -409,10 +411,10 @@ fn main() {
         stats.max_loop_us.load(Ordering::Relaxed)
     );
 
-    report(capture.join().expect("capture join"));
+    report(capture.join().expect("capture join"), None);
 }
 
-fn report(result: Result<(Vec<f32>, u32, usize), String>) {
+fn report(result: Result<(Vec<f32>, u32, usize), String>, sine_hz: Option<f64>) {
     match result {
         Ok((cap, crate_rate, disc)) => {
             let frames = cap.len() / 2;
@@ -457,6 +459,11 @@ fn report(result: Result<(Vec<f32>, u32, usize), String>) {
             let (cl, wl) = clicks(0, 440.0);
             let (cr, wr) = clicks(1, 660.0);
             println!("  clicks (tone-10s): L {cl} (worst {wl:.3}), R {cr} (worst {wr:.3})");
+            if let Some(f) = sine_hz {
+                let (a, wa) = clicks(0, f);
+                let (b, wb) = clicks(1, f);
+                println!("  clicks ({f} Hz): L {a} (worst {wa:.3}), R {b} (worst {wb:.3})");
+            }
             for (name, f) in [("440 Hz", 440.0), ("660 Hz", 660.0), ("1 kHz", 1000.0)] {
                 println!(
                     "  {name}: L {:.1} dB, R {:.1} dB",

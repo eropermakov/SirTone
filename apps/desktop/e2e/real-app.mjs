@@ -122,6 +122,31 @@ if (existsSync(loopback)) {
   await sleep(800);
 }
 
+// 1c. Gapless (T1.5): two halves of one 1 kHz sine played back to back through the engine
+//     (sirtone-cli) must join without a gap or a click.
+const cli = join(root, "target", "release", "sirtone-cli.exe");
+const halves = ["gapless-a.wav", "gapless-b.wav"].map((f) => join(fixtures, "signals", f));
+if (existsSync(loopback) && existsSync(cli) && halves.every((h) => existsSync(h))) {
+  const player = spawn(cli, ["play", ...halves, "--volume", "0.3"], { stdio: "ignore" });
+  await sleep(300);
+  const out = spawnSync(loopback, [
+    "--capture-pid",
+    String(player.pid),
+    "--seconds",
+    "7",
+    "--sine-hz",
+    "1000",
+  ]).stdout.toString();
+  player.kill();
+  const m = out.match(/clicks \(1000 Hz\): L (\d+) \(worst ([\d.]+)\), R (\d+)/);
+  const sig = out.match(/signal ([\d.]+) s/);
+  check(
+    "gapless joint (WAV halves)",
+    m && m[1] === "0" && m[3] === "0" && Number(m[2]) < 0.005 && sig && Number(sig[1]) > 6.5,
+    m ? `${m[0]}; ${sig?.[0]}` : out.trim(),
+  );
+}
+
 // 2. Space toggles.
 await page.evaluate(() => document.activeElement?.blur());
 await page.keyboard.press("Space");
