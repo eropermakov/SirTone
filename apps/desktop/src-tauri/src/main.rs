@@ -2,6 +2,8 @@
 // No console window in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use tauri::webview::PageLoadEvent;
@@ -19,16 +21,25 @@ fn bg_base(theme: Theme) -> Color {
 /// Fallback: if the page never reports "finished" (JS error, slow disk), show the window anyway.
 const SHOW_FALLBACK: Duration = Duration::from_secs(3);
 
+/// Set once the main window has been shown, so the fallback never re-shows a window the user
+/// already hid (close-to-tray, T0.10).
+#[derive(Default)]
+struct ShownOnce(Arc<AtomicBool>);
+
 fn main() {
     let app = tauri::Builder::default()
+        .manage(ShownOnce::default())
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 let theme = window.theme().unwrap_or(Theme::Dark);
                 let _ = window.set_background_color(Some(bg_base(theme)));
                 let fallback = window.clone();
+                let shown = app.state::<ShownOnce>().0.clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(SHOW_FALLBACK);
-                    let _ = fallback.show();
+                    if !shown.swap(true, Ordering::SeqCst) {
+                        let _ = fallback.show();
+                    }
                 });
             }
             Ok(())
@@ -36,7 +47,10 @@ fn main() {
         // Window starts hidden (tauri.conf.json) and is shown after the first page load: no white flash.
         .on_page_load(|webview, payload| {
             if payload.event() == PageLoadEvent::Finished {
-                let _ = webview.window().show();
+                let shown = &webview.state::<ShownOnce>().0;
+                if !shown.swap(true, Ordering::SeqCst) {
+                    let _ = webview.window().show();
+                }
             }
         })
         .build(tauri::generate_context!());
