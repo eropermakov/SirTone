@@ -123,8 +123,15 @@ pub struct NewTrack {
 
 /// Inserts the track, its artists and both search rows in one transaction.
 pub fn track_insert(conn: &mut Connection, t: &NewTrack) -> Result<TrackId, LibraryError> {
-    let title_norm = norm(&t.title).unwrap_or_default();
     let tx = conn.transaction()?;
+    let id = track_insert_in(&tx, t)?;
+    tx.commit()?;
+    Ok(id)
+}
+
+/// [`track_insert`] inside a caller's transaction (import places a file and indexes it atomically).
+pub fn track_insert_in(tx: &Connection, t: &NewTrack) -> Result<TrackId, LibraryError> {
+    let title_norm = norm(&t.title).unwrap_or_default();
     tx.execute(
         "INSERT INTO track(uid, rel_path, size_bytes, mtime_ms, content_hash, container, codec, lossless,
            sample_rate, channels, duration_ms, title, title_norm, album_id, disc_no, track_no, year,
@@ -155,9 +162,8 @@ pub fn track_insert(conn: &mut Connection, t: &NewTrack) -> Result<TrackId, Libr
         ],
     )?;
     let id = tx.last_insert_rowid();
-    set_track_artists(&tx, id, &t.artists)?;
-    search_reindex(&tx, id)?;
-    tx.commit()?;
+    set_track_artists(tx, id, &t.artists)?;
+    search_reindex(tx, id)?;
     Ok(id)
 }
 

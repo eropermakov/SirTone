@@ -4,6 +4,7 @@
 pub mod collection;
 pub mod db;
 pub mod error;
+pub mod import;
 pub mod layout;
 pub mod repo;
 

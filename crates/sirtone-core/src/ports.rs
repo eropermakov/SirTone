@@ -34,6 +34,8 @@ pub struct Tags {
     pub album_artist: Option<String>,
     pub track_no: Option<u32>,
     pub disc_no: Option<u32>,
+    /// TOTALDISCS / TPOS «n/m» — decides `1-01 - …` file names (docs/05 §2.1).
+    pub disc_total: Option<u32>,
     pub year: Option<i32>,
     pub genre: Option<String>,
 }
@@ -77,6 +79,7 @@ pub struct IdentityDecision {
     pub album_artist: Option<String>,
     pub track_no: Option<u32>,
     pub disc_no: Option<u32>,
+    pub disc_total: Option<u32>,
     pub year: Option<i32>,
     pub genre: Option<String>,
     /// 0…1.
