@@ -50,6 +50,7 @@ uuid = { version = "1.28", features = ["v7", "serde"] }
 blake3 = "1.8"
 trash = "5.2"
 encoding_rs = "0.8.42"
+strsim = "0.11"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 webp = "0.3"
 crossbeam-channel = "0.5"

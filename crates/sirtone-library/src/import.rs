@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use rusqlite::{Connection, OptionalExtension, params};
 use sirtone_core::error::ErrorCode;
 use sirtone_core::ports::{
-    CoverReader, FileOps, Identify, MediaInfo, MediaProbe, TagReader, VolumeInfo,
+    CoverReader, FileOps, FolderHints, Identify, MediaInfo, MediaProbe, TagReader, VolumeInfo,
 };
 
 use crate::db::now_ms;
@@ -414,6 +414,9 @@ pub fn run_batch(
         }
     }
 
+    // Folder consensus (docs/05 §4.1), computed once per source folder.
+    let mut consensus: std::collections::HashMap<PathBuf, (Option<String>, Option<String>)> =
+        std::collections::HashMap::new();
     let mut report = Report {
         batch_id: batch,
         ..Report::default()
@@ -460,6 +463,7 @@ pub fn run_batch(
                     if from_queue {
                         copies_left -= 1;
                     }
+                    let hints = folder_hints(&src, deps.tags.as_ref(), &mut consensus);
                     place(
                         conn,
                         root,
@@ -469,6 +473,7 @@ pub fn run_batch(
                         &hash,
                         &info,
                         &src,
+                        &hints,
                         deps,
                         &mut report,
                         on_event,
@@ -552,6 +557,71 @@ pub fn run_batch(
     Ok(report)
 }
 
+/// Audio extensions that take part in the folder consensus.
+const AUDIO_EXT: &[&str] = &[
+    "mp3", "flac", "m4a", "mp4", "ogg", "oga", "opus", "wav", "aif", "aiff", "wma", "ape", "wv",
+];
+
+fn mode(values: impl Iterator<Item = String>) -> Option<String> {
+    let mut counts: Vec<(String, usize)> = Vec::new();
+    for v in values {
+        let key = sirtone_core::text::norm(&v).unwrap_or_default();
+        match counts
+            .iter_mut()
+            .find(|(k, _)| sirtone_core::text::norm(k).unwrap_or_default() == key)
+        {
+            Some((_, n)) => *n += 1,
+            None => counts.push((v, 1)),
+        }
+    }
+    counts.into_iter().max_by_key(|(_, n)| *n).map(|(v, _)| v)
+}
+
+/// Parent/grandparent folder names of the source and the consensus of tags in its folder
+/// (≥ 3 audio files: the most common album / album artist).
+fn folder_hints(
+    src: &Path,
+    tags: &dyn TagReader,
+    cache: &mut std::collections::HashMap<PathBuf, (Option<String>, Option<String>)>,
+) -> FolderHints {
+    let name = |p: Option<&Path>| {
+        p.and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+    };
+    let parent = src.parent();
+    let (consensus_album, consensus_album_artist) = match parent {
+        Some(dir) => cache
+            .entry(dir.to_path_buf())
+            .or_insert_with(|| {
+                let files: Vec<PathBuf> = fs::read_dir(dir)
+                    .map(|rd| {
+                        rd.flatten()
+                            .map(|e| e.path())
+                            .filter(|p| AUDIO_EXT.contains(&ext_of(p).as_str()))
+                            .take(200)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if files.len() < 3 {
+                    return (None, None);
+                }
+                let read: Vec<_> = files.iter().map(|f| tags.read(f)).collect();
+                (
+                    mode(read.iter().filter_map(|t| t.album.clone())),
+                    mode(read.iter().filter_map(|t| t.album_artist.clone())),
+                )
+            })
+            .clone(),
+        None => (None, None),
+    };
+    FolderHints {
+        parent: name(parent),
+        grandparent: name(parent.and_then(Path::parent)),
+        consensus_album,
+        consensus_album_artist,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn place(
     conn: &mut Connection,
@@ -562,6 +632,7 @@ fn place(
     hash: &str,
     info: &MediaInfo,
     src: &Path,
+    hints: &FolderHints,
     deps: &ImportDeps,
     report: &mut Report,
     on_event: &mut dyn FnMut(ImportEvent),
@@ -577,13 +648,7 @@ fn place(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let folder = src
-        .parent()
-        .and_then(|p| p.file_name())
-        .map(|n| n.to_string_lossy().into_owned());
-    let d = deps
-        .identify
-        .identify(&tags, &file_name, folder.as_deref(), info);
+    let d = deps.identify.identify(&tags, &file_name, hints, info);
     let ext = ext_of(src);
     let primary = d.artists.first().cloned();
     let placement = match (&d.unknown, primary.as_deref()) {

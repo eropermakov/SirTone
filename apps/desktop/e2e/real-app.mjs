@@ -238,7 +238,7 @@ if (existsSync(corpus)) {
   ]).stdout.toString();
   check("service folder is hidden", /Hidden/.test(attrs), attrs.trim());
   await page.getByRole("button", { name: "Неизвестные" }).click();
-  await page.getByText(/45 треков/).waitFor({ timeout: 5000 });
+  await page.getByText(/25 треков/).waitFor({ timeout: 5000 });
   const unknownRows = page.getByRole("list", { name: "Треки" }).getByRole("button");
   await unknownRows.first().dblclick();
   await sleep(1000);

@@ -3828,6 +3828,7 @@ dependencies = [
  "encoding_rs",
  "lofty",
  "sirtone-core",
+ "strsim",
 ]
 
 [[package]]

@@ -88,14 +88,25 @@ pub struct IdentityDecision {
     pub unknown: Option<UnknownReason>,
 }
 
+/// What the source location says about a file (docs/05 §4.1): parent folders and the batch-wide
+/// consensus of tags in that folder (≥ 3 files, mode of album/album artist).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct FolderHints {
+    /// Nearest folder name (`Альбом (2004)`).
+    pub parent: Option<String>,
+    /// The folder above it (`Би-2`).
+    pub grandparent: Option<String>,
+    pub consensus_album: Option<String>,
+    pub consensus_album_artist: Option<String>,
+}
+
 pub trait Identify: Send + Sync {
-    /// `file_name` is the source name, `folder` its parent folder name (folder consensus is done by
-    /// the caller over a whole batch in T1.16).
+    /// `file_name` is the source file name with extension.
     fn identify(
         &self,
         tags: &Tags,
         file_name: &str,
-        folder: Option<&str>,
+        folders: &FolderHints,
         info: &MediaInfo,
     ) -> IdentityDecision;
 }

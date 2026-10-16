@@ -83,8 +83,15 @@ for i in range(40):
     artist, t = rng.choice(ARTISTS[:8]), title()
     audio(f"Старые mp3/{i:03d}", {"artist": mojibake(artist), "title": mojibake(t), "album": mojibake("Сборник")},
           FORMATS[0])
-# 4. No tags at all: 30
-for i in range(30):
+# 4. No tags at all: 30 (T1.16). 10 «Artist/Artist - Title» (placed as singles by name + folder),
+#    10 «Artist/Album (Year)/NN Title» (placed in that album), 10 in a generic folder (unknown).
+for i in range(10):
+    a = ARTISTS[i % 8]
+    audio(f"{a}/{a} - {title()}", {})
+untagged_album = f"{ARTISTS[9]}/Без обложки (2001)"
+for i in range(10):
+    audio(f"{untagged_album}/{i + 1:02d} {title()}", {})
+for i in range(10):
     audio(f"Без тегов/{rng.choice(ARTISTS)} - {title()}", {})
 # 5. Junk tag values: 15
 for i in range(15):

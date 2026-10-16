@@ -59,7 +59,7 @@ impl Identify for ByTags {
         &self,
         t: &Tags,
         file_name: &str,
-        _: Option<&str>,
+        _: &FolderHints,
         _: &MediaInfo,
     ) -> IdentityDecision {
         let confident = t.title.is_some() && t.artist.is_some();
