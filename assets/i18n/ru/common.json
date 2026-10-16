@@ -1,0 +1,8 @@
+{
+  "app": { "name": "Сиртон", "studio": "Sir.kov Studio" },
+  "count": {
+    "tracks": "{count, plural, one {# трек} few {# трека} many {# треков} other {# трека}}",
+    "albums": "{count, plural, one {# альбом} few {# альбома} many {# альбомов} other {# альбома}}",
+    "artists": "{count, plural, one {# исполнитель} few {# исполнителя} many {# исполнителей} other {# исполнителя}}"
+  }
+}
