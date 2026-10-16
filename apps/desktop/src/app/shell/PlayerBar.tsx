@@ -11,7 +11,14 @@ import {
 } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { type PlaybackSnapshot, seek, setVolume, togglePlay } from "@/shared/ipc/playback";
+import {
+  next,
+  type PlaybackSnapshot,
+  prev,
+  seek,
+  setVolume,
+  togglePlay,
+} from "@/shared/ipc/playback";
 import { Slider } from "@/shared/ui/Slider";
 
 /** m:ss / h:mm:ss timecode (format, not text). */
@@ -81,7 +88,11 @@ export function PlayerBar({
             {snap.title ?? t("player.nothing")}
           </div>
           <div className="t-caption truncate text-text-secondary">
-            {snap.state === "ended" ? t("player.ended") : loaded ? "" : t("player.hint")}
+            {snap.state === "ended"
+              ? t("player.ended")
+              : loaded
+                ? (snap.artists ?? "")
+                : t("player.hint")}
           </div>
         </div>
       </div>
@@ -89,7 +100,15 @@ export function PlayerBar({
       <div className="flex flex-1 flex-col items-center gap-1">
         <div className="flex items-center gap-2">
           {icon(Shuffle, t("player.shuffle"))}
-          {icon(SkipBack, t("player.prev"))}
+          <button
+            type="button"
+            disabled={!loaded}
+            onClick={prev}
+            aria-label={t("player.prev")}
+            className="flex size-9 items-center justify-center rounded-full text-icon disabled:opacity-40"
+          >
+            <SkipBack size={20} strokeWidth={1.5} />
+          </button>
           <button
             type="button"
             disabled={!loaded}
@@ -99,7 +118,15 @@ export function PlayerBar({
           >
             <PlayIcon size={20} fill="currentColor" strokeWidth={1.5} />
           </button>
-          {icon(SkipForward, t("player.next"))}
+          <button
+            type="button"
+            disabled={!snap.hasNext}
+            onClick={next}
+            aria-label={t("player.next")}
+            className="flex size-9 items-center justify-center rounded-full text-icon disabled:opacity-40"
+          >
+            <SkipForward size={20} strokeWidth={1.5} />
+          </button>
           {icon(Repeat, t("player.repeat"))}
         </div>
         <div className="flex w-full max-w-xl items-center gap-2">

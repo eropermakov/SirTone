@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { CollectionScreen } from "@/app/library/CollectionScreen";
+import { RootPanel } from "@/app/library/RootPanel";
+import { useLibrary } from "@/app/library/useLibrary";
 import { bootstrap } from "@/shared/ipc/bootstrap";
+import { cancelImport, importPaths, type LibraryStatus, pickFolder } from "@/shared/ipc/library";
 import { togglePlay } from "@/shared/ipc/playback";
 import {
   getSettings,
@@ -60,6 +64,10 @@ export function App() {
   const { t: tc } = useTranslation("common");
   const { snap, receivedAt, error, clearError, hydrate } = usePlayback();
   const [screen, setScreen] = useState<Screen>("wave");
+  const [bootLibrary, setBootLibrary] = useState<LibraryStatus | null>(null);
+  const lib = useLibrary(bootLibrary);
+  // «Добавить папку» pressed before a library folder existed: pick sources right after.
+  const [addAfterRoot, setAddAfterRoot] = useState(false);
   const [appearance, setAppearanceState] = useState<Appearance>(DEFAULT);
   const [manualCollapsed, setManualCollapsed] = useState(false);
   const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW).matches);
@@ -72,6 +80,7 @@ export function App() {
       bootstrap().then((b) => {
         setAppearanceState(fromDoc(b.settings));
         hydrate(b.playback);
+        if (b.library) setBootLibrary(b.library);
       }),
     );
     onSettingsChanged(reload).then((u) => {
@@ -106,6 +115,27 @@ export function App() {
     return () => m.removeEventListener("change", on);
   }, []);
 
+  const addMusic = async () => {
+    if (!lib.status.root) {
+      setAddAfterRoot(true);
+      lib.setRootNeeded(true);
+      return;
+    }
+    const folder = await pickFolder();
+    if (folder) await importPaths([folder]);
+  };
+  const rootChosen = async (s: LibraryStatus) => {
+    lib.setStatus(s);
+    lib.setRootNeeded(false);
+    if (addAfterRoot) {
+      setAddAfterRoot(false);
+      const folder = await pickFolder();
+      if (folder) await importPaths([folder]);
+    }
+  };
+  const hasMusic = lib.status.tracks > 0;
+  const report = lib.report;
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex min-h-0 flex-1">
@@ -114,17 +144,33 @@ export function App() {
           collapsed={narrow || manualCollapsed}
           onNavigate={setScreen}
           onToggle={() => setManualCollapsed((c) => !c)}
+          progress={lib.progress}
+          onCancelImport={cancelImport}
         />
-        <main className="min-w-0 flex-1 overflow-auto rounded-tl-(--radius-xl) bg-bg-layer p-6">
+        <main className="flex min-w-0 flex-1 flex-col overflow-auto rounded-tl-(--radius-xl) bg-bg-layer p-6">
+          {lib.rootNeeded && <RootPanel status={lib.status} onDone={rootChosen} />}
           {screen === "settings" ? (
             <SettingsScreen
               theme={appearance.theme}
               accent={appearance.accent}
               onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
               onAccent={(accent) => setAppearance((a) => ({ ...a, accent }))}
+              library={lib.status}
+              onChooseLibrary={() => lib.setRootNeeded(true)}
+            />
+          ) : hasMusic && (screen === "albums" || screen === "artists") ? (
+            <CollectionScreen
+              key={screen}
+              kind={screen}
+              status={lib.status}
+              version={lib.version}
+              playingId={snap.trackId}
             />
           ) : (
-            <EmptyScreen screen={screen} />
+            <EmptyScreen
+              screen={screen}
+              onAdd={["wave", "albums", "artists"].includes(screen) ? addMusic : undefined}
+            />
           )}
         </main>
       </div>
@@ -132,6 +178,31 @@ export function App() {
         {t("proto")}
       </div>
       <PlayerBar snap={snap} receivedAt={receivedAt} />
+      {report && !error && (
+        <Toast
+          tone="info"
+          heading={t("import.doneTitle")}
+          message={[
+            t("import.report", {
+              added: report.added,
+              unknown: report.unknown,
+              duplicates: report.duplicates,
+              rejected: report.rejected,
+            }),
+            report.rejectedReasons.length > 0
+              ? t("import.reasons", {
+                  list: report.rejectedReasons.map((r) => t(`import.reason.${r}`)).join(", "),
+                })
+              : "",
+            report.canEject ? t("import.eject") : "",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+          closeLabel={tc("errors.close")}
+          timeoutMs={10000}
+          onClose={lib.clearReport}
+        />
+      )}
       {error && (
         <Toast
           heading={tc("errors.title")}

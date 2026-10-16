@@ -5,7 +5,13 @@ import { useTranslation } from "react-i18next";
  * Empty state per DESIGN.md §9: primitives illustration + one line + one Primary button.
  * Import arrives in Stage 1, so the button is disabled with a «Скоро» badge (prototype 0.1).
  */
-export function EmptyScreen({ screen }: { screen: string }) {
+export function EmptyScreen({
+  screen,
+  onAdd,
+}: {
+  screen: string;
+  onAdd?: (() => void) | undefined;
+}) {
   const { t } = useTranslation("shell");
   return (
     <section className="flex h-full flex-col">
@@ -20,15 +26,18 @@ export function EmptyScreen({ screen }: { screen: string }) {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            disabled
+            disabled={!onAdd}
+            onClick={onAdd}
             className="t-body-strong flex h-(--button-height) items-center gap-2 rounded-full bg-accent-fill px-5 text-accent-on disabled:opacity-40"
           >
             <FolderPlus size={20} strokeWidth={1.5} />
             {t("empty.action")}
           </button>
-          <span className="t-badge rounded-full border border-inactive px-2 py-0.5 text-text-secondary">
-            {t("empty.soon")}
-          </span>
+          {!onAdd && (
+            <span className="t-badge rounded-full border border-inactive px-2 py-0.5 text-text-secondary">
+              {t("empty.soon")}
+            </span>
+          )}
         </div>
       </div>
     </section>

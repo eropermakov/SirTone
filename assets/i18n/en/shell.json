@@ -85,5 +85,45 @@
     "playPause": "",
     "quit": "",
     "tooltip": ""
+  },
+  "collection": {
+    "summary": "",
+    "sizeGb": "",
+    "sizeMb": "",
+    "play": "",
+    "back": "",
+    "tracks": "",
+    "trackList": "",
+    "noArtist": ""
+  },
+  "root": {
+    "title": "",
+    "text": "",
+    "change": "",
+    "continue": "",
+    "error": ""
+  },
+  "import": {
+    "progress": "",
+    "eject": "",
+    "cancel": "",
+    "doneTitle": "",
+    "report": "",
+    "reasons": "",
+    "reason": {
+      "not_audio": "",
+      "corrupt": "",
+      "unsupported": "",
+      "playlist": "",
+      "no_space": "",
+      "path_too_long": "",
+      "read_error": ""
+    }
+  },
+  "settingsStorage": {
+    "title": "",
+    "folder": "",
+    "notChosen": "",
+    "change": ""
   }
 }

@@ -10,6 +10,10 @@ export type { PlaybackError, PlaybackSnapshot };
 export const EMPTY_SNAPSHOT: PlaybackSnapshot = {
   state: "empty",
   title: null,
+  artists: null,
+  trackId: null,
+  hasNext: false,
+  hasPrev: false,
   positionMs: 0,
   durationMs: null,
   volume: 1,
@@ -39,4 +43,12 @@ export async function onSnapshot(cb: (s: PlaybackSnapshot) => void): Promise<() 
 export async function onPlaybackError(cb: (e: PlaybackError) => void): Promise<() => void> {
   if (!isTauri()) return () => {};
   return events.playbackError.listen((e) => cb(e.payload));
+}
+
+export function next(): void {
+  if (isTauri()) void commands.playbackNext();
+}
+
+export function prev(): void {
+  if (isTauri()) void commands.playbackPrev();
 }

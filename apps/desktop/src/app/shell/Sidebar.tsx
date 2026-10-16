@@ -8,6 +8,7 @@ import {
   Search,
   Settings,
   Waves,
+  X,
 } from "lucide-react";
 import type { ComponentType } from "react";
 import { useTranslation } from "react-i18next";
@@ -41,10 +42,21 @@ type Props = {
   collapsed: boolean;
   onNavigate: (s: Screen) => void;
   onToggle: () => void;
+  /** Import in progress: line + 4 px bar above Settings. */
+  progress?: { done: number; total: number; sourcesReleased: boolean } | null;
+  onCancelImport?: () => void;
 };
 
-export function Sidebar({ current, collapsed, onNavigate, onToggle }: Props) {
+export function Sidebar({
+  current,
+  collapsed,
+  onNavigate,
+  onToggle,
+  progress,
+  onCancelImport,
+}: Props) {
   const { t } = useTranslation("nav");
+  const { t: ts } = useTranslation("shell");
   const row = (it: Item) => {
     const Icon = it.icon;
     const active = current === it.id;
@@ -113,6 +125,36 @@ export function Sidebar({ current, collapsed, onNavigate, onToggle }: Props) {
       <div className="mt-4" />
       {REST.map(row)}
       <div className="flex-1" />
+      {progress && !collapsed && (
+        <div role="status" aria-live="polite" className="mb-2 flex flex-col gap-2 px-3">
+          <div className="flex items-center gap-2">
+            <span className="t-caption min-w-0 flex-1 truncate text-text-secondary">
+              {ts("import.progress", { done: progress.done, total: progress.total })}
+            </span>
+            {onCancelImport && (
+              <button
+                type="button"
+                onClick={onCancelImport}
+                aria-label={ts("import.cancel")}
+                className="flex size-6 items-center justify-center rounded-full text-icon hover:bg-bg-hover"
+              >
+                <X size={16} strokeWidth={1.5} />
+              </button>
+            )}
+          </div>
+          <div className="h-1 overflow-hidden rounded-full bg-inactive">
+            <div
+              className="h-full origin-left bg-accent-text"
+              style={{
+                transform: `scaleX(${progress.total ? progress.done / progress.total : 0})`,
+              }}
+            />
+          </div>
+          {progress.sourcesReleased && (
+            <span className="t-caption text-text-tertiary">{ts("import.eject")}</span>
+          )}
+        </div>
+      )}
       {collapsed && (
         <button
           type="button"

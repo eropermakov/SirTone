@@ -1,5 +1,7 @@
 import { Check, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { CollectionSummary } from "@/app/library/CollectionScreen";
+import type { LibraryStatus } from "@/shared/ipc/library";
 import { cn } from "@/shared/lib/utils";
 import { ACCENT_SLUGS, type AccentSource, type ThemePref } from "@/shared/theme/theme";
 
@@ -8,6 +10,9 @@ type Props = {
   accent: AccentSource;
   onTheme: (t: ThemePref) => void;
   onAccent: (a: AccentSource) => void;
+  /** «Хранилище» (FR-DATA-004, FR-ONB-003): library folder and counters. */
+  library?: LibraryStatus;
+  onChooseLibrary?: () => void;
 };
 
 const THEMES: { id: ThemePref; key: string }[] = [
@@ -17,7 +22,14 @@ const THEMES: { id: ThemePref; key: string }[] = [
 ];
 
 /** Settings → Внешний вид: theme + AccentPicker (DESIGN.md §9), applied instantly, no «Сохранить». */
-export function SettingsScreen({ theme, accent, onTheme, onAccent }: Props) {
+export function SettingsScreen({
+  theme,
+  accent,
+  onTheme,
+  onAccent,
+  library,
+  onChooseLibrary,
+}: Props) {
   const { t } = useTranslation("shell");
   const customHex = accent.kind === "custom" ? accent.hex : "#3b82f6";
 
@@ -128,6 +140,28 @@ export function SettingsScreen({ theme, accent, onTheme, onAccent }: Props) {
           </div>
         </div>
       </div>
+
+      {library && (
+        <div className="flex flex-col gap-2">
+          <h2 className="t-shelf-title text-primary-text">{t("settingsStorage.title")}</h2>
+          <div className="flex flex-col gap-3 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+            <span className="t-body-strong text-text-primary">{t("settingsStorage.folder")}</span>
+            <span className="t-body break-all text-text-secondary">
+              {library.root ?? t("settingsStorage.notChosen")}
+            </span>
+            {library.root && <CollectionSummary status={library} />}
+            {!library.root && onChooseLibrary && (
+              <button
+                type="button"
+                onClick={onChooseLibrary}
+                className="t-body-strong w-fit text-accent-text"
+              >
+                {t("settingsStorage.change")}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2">
         <h2 className="t-shelf-title text-primary-text">{t("settings.about")}</h2>

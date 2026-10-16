@@ -12,6 +12,7 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "3.14.19",
     "@tauri-apps/api": "2.12.4",
     "clsx": "^2.1.1",
     "i18next": "26.4.5",
