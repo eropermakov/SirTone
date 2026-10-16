@@ -13,6 +13,11 @@ allow-wildcard-paths = true           # path deps between workspace crates are n
 
 [advisories]
 yanked = "deny"
+ignore = [
+    # `paste` is unmaintained (no vulnerability); compile-time macro pulled by specta/tauri-specta
+    # for IPC codegen (D-09). Revisit when specta 2.0 final drops it. docs/08 §3, D-09.
+    { id = "RUSTSEC-2024-0436", reason = "unmaintained proc-macro, build-time only, via specta (D-09)" },
+]
 
 [sources]
 unknown-registry = "deny"

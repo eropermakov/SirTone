@@ -1,9 +1,10 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { type AppError, commands } from "./bindings";
 
 /**
- * Settings IPC (T0.6). The only place that calls `invoke` for settings (docs/03 §3.2).
- * Types are hand-written until IPC codegen lands (T0.7, D-09) — keep them minimal.
+ * Settings IPC (T0.6). Commands come from the generated `bindings.ts` (T0.7, D-09); the settings
+ * document crosses IPC as opaque JSON, so its UI-side shape is declared here and validated in Rust.
  * Outside Tauri (browser preview, Playwright) a localStorage fallback keeps the UI usable.
  */
 export type SettingsDoc = {
@@ -49,9 +50,16 @@ function merge(
   return out;
 }
 
+/** Rejection value of IPC calls: the code is stable, the UI turns it into text (docs/03 §5.5). */
+export class IpcError extends Error {
+  constructor(readonly error: AppError) {
+    super(error.code);
+  }
+}
+
 export async function getSettings(): Promise<SettingsDoc> {
   if (!isTauri()) return webRead();
-  return invoke<SettingsDoc>("settings_get");
+  return (await commands.settingsGet()) as SettingsDoc;
 }
 
 export async function patchSettings(patch: SettingsPatch): Promise<SettingsDoc> {
@@ -64,7 +72,9 @@ export async function patchSettings(patch: SettingsPatch): Promise<SettingsDoc> 
     }
     return next;
   }
-  return invoke<SettingsDoc>("settings_patch", { patch });
+  const res = await commands.settingsPatch(patch);
+  if (res.status === "error") throw new IpcError(res.error);
+  return res.data as SettingsDoc;
 }
 
 export async function onSettingsChanged(cb: () => void): Promise<() => void> {

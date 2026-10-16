@@ -9,8 +9,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
+use sirtone_core::error::{AppError, ErrorCode};
 use sirtone_core::settings;
 use tauri::{AppHandle, Emitter, State};
+
+use crate::ipc::Json;
 
 const FILE: &str = "settings.json";
 const DEBOUNCE: Duration = Duration::from_secs(1);
@@ -99,22 +102,23 @@ pub fn write_atomic(path: &Path, doc: &Value) -> std::io::Result<()> {
 }
 
 #[tauri::command]
-pub fn settings_get(store: State<'_, Arc<SettingsStore>>) -> Value {
-    store.get()
+#[specta::specta]
+pub fn settings_get(store: State<'_, Arc<SettingsStore>>) -> Json {
+    Json(store.get())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn settings_patch(
     app: AppHandle,
     store: State<'_, Arc<SettingsStore>>,
-    patch: Value,
-) -> Result<Value, String> {
-    // AppError model arrives with IPC codegen (T0.7); until then the error is a code string.
+    patch: Json,
+) -> Result<Json, AppError> {
     let (doc, changed) = store
-        .patch(&patch)
-        .map_err(|e| format!("InvalidArgument: {e}"))?;
+        .patch(&patch.0)
+        .map_err(|e| AppError::new(ErrorCode::InvalidArgument).with_details(e))?;
     let _ = app.emit("settings://changed", &changed);
-    Ok(doc)
+    Ok(Json(doc))
 }
 
 #[cfg(test)]

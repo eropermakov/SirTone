@@ -6,7 +6,14 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!docs", "!spikes", "!**/src-tauri/gen", "!DESIGN.md"]
+    "includes": [
+      "**",
+      "!docs",
+      "!spikes",
+      "!**/src-tauri/gen",
+      "!DESIGN.md",
+      "!**/shared/ipc/bindings.ts"
+    ]
   },
   "formatter": {
     "enabled": true,

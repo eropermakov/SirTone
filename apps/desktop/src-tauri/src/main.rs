@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod diagnostics;
+mod ipc;
 mod settings_store;
 
 use std::sync::Arc;
@@ -48,10 +49,7 @@ fn main() {
         }))
         .manage(ShownOnce::default())
         .manage(settings)
-        .invoke_handler(tauri::generate_handler![
-            settings_store::settings_get,
-            settings_store::settings_patch
-        ])
+        .invoke_handler(ipc::builder().invoke_handler())
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 let theme = window.theme().unwrap_or(Theme::Dark);
