@@ -49,7 +49,7 @@
 |---|---|---|
 | `productName` | `SirTone` (отображаемое имя — «Сиртон» из i18n) | имя exe и ярлыков |
 | `identifier` | `studio.serkov.sirtone` | от него зависят папки данных, WebView2-профиль, обновления — **позже менять нельзя без миграции** |
-| `publisher` | `Sir.kov Studio` (бренд из `DESIGN.md` §0; было «Серков Studio» — ❓Q-21) | установщик, свойства файла, «О программе» |
+| `publisher` | `Серков Studio` (D-37; `DESIGN.md` §0 называет бренд «Sir.kov Studio» — смена только после ответа на ❓Q-21, поле легко меняется) | установщик, свойства файла, «О программе» |
 | Версия | `0.1.0` (SemVer) | обновления |
 
 ### 2.2. Rust workspace (`Cargo.toml`, корень)
@@ -173,7 +173,7 @@ unknown-git = "deny"
     }
   },
   "bundle": {
-    "active": true, "targets": ["nsis"], "publisher": "Sir.kov Studio",
+    "active": true, "targets": ["nsis"], "publisher": "Серков Studio",
     "windows": { "webviewInstallMode": { "type": "embedBootstrapper" },
                  "nsis": { "installMode": "currentUser" } }
   }
@@ -386,7 +386,7 @@ min_cyrillic_after = 0.7
 
 ### 4.5. Токены дизайна (`DESIGN.md` §13, D-56)
 
-Источник — CSS из `DESIGN.md` §13 **без изменений** → `apps/desktop/src/shared/ui/tokens/sirtone.css` (копирует T0.9; при обновлении `DESIGN.md` — перекопировать и прогнать тест контраста). Поверх него в отдельном файле `tokens/extra.css` — только то, чего в `DESIGN.md` нет: уровни `z.*`, параметры скелетона, `@property`-регистрация 6 цветовых токенов для плавной смены темы (`06` §4.4). Tailwind 4 `@theme` ссылается на переменные (`--color-accent-fill: var(--accent-fill)` и т.д.). Шрифт: `@font-face` Geologica из `src/assets/fonts/Geologica-Variable.ttf` (переименованная копия `fonts/Geologica-VariableFont_CRSV,SHRP,slnt,wght.ttf`), `font-display: block`, `font-variation-settings: "CRSV" 0, "SHRP" 0`. Наборы цвета: `data-accent="<slug>"`; для «Своего», «Авто» вне 17 наборов не бывает, а сезонные темы и «Свой» пишут 6 переменных в `style` корня одним присваиванием.
+Источник — CSS из `DESIGN.md` §13 **без изменений** → `apps/desktop/src/shared/ui/tokens/sirtone.css` (копирует T0.9; при обновлении `DESIGN.md` — перекопировать и прогнать тест контраста). Поверх него в отдельном файле `tokens/extra.css` — только то, чего в `DESIGN.md` нет: уровни `z.*`, параметры скелетона, `@property`-регистрация 6 цветовых токенов для плавной смены темы (`06` §4.4). Tailwind 4 `@theme` ссылается на переменные (`--color-accent-fill: var(--accent-fill)` и т.д.). Шрифт: `@font-face` Geologica из `src/assets/fonts/Geologica-Variable.ttf` (переименованная копия `fonts/Geologica-VariableFont_CRSV,SHRP,slnt,wght.ttf`), `font-display: block`, `font-variation-settings: "CRSV" 0, "SHRP" 0`. Наборы цвета: Sir.kov, 16 цветов и «Авто» (он всегда выбирает один из 17 готовых наборов) переключаются атрибутом `data-accent="<slug>"`; «Свой» и сезонные/событийные темы не имеют готового набора — генератор пишет 6 переменных в `style` корня одним присваиванием.
 
 ### 4.6. Локализация
 

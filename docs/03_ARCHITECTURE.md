@@ -543,7 +543,7 @@ CREATE VIRTUAL TABLE search_tri USING fts5(text, content='', tokenize='trigram')
 {
   "settings_version": 1,
   "language": "ru",
-  "appearance": { "theme": "dark", "accent": { "preset": "burgundy", "custom": null }, "custom_accents": [],
+  "appearance": { "theme": "system", "accent": { "source": "preset", "preset": "sirkov", "custom": null }, "custom_accents": [],
                   "seasonal_theme": false, "event_themes_auto": false },
   "performance": { "level": 3, "auto_degrade": true, "degraded_from": null,
     "overrides": { "ui_animations": null, "blur": null, "list_animations": null,
@@ -579,7 +579,7 @@ CREATE VIRTUAL TABLE search_tri USING fts5(text, content='', tokenize='trigram')
 }
 ```
 
-Тема — ✅ тёмная/светлая (🔧 +«как в системе» как COULD). Свой акцентный пресет хранит **только один цвет** ✅.
+Тема — ✅ тёмная/светлая, по умолчанию `system` (D-62). Цвет — `accent.source`: `preset` (`sirkov` по умолчанию или один из 16 slug `DESIGN.md` §4) · `auto` (из обложки) · `custom` (свой, хранит **только один цвет** ✅) · `seasonal` (тема по сезону/событию) — D-58.
 
 ---
 
