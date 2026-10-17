@@ -129,7 +129,7 @@ test("bootstrap hydrates settings and the player in one call", async ({ page }) 
   await expect(page.locator("html")).toHaveAttribute("data-accent", "blue");
   expect(await calls(page, "app_bootstrap")).toHaveLength(1);
   const theme = await calls(page, "window_set_theme");
-  expect(theme.at(-1)?.args).toEqual({ dark: true });
+  expect(theme.at(-1)?.args).toEqual({ dark: true, palette: null });
 });
 
 test("commands go out, events come back, errors become a toast", async ({ page }) => {
@@ -161,7 +161,7 @@ test("commands go out, events come back, errors become a toast", async ({ page }
   await page.getByRole("button", { name: "Светлая" }).click();
   await expect
     .poll(async () => (await calls(page, "window_set_theme")).at(-1)?.args)
-    .toEqual({ dark: false });
+    .toEqual({ dark: false, palette: null });
   const patch = (await calls(page, "settings_patch")).at(-1)?.args as {
     patch: { appearance: { theme: string } };
   };

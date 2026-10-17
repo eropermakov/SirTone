@@ -47,7 +47,8 @@ export const commands = {
 	albumTracks: (album: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("album_tracks", { album })),
 	unknownTracks: () => typedError<TrackItem[], AppError>(__TAURI_INVOKE("unknown_tracks")),
 	artistTracks: (artist: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("artist_tracks", { artist })),
-	windowSetTheme: (dark: boolean) => __TAURI_INVOKE<void>("window_set_theme", { dark }),
+	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
+	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),
 };
 
 /** Events */

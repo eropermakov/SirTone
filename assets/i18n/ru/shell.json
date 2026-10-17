@@ -59,7 +59,10 @@
     "previewButton": "Слушать",
     "about": "О программе",
     "version": "Сиртон {version} · Sir.kov Studio",
-    "badge": "Lossless"
+    "badge": "Lossless",
+    "themeEmber": "Оранжевая",
+    "themeMono": "Чёрно-белая",
+    "accentByTheme": "Цвет задан темой — выберите «Тёмная», «Светлая» или «Как в системе», чтобы сменить его"
   },
   "accent": {
     "sirkov": "Sir.kov",

@@ -67,3 +67,19 @@ for (const theme of ["dark", "light"] as const) {
     });
   }
 }
+
+for (const palette of ["ember", "mono"] as const) {
+  test(`owner palette looks as recorded: ${palette}`, async ({ page }) => {
+    for (const width of WIDTHS) {
+      await open(page, palette as unknown as "dark", "sirkov", width);
+      for (const name of ["Моя волна", "Настройки"]) {
+        await page.getByRole("button", { name, exact: true }).first().click();
+        await expect(page).toHaveScreenshot(`${palette}-${width}-${name}.png`, {
+          animations: "disabled",
+          caret: "hide",
+          maxDiffPixelRatio: 0.002,
+        });
+      }
+    }
+  });
+}

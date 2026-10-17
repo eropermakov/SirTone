@@ -62,6 +62,9 @@ pub enum ThemePref {
     System,
     Dark,
     Light,
+    /// Owner palettes (D-74): dark with an orange accent / black & white.
+    Ember,
+    Mono,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

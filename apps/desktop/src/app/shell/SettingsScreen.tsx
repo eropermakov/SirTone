@@ -12,7 +12,7 @@ import {
   setAutostart,
 } from "@/shared/ipc/window";
 import { cn } from "@/shared/lib/utils";
-import { ACCENT_SLUGS, type AccentSource, type ThemePref } from "@/shared/theme/theme";
+import { ACCENT_SLUGS, type AccentSource, isPalette, type ThemePref } from "@/shared/theme/theme";
 import { Switch } from "@/shared/ui/Switch";
 
 type Props = {
@@ -29,6 +29,8 @@ const THEMES: { id: ThemePref; key: string }[] = [
   { id: "system", key: "settings.themeSystem" },
   { id: "dark", key: "settings.themeDark" },
   { id: "light", key: "settings.themeLight" },
+  { id: "ember", key: "settings.themeEmber" },
+  { id: "mono", key: "settings.themeMono" },
 ];
 
 /** Settings → Внешний вид: theme + AccentPicker (DESIGN.md §9), applied instantly, no «Сохранить». */
@@ -77,8 +79,12 @@ export function SettingsScreen({
 
         <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
           <span className="t-card-title text-text-primary">{t("settings.color")}</span>
+          {isPalette(theme) && (
+            <span className="t-caption text-text-secondary">{t("settings.accentByTheme")}</span>
+          )}
           <fieldset
-            className="m-0 border-0 p-0 flex flex-wrap gap-3"
+            disabled={isPalette(theme)}
+            className="m-0 border-0 p-0 flex flex-wrap gap-3 disabled:opacity-40"
             aria-label={t("settings.color")}
           >
             {ACCENT_SLUGS.map((slug) => {

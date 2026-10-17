@@ -30,3 +30,20 @@ test("sidebar collapses below 900 px (DESIGN.md §7)", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("nav")).toHaveCSS("width", "64px");
 });
+
+test("owner palettes: orange and black & white (D-74)", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки" }).click();
+  await page.getByRole("button", { name: "Оранжевая" }).click();
+  const html = page.locator("html");
+  await expect(html).toHaveAttribute("data-palette", "ember");
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(15, 15, 15)");
+  await expect(page.getByRole("button", { name: "Синий" })).toBeDisabled();
+  await page.getByRole("button", { name: "Чёрно-белая" }).click();
+  await expect(html).toHaveAttribute("data-palette", "mono");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(10, 10, 10)");
+  await page.getByRole("button", { name: "Тёмная" }).click();
+  await expect(html).not.toHaveAttribute("data-palette", /./);
+  await expect(page.getByRole("button", { name: "Синий" })).toBeEnabled();
+});

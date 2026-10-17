@@ -28,6 +28,7 @@ import {
   type AccentSlug,
   type AccentSource,
   applyAppearance,
+  isPalette,
   onSystemThemeChange,
   resolveTheme,
   type ThemePref,
@@ -117,7 +118,10 @@ export function App() {
   useEffect(() => {
     const apply = () => {
       applyAppearance(appearance.theme, appearance.accent);
-      setWindowTheme(resolveTheme(appearance.theme));
+      setWindowTheme(
+        resolveTheme(appearance.theme),
+        isPalette(appearance.theme) ? appearance.theme : null,
+      );
     };
     apply();
     if (appearance.theme !== "system") return;

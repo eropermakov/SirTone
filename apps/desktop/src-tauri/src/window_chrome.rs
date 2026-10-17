@@ -28,8 +28,28 @@ pub fn apply_os_theme(window: &WebviewWindow) {
     );
 }
 
+/// `palette`: an owner palette (D-74) paints the caption in its own `bg-base`.
 #[tauri::command]
 #[specta::specta]
-pub fn window_set_theme(window: WebviewWindow, dark: bool) {
-    apply(&window, dark);
+pub fn window_set_theme(window: WebviewWindow, dark: bool, palette: Option<String>) {
+    use sirtone_platform::caption::{EMBER, MONO, apply_colors};
+    let colors = match palette.as_deref() {
+        Some("ember") => Some(EMBER),
+        Some("mono") => Some(MONO),
+        _ => None,
+    };
+    match colors {
+        Some(c) => {
+            let (r, g, b) = (
+                (c.background >> 16) as u8,
+                (c.background >> 8) as u8,
+                c.background as u8,
+            );
+            let _ = window.set_background_color(Some(Color(r, g, b, 0xff)));
+            if let Ok(hwnd) = window.hwnd() {
+                apply_colors(hwnd.0 as isize, true, c);
+            }
+        }
+        None => apply(&window, dark),
+    }
 }
