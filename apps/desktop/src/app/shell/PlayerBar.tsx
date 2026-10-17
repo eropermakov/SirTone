@@ -1,14 +1,4 @@
-import {
-  ListMusic,
-  Pause,
-  Play,
-  Repeat,
-  Repeat1,
-  Shuffle,
-  SkipBack,
-  SkipForward,
-  Volume2,
-} from "lucide-react";
+import { ListMusic, Repeat, Repeat1, Shuffle, Volume, Volume2 } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -25,6 +15,7 @@ import {
 import { cn } from "@/shared/lib/utils";
 import { Cover } from "@/shared/ui/Cover";
 import { Slider } from "@/shared/ui/Slider";
+import { ForwardIcon, PauseIcon, PlayIcon, RewindIcon } from "@/shared/ui/TransportIcons";
 
 /** m:ss / h:mm:ss timecode (format, not text). */
 export function timecode(ms: number): string {
@@ -34,6 +25,10 @@ export function timecode(ms: number): string {
   const s = String(total % 60).padStart(2, "0");
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
+
+/** Time left, with a true minus sign: «−3:43». */
+export const remaining = (positionMs: number, durationMs: number): string =>
+  `−${timecode(Math.max(0, durationMs - positionMs))}`;
 
 const NEXT_REPEAT: Record<RepeatMode, RepeatMode> = { off: "all", all: "one", one: "off" };
 
@@ -107,7 +102,7 @@ export function PlayerBar({
       : snap.repeat === "all"
         ? t("player.repeatAll")
         : t("player.repeat");
-  const PlayIcon = playing ? Pause : Play;
+  const PlayPauseIcon = playing ? PauseIcon : PlayIcon;
 
   return (
     <footer className="flex h-(--player-height) shrink-0 items-center gap-4 border-t border-separator bg-bg-base px-4">
@@ -141,27 +136,27 @@ export function PlayerBar({
             disabled={!loaded}
             onClick={prev}
             aria-label={t("player.prev")}
-            className="flex size-9 items-center justify-center rounded-full text-icon disabled:opacity-40"
+            className="flex size-10 items-center justify-center rounded-full text-text-primary transition-transform active:scale-90 disabled:opacity-40"
           >
-            <SkipBack size={20} strokeWidth={1.5} />
+            <RewindIcon size={28} />
           </button>
           <button
             type="button"
             disabled={!loaded}
             onClick={togglePlay}
             aria-label={playing ? t("player.pause") : t("player.play")}
-            className="flex size-(--play-size) items-center justify-center rounded-full bg-accent-fill text-accent-on disabled:opacity-40"
+            className="flex size-(--play-size) items-center justify-center rounded-full text-text-primary transition-transform active:scale-90 disabled:opacity-40"
           >
-            <PlayIcon size={20} fill="currentColor" strokeWidth={1.5} />
+            <PlayPauseIcon size={32} />
           </button>
           <button
             type="button"
             disabled={!snap.hasNext}
             onClick={next}
             aria-label={t("player.next")}
-            className="flex size-9 items-center justify-center rounded-full text-icon disabled:opacity-40"
+            className="flex size-10 items-center justify-center rounded-full text-text-primary transition-transform active:scale-90 disabled:opacity-40"
           >
-            <SkipForward size={20} strokeWidth={1.5} />
+            <ForwardIcon size={28} />
           </button>
           {toggle(
             snap.repeat === "one" ? Repeat1 : Repeat,
@@ -184,13 +179,15 @@ export function PlayerBar({
             disabled={!loaded || duration <= 0}
             onCommit={(v) => seek(v * duration)}
           />
-          <span className="t-timecode w-12 text-text-tertiary">{timecode(duration)}</span>
+          <span className="t-timecode w-12 text-text-tertiary">
+            {remaining(snap.positionMs, duration)}
+          </span>
         </div>
       </div>
 
       <div className="flex w-72 items-center justify-end gap-2">
         {toggle(ListMusic, t("player.queue"), queueOpen, onQueue)}
-        <Volume2 size={20} strokeWidth={1.5} aria-hidden className="text-icon" />
+        <Volume size={20} strokeWidth={1.5} fill="currentColor" aria-hidden className="text-icon" />
         <Slider
           className="w-24"
           label={t("player.volume")}
@@ -204,6 +201,13 @@ export function PlayerBar({
             setVolumeLocal(v);
             setVolume(v);
           }}
+        />
+        <Volume2
+          size={20}
+          strokeWidth={1.5}
+          fill="currentColor"
+          aria-hidden
+          className="text-icon"
         />
       </div>
     </footer>

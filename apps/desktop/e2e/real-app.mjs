@@ -90,7 +90,11 @@ async function connect() {
 let app = launch([join(fixtures, "long", "mix-3h.mp3")]);
 let { browser, page } = await connect();
 let footer = page.locator("footer");
-const times = () => footer.locator(".t-timecode").allTextContents();
+// [elapsed, total] from the seek slider (the right-hand label shows the time left, D-75).
+const times = async () =>
+  ((await footer.locator("[role=slider]").first().getAttribute("aria-valuetext")) ?? "").split(
+    " / ",
+  );
 const playLabel = () => footer.locator("button[aria-label]").nth(2).getAttribute("aria-label");
 const invoke = (cmd, args) =>
   page.evaluate(([c, a]) => window.__TAURI_INTERNALS__.invoke(c, a), [cmd, args]);

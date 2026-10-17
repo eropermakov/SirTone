@@ -124,7 +124,7 @@ test("bootstrap hydrates settings and the player in one call", async ({ page }) 
   const footer = page.locator("footer");
   await expect(footer.getByText("Mock track")).toBeVisible();
   await expect(footer.locator(".t-timecode").first()).toHaveText("1:01");
-  await expect(footer.locator(".t-timecode").last()).toHaveText("3:20");
+  await expect(footer.locator(".t-timecode").last()).toHaveText("−2:19");
   await expect(footer.getByRole("button", { name: "Пауза" })).toBeEnabled();
   await expect(page.locator("html")).toHaveAttribute("data-accent", "blue");
   expect(await calls(page, "app_bootstrap")).toHaveLength(1);

@@ -16,7 +16,7 @@
         "title": "Сиртон",
         "maximized": true,
         "visible": false,
-        "backgroundColor": "#161111",
+        "backgroundColor": "#333333",
         "dragDropEnabled": true,
         "minWidth": 720,
         "minHeight": 560,

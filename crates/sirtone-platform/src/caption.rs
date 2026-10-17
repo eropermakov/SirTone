@@ -18,17 +18,17 @@ pub struct CaptionColors {
 }
 
 pub const DARK: CaptionColors = CaptionColors {
-    background: 0x161111,
-    text: 0xf9f6f0,
+    background: 0x333333,
+    text: 0xf5f5f5,
 };
 /// Owner palettes (D-74): «Оранжевая» and «Чёрно-белая».
 pub const EMBER: CaptionColors = CaptionColors {
-    background: 0x0f0f0f,
-    text: 0xf2f0ee,
+    background: 0x333333,
+    text: 0xf5f5f5,
 };
 pub const MONO: CaptionColors = CaptionColors {
-    background: 0x0a0a0a,
-    text: 0xfafafa,
+    background: 0x333333,
+    text: 0xf5f5f5,
 };
 pub const LIGHT: CaptionColors = CaptionColors {
     background: 0xf2eee6,
