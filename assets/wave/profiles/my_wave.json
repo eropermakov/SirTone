@@ -1,0 +1,25 @@
+{
+  "schema": "sirtone.wave-profile/1",
+  "_note": "Starting weights from the owner's table (docs/14 §5.2); the rest goes to session and filters equally. Calibration: OWN-08.",
+  "id": "my_wave",
+  "name_key": "wave.profile.my_wave",
+  "weights": {
+    "taste": 0.45,
+    "session": 0.1,
+    "context": 0.15,
+    "season": 0.1,
+    "event": 0.1,
+    "curve": 0.0,
+    "novelty": 0.0,
+    "universal": 0.0,
+    "filters": 0.1
+  },
+  "novelty": { "mode": "slider" },
+  "learning_policy": "full",
+  "sequencing": {
+    "artist_spacing": 5,
+    "repeat_window_h": 24,
+    "max_energy_jump": 0.35,
+    "transition_bonus": true
+  }
+}

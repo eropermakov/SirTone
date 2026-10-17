@@ -145,12 +145,50 @@ pub fn season_w_bytes(w: &[f32; 4]) -> [u8; 4] {
     w.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)
 }
 
+/// Number of track features (docs/14 §4.1).
+pub const FEATURES: usize = 32;
+
+/// One playable track as the wave engine sees it (docs/14 §4, §8): metadata for the feature
+/// vector, statistics and the user's signals. Built by storage, consumed by `sirtone-wave`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WaveTrack {
+    pub id: i64,
+    /// Primary artist (spacing «1 из 5», «никогда» for the artist).
+    pub artist_id: i64,
+    pub duration_ms: u64,
+    pub year: Option<i32>,
+    pub genre: Option<String>,
+    pub added_ms: i64,
+    pub play_count: u32,
+    pub skip_count: u32,
+    pub last_played_ms: Option<i64>,
+    pub completion: f32,
+    /// The latest like/unlike is a like.
+    pub liked: bool,
+    /// «Никогда в волне» for the track or its artist.
+    pub never: bool,
+    /// Analysed features (B0–B3) with their confidence; `None` until analysed.
+    pub features: Option<([f32; FEATURES], f32)>,
+}
+
+/// «Не сейчас» still on the shelf (docs/14 §6, D-77).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NotNowRow {
+    pub track_id: i64,
+    pub ctx_key: String,
+    pub expires_ms: i64,
+}
+
 /// What the wave engine needs from storage (docs/14 §2.1). Grows with the stages that use it.
 pub trait WaveRepo: Send + Sync {
     /// Appends one event in its own transaction: a crash loses at most the event in flight.
     fn record_play(&self, event: &PlayEvent) -> Result<(), AppError>;
     /// Events with `ts >= since_ms`, oldest first.
     fn plays_since(&self, since_ms: i64) -> Result<Vec<PlayEvent>, AppError>;
+    /// Every playable track with what the engine scores on.
+    fn catalog(&self) -> Result<Vec<WaveTrack>, AppError>;
+    /// «Не сейчас» rows that have not expired at `now_ms`.
+    fn not_now(&self, now_ms: i64) -> Result<Vec<NotNowRow>, AppError>;
 }
 
 #[cfg(test)]

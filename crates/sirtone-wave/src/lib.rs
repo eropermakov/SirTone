@@ -4,3 +4,6 @@ pub mod calendar;
 pub mod clock;
 pub mod config;
 pub mod context;
+pub mod engine;
+pub mod rng;
+pub mod synth;

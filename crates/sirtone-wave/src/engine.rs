@@ -1,0 +1,712 @@
+//! The wave engine (docs/14 §1, §4–§9; ported from the S-17 prototype): a catalog of feature
+//! vectors and signals in memory → stage 1 scores every track (no allocation in the loop) and
+//! keeps the top K per familiarity group → the sequencer picks the next tracks by the slider
+//! quotas, Thompson sampling, artist spacing, the repeat window, «никогда» and «не сейчас».
+//! Weights and thresholds come from `assets/wave` (profile, engine, genres); time only from the
+//! caller (`now_ms`, the `Clock` in the app).
+
+use serde::Deserialize;
+use sirtone_core::text::norm;
+use sirtone_core::wave::{ContextSnapshot, FEATURES as D, NotNowRow, WaveTrack};
+
+use crate::context::bucket_matches;
+use crate::rng::Rng;
+
+/// Feature indices (docs/14 §4.1).
+pub mod f {
+    pub const ENERGY: usize = 0;
+    pub const TEMPO: usize = 4;
+    pub const DURATION: usize = 13;
+    pub const YEAR: usize = 14;
+    pub const GENRE: usize = 26;
+    pub const GENRES: usize = 6;
+}
+
+const DAY_MS: i64 = 24 * 3600 * 1000;
+
+// ---------- configuration (assets/wave) ----------
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Weights {
+    pub taste: f32,
+    pub session: f32,
+    pub context: f32,
+    pub season: f32,
+    pub event: f32,
+    pub curve: f32,
+    pub novelty: f32,
+    pub universal: f32,
+    pub filters: f32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Sequencing {
+    pub artist_spacing: usize,
+    pub repeat_window_h: u32,
+    pub max_energy_jump: f32,
+    pub transition_bonus: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Profile {
+    pub id: String,
+    pub weights: Weights,
+    pub sequencing: Sequencing,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct QuotaStop {
+    pub at: f32,
+    pub groups: [f32; 3],
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Familiarity {
+    pub loved_plays: u32,
+    pub loved_mean: f32,
+    pub forgotten_plays: u32,
+    pub forgotten_days: u32,
+    pub new_days: u32,
+    pub new_max_plays: u32,
+    pub never_return_mean: f32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Signals {
+    pub like: f32,
+    pub never: f32,
+    pub skip_early: f32,
+    pub finished: f32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EngineParams {
+    pub quotas: Vec<QuotaStop>,
+    pub top_k: usize,
+    pub top_sample: usize,
+    pub temperature: f32,
+    pub explore_base: f32,
+    pub explore_slope: f32,
+    pub taste_sigma: f32,
+    pub novelty_pull: f32,
+    pub cold_conf_floor: f32,
+    pub familiarity: Familiarity,
+    pub repeat_soft_days: u32,
+    pub signals: Signals,
+    pub beta_half_life_days: f32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Genres {
+    pub groups: Vec<Vec<String>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub profile: Profile,
+    pub engine: EngineParams,
+    pub genres: Genres,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("wave config {file}: {source}")]
+pub struct ConfigError {
+    file: &'static str,
+    source: serde_json::Error,
+}
+
+impl Config {
+    /// The built-in «Моя волна» with the bundled assets.
+    pub fn builtin() -> Result<Self, ConfigError> {
+        let parse = |file: &'static str, text: &str| -> Result<serde_json::Value, ConfigError> {
+            serde_json::from_str(text).map_err(|source| ConfigError { file, source })
+        };
+        let p = parse(
+            "profiles/my_wave.json",
+            include_str!("../../../assets/wave/profiles/my_wave.json"),
+        )?;
+        let e = parse(
+            "engine.json",
+            include_str!("../../../assets/wave/engine.json"),
+        )?;
+        let g = parse(
+            "genres.json",
+            include_str!("../../../assets/wave/genres.json"),
+        )?;
+        Ok(Self {
+            profile: serde_json::from_value(p).map_err(|source| ConfigError {
+                file: "profiles/my_wave.json",
+                source,
+            })?,
+            engine: serde_json::from_value(e).map_err(|source| ConfigError {
+                file: "engine.json",
+                source,
+            })?,
+            genres: serde_json::from_value(g).map_err(|source| ConfigError {
+                file: "genres.json",
+                source,
+            })?,
+        })
+    }
+
+    /// Slider position → group shares, linear between the owner's stops (docs/14 §9).
+    pub fn quotas(&self, novelty: f32) -> [f32; 3] {
+        let v = novelty.clamp(0.0, 1.0);
+        let q = &self.engine.quotas;
+        for w in q.windows(2) {
+            let (a, b) = (&w[0], &w[1]);
+            if v <= b.at {
+                let t = if b.at > a.at {
+                    (v - a.at) / (b.at - a.at)
+                } else {
+                    0.0
+                };
+                return std::array::from_fn(|i| a.groups[i] + t * (b.groups[i] - a.groups[i]));
+            }
+        }
+        q.last().map_or([1.0, 0.0, 0.0], |s| s.groups)
+    }
+}
+
+// ---------- catalog ----------
+
+/// The engine's view of the library: struct of arrays, one index per track.
+pub struct Catalog {
+    pub id: Vec<i64>,
+    pub feat: Vec<[f32; D]>,
+    /// Multiplier for tracks without deep analysis (`floor + (1 − floor)·conf`).
+    cold: Vec<f32>,
+    pub artist: Vec<i64>,
+    alpha: Vec<f32>,
+    beta: Vec<f32>,
+    plays: Vec<u32>,
+    pub last_played: Vec<i64>,
+    added: Vec<i64>,
+    liked: Vec<bool>,
+    pub never: Vec<bool>,
+    center: [f32; D],
+}
+
+/// Genre tag → group (first hit on the normalised words).
+fn genre_group(genre: &str, groups: &[Vec<String>]) -> Option<usize> {
+    let g = norm(genre)?;
+    groups
+        .iter()
+        .position(|words| words.iter().any(|w| g.contains(w.as_str())))
+}
+
+impl Catalog {
+    pub fn build(tracks: &[WaveTrack], cfg: &Config, now_ms: i64) -> Self {
+        let n = tracks.len();
+        let e = &cfg.engine;
+        // Means of the analysed features (or 0.5) stand in until a track is analysed (§4.1).
+        let mut mean = [0.5f32; D];
+        let analysed: Vec<&[f32; D]> = tracks
+            .iter()
+            .filter_map(|t| t.features.as_ref().map(|f| &f.0))
+            .collect();
+        if !analysed.is_empty() {
+            mean = [0.0; D];
+            for x in &analysed {
+                for (m, v) in mean.iter_mut().zip(x.iter()) {
+                    *m += v;
+                }
+            }
+            for v in &mut mean {
+                *v /= analysed.len() as f32;
+            }
+        }
+        // Genre shares of the library — the stand-in for an unknown genre.
+        let mut shares = [0f32; f::GENRES];
+        let mut known = 0f32;
+        let groups: Vec<Option<usize>> = tracks
+            .iter()
+            .map(|t| {
+                t.genre
+                    .as_deref()
+                    .and_then(|g| genre_group(g, &cfg.genres.groups))
+            })
+            .collect();
+        for g in groups.iter().flatten() {
+            shares[*g] += 1.0;
+            known += 1.0;
+        }
+        for v in &mut shares {
+            *v = if known > 0.0 {
+                *v / known
+            } else {
+                1.0 / f::GENRES as f32
+            };
+        }
+        let mut years: Vec<f32> = tracks
+            .iter()
+            .filter_map(|t| t.year)
+            .map(year_feature)
+            .collect();
+        years.sort_by(f32::total_cmp);
+        let year_mid = years.get(years.len() / 2).copied().unwrap_or(0.5);
+
+        let mut c = Catalog {
+            id: Vec::with_capacity(n),
+            feat: Vec::with_capacity(n),
+            cold: Vec::with_capacity(n),
+            artist: Vec::with_capacity(n),
+            alpha: Vec::with_capacity(n),
+            beta: Vec::with_capacity(n),
+            plays: Vec::with_capacity(n),
+            last_played: Vec::with_capacity(n),
+            added: Vec::with_capacity(n),
+            liked: Vec::with_capacity(n),
+            never: Vec::with_capacity(n),
+            center: [0.0; D],
+        };
+        for (t, g) in tracks.iter().zip(&groups) {
+            let (mut x, conf) = t.features.unwrap_or((mean, 0.0));
+            // Metadata features are known without analysis (§4.1: «теги»).
+            x[f::DURATION] = duration_feature(t.duration_ms);
+            x[f::YEAR] = t.year.map_or(year_mid, year_feature);
+            if t.features.is_none() {
+                match g {
+                    Some(g) => {
+                        for k in 0..f::GENRES {
+                            x[f::GENRE + k] = f32::from(u8::from(k == *g));
+                        }
+                    }
+                    None => x[f::GENRE..f::GENRE + f::GENRES].copy_from_slice(&shares),
+                }
+            }
+            // Beta of «отношение к треку» from the aggregates (§8.1 strengths), decaying to the
+            // prior with a 90-day half-life (§8.2). The full replay of the journal — T3.28.
+            let s = &e.signals;
+            let mut a = 1.0
+                + s.finished * t.play_count as f32 * t.completion.max(0.5)
+                + if t.liked { s.like * 3.0 } else { 0.0 };
+            let mut b = 1.0 + s.skip_early * t.skip_count as f32;
+            if let Some(last) = t.last_played_ms {
+                let days = ((now_ms - last).max(0) / DAY_MS) as f32;
+                let k = 2f32.powf(-days / e.beta_half_life_days);
+                a = 1.0 + (a - 1.0) * k;
+                b = 1.0 + (b - 1.0) * k;
+            }
+            c.id.push(t.id);
+            c.feat.push(x);
+            c.cold
+                .push(e.cold_conf_floor + (1.0 - e.cold_conf_floor) * conf);
+            c.artist.push(t.artist_id);
+            c.alpha.push(a);
+            c.beta.push(b);
+            c.plays.push(t.play_count);
+            c.last_played.push(t.last_played_ms.unwrap_or(i64::MIN / 2));
+            c.added.push(t.added_ms);
+            c.liked.push(t.liked);
+            c.never.push(t.never);
+        }
+        // Cold-start centre of taste: weight ∝ ln(1 + tracks of the artist) (§8.3).
+        let mut per_artist = std::collections::HashMap::<i64, u32>::new();
+        for a in &c.artist {
+            *per_artist.entry(*a).or_default() += 1;
+        }
+        let mut wsum = 0f32;
+        for (i, x) in c.feat.iter().enumerate() {
+            let w = (1.0 + per_artist.get(&c.artist[i]).copied().unwrap_or(1) as f32).ln();
+            for (cv, v) in c.center.iter_mut().zip(x.iter()) {
+                *cv += w * v;
+            }
+            wsum += w;
+        }
+        if wsum > 0.0 {
+            for v in &mut c.center {
+                *v /= wsum;
+            }
+        }
+        c
+    }
+
+    pub fn len(&self) -> usize {
+        self.id.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.id.is_empty()
+    }
+
+    fn mean(&self, t: usize) -> f32 {
+        self.alpha[t] / (self.alpha[t] + self.beta[t])
+    }
+
+    /// Familiarity group for the slider quotas: 0 — loved/familiar, 1 — forgotten,
+    /// 2 — new/untouched (docs/14 §9).
+    fn group(&self, t: usize, now_ms: i64, fam: &Familiarity) -> usize {
+        let plays = self.plays[t];
+        let days = (now_ms - self.last_played[t]) / DAY_MS;
+        let age_days = (now_ms - self.added[t]) / DAY_MS;
+        if self.liked[t] || (plays >= fam.loved_plays && self.mean(t) > fam.loved_mean) {
+            0 // любимое
+        } else if plays >= fam.forgotten_plays && days > i64::from(fam.forgotten_days) {
+            1 // забытое
+        } else if age_days <= i64::from(fam.new_days) && plays < fam.new_max_plays {
+            2 // новое
+        } else if plays >= 1 {
+            0 // знакомое
+        } else {
+            2 // нетронутое
+        }
+    }
+}
+
+fn duration_feature(ms: u64) -> f32 {
+    let s = (ms as f32 / 1000.0).max(1.0);
+    ((s.ln() - 60f32.ln()) / (900f32.ln() - 60f32.ln())).clamp(0.0, 1.0)
+}
+
+fn year_feature(y: i32) -> f32 {
+    ((y as f32 - 1950.0) / 80.0).clamp(0.0, 1.0)
+}
+
+// ---------- taste model (docs/14 §8.2) ----------
+
+#[inline(always)]
+fn dot(a: &[f32; D], b: &[f32; D]) -> f32 {
+    let mut acc = [0f32; 8];
+    for i in (0..D).step_by(8) {
+        for j in 0..8 {
+            acc[j] += a[i + j] * b[i + j];
+        }
+    }
+    acc.iter().sum()
+}
+
+#[inline(always)]
+fn sigmoid(x: f32) -> f32 {
+    1.0 / (1.0 + (-x).exp())
+}
+
+/// Logistic regression with a diagonal Gaussian posterior (Chapelle & Li 2011).
+#[derive(Debug, Clone)]
+pub struct Taste {
+    m: [f32; D],
+    q: [f32; D],
+    b: f32,
+}
+
+impl Default for Taste {
+    fn default() -> Self {
+        Self {
+            m: [0.0; D],
+            q: [1.0; D],
+            b: 0.0,
+        }
+    }
+}
+
+impl Taste {
+    pub fn update(&mut self, x: &[f32; D], y: f32, w: f32) {
+        let p = sigmoid(dot(&self.m, x) + self.b);
+        let g = w * (y - p);
+        let h = w * p * (1.0 - p);
+        for ((q, m), xi) in self.q.iter_mut().zip(self.m.iter_mut()).zip(x.iter()) {
+            *q += h * xi * xi;
+            *m += g * xi / *q;
+        }
+        self.b += 0.05 * g;
+    }
+
+    fn sample(&self, rng: &mut Rng, sigma: f32) -> [f32; D] {
+        std::array::from_fn(|i| self.m[i] + sigma * rng.normal() / self.q[i].sqrt())
+    }
+}
+
+// ---------- stage 1 + sequencer ----------
+
+#[derive(Clone, Copy)]
+struct Scored {
+    score: f32,
+    idx: u32,
+}
+
+fn keep_top(v: &mut Vec<Scored>, k: usize) {
+    if v.len() > k {
+        v.select_nth_unstable_by(k, |a, b| b.score.total_cmp(&a.score));
+        v.truncate(k);
+    }
+    v.sort_unstable_by(|a, b| b.score.total_cmp(&a.score));
+}
+
+/// What the sequencer remembers between picks in a session.
+#[derive(Default)]
+struct Session {
+    recent_artists: Vec<i64>,
+    prev_energy: Option<f32>,
+    prev_tempo: Option<f32>,
+    group_counts: [u32; 3],
+    slots: u32,
+    queued: Vec<u32>,
+}
+
+pub struct Engine {
+    cfg: Config,
+    cat: Catalog,
+    taste: Taste,
+    buf: [Vec<Scored>; 3],
+    blocked: Vec<bool>,
+    session: Session,
+    rng: Rng,
+}
+
+impl Engine {
+    /// Builds the catalog and replays the statistics into the taste model once (§8.3 (2)).
+    pub fn new(cfg: Config, tracks: &[WaveTrack], now_ms: i64, seed: u64) -> Self {
+        let cat = Catalog::build(tracks, &cfg, now_ms);
+        let mut taste = Taste::default();
+        let s = &cfg.engine.signals;
+        for _ in 0..2 {
+            for (i, t) in tracks.iter().enumerate() {
+                if t.liked {
+                    taste.update(&cat.feat[i], 1.0, s.like);
+                }
+                if t.play_count > 0 {
+                    taste.update(
+                        &cat.feat[i],
+                        1.0,
+                        (s.finished * t.play_count as f32).min(1.0),
+                    );
+                }
+                if t.skip_count > t.play_count {
+                    taste.update(&cat.feat[i], 0.0, s.skip_early * 0.5);
+                }
+                if t.never {
+                    taste.update(&cat.feat[i], 0.0, s.never);
+                }
+            }
+        }
+        let n = cat.len();
+        let cap = n.min(cfg.engine.top_k * 64).max(1);
+        Self {
+            blocked: vec![false; n],
+            buf: [
+                Vec::with_capacity(cap),
+                Vec::with_capacity(cap),
+                Vec::with_capacity(cap),
+            ],
+            cfg,
+            cat,
+            taste,
+            session: Session::default(),
+            rng: Rng::new(seed),
+        }
+    }
+
+    pub fn catalog(&self) -> &Catalog {
+        &self.cat
+    }
+
+    /// The next `n` tracks (ids) for the context. `novelty` — the slider, 0…1.
+    pub fn next(
+        &mut self,
+        ctx: &ContextSnapshot,
+        not_now: &[NotNowRow],
+        novelty: f32,
+        n: usize,
+        now_ms: i64,
+    ) -> Vec<i64> {
+        self.rebuild(ctx, not_now, novelty, now_ms);
+        let mut out = Vec::with_capacity(n);
+        for _ in 0..n {
+            match self.pick(novelty) {
+                Some(t) => out.push(self.cat.id[t as usize]),
+                None => break,
+            }
+        }
+        out
+    }
+
+    /// Familiarity group of a track (0 — loved/familiar, 1 — forgotten, 2 — new/untouched).
+    pub fn group_of(&self, id: i64, now_ms: i64) -> Option<usize> {
+        let i = self.cat.id.iter().position(|&x| x == id)?;
+        Some(self.cat.group(i, now_ms, &self.cfg.engine.familiarity))
+    }
+
+    /// A track was heard (now in the repeat window).
+    pub fn played(&mut self, id: i64, now_ms: i64) {
+        if let Some(i) = self.cat.id.iter().position(|&x| x == id) {
+            self.cat.last_played[i] = now_ms;
+        }
+    }
+
+    /// Online learning from one signal (§8.1): `y` 1/0 with weight `w`.
+    pub fn learn(&mut self, id: i64, y: f32, w: f32) {
+        if let Some(i) = self.cat.id.iter().position(|&x| x == id) {
+            if y > 0.5 {
+                self.cat.alpha[i] += w;
+            } else {
+                self.cat.beta[i] += w;
+            }
+            let x = self.cat.feat[i];
+            self.taste.update(&x, y, w);
+        }
+    }
+
+    /// «Никогда» now (the mask, without a catalog reload).
+    pub fn never(&mut self, id: i64, artist: bool) {
+        if let Some(i) = self.cat.id.iter().position(|&x| x == id) {
+            if artist {
+                let a = self.cat.artist[i];
+                for (k, v) in self.cat.never.iter_mut().enumerate() {
+                    if self.cat.artist[k] == a {
+                        *v = true;
+                    }
+                }
+            } else {
+                self.cat.never[i] = true;
+            }
+        }
+    }
+
+    /// Stage 1: every track → top K per familiarity group.
+    fn rebuild(&mut self, ctx: &ContextSnapshot, not_now: &[NotNowRow], novelty: f32, now_ms: i64) {
+        let cfg = &self.cfg;
+        let e = &cfg.engine;
+        let w = &cfg.profile.weights;
+        // The event weight goes to taste outside an event window (§5.2); no event yet.
+        let w_taste = w.taste + w.event;
+        // Components without data yet are neutral: context/session/season/filters = 0.5.
+        let neutral = 0.5 * (w.session + w.context + w.season + w.filters);
+        let sigma = e.taste_sigma * (0.5 + novelty);
+        let wt = self.taste.sample(&mut self.rng, sigma);
+        let bias = self.taste.b;
+        let repeat_ms = i64::from(cfg.profile.sequencing.repeat_window_h) * 3600 * 1000;
+        let soft_ms = i64::from(e.repeat_soft_days) * DAY_MS;
+        // «Не сейчас» in this context bucket blocks for its shelf time (D-77).
+        self.blocked.fill(false);
+        // Already queued in this session — never twice (the top K must not fill with them).
+        for &q in &self.session.queued {
+            if let Some(b) = self.blocked.get_mut(q as usize) {
+                *b = true;
+            }
+        }
+        for row in not_now {
+            if row.expires_ms > now_ms
+                && bucket_matches(&row.ctx_key, ctx)
+                && let Some(i) = self.cat.id.iter().position(|&x| x == row.track_id)
+            {
+                self.blocked[i] = true;
+            }
+        }
+        for g in &mut self.buf {
+            g.clear();
+        }
+        let cat = &self.cat;
+        let fam = &e.familiarity;
+        for t in 0..cat.len() {
+            // Layer 1: «никогда», disliked, «не сейчас», the hard repeat window.
+            if cat.never[t]
+                || self.blocked[t]
+                || cat.mean(t) < fam.never_return_mean
+                || now_ms - cat.last_played[t] < repeat_ms
+            {
+                continue;
+            }
+            let x = &cat.feat[t];
+            let taste = 0.6 * sigmoid(dot(&wt, x) + bias) + 0.4 * cat.mean(t);
+            let mut s = w_taste * taste + neutral;
+            let g = cat.group(t, now_ms, fam);
+            if g == 2 && novelty > 0.0 {
+                let mut d2 = 0.0;
+                for (i, v) in x.iter().enumerate() {
+                    let d = v - cat.center[i];
+                    d2 += d * d;
+                }
+                s += e.novelty_pull * novelty * (d2 / D as f32).sqrt();
+            }
+            // Soft repeat penalty for a week after the hard window (§6).
+            let since = now_ms - cat.last_played[t];
+            if since < soft_ms {
+                s -= 0.05 / (1.0 + (since / DAY_MS) as f32);
+            }
+            self.buf[g].push(Scored {
+                score: s * cat.cold[t],
+                idx: t as u32,
+            });
+        }
+        for g in &mut self.buf {
+            keep_top(g, e.top_k);
+        }
+    }
+
+    /// Stage 2: the group furthest behind its quota → Thompson + constraints → softmax.
+    fn pick(&mut self, novelty: f32) -> Option<u32> {
+        let e = &self.cfg.engine;
+        let seq = &self.cfg.profile.sequencing;
+        let q = self.cfg.quotas(novelty);
+        let ss = &mut self.session;
+        let deficit = |g: usize| q[g] * (ss.slots + 1) as f32 - ss.group_counts[g] as f32;
+        let mut order = [0usize, 1, 2];
+        order.sort_by(|&a, &b| deficit(b).total_cmp(&deficit(a)));
+        let explore = e.explore_base + e.explore_slope * novelty;
+        let cat = &self.cat;
+        let mut pool: Vec<(f32, u32)> = Vec::with_capacity(e.top_sample);
+        // Groups with no quota are a last resort (a small library must still play).
+        for pass in 0..2 {
+            for &g in &order {
+                if pass == 0 && q[g] <= 0.0 {
+                    continue;
+                }
+                pool.clear();
+                for c in &self.buf[g] {
+                    let t = c.idx as usize;
+                    if ss.queued.contains(&c.idx) || ss.recent_artists.contains(&cat.artist[t]) {
+                        continue;
+                    }
+                    let x = &cat.feat[t];
+                    if let Some(pe) = ss.prev_energy
+                        && (x[f::ENERGY] - pe).abs() > seq.max_energy_jump
+                    {
+                        continue;
+                    }
+                    let (a, b) = (cat.alpha[t], cat.beta[t]);
+                    let mut s = c.score + explore * (self.rng.beta(a, b) - a / (a + b));
+                    if seq.transition_bonus
+                        && let Some(pt) = ss.prev_tempo
+                        && pt > 0.0
+                        && ((x[f::TEMPO] - pt) / pt).abs() <= 0.08
+                    {
+                        s += 0.02;
+                    }
+                    pool.push((s, c.idx));
+                    if pool.len() == e.top_sample {
+                        break;
+                    }
+                }
+                if pool.is_empty() {
+                    continue;
+                }
+                let max = pool.iter().map(|p| p.0).fold(f32::MIN, f32::max);
+                let total: f32 = pool
+                    .iter()
+                    .map(|p| ((p.0 - max) / e.temperature).exp())
+                    .sum();
+                let mut r = self.rng.f32() * total;
+                let mut chosen = pool[pool.len() - 1].1;
+                for &(s, idx) in &pool {
+                    r -= ((s - max) / e.temperature).exp();
+                    if r <= 0.0 {
+                        chosen = idx;
+                        break;
+                    }
+                }
+                let t = chosen as usize;
+                ss.queued.push(chosen);
+                ss.recent_artists.push(cat.artist[t]);
+                if ss.recent_artists.len() > seq.artist_spacing.saturating_sub(1) {
+                    ss.recent_artists.remove(0);
+                }
+                ss.prev_energy = Some(cat.feat[t][f::ENERGY]);
+                ss.prev_tempo = Some(cat.feat[t][f::TEMPO]);
+                ss.group_counts[g] += 1;
+                ss.slots += 1;
+                return Some(chosen);
+            }
+        }
+        None
+    }
+}

@@ -8,14 +8,23 @@ use std::sync::Mutex;
 use rusqlite::{Connection, params};
 use sirtone_core::error::{AppError, ErrorCode};
 use sirtone_core::wave::{
-    ContextSnapshot, Daypart, EndReason, PlayEvent, PlaySource, WaveRepo, WeatherClass,
-    season_w_bytes,
+    ContextSnapshot, Daypart, EndReason, FEATURES, NotNowRow, PlayEvent, PlaySource, WaveRepo,
+    WaveTrack, WeatherClass, season_w_bytes,
 };
 
 use crate::db::{self, Medium};
 use crate::error::LibraryError;
 
+/// The journal row and the track aggregates (T3.17) in one transaction.
 pub fn record_play(conn: &Connection, e: &PlayEvent) -> Result<(), LibraryError> {
+    let tx = conn.unchecked_transaction()?;
+    insert_event(&tx, e)?;
+    crate::stats::apply(&tx, e)?;
+    tx.commit()?;
+    Ok(())
+}
+
+fn insert_event(conn: &Connection, e: &PlayEvent) -> Result<(), LibraryError> {
     let c = &e.context;
     conn.execute(
         "INSERT INTO play_event(ts, track_id, played_ms, duration_ms, end_reason, source, profile,
@@ -151,6 +160,76 @@ fn app_err(e: LibraryError) -> AppError {
     AppError::new(ErrorCode::Internal).with_details(e)
 }
 
+/// Every playable track for the wave engine (docs/14 §4, §8): statistics, the latest
+/// like/unlike, «никогда» of the track or its primary artist, analysed features if any.
+pub fn catalog(conn: &Connection) -> Result<Vec<WaveTrack>, LibraryError> {
+    let mut st = conn.prepare(
+        "SELECT t.id,
+                coalesce((SELECT ta.artist_id FROM track_artist ta WHERE ta.track_id = t.id
+                          ORDER BY ta.position LIMIT 1), -t.id),
+                t.duration_ms, coalesce(t.year, al.year), t.genre_main, t.added_at,
+                t.play_count, t.skip_count, t.last_played_at, t.completion_ema,
+                coalesce((SELECT f.kind = 'like' FROM feedback f WHERE f.track_id = t.id
+                          AND f.kind IN ('like','unlike') ORDER BY f.id DESC LIMIT 1), 0),
+                t.wave_never OR coalesce((SELECT a.wave_never FROM track_artist ta
+                          JOIN artist a ON a.id = ta.artist_id WHERE ta.track_id = t.id
+                          ORDER BY ta.position LIMIT 1), 0),
+                tf.vec, tf.conf
+         FROM track t LEFT JOIN album al ON al.id = t.album_id
+         LEFT JOIN track_features tf ON tf.track_id = t.id
+         WHERE t.state = 'ok'",
+    )?;
+    let rows = st
+        .query_map([], |r| {
+            let vec: Option<Vec<u8>> = r.get(12)?;
+            let conf: Option<f64> = r.get(13)?;
+            let features = match (vec, conf) {
+                (Some(v), Some(c)) if v.len() == FEATURES * 4 => {
+                    let mut x = [0f32; FEATURES];
+                    for (i, chunk) in v.as_chunks::<4>().0.iter().enumerate() {
+                        x[i] = f32::from_le_bytes(*chunk);
+                    }
+                    Some((x, c as f32))
+                }
+                _ => None,
+            };
+            Ok(WaveTrack {
+                id: r.get(0)?,
+                artist_id: r.get(1)?,
+                duration_ms: r.get::<_, i64>(2)?.max(0) as u64,
+                year: r.get(3)?,
+                genre: r.get(4)?,
+                added_ms: r.get(5)?,
+                play_count: r.get(6)?,
+                skip_count: r.get(7)?,
+                last_played_ms: r.get(8)?,
+                completion: r.get::<_, f64>(9)? as f32,
+                liked: r.get::<_, i64>(10)? != 0,
+                never: r.get::<_, i64>(11)? != 0,
+                features,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+pub fn not_now(conn: &Connection, now_ms: i64) -> Result<Vec<NotNowRow>, LibraryError> {
+    let mut st = conn.prepare(
+        "SELECT track_id, ctx_key, expires_at FROM feedback
+         WHERE kind = 'not_now' AND track_id IS NOT NULL AND ctx_key IS NOT NULL AND expires_at > ?1",
+    )?;
+    let rows = st
+        .query_map([now_ms], |r| {
+            Ok(NotNowRow {
+                track_id: r.get(0)?,
+                ctx_key: r.get(1)?,
+                expires_ms: r.get(2)?,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
 impl WaveRepo for SqliteWaveRepo {
     fn record_play(&self, event: &PlayEvent) -> Result<(), AppError> {
         let conn = self
@@ -166,6 +245,22 @@ impl WaveRepo for SqliteWaveRepo {
             .lock()
             .map_err(|_| AppError::new(ErrorCode::Internal))?;
         plays_since(&conn, since_ms).map_err(app_err)
+    }
+
+    fn catalog(&self) -> Result<Vec<WaveTrack>, AppError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| AppError::new(ErrorCode::Internal))?;
+        catalog(&conn).map_err(app_err)
+    }
+
+    fn not_now(&self, now_ms: i64) -> Result<Vec<NotNowRow>, AppError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| AppError::new(ErrorCode::Internal))?;
+        not_now(&conn, now_ms).map_err(app_err)
     }
 }
 

@@ -18,6 +18,8 @@ if (Test-Path 'Cargo.toml') {
     Step 'cargo deny'     { cargo deny check }
     # --no-tests=warn: empty crates of Stage 0 have no tests yet; nextest's default (auto) exits with code 4.
     Step 'cargo nextest'  { cargo nextest run --workspace --no-tests=warn }
+    # NFR-PERF-004 (T3.24): a wave rebuild on 50 000 synthetic tracks stays under 15 ms p95.
+    Step 'wave bench'     { cargo run --release -q -p sirtone-wave --example bench }
 } else { Write-Host 'No Cargo workspace yet - Rust gates skipped.' -ForegroundColor Yellow }
 
 if (Test-Path 'package.json') {
