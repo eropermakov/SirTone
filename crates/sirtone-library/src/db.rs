@@ -250,18 +250,42 @@ mod tests {
     }
 }
 
-/// D-66: `0001_init.sql` is frozen since prototype 0.5 created `library.db` on the owner's PC.
-/// Schema changes go into `0002+`. Line endings are normalised so checkouts do not matter.
+/// D-66: a migration is frozen once a prototype shipped it to the owner's PC (0001 since 0.5,
+/// 0002–0003 since 0.9). Schema changes go into a new file. Line endings are normalised so
+/// checkouts do not matter.
 #[cfg(test)]
 mod frozen {
+    const FROZEN: &[(&str, &str, &str)] = &[
+        (
+            "0001_init.sql",
+            include_str!("../migrations/0001_init.sql"),
+            "bb3f77ac9688b26753a51718a33e66a1d0149515e6b572ed310874d9e85b17d8",
+        ),
+        (
+            "0002_wave.sql",
+            include_str!("../migrations/0002_wave.sql"),
+            "afa6a810efebaae0994711175d1cb22115151c3dd80675a7c4337e4544aff267",
+        ),
+        (
+            "0003_fs.sql",
+            include_str!("../migrations/0003_fs.sql"),
+            "7266cb76e1aaaf258d8982407cd4265a90521a4ca819d70ff66b2a9c86c4f56b",
+        ),
+    ];
+
     #[test]
-    fn migration_0001_is_frozen() {
-        let sql = include_str!("../migrations/0001_init.sql").replace("\r\n", "\n");
-        let hash = blake3::hash(sql.as_bytes()).to_hex().to_string();
-        assert_eq!(
-            hash, FROZEN_0001,
-            "0001_init.sql changed — add a new migration instead (D-66)"
-        );
+    fn shipped_migrations_are_frozen() {
+        for (name, sql, want) in FROZEN {
+            let sql = sql.replace(
+                "
+", "
+",
+            );
+            let hash = blake3::hash(sql.as_bytes()).to_hex().to_string();
+            assert_eq!(
+                hash, *want,
+                "{name} changed — add a new migration instead (D-66)"
+            );
+        }
     }
-    const FROZEN_0001: &str = "bb3f77ac9688b26753a51718a33e66a1d0149515e6b572ed310874d9e85b17d8";
 }
