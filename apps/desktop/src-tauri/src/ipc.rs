@@ -60,6 +60,11 @@ pub fn builder() -> Builder<tauri::Wry> {
             library::unknown_tracks,
             library::unknown_list,
             library::track_assign,
+            library::track_details,
+            library::track_remove,
+            library::track_reveal,
+            library::artist_removal_info,
+            library::artist_remove,
             library::artist_tracks,
             window_chrome::window_set_theme,
         ])

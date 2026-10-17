@@ -22,7 +22,7 @@ test-results/
 # Local data (never commit user libraries or databases)
 .sirtone/
 SirToneData/
-Library/
+/Library/
 *.db
 *.db-wal
 *.db-shm

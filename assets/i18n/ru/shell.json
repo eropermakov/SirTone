@@ -188,7 +188,11 @@
     "remove": "Удалить из медиатеки",
     "copied": "Скопировано: {text}",
     "queuedNext": "Будет следующим: {title}",
-    "queued": "Добавлено в очередь: {title}"
+    "queued": "Добавлено в очередь: {title}",
+    "reveal": "Показать в проводнике",
+    "details": "Изменить данные",
+    "goTo": "К альбому / исполнителю",
+    "wave": "Волна по треку"
   },
   "updates": {
     "auto": "Обновляется автоматически и незаметно",
@@ -226,5 +230,35 @@
       "needs_review": "Нужна проверка",
       "none": "Без причины"
     }
+  },
+  "trackCard": {
+    "title": "Трек",
+    "save": "Сохранить",
+    "saved": "Сохранено: {title}",
+    "trashed": "Перемещено в Корзину: {title}",
+    "removed": "Убрано из медиатеки: {title}",
+    "removeFailed": "Не удалось удалить трек",
+    "removeQuestion": "Удалить «{title}»?",
+    "removeWithFile": "Удалить файл с диска (в Корзину)",
+    "removeOnlyApp": "Только убрать из приложения",
+    "cancel": "Отмена",
+    "format": "Формат",
+    "channels": "{count, plural, one {# канал} few {# канала} many {# каналов} other {# канала}}",
+    "duration": "Длительность",
+    "size": "Размер",
+    "mb": "{value} МБ",
+    "path": "Файл",
+    "lossless": "Lossless",
+    "hiRes": "Hi-Res",
+    "khz": "{value} кГц",
+    "kbps": "{value} кбит/с"
+  },
+  "artistRemove": {
+    "menu": "Удалить исполнителя",
+    "question": "Удалить «{name}»? {count, plural, one {# трек} few {# трека} many {# треков} other {# трека}}, {mb} МБ.",
+    "trashed": "В Корзину: {name}",
+    "removed": "Убрано из медиатеки: {name}",
+    "failed": "Не удалось удалить всё — часть треков осталась",
+    "withFiles": "Удалить файлы с диска (в Корзину)"
   }
 }

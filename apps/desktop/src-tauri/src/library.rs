@@ -164,6 +164,12 @@ enum Job {
         assignment: sirtone_library::relocate::Assignment,
         reply: mpsc::Sender<Result<String, AppError>>,
     },
+    /// FR-DATA-001: remove a track (file to the Recycle Bin, or only from the app).
+    Remove {
+        track: i64,
+        with_file: bool,
+        reply: mpsc::Sender<Result<String, AppError>>,
+    },
 }
 
 /// A library track ready to play: absolute path, title, artists, album cover hash.
@@ -601,7 +607,12 @@ fn import_worker(
                     track,
                     assignment,
                     reply,
-                } => assigns.push((track, assignment, reply)),
+                } => assigns.push((track, Some(assignment), false, reply)),
+                Job::Remove {
+                    track,
+                    with_file,
+                    reply,
+                } => assigns.push((track, None, with_file, reply)),
                 Job::Reconcile { confirmed } => {
                     reconcile_pass = Some(reconcile_pass.unwrap_or(false) || confirmed);
                 }
@@ -627,14 +638,20 @@ fn import_worker(
             continue;
         };
         if !assigns.is_empty() {
-            for (track, assignment, reply) in assigns {
-                let r = sirtone_library::relocate::assign(
-                    db,
-                    &root,
-                    track,
-                    &assignment,
-                    deps.fs.as_ref(),
-                )
+            for (track, assignment, with_file, reply) in assigns {
+                let r = match assignment {
+                    Some(a) => {
+                        sirtone_library::relocate::assign(db, &root, track, &a, deps.fs.as_ref())
+                    }
+                    None => sirtone_library::relocate::remove(
+                        db,
+                        &root,
+                        track,
+                        with_file,
+                        deps.fs.as_ref(),
+                    )
+                    .map(|()| String::new()),
+                }
                 .map_err(AppError::from);
                 if let Err(e) = &r {
                     tracing::warn!(target: "sirtone::library", code = ?e.code, "assignment failed");
@@ -991,6 +1008,187 @@ pub fn track_assign(
     rx.recv_timeout(Duration::from_secs(60))
         .map_err(|_| AppError::new(ErrorCode::Internal).with_details("assignment timed out"))?
         .map(|_| ())
+}
+
+/// Everything the track card shows (FR-LIB-006).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackDetails {
+    pub id: u32,
+    pub title: String,
+    pub artists: String,
+    pub album: Option<String>,
+    pub track_no: Option<u32>,
+    pub year: Option<i32>,
+    pub genre: Option<String>,
+    pub codec: String,
+    pub container: String,
+    pub lossless: bool,
+    pub sample_rate: Option<u32>,
+    pub channels: Option<u32>,
+    pub duration_ms: u32,
+    /// Bytes as f64 (u64 is not a JS number).
+    pub size_bytes: f64,
+    /// Absolute path of the file.
+    pub path: String,
+    pub added_at: f64,
+    pub identity: String,
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+pub fn track_details(lib: State<'_, Library>, track: u32) -> Result<TrackDetails, AppError> {
+    let root = lock(&lib.shared)
+        .root
+        .clone()
+        .ok_or_else(|| AppError::new(ErrorCode::LibraryRootNotSet))?;
+    lib.with_read(|c| {
+        Ok(c.query_row(
+            "SELECT t.id, t.title,
+                    coalesce((SELECT group_concat(name, ', ') FROM
+                      (SELECT a.name FROM track_artist ta JOIN artist a ON a.id = ta.artist_id
+                       WHERE ta.track_id = t.id ORDER BY ta.position)), ''),
+                    al.title, t.track_no, coalesce(t.year, al.year), t.genre_main, t.codec, t.container,
+                    t.lossless, t.sample_rate, t.channels, t.duration_ms, t.size_bytes, t.rel_path,
+                    t.added_at, t.identity_state
+             FROM track t LEFT JOIN album al ON al.id = t.album_id WHERE t.id = ?1",
+            [track],
+            |r| {
+                let rel: String = r.get(14)?;
+                Ok(TrackDetails {
+                    id: r.get::<_, i64>(0)? as u32,
+                    title: r.get(1)?,
+                    artists: r.get(2)?,
+                    album: r.get(3)?,
+                    track_no: r.get(4)?,
+                    year: r.get(5)?,
+                    genre: r.get(6)?,
+                    codec: r.get(7)?,
+                    container: r.get(8)?,
+                    lossless: r.get(9)?,
+                    sample_rate: r.get(10)?,
+                    channels: r.get(11)?,
+                    duration_ms: u32::try_from(r.get::<_, i64>(12)?).unwrap_or(u32::MAX),
+                    size_bytes: r.get::<_, i64>(13)? as f64,
+                    path: rel
+                        .split('/')
+                        .fold(root.clone(), |p, c| p.join(c))
+                        .to_string_lossy()
+                        .into_owned(),
+                    added_at: r.get::<_, i64>(15)? as f64,
+                    identity: r.get(16)?,
+                })
+            },
+        )?)
+    })
+}
+
+/// FR-DATA-001: «удалить файл с диска» (to the Recycle Bin) or «только убрать из приложения».
+#[tauri::command(async)]
+#[specta::specta]
+pub fn track_remove(lib: State<'_, Library>, track: u32, with_file: bool) -> Result<(), AppError> {
+    let (tx, rx) = mpsc::channel();
+    lib.jobs
+        .send(Job::Remove {
+            track: i64::from(track),
+            with_file,
+            reply: tx,
+        })
+        .map_err(|_| AppError::new(ErrorCode::Internal))?;
+    rx.recv_timeout(Duration::from_secs(60))
+        .map_err(|_| AppError::new(ErrorCode::Internal).with_details("removal timed out"))?
+        .map(|_| ())
+}
+
+/// FR-DATA-002: what deleting an artist takes away — for the confirmation.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RemovalInfo {
+    pub tracks: u32,
+    /// Bytes as f64 (u64 is not a JS number).
+    pub bytes: f64,
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+pub fn artist_removal_info(lib: State<'_, Library>, artist: u32) -> Result<RemovalInfo, AppError> {
+    let (ids, bytes) =
+        lib.with_read(|c| sirtone_library::relocate::artist_tracks(c, i64::from(artist)))?;
+    Ok(RemovalInfo {
+        tracks: u32::try_from(ids.len()).unwrap_or(u32::MAX),
+        bytes: bytes as f64,
+    })
+}
+
+/// FR-DATA-002: every track on the artist's page goes (files to the Recycle Bin, or only from
+/// the app); one worker job per track, so each is journalled on its own.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn artist_remove(
+    lib: State<'_, Library>,
+    artist: u32,
+    with_file: bool,
+) -> Result<(), AppError> {
+    let (ids, _) =
+        lib.with_read(|c| sirtone_library::relocate::artist_tracks(c, i64::from(artist)))?;
+    let mut replies = Vec::with_capacity(ids.len());
+    for track in ids {
+        let (tx, rx) = mpsc::channel();
+        lib.jobs
+            .send(Job::Remove {
+                track,
+                with_file,
+                reply: tx,
+            })
+            .map_err(|_| AppError::new(ErrorCode::Internal))?;
+        replies.push(rx);
+    }
+    let mut first_err = None;
+    for rx in replies {
+        let r = rx
+            .recv_timeout(Duration::from_secs(120))
+            .map_err(|_| AppError::new(ErrorCode::Internal).with_details("removal timed out"))
+            .and_then(|r| r);
+        if let Err(e) = r {
+            first_err.get_or_insert(e);
+        }
+    }
+    first_err.map_or(Ok(()), Err)
+}
+
+/// «Показать в проводнике» (Q-23): Explorer opens the folder with the file selected.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn track_reveal(lib: State<'_, Library>, track: u32) -> Result<(), AppError> {
+    let root = lock(&lib.shared)
+        .root
+        .clone()
+        .ok_or_else(|| AppError::new(ErrorCode::LibraryRootNotSet))?;
+    let rel: String = lib.with_read(|c| {
+        Ok(
+            c.query_row("SELECT rel_path FROM track WHERE id = ?1", [track], |r| {
+                r.get(0)
+            })?,
+        )
+    })?;
+    let path = rel.split('/').fold(root, |p, c| p.join(c));
+    reveal(&path)
+}
+
+#[cfg(windows)]
+fn reveal(path: &Path) -> Result<(), AppError> {
+    use std::os::windows::process::CommandExt;
+    // Explorer parses `/select,"path"` itself; std quoting of the whole argument breaks it.
+    std::process::Command::new("explorer.exe")
+        .raw_arg(format!("/select,\"{}\"", path.display()))
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| AppError::new(ErrorCode::Internal).with_details(e.to_string()))
+}
+
+#[cfg(not(windows))]
+fn reveal(_path: &Path) -> Result<(), AppError> {
+    Err(AppError::new(ErrorCode::Internal).with_details("explorer is Windows-only"))
 }
 
 #[tauri::command(async)]

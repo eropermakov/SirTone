@@ -9,7 +9,9 @@ import {
   type LibraryStatus,
   type PageCursor,
   type PlayContext,
+  type RemovalInfo,
   type TrackAssignment,
+  type TrackDetails,
   type TrackItem,
   type UnknownItem,
 } from "./bindings";
@@ -32,6 +34,7 @@ export type {
   TrackItem,
   UnknownItem,
 } from "./bindings";
+export type { RemovalInfo, TrackDetails };
 
 export const EMPTY_STATUS: LibraryStatus = {
   root: null,
@@ -119,4 +122,28 @@ export const unknownList = async (): Promise<UnknownItem[]> =>
 /** «Назначить»: who and what the track is; the file moves to its canonical place. */
 export const assignTrack = async (track: number, a: TrackAssignment): Promise<void> => {
   if (isTauri()) unwrap(await commands.trackAssign(track, a));
+};
+
+/** Track card (FR-LIB-006): format, size, absolute path, tags. */
+export const trackDetails = async (track: number): Promise<TrackDetails> => {
+  if (!isTauri()) throw new Error("no library outside Tauri");
+  return unwrap(await commands.trackDetails(track));
+};
+
+/** FR-DATA-001: `withFile` sends the file to the Recycle Bin; otherwise only the app forgets it. */
+export const removeTrack = async (track: number, withFile: boolean): Promise<void> => {
+  if (isTauri()) unwrap(await commands.trackRemove(track, withFile));
+};
+
+/** «Показать в проводнике» (Q-23). */
+export const revealTrack = async (track: number): Promise<void> => {
+  if (isTauri()) unwrap(await commands.trackReveal(track));
+};
+
+/** FR-DATA-002: how many tracks and bytes deleting an artist takes. */
+export const artistRemovalInfo = async (artist: number): Promise<RemovalInfo> =>
+  isTauri() ? unwrap(await commands.artistRemovalInfo(artist)) : { tracks: 0, bytes: 0 };
+
+export const removeArtist = async (artist: number, withFile: boolean): Promise<void> => {
+  if (isTauri()) unwrap(await commands.artistRemove(artist, withFile));
 };

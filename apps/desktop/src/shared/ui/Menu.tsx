@@ -23,6 +23,8 @@ type Props = {
   at: { x: number; y: number };
   label: string;
   onClose: () => void;
+  /** A nested menu closes the whole tree when an item is chosen. */
+  onChosen?: () => void;
 };
 
 const isItem = (i: MenuItem): i is Exclude<MenuItem, { separator: true }> => !("separator" in i);
@@ -33,7 +35,7 @@ const isItem = (i: MenuItem): i is Exclude<MenuItem, { separator: true }> => !("
  * at the bottom in `danger`. Opens from the point of call in 150 ms, stays inside the window;
  * ↑/↓/Home/End move the highlight, Enter/Space choose, → opens a submenu, ←/Esc close.
  */
-export function Menu({ items, at, label, onClose }: Props) {
+export function Menu({ items, at, label, onClose, onChosen }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState(at);
   const [active, setActive] = useState(-1);
@@ -73,7 +75,7 @@ export function Menu({ items, at, label, onClose }: Props) {
       setSub({ index: n, at: { x: (r?.right ?? at.x) + 4, y: r?.top ?? at.y } });
       return;
     }
-    onClose();
+    (onChosen ?? onClose)();
     it.onSelect?.();
   };
 
@@ -161,6 +163,7 @@ export function Menu({ items, at, label, onClose }: Props) {
           items={subItems.submenu}
           at={sub.at}
           label={subItems.label}
+          onChosen={onChosen ?? onClose}
           onClose={() => {
             setSub(null);
             ref.current?.focus();

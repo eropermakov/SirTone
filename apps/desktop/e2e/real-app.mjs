@@ -34,7 +34,7 @@ const dataDir = mkdtempSync(join(tmpdir(), "sirtone-smoke-"));
 // Isolated instances default the library folder into the data dir — never the owner's Music.
 const libDir = join(dataDir, "Music", "SirTone");
 const corpus = join(fixtures, "import500");
-const PORT = 9335;
+const PORT = Number(process.env.SMOKE_PORT ?? 9335);
 const env = {
   ...process.env,
   SIRTONE_DATA_DIR: dataDir,
@@ -394,16 +394,24 @@ if (existsSync(corpus)) {
   );
   await footer.getByRole("button", { name: "Перемешать" }).click();
   await sleep(400);
-  const sh = await invoke("playback_snapshot", {});
-  const q2 = await invoke("queue_get", {});
+  // Snapshot and queue are two calls: a track may end in between, so take a consistent pair.
+  let sh;
+  let q2;
+  for (let i = 0; i < 3; i++) {
+    sh = await invoke("playback_snapshot", {});
+    q2 = await invoke("queue_get", {});
+    if (sh.title === (await invoke("playback_snapshot", {})).title) break;
+  }
   check(
     "shuffle on keeps the playing track",
     sh.shuffle === true && q2.items[q2.position]?.title === sh.title,
+    `shuffle ${sh.shuffle}, queue[${q2.position}] ${q2.items[q2.position]?.title} / ${sh.title}`,
   );
   await footer.getByRole("button", { name: "Перемешать" }).click();
   // T2.1: the track menu «К исполнителю» opens the artist; Alt+← goes back to the album.
   const albumTitle = await page.locator("h1").first().textContent();
   await rows.first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "К альбому / исполнителю" }).click();
   await page.getByRole("menuitem", { name: "К исполнителю" }).click();
   await sleep(600);
   const artistTitle = await page.locator("h1").first().textContent();
@@ -457,6 +465,42 @@ if (existsSync(corpus)) {
     "assigning an unknown track moves it out",
     after === before - 1 && existsSync(movedDir),
     `${before} → ${after}, folder ${existsSync(movedDir)}`,
+  );
+  // T2.10: track card through «Ещё ›», then «только убрать из приложения» keeps the file.
+  await unknownRows.nth(2).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Ещё" }).click();
+  await page.getByRole("menuitem", { name: "Изменить данные" }).click();
+  const card = page.getByRole("dialog");
+  const cardPath =
+    (await card.locator("dd.break-all").textContent({ timeout: 5000 }))?.trim() ?? "";
+  check("track card shows the file", existsSync(cardPath), cardPath);
+  await page.keyboard.press("Escape");
+  check("Esc closes the track card", (await page.getByRole("dialog").count()) === 0);
+  await unknownRows.nth(2).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Удалить из медиатеки" }).click();
+  await page.getByRole("button", { name: "Только убрать из приложения" }).click();
+  await sleep(1500);
+  const afterRemove = (await invoke("library_status", {})).unknown;
+  check(
+    "«только из приложения» forgets the track, keeps the file",
+    afterRemove === after - 1 && existsSync(cardPath),
+    `${after} → ${afterRemove}, file ${existsSync(cardPath)}`,
+  );
+  // FR-DATA-002: deleting an artist asks with the count and size; «только из приложения».
+  const artistsBefore = (await invoke("library_status", {})).artists;
+  await page.getByRole("button", { name: "Исполнители" }).click();
+  const artistCard = page.getByRole("list", { name: "Исполнители" }).getByRole("button").first();
+  await artistCard.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Удалить исполнителя" }).click();
+  const question = await page.getByRole("dialog").locator("p").textContent({ timeout: 5000 });
+  check("artist deletion shows count and size", /\d+ трек.*МБ/.test(question ?? ""), question);
+  await page.getByRole("button", { name: "Только убрать из приложения" }).click();
+  await sleep(2000);
+  const artistsAfter = (await invoke("library_status", {})).artists;
+  check(
+    "artist removed from the app",
+    artistsAfter < artistsBefore,
+    `${artistsBefore} → ${artistsAfter}`,
   );
   await page.getByRole("button", { name: "Настройки" }).click();
   check("storage shows the folder", (await page.getByText(libDir).count()) > 0);

@@ -14,7 +14,7 @@ use sirtone_core::text::norm;
 use crate::db::now_ms;
 use crate::error::LibraryError;
 use crate::layout::{self, TrackPlace};
-use crate::repo::{self, TrackId};
+use crate::repo::{self, ArtistId, TrackId};
 
 /// What the user filled in.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -144,6 +144,74 @@ pub fn assign(
     Ok(rel)
 }
 
+/// FR-DATA-001: a track leaves the library. `with_file` — its file goes to the Recycle Bin
+/// (never a hard delete, through the journal); otherwise only the row goes and the file is
+/// remembered in `fs_ignore`, so the watcher does not take it back in.
+pub fn remove(
+    conn: &mut Connection,
+    root: &Path,
+    track: TrackId,
+    with_file: bool,
+    fsops: &dyn FileOps,
+) -> Result<(), LibraryError> {
+    let (rel, size, mtime): (String, i64, i64) = conn
+        .query_row(
+            "SELECT rel_path, size_bytes, mtime_ms FROM track WHERE id = ?1",
+            [track],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()?
+        .ok_or_else(|| LibraryError::Invalid(format!("no track {track}")))?;
+    let path = from_rel(root, &rel);
+    if with_file && path.exists() {
+        conn.execute(
+            "INSERT INTO fs_journal(op, src, dst, state, ts) VALUES ('trash', ?1, NULL, 'planned', ?2)",
+            params![rel, now_ms()],
+        )?;
+        let id = conn.last_insert_rowid();
+        if let Err(e) = fsops.to_recycle_bin(&path) {
+            conn.execute(
+                "UPDATE fs_journal SET state = 'rolled_back' WHERE id = ?1",
+                [id],
+            )?;
+            return Err(e.into());
+        }
+        repo::track_remove(conn, track)?;
+        conn.execute("UPDATE fs_journal SET state = 'done' WHERE id = ?1", [id])?;
+    } else {
+        if path.exists() {
+            conn.execute(
+                "INSERT INTO fs_ignore(rel_path, size_bytes, mtime_ms, reason, ts) VALUES (?1, ?2, ?3, 'removed_by_user', ?4)
+                 ON CONFLICT(rel_path) DO UPDATE SET size_bytes = excluded.size_bytes,
+                   mtime_ms = excluded.mtime_ms, reason = excluded.reason, ts = excluded.ts",
+                params![rel, size, mtime, now_ms()],
+            )?;
+        }
+        repo::track_remove(conn, track)?;
+    }
+    Ok(())
+}
+
+/// FR-DATA-002: the tracks on an artist's page (as the card counts them) and their total size,
+/// for the confirmation «N треков, X МБ».
+pub fn artist_tracks(
+    conn: &Connection,
+    artist: ArtistId,
+) -> Result<(Vec<TrackId>, u64), LibraryError> {
+    let mut st = conn.prepare(
+        "SELECT t.id, t.size_bytes FROM track_artist ta JOIN track t ON t.id = ta.track_id
+         WHERE ta.artist_id = ?1 AND t.state = 'ok' ORDER BY t.id",
+    )?;
+    let mut ids = Vec::new();
+    let mut bytes = 0u64;
+    let mut q = st.query([artist])?;
+    while let Some(r) = q.next()? {
+        ids.push(r.get(0)?);
+        bytes += u64::try_from(r.get::<_, i64>(1)?).unwrap_or(0);
+    }
+    Ok((ids, bytes))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -237,6 +305,62 @@ mod tests {
             assign(&mut c, &root, id, &Assignment::default(), &Ops).is_err(),
             "empty title"
         );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn artist_removal_only_from_the_app_keeps_files_and_ignores_them() {
+        let root = std::env::temp_dir().join(format!("sirtone-remove-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("Кино")).unwrap();
+        let mut c = open(&root.join(".sirtone/library.db"), crate::Medium::Fixed).unwrap();
+        let artist = repo::artist_get_or_create(&c, "Кино").unwrap();
+        let mut ids = Vec::new();
+        for n in 1..=2 {
+            let rel = format!("Кино/{n:02}.mp3");
+            fs::write(root.join(&rel), b"audio").unwrap();
+            let id = track_insert(
+                &mut c,
+                &NewTrack {
+                    rel_path: rel,
+                    size_bytes: 1000,
+                    mtime_ms: 0,
+                    content_hash: format!("h{n}"),
+                    container: "mp3".into(),
+                    codec: "mp3".into(),
+                    lossless: false,
+                    sample_rate: None,
+                    channels: None,
+                    duration_ms: 1000,
+                    title: format!("{n}"),
+                    album_id: None,
+                    disc_no: None,
+                    track_no: None,
+                    year: None,
+                    identity: Identity::Inferred,
+                    identity_conf: 0.9,
+                    unknown_reason: None,
+                    artists: vec![artist],
+                },
+            )
+            .unwrap();
+            ids.push(id);
+        }
+        let (found, bytes) = artist_tracks(&c, artist).unwrap();
+        assert_eq!((found.clone(), bytes), (ids.clone(), 2000));
+        for id in found {
+            remove(&mut c, &root, id, false, &Ops).unwrap();
+        }
+        assert!(artist_tracks(&c, artist).unwrap().0.is_empty());
+        assert!(root.join("Кино/01.mp3").exists(), "the file stays on disk");
+        let ignored: i64 = c
+            .query_row(
+                "SELECT count(*) FROM fs_ignore WHERE reason = 'removed_by_user'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(ignored, 2, "the watcher must not import them again");
         let _ = fs::remove_dir_all(&root);
     }
 }

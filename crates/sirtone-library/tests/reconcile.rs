@@ -6,7 +6,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rusqlite::Connection;
 use sirtone_core::error::{AppError, ErrorCode};
@@ -15,12 +14,22 @@ use sirtone_library::import::ImportDeps;
 use sirtone_library::reconcile::{Outcome, PURGE_AFTER_MS, reconcile};
 use sirtone_library::{Medium, open};
 
-static PROBES: AtomicUsize = AtomicUsize::new(0);
+/// Every probed path (tests run in parallel: each one counts only its own files).
+static PROBED: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+
+fn probes_under(root: &Path) -> usize {
+    PROBED
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|p| p.starts_with(root))
+        .count()
+}
 
 struct Probe;
 impl MediaProbe for Probe {
     fn probe(&self, path: &Path) -> Result<MediaInfo, AppError> {
-        PROBES.fetch_add(1, Ordering::SeqCst);
+        PROBED.lock().unwrap().push(path.to_path_buf());
         let text = fs::read_to_string(path).unwrap_or_default();
         if !text.starts_with("audio") {
             return Err(AppError::new(ErrorCode::UnsupportedFormat));
@@ -179,10 +188,10 @@ fn explorer_additions_are_adopted_in_place_and_junk_is_remembered() {
     );
     assert!(lib.root.join("Кино/Город.flac").exists(), "nothing moved");
     // Second pass: nothing new, the junk file is not probed again.
-    let before = PROBES.load(Ordering::SeqCst);
+    let before = probes_under(&lib.root);
     let r = done(lib.pass(0));
     assert_eq!(r, Default::default());
-    assert_eq!(PROBES.load(Ordering::SeqCst), before);
+    assert_eq!(probes_under(&lib.root), before);
     // An exact copy of a track is not a second track.
     lib.put("copy/Город.flac", "audio;title=Город;artist=Кино");
     let r = done(lib.pass(0));

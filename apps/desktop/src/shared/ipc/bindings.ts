@@ -64,6 +64,17 @@ export const commands = {
 	 *  (through the journal, on the import worker; the audio file itself is not changed).
 	 */
 	trackAssign: (track: number, assignment: TrackAssignment) => typedError<null, AppError>(__TAURI_INVOKE("track_assign", { track, assignment })),
+	trackDetails: (track: number) => typedError<TrackDetails, AppError>(__TAURI_INVOKE("track_details", { track })),
+	/**  FR-DATA-001: «удалить файл с диска» (to the Recycle Bin) or «только убрать из приложения». */
+	trackRemove: (track: number, withFile: boolean) => typedError<null, AppError>(__TAURI_INVOKE("track_remove", { track, withFile })),
+	/**  «Показать в проводнике» (Q-23): Explorer opens the folder with the file selected. */
+	trackReveal: (track: number) => typedError<null, AppError>(__TAURI_INVOKE("track_reveal", { track })),
+	artistRemovalInfo: (artist: number) => typedError<RemovalInfo, AppError>(__TAURI_INVOKE("artist_removal_info", { artist })),
+	/**
+	 *  FR-DATA-002: every track on the artist's page goes (files to the Recycle Bin, or only from
+	 *  the app); one worker job per track, so each is journalled on its own.
+	 */
+	artistRemove: (artist: number, withFile: boolean) => typedError<null, AppError>(__TAURI_INVOKE("artist_remove", { artist, withFile })),
 	artistTracks: (artist: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("artist_tracks", { artist })),
 	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
 	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),
@@ -253,6 +264,13 @@ export type QueueView = {
 	shuffle: boolean,
 };
 
+/**  FR-DATA-002: what deleting an artist takes away — for the confirmation. */
+export type RemovalInfo = {
+	tracks: number,
+	/**  Bytes as f64 (u64 is not a JS number). */
+	bytes: number | null,
+};
+
 /**  FR-PLAY-007 repeat mode over IPC. */
 export type RepeatMode = "off" | "one" | "all";
 
@@ -264,6 +282,29 @@ export type TrackAssignment = {
 	album: string | null,
 	trackNo: number | null,
 	year: number | null,
+};
+
+/**  Everything the track card shows (FR-LIB-006). */
+export type TrackDetails = {
+	id: number,
+	title: string,
+	artists: string,
+	album: string | null,
+	trackNo: number | null,
+	year: number | null,
+	genre: string | null,
+	codec: string,
+	container: string,
+	lossless: boolean,
+	sampleRate: number | null,
+	channels: number | null,
+	durationMs: number,
+	/**  Bytes as f64 (u64 is not a JS number). */
+	sizeBytes: number | null,
+	/**  Absolute path of the file. */
+	path: string,
+	addedAt: number | null,
+	identity: string,
 };
 
 export type TrackItem = {

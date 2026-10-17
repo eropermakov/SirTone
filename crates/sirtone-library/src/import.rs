@@ -892,6 +892,25 @@ pub fn recover(
         )?;
         fixed += 1;
     }
+    // A deletion to the Recycle Bin interrupted: the file is gone → finish (drop the row);
+    // still there → the deletion never happened.
+    let trashes: Vec<(i64, String)> = {
+        let mut st = conn
+            .prepare("SELECT id, src FROM fs_journal WHERE state = 'planned' AND op = 'trash'")?;
+        st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?
+    };
+    for (id, rel) in trashes {
+        let gone = !from_rel(root, &rel).exists();
+        if gone {
+            conn.execute("DELETE FROM track WHERE rel_path = ?1", [&rel])?;
+        }
+        conn.execute(
+            "UPDATE fs_journal SET state = ?2 WHERE id = ?1",
+            params![id, if gone { "done" } else { "rolled_back" }],
+        )?;
+        fixed += 1;
+    }
     // `.part` leftovers are ours (staging only).
     let staging = root.join(SERVICE_DIR).join("staging");
     if let Ok(batches) = fs::read_dir(&staging) {
