@@ -75,7 +75,7 @@ pub fn autostart_available() -> bool {
 }
 
 /// Turns «Запускать вместе с Windows» on/off and saves the setting; returns the real state.
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn autostart_set(
     app: AppHandle,

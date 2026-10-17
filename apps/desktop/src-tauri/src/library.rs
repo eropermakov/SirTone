@@ -704,10 +704,17 @@ fn run_reconcile(
     }
 }
 
+/// Lists and counters must refresh. The full counters (163 ms on 100 000 tracks) are only
+/// invalidated here and recomputed lazily by the next `library_status` — never under the lock on
+/// every import tick (deferred from T1.20).
 fn emit_changed(app: &AppHandle, shared: &Mutex<Shared>) {
     let mut s = lock(shared);
-    s.counts = s.read.as_ref().and_then(|c| collection::counts(c).ok());
-    let tracks = s.counts.as_ref().map_or(0, |c| c.tracks as u32);
+    s.counts = None;
+    let tracks = s
+        .read
+        .as_ref()
+        .and_then(|c| repo::track_count(c).ok())
+        .unwrap_or(0) as u32;
     drop(s);
     let _ = LibraryChanged { tracks }.emit(app);
 }
@@ -724,7 +731,7 @@ fn track_item(r: repo::TrackRow) -> TrackItem {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn library_status(lib: State<'_, Library>) -> LibraryStatus {
     lib.status()
@@ -742,14 +749,14 @@ pub async fn library_pick_folder(app: AppHandle) -> Option<String> {
         .map(|p| p.to_string_lossy().into_owned())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn library_set_root(lib: State<'_, Library>, path: String) -> Result<LibraryStatus, AppError> {
     lib.set_root(Path::new(&path))?;
     Ok(lib.status())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn import_paths(app: AppHandle, lib: State<'_, Library>, paths: Vec<String>) -> ImportStart {
     lib.import_paths(&app, paths.into_iter().map(PathBuf::from).collect())
@@ -773,7 +780,7 @@ pub fn import_cancel(lib: State<'_, Library>) {
     lib.cancel.store(true, Ordering::Relaxed);
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn collection_tracks(
     lib: State<'_, Library>,
@@ -796,7 +803,7 @@ pub fn collection_tracks(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn collection_albums(
     lib: State<'_, Library>,
@@ -829,7 +836,7 @@ pub fn collection_albums(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn collection_artists(
     lib: State<'_, Library>,
@@ -859,7 +866,7 @@ pub fn collection_artists(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn unknown_tracks(lib: State<'_, Library>) -> Result<Vec<TrackItem>, AppError> {
     lib.with_read(|c| {
@@ -870,7 +877,7 @@ pub fn unknown_tracks(lib: State<'_, Library>) -> Result<Vec<TrackItem>, AppErro
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn album_tracks(lib: State<'_, Library>, album: u32) -> Result<Vec<TrackItem>, AppError> {
     lib.with_read(|c| {
@@ -881,7 +888,7 @@ pub fn album_tracks(lib: State<'_, Library>, album: u32) -> Result<Vec<TrackItem
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn artist_tracks(lib: State<'_, Library>, artist: u32) -> Result<Vec<TrackItem>, AppError> {
     lib.with_read(|c| {

@@ -20,7 +20,7 @@ pub struct Bootstrap {
     pub library: Option<LibraryStatus>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn app_bootstrap(app: AppHandle, settings: State<'_, Arc<SettingsStore>>) -> Bootstrap {
     // The engine may have failed to start (no audio stack): the window still opens.

@@ -122,7 +122,7 @@ pub fn settings_get(store: State<'_, Arc<SettingsStore>>) -> Json {
     Json(store.get())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn settings_patch(
     app: AppHandle,

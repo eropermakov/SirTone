@@ -511,7 +511,7 @@ pub fn playback_snapshot(pb: State<'_, Playback>) -> PlaybackSnapshot {
         .unwrap_or_else(|_| empty_snapshot())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn playback_open(app: AppHandle, pb: State<'_, Playback>, paths: Vec<String>) {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
@@ -574,7 +574,7 @@ pub fn playback_prev(pb: State<'_, Playback>) {
 }
 
 /// Plays library tracks `ids` as one context starting at `start` (double-click in a list).
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn play_tracks(
     pb: State<'_, Playback>,
