@@ -105,7 +105,7 @@ fn from_rel(root: &Path, rel: &str) -> PathBuf {
     rel.split('/').fold(root.to_path_buf(), |p, c| p.join(c))
 }
 
-fn ext_of(p: &Path) -> String {
+pub(crate) fn ext_of(p: &Path) -> String {
     p.extension()
         .map(|e| e.to_string_lossy().to_ascii_lowercase())
         .unwrap_or_default()
@@ -558,7 +558,7 @@ pub fn run_batch(
 }
 
 /// Audio extensions that take part in the folder consensus.
-const AUDIO_EXT: &[&str] = &[
+pub(crate) const AUDIO_EXT: &[&str] = &[
     "mp3", "flac", "m4a", "mp4", "ogg", "oga", "opus", "wav", "aif", "aiff", "wma", "ape", "wv",
 ];
 
@@ -579,7 +579,7 @@ fn mode(values: impl Iterator<Item = String>) -> Option<String> {
 
 /// Parent/grandparent folder names of the source and the consensus of tags in its folder
 /// (≥ 3 audio files: the most common album / album artist).
-fn folder_hints(
+pub(crate) fn folder_hints(
     src: &Path,
     tags: &dyn TagReader,
     cache: &mut std::collections::HashMap<PathBuf, (Option<String>, Option<String>)>,
@@ -619,6 +619,99 @@ fn folder_hints(
         grandparent: name(parent.and_then(Path::parent)),
         consensus_album,
         consensus_album_artist,
+    }
+}
+
+/// Where a track's file is and what it is, for [`insert_identified`].
+pub(crate) struct FileFacts<'a> {
+    pub rel: &'a str,
+    pub size: u64,
+    pub mtime: i64,
+    pub hash: &'a str,
+    pub file_id: Option<&'a str>,
+}
+
+/// Artists, album and the track row for an identified file, inside the caller's transaction
+/// (import placement and in-place adoption share it). Returns the track and album ids.
+pub(crate) fn insert_identified(
+    tx: &Connection,
+    f: &FileFacts<'_>,
+    info: &MediaInfo,
+    d: &sirtone_core::ports::IdentityDecision,
+) -> Result<(i64, Option<i64>), LibraryError> {
+    let artists = d
+        .artists
+        .iter()
+        .map(|a| repo::artist_get_or_create(tx, a))
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap_or_default();
+    let album_id = match (&d.album, d.unknown) {
+        (Some(album), None) => {
+            let aa = d
+                .album_artist
+                .as_deref()
+                .or(d.artists.first().map(String::as_str));
+            match aa.map(|a| repo::artist_get_or_create(tx, a)) {
+                Some(Ok(aa)) => repo::album_get_or_create(tx, album, aa, d.year).ok(),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    let track = NewTrack {
+        rel_path: f.rel.to_string(),
+        size_bytes: f.size,
+        mtime_ms: f.mtime,
+        content_hash: f.hash.to_string(),
+        container: info.container.clone(),
+        codec: info.codec.clone(),
+        lossless: info.lossless,
+        sample_rate: info.sample_rate,
+        channels: info.channels,
+        duration_ms: info.duration_ms,
+        title: d.title.clone(),
+        album_id,
+        disc_no: d.disc_no,
+        track_no: d.track_no,
+        year: d.year,
+        identity: if d.unknown.is_some() {
+            Identity::Unknown
+        } else {
+            Identity::Inferred
+        },
+        identity_conf: d.confidence,
+        unknown_reason: d.unknown.map(|r| r.as_str().to_string()),
+        artists,
+    };
+    let id = repo::track_insert_in(tx, &track)?;
+    tx.execute(
+        "UPDATE track SET genre_main = ?2, file_id = ?3 WHERE id = ?1",
+        params![id, d.genre, f.file_id],
+    )?;
+    Ok((id, album_id))
+}
+
+/// Album cover (FR-REC-009, offline part): first track that brings one wins. Best effort — a
+/// broken picture never fails the import. (docs/03 §10 `probe_cover`; inline until the job
+/// queue exists.)
+pub(crate) fn attach_cover(
+    conn: &Connection,
+    root: &Path,
+    album_id: Option<i64>,
+    file: &Path,
+    src_dir: Option<&Path>,
+    deps: &ImportDeps,
+) {
+    if let Some(album) = album_id
+        && !crate::covers::album_has_cover(conn, album).unwrap_or(true)
+        && let Some((bytes, source)) = deps.covers.read(file, src_dir)
+    {
+        match crate::covers::store(conn, root, &bytes, source) {
+            Ok(cover) => {
+                let _ = crate::covers::link_album(conn, album, cover);
+            }
+            Err(e) => tracing::warn!(target: "sirtone::import", error = %e, "cover skipped"),
+        }
     }
 }
 
@@ -706,55 +799,23 @@ fn place(
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
+    let file_id = deps.fs.file_id(&dst);
     let tx = conn.transaction()?;
-    let artists = d
-        .artists
-        .iter()
-        .map(|a| repo::artist_get_or_create(&tx, a))
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap_or_default();
-    let album_id = match (&d.album, d.unknown) {
-        (Some(album), None) => {
-            let aa = d
-                .album_artist
-                .as_deref()
-                .or(d.artists.first().map(String::as_str));
-            match aa.map(|a| repo::artist_get_or_create(&tx, a)) {
-                Some(Ok(aa)) => repo::album_get_or_create(&tx, album, aa, d.year).ok(),
-                _ => None,
-            }
-        }
-        _ => None,
-    };
-    let track = NewTrack {
-        rel_path: rel.clone(),
-        size_bytes: size,
-        mtime_ms: mtime,
-        content_hash: hash.to_string(),
-        container: info.container.clone(),
-        codec: info.codec.clone(),
-        lossless: info.lossless,
-        sample_rate: info.sample_rate,
-        channels: info.channels,
-        duration_ms: info.duration_ms,
-        title: d.title.clone(),
-        album_id,
-        disc_no: d.disc_no,
-        track_no: d.track_no,
-        year: d.year,
-        identity: if d.unknown.is_some() {
-            Identity::Unknown
-        } else {
-            Identity::Inferred
+    let (id, album_id) = insert_identified(
+        &tx,
+        &FileFacts {
+            rel: &rel,
+            size,
+            mtime,
+            hash,
+            file_id: file_id.as_deref(),
         },
-        identity_conf: d.confidence,
-        unknown_reason: d.unknown.map(|r| r.as_str().to_string()),
-        artists,
-    };
-    let id = repo::track_insert_in(&tx, &track)?;
+        info,
+        &d,
+    )?;
     tx.execute(
-        "UPDATE track SET import_batch_id = ?2, genre_main = ?3 WHERE id = ?1",
-        params![id, batch, d.genre],
+        "UPDATE track SET import_batch_id = ?2 WHERE id = ?1",
+        params![id, batch],
     )?;
     tx.execute(
         "UPDATE fs_journal SET state = 'done' WHERE id = ?1",
@@ -768,20 +829,7 @@ fn place(
     if d.genre.is_some() {
         repo::search_reindex(conn, id)?;
     }
-    // Album cover (FR-REC-009, offline part): first track that brings one wins. Best effort —
-    // a broken picture never fails the import. (docs/03 §10 `probe_cover`; inline until the
-    // job queue exists.)
-    if let Some(album) = album_id
-        && !crate::covers::album_has_cover(conn, album).unwrap_or(true)
-        && let Some((bytes, source)) = deps.covers.read(&dst, src.parent())
-    {
-        match crate::covers::store(conn, root, &bytes, source) {
-            Ok(cover) => {
-                let _ = crate::covers::link_album(conn, album, cover);
-            }
-            Err(e) => tracing::warn!(target: "sirtone::import", error = %e, "cover skipped"),
-        }
-    }
+    attach_cover(conn, root, album_id, &dst, src.parent(), deps);
     report.added += 1;
     on_event(ImportEvent::TrackAdded {
         track_id: id,

@@ -118,6 +118,11 @@ pub trait FileOps: Send + Sync {
     fn move_durable(&self, from: &Path, to: &Path) -> std::io::Result<()>;
     /// Deletion is only ever to the Recycle Bin.
     fn to_recycle_bin(&self, path: &Path) -> std::io::Result<()>;
+    /// Stable file identity for move detection (docs/05 §7): `<volume serial>:<file id>` on
+    /// NTFS/ReFS only — FAT/exFAT reuse indexes, so there it is `None` and the hash decides.
+    fn file_id(&self, _path: &Path) -> Option<String> {
+        None
+    }
 }
 
 /// Facts about the volume a path is on.

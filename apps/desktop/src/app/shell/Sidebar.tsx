@@ -45,6 +45,8 @@ type Props = {
   /** Import in progress: line + 4 px bar above Settings. */
   progress?: { done: number; total: number; sourcesReleased: boolean } | null;
   onCancelImport?: () => void;
+  /** The library folder cannot be reached (FR-FS-004). */
+  offline?: boolean;
 };
 
 export function Sidebar({
@@ -54,6 +56,7 @@ export function Sidebar({
   onToggle,
   progress,
   onCancelImport,
+  offline,
 }: Props) {
   const { t } = useTranslation("nav");
   const { t: ts } = useTranslation("shell");
@@ -125,6 +128,11 @@ export function Sidebar({
       <div className="mt-4" />
       {REST.map(row)}
       <div className="flex-1" />
+      {offline && !collapsed && (
+        <p role="status" className="t-caption mb-2 px-3 text-text-secondary">
+          {ts("library.offline")}
+        </p>
+      )}
       {progress && !collapsed && (
         <div role="status" aria-live="polite" className="mb-2 flex flex-col gap-2 px-3">
           <div className="flex items-center gap-2">

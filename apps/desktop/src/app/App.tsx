@@ -5,7 +5,14 @@ import { RootPanel } from "@/app/library/RootPanel";
 import { UnknownScreen } from "@/app/library/UnknownScreen";
 import { useLibrary } from "@/app/library/useLibrary";
 import { bootstrap } from "@/shared/ipc/bootstrap";
-import { cancelImport, importPaths, type LibraryStatus, pickFolder } from "@/shared/ipc/library";
+import {
+  cancelImport,
+  confirmMissing,
+  dismissQuestion,
+  importPaths,
+  type LibraryStatus,
+  pickFolder,
+} from "@/shared/ipc/library";
 import { togglePlay } from "@/shared/ipc/playback";
 import {
   getSettings,
@@ -67,6 +74,15 @@ export function App() {
   const [screen, setScreen] = useState<Screen>("wave");
   const [bootLibrary, setBootLibrary] = useState<LibraryStatus | null>(null);
   const lib = useLibrary(bootLibrary);
+  // The question about vanished files is answered optimistically: the toast goes at once.
+  const confirmGone = () => {
+    confirmMissing();
+    lib.setStatus((st) => ({ ...st, goneQuestion: null }));
+  };
+  const dismissGone = () => {
+    dismissQuestion();
+    lib.setStatus((st) => ({ ...st, goneQuestion: null }));
+  };
   // «Добавить папку» pressed before a library folder existed: pick sources right after.
   const [addAfterRoot, setAddAfterRoot] = useState(false);
   const [appearance, setAppearanceState] = useState<Appearance>(DEFAULT);
@@ -147,6 +163,7 @@ export function App() {
           onToggle={() => setManualCollapsed((c) => !c)}
           progress={lib.progress}
           onCancelImport={cancelImport}
+          offline={lib.status.offline}
         />
         <main className="flex min-w-0 flex-1 flex-col overflow-auto rounded-tl-(--radius-xl) bg-bg-layer p-6">
           {lib.rootNeeded && <RootPanel status={lib.status} onDone={rootChosen} />}
@@ -181,6 +198,16 @@ export function App() {
         {t("proto")}
       </div>
       <PlayerBar snap={snap} receivedAt={receivedAt} />
+      {lib.status.goneQuestion != null && !error && !report && (
+        <Toast
+          tone="info"
+          heading={t("library.goneTitle")}
+          message={t("library.gone", { count: lib.status.goneQuestion })}
+          closeLabel={tc("errors.close")}
+          action={{ label: t("library.goneConfirm"), onClick: confirmGone }}
+          onClose={dismissGone}
+        />
+      )}
       {report && !error && (
         <Toast
           tone="info"

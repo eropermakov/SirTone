@@ -21,6 +21,7 @@ pub enum Medium {
 const MIGRATIONS: &[M<'static>] = &[
     M::up(include_str!("../migrations/0001_init.sql")),
     M::up(include_str!("../migrations/0002_wave.sql")),
+    M::up(include_str!("../migrations/0003_fs.sql")),
 ];
 
 /// Current schema version (`PRAGMA user_version` and `meta.schema_version`).
@@ -51,6 +52,25 @@ pub fn open(path: &Path, medium: Medium) -> Result<Connection, LibraryError> {
         std::fs::create_dir_all(dir)?;
     }
     let mut conn = Connection::open(path)?;
+    pragmas(&conn, medium)?;
+    migrate(&mut conn)?;
+    Ok(conn)
+}
+
+/// Opens an existing library only: never creates the file or its folders. A configured root
+/// whose database is gone (renamed folder, another stick on the same letter) must stay offline
+/// instead of silently getting a new empty library (docs/05 §7).
+pub fn open_existing(path: &Path, medium: Medium) -> Result<Connection, LibraryError> {
+    if !path.is_file() {
+        return Err(LibraryError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "library.db not found",
+        )));
+    }
+    let mut conn = Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
     pragmas(&conn, medium)?;
     migrate(&mut conn)?;
     Ok(conn)

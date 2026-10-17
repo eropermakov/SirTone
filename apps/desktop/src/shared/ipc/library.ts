@@ -39,6 +39,8 @@ export const EMPTY_STATUS: LibraryStatus = {
   durationSec: 0,
   bytes: 0,
   importing: false,
+  offline: false,
+  goneQuestion: null,
 };
 
 const unwrap = <T>(r: { status: "ok"; data: T } | { status: "error"; error: unknown }): T => {
@@ -74,6 +76,16 @@ export const albumTracks = async (id: number): Promise<TrackItem[]> =>
 
 export const artistTracks = async (id: number): Promise<TrackItem[]> =>
   isTauri() ? unwrap(await commands.artistTracks(id)) : [];
+
+/** «Они удалены»: mark the vanished files missing (FR-FS-003). */
+export const confirmMissing = (): void => {
+  if (isTauri()) void commands.libraryConfirmMissing();
+};
+
+/** «Not now»: keep the library as it is. */
+export const dismissQuestion = (): void => {
+  if (isTauri()) void commands.libraryDismissQuestion();
+};
 
 /** Plays `ids` as one context from `start` (FR-PLAY-006); `context` goes to the journal. */
 export const playTracks = (ids: number[], start: number, context: PlayContext): void => {

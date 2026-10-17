@@ -25,6 +25,8 @@ export const commands = {
 	librarySetRoot: (path: string) => typedError<LibraryStatus, AppError>(__TAURI_INVOKE("library_set_root", { path })),
 	importPaths: (paths: string[]) => __TAURI_INVOKE<ImportStart>("import_paths", { paths }),
 	importCancel: () => __TAURI_INVOKE<void>("import_cancel"),
+	libraryConfirmMissing: () => __TAURI_INVOKE<void>("library_confirm_missing"),
+	libraryDismissQuestion: () => __TAURI_INVOKE<void>("library_dismiss_question"),
 	collectionTracks: (after: {
 	key: string,
 	id: number,
@@ -141,6 +143,13 @@ export type LibraryStatus = {
 	/**  Bytes as f64 (u64 is not representable in JS numbers). */
 	bytes: number | null,
 	importing: boolean,
+	/**
+	 *  The folder is set but cannot be reached (stick pulled, renamed, another library there):
+	 *  nothing is created, marked or deleted until it is back (FR-FS-004).
+	 */
+	offline: boolean,
+	/**  Many files vanished at once: how many, waiting for the user (FR-FS-003). */
+	goneQuestion: number | null,
 };
 
 export type PageCursor = {

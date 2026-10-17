@@ -136,7 +136,7 @@ pub struct SqliteWaveRepo {
 impl SqliteWaveRepo {
     pub fn open(path: &Path, medium: Medium) -> Result<Self, LibraryError> {
         Ok(Self {
-            conn: Mutex::new(db::open(path, medium)?),
+            conn: Mutex::new(db::open_existing(path, medium)?),
         })
     }
 

@@ -125,5 +125,11 @@
     "folder": "",
     "notChosen": "",
     "change": ""
+  },
+  "library": {
+    "offline": "Library folder unavailable — connect the drive",
+    "goneTitle": "Files vanished from the folder",
+    "gone": "{count, plural, one {# file is} other {# files are}} gone. The library is unchanged for now.",
+    "goneConfirm": "They are deleted"
   }
 }

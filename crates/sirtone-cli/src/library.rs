@@ -25,13 +25,23 @@ fn deps() -> ImportDeps {
     }
 }
 
-fn open(root: &Path) -> Result<rusqlite::Connection, String> {
-    let medium = if sirtone_platform::files::WinVolume.is_removable(root) {
+fn medium(root: &Path) -> Medium {
+    if sirtone_platform::files::WinVolume.is_removable(root) {
         Medium::Removable
     } else {
         Medium::Fixed
-    };
-    sirtone_library::open(&root.join(SERVICE_DIR).join("library.db"), medium)
+    }
+}
+
+/// `import` creates the library when it is not there yet.
+fn open(root: &Path) -> Result<rusqlite::Connection, String> {
+    sirtone_library::open(&root.join(SERVICE_DIR).join("library.db"), medium(root))
+        .map_err(|e| e.to_string())
+}
+
+/// `verify` only reads an existing library: it never creates one in an arbitrary folder.
+fn open_existing(root: &Path) -> Result<rusqlite::Connection, String> {
+    sirtone_library::open_existing(&root.join(SERVICE_DIR).join("library.db"), medium(root))
         .map_err(|e| e.to_string())
 }
 
@@ -113,7 +123,7 @@ pub fn import(root: &str, sources: &[String]) -> ExitCode {
 /// library file is unindexed, no journal row is left `planned`, staging holds no files.
 pub fn verify(root: &str) -> ExitCode {
     let root = PathBuf::from(root);
-    let db = match open(&root) {
+    let db = match open_existing(&root) {
         Ok(db) => db,
         Err(e) => {
             eprintln!("open: {e}");

@@ -204,11 +204,15 @@ fn write_loop(rx: &Receiver<PlayEvent>, root: &dyn Fn() -> Option<PathBuf>) {
                 .ok()
                 .map(|r| (root.clone(), r));
         }
-        if let Some((_, r)) = repo.as_ref()
-            && let Err(e) = r.record_play(&event)
-        {
-            // A track removed meanwhile (foreign key) or a locked disk: the event is dropped.
+        let failed = match repo.as_ref() {
+            Some((_, r)) => r.record_play(&event).err(),
+            None => None,
+        };
+        if let Some(e) = failed {
+            // A track removed meanwhile (foreign key) or the library went offline: the event is
+            // dropped and the connection reopened next time (a returned stick is a new file).
             tracing::warn!(target: "sirtone::journal", code = ?e.code, "play event not recorded");
+            repo = None;
         }
     }
 }

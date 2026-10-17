@@ -22,6 +22,9 @@ unicode-normalization.workspace = true
 blake3.workspace = true
 image.workspace = true
 webp.workspace = true
+jwalk.workspace = true
+notify.workspace = true
+notify-debouncer-full.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

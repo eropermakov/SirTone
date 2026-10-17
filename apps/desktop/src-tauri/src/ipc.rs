@@ -37,6 +37,8 @@ pub fn builder() -> Builder<tauri::Wry> {
             library::library_set_root,
             library::import_paths,
             library::import_cancel,
+            library::library_confirm_missing,
+            library::library_dismiss_question,
             library::collection_tracks,
             library::collection_albums,
             library::collection_artists,

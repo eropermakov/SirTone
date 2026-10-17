@@ -65,6 +65,47 @@ impl FileOps for WinFiles {
     fn to_recycle_bin(&self, path: &Path) -> std::io::Result<()> {
         trash::delete(path).map_err(std::io::Error::other)
     }
+
+    fn file_id(&self, path: &Path) -> Option<String> {
+        use std::os::windows::io::AsRawHandle;
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::Storage::FileSystem::{
+            FILE_ID_INFO, FileIdInfo, GetFileInformationByHandleEx, GetVolumeInformationByHandleW,
+        };
+        let file = std::fs::File::open(path).ok()?;
+        let h = HANDLE(file.as_raw_handle());
+        let mut fs_name = [0u16; 32];
+        // SAFETY: `h` is a live handle owned by `file`; buffers are valid for the calls.
+        unsafe { GetVolumeInformationByHandleW(h, None, None, None, None, Some(&mut fs_name)) }
+            .ok()?;
+        let len = fs_name
+            .iter()
+            .position(|&c| c == 0)
+            .unwrap_or(fs_name.len());
+        let fs = String::from_utf16_lossy(&fs_name[..len]);
+        // FAT/exFAT reuse file indexes: an id there proves nothing (docs/05 §7).
+        if !matches!(fs.as_str(), "NTFS" | "ReFS") {
+            return None;
+        }
+        let mut info = FILE_ID_INFO::default();
+        // SAFETY: `info` is a FILE_ID_INFO and the size passed matches it.
+        unsafe {
+            GetFileInformationByHandleEx(
+                h,
+                FileIdInfo,
+                (&raw mut info).cast(),
+                std::mem::size_of::<FILE_ID_INFO>() as u32,
+            )
+        }
+        .ok()?;
+        let id: String = info
+            .FileId
+            .Identifier
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        Some(format!("{:016x}:{id}", info.VolumeSerialNumber))
+    }
 }
 
 /// Volume root of `path` (`D:\`, a mount point or `\\server\share\`).
@@ -102,6 +143,25 @@ impl VolumeInfo for WinVolume {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn file_id_survives_a_rename_on_ntfs() {
+        let dir = std::env::temp_dir().join(format!("sirtone-fid-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = dir.join("a.bin");
+        std::fs::write(&a, b"x").unwrap();
+        let before = WinFiles.file_id(&a);
+        let b = dir.join("b.bin");
+        std::fs::rename(&a, &b).unwrap();
+        assert_eq!(WinFiles.file_id(&b), before);
+        if before.is_some() {
+            let c = dir.join("c.bin");
+            std::fs::write(&c, b"x").unwrap();
+            assert_ne!(WinFiles.file_id(&c), before);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     use super::*;
     use std::fs;
 

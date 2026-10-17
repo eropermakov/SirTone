@@ -10,7 +10,15 @@
 // seek, broken file → toast, folder → first file, second launch forwards a file, theme and
 // volume persist across a restart.
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -373,6 +381,53 @@ const vol = await footer.getByRole("slider", { name: "Громкость" }).get
 check("volume after restart", vol === "37", vol);
 if (existsSync(join(libDir, ".sirtone", "library.db"))) {
   check("journal survives a kill", readJournal().length >= 2);
+}
+
+// 9. Watching the folder (T1.19–T1.20): Explorer additions, deletions, an offline root.
+if (existsSync(join(libDir, ".sirtone", "library.db"))) {
+  const tracks = async () => (await invoke("library_status", {})).tracks;
+  const waitTracks = async (want, ms) => {
+    const t0 = Date.now();
+    let n = await tracks();
+    while (n !== want && Date.now() - t0 < ms) {
+      await sleep(100);
+      n = await tracks();
+    }
+    return [n, Date.now() - t0];
+  };
+  const before = await tracks();
+  mkdirSync(join(libDir, "Снаружи"), { recursive: true });
+  const added = join(libDir, "Снаружи", "Искала.flac");
+  copyFileSync(join(root, "fixtures", "generated", "tags", "cyrillic-ok.flac"), added);
+  const [n1, ms1] = await waitTracks(before + 1, 5000);
+  check("file added in Explorer appears ≤ 2 s", n1 === before + 1 && ms1 <= 2000, `${ms1} ms`);
+  rmSync(added);
+  const [n2, ms2] = await waitTracks(before, 5000);
+  check("deleted file leaves the lists", n2 === before, `${ms2} ms`);
+  // Restart with the folder renamed: offline, nothing recreated at the old path.
+  await browser.close();
+  app.kill();
+  await sleep(1000);
+  const away = `${libDir}-away`;
+  renameSync(libDir, away);
+  app = launch();
+  ({ browser, page } = await connect());
+  await sleep(800);
+  const st = await invoke("library_status", {});
+  check("renamed folder → offline", st.offline === true, JSON.stringify({ offline: st.offline }));
+  check("no new library at the old path", !existsSync(libDir));
+  renameSync(away, libDir);
+  const t0 = Date.now();
+  let back = await invoke("library_status", {});
+  while ((back.offline || back.tracks !== before) && Date.now() - t0 < 10000) {
+    await sleep(250);
+    back = await invoke("library_status", {});
+  }
+  check(
+    "folder back → online, all tracks there",
+    !back.offline && back.tracks === before,
+    `${Date.now() - t0} ms, ${back.tracks}/${before}`,
+  );
 }
 
 await browser.close();

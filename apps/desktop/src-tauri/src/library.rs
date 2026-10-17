@@ -15,6 +15,7 @@ use sirtone_core::ports::VolumeInfo;
 use sirtone_library::Medium;
 use sirtone_library::collection::{self, Counts, Cursor};
 use sirtone_library::import::{self, ImportDeps, ImportEvent, SERVICE_DIR};
+use sirtone_library::reconcile::{Outcome, Report};
 use sirtone_library::repo::{self, TitleCursor};
 use tauri::{AppHandle, State};
 use tauri_specta::Event;
@@ -37,6 +38,11 @@ pub struct LibraryStatus {
     /// Bytes as f64 (u64 is not representable in JS numbers).
     pub bytes: f64,
     pub importing: bool,
+    /// The folder is set but cannot be reached (stick pulled, renamed, another library there):
+    /// nothing is created, marked or deleted until it is back (FR-FS-004).
+    pub offline: bool,
+    /// Many files vanished at once: how many, waiting for the user (FR-FS-003).
+    pub gone_question: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
@@ -143,6 +149,13 @@ pub enum ImportStart {
 
 // ---------- service ----------
 
+/// Work for the import thread: imports and reconcile passes never run at the same time, so the
+/// pipeline's own placements can never race the watcher (docs/05 §7).
+enum Job {
+    Import(Vec<PathBuf>),
+    Reconcile { confirmed: bool },
+}
+
 /// A library track ready to play: absolute path, title, artists, album cover hash.
 pub type Resolved = (PathBuf, String, String, Option<String>);
 
@@ -151,12 +164,15 @@ struct Shared {
     read: Option<Connection>,
     counts: Option<Counts>,
     pending: Vec<PathBuf>,
+    offline: bool,
+    gone_question: Option<u32>,
+    watch: Option<sirtone_library::watch::Watch>,
 }
 
 pub struct Library {
     shared: Arc<Mutex<Shared>>,
     settings: Arc<SettingsStore>,
-    jobs: Sender<Vec<PathBuf>>,
+    jobs: Sender<Job>,
     cancel: Arc<AtomicBool>,
     importing: Arc<AtomicBool>,
 }
@@ -190,6 +206,49 @@ fn open_db(root: &Path) -> Result<Connection, AppError> {
     sirtone_library::open(&db_path(root), medium(root)).map_err(AppError::from)
 }
 
+/// Opens the library at `root` only if it is there and is the one we set up (`library_uid` in
+/// settings). Never creates anything: a missing or foreign library is offline.
+fn open_known(root: &Path, uid: Option<&str>) -> Option<Connection> {
+    if !root.is_dir() {
+        return None;
+    }
+    let conn = sirtone_library::open_existing(&db_path(root), medium(root)).ok()?;
+    let actual = sirtone_library::db::meta(&conn, "library_uid")
+        .ok()
+        .flatten();
+    match (uid, actual.as_deref()) {
+        (Some(want), Some(have)) if want != have => None,
+        _ => Some(conn),
+    }
+}
+
+fn settings_uid(settings: &SettingsStore) -> Option<String> {
+    settings.get()["library"]["uid"].as_str().map(str::to_owned)
+}
+
+/// Remembers which library lives at the root (first run after an update adopts the existing one).
+fn remember_uid(settings: &SettingsStore, conn: &Connection) {
+    if let Ok(Some(uid)) = sirtone_library::db::meta(conn, "library_uid")
+        && settings_uid(settings).as_deref() != Some(uid.as_str())
+    {
+        let _ = settings.patch_durable(&serde_json::json!({ "library": { "uid": uid } }));
+    }
+}
+
+/// Arms the watcher: every settled change queues a reconcile pass.
+fn arm_watch(root: &Path, jobs: &Sender<Job>) -> Option<sirtone_library::watch::Watch> {
+    let jobs = jobs.clone();
+    match sirtone_library::watch::watch(root, move || {
+        let _ = jobs.send(Job::Reconcile { confirmed: false });
+    }) {
+        Ok(w) => Some(w),
+        Err(e) => {
+            tracing::warn!(target: "sirtone::library", error = %e, "watcher unavailable");
+            None
+        }
+    }
+}
+
 /// `%USERPROFILE%\Music\SirTone` (docs/03 §8.2). Isolated test instances (`SIRTONE_DATA_DIR`)
 /// get a folder inside their data dir, so pressing «Продолжить» never touches the owner's Music.
 pub fn default_root() -> PathBuf {
@@ -213,20 +272,41 @@ impl Library {
             .as_str()
             .map(PathBuf::from)
             .filter(|p| p.is_absolute());
-        let read = root.as_deref().and_then(|r| open_db(r).ok());
+        let uid = settings_uid(&settings);
+        let read = root.as_deref().and_then(|r| open_known(r, uid.as_deref()));
+        if let Some(c) = read.as_ref() {
+            remember_uid(&settings, c);
+        }
+        let offline = root.is_some() && read.is_none();
+        if offline {
+            tracing::warn!(target: "sirtone::library", "library folder unavailable — offline");
+        }
+        let (jobs, rx) = mpsc::channel::<Job>();
+        let watch = match (&root, &read) {
+            (Some(r), Some(_)) => arm_watch(r, &jobs),
+            _ => None,
+        };
         let shared = Arc::new(Mutex::new(Shared {
             root,
             read,
             counts: None,
             pending: Vec::new(),
+            offline,
+            gone_question: None,
+            watch,
         }));
-        let (jobs, rx) = mpsc::channel::<Vec<PathBuf>>();
         let cancel = Arc::new(AtomicBool::new(false));
         let importing = Arc::new(AtomicBool::new(false));
         let (w_shared, w_cancel, w_importing) = (shared.clone(), cancel.clone(), importing.clone());
+        let (m_app, m_shared, m_settings, m_jobs) =
+            (app.clone(), shared.clone(), settings.clone(), jobs.clone());
         std::thread::Builder::new()
             .name("sirtone-import".into())
             .spawn(move || import_worker(app, w_shared, rx, w_cancel, w_importing))
+            .ok();
+        std::thread::Builder::new()
+            .name("sirtone-root-monitor".into())
+            .spawn(move || root_monitor(m_app, m_shared, m_settings, m_jobs))
             .ok();
         let lib = Self {
             shared,
@@ -235,9 +315,10 @@ impl Library {
             cancel,
             importing,
         };
-        // Recover the journal and resume interrupted batches right away (docs/05 §3.3).
-        if lock(&lib.shared).root.is_some() {
-            let _ = lib.jobs.send(Vec::new());
+        // Recover the journal, resume interrupted batches and reconcile with the disk right away
+        // (docs/05 §3.3, §7).
+        if lock(&lib.shared).read.is_some() {
+            let _ = lib.jobs.send(Job::Reconcile { confirmed: false });
         }
         lib
     }
@@ -260,6 +341,8 @@ impl Library {
             duration_sec: (n.duration_ms / 1000) as u32,
             bytes: n.bytes as f64,
             importing: self.importing.load(Ordering::Relaxed),
+            offline: s.offline,
+            gone_question: s.gone_question,
         }
     }
 
@@ -278,19 +361,34 @@ impl Library {
         std::fs::write(&probe, b"ok")
             .map_err(|e| AppError::new(ErrorCode::PermissionDenied).with_details(e))?;
         let _ = std::fs::remove_file(&probe);
+        // The only place a library is created: an explicit choice of folder. A folder that
+        // already holds one («Указать новое место») keeps it and its uid.
         let conn = open_db(path)?;
+        let uid = sirtone_library::db::meta(&conn, "library_uid")
+            .ok()
+            .flatten()
+            .unwrap_or_default();
         self.settings
-            .patch_durable(&serde_json::json!({ "library": { "root": path.to_string_lossy() } }))
+            .patch_durable(&serde_json::json!({
+                "library": { "root": path.to_string_lossy(), "uid": uid }
+            }))
             .map_err(|e| AppError::new(ErrorCode::InvalidConfig).with_details(e))?;
+        let watch = arm_watch(path, &self.jobs);
         let pending = {
             let mut s = lock(&self.shared);
             s.root = Some(path.to_path_buf());
             s.read = Some(conn);
             s.counts = None;
+            s.offline = false;
+            s.gone_question = None;
+            s.watch = watch;
             std::mem::take(&mut s.pending)
         };
         tracing::info!(target: "sirtone::library", "library folder set");
-        let _ = self.jobs.send(pending);
+        let _ = self.jobs.send(Job::Reconcile { confirmed: false });
+        if !pending.is_empty() {
+            let _ = self.jobs.send(Job::Import(pending));
+        }
         Ok(())
     }
 
@@ -308,7 +406,7 @@ impl Library {
         }
         drop(s);
         self.cancel.store(false, Ordering::Relaxed);
-        let _ = self.jobs.send(paths);
+        let _ = self.jobs.send(Job::Import(paths));
         ImportStart::Started
     }
 
@@ -322,6 +420,18 @@ impl Library {
             .as_ref()
             .ok_or_else(|| AppError::new(ErrorCode::LibraryRootNotSet))?;
         f(c).map_err(AppError::from)
+    }
+
+    /// «Да, удалены»: mark the vanished files missing (FR-FS-003).
+    pub fn confirm_missing(&self) {
+        lock(&self.shared).gone_question = None;
+        let _ = self.jobs.send(Job::Reconcile { confirmed: true });
+    }
+
+    /// «Нет»: leave them as they are for now (the question returns on the next pass while the
+    /// files are still away).
+    pub fn dismiss_question(&self) {
+        lock(&self.shared).gone_question = None;
     }
 
     /// Serves `sirtone-cover://<hash>/<size>` (docs/03 §5.6): WebP bytes, generated on first use.
@@ -364,37 +474,123 @@ impl Library {
     }
 }
 
+/// Watches whether the configured root is reachable (a pulled stick kills the watch silently):
+/// online → offline drops connections and the watcher; offline → online reopens them and
+/// reconciles (FR-FS-004).
+fn root_monitor(
+    app: AppHandle,
+    shared: Arc<Mutex<Shared>>,
+    settings: Arc<SettingsStore>,
+    jobs: Sender<Job>,
+) {
+    loop {
+        std::thread::sleep(Duration::from_secs(3));
+        let (root, offline) = {
+            let s = lock(&shared);
+            (s.root.clone(), s.offline)
+        };
+        let Some(root) = root else { continue };
+        let reachable = root.is_dir() && db_path(&root).is_file();
+        if offline && reachable {
+            let uid = settings_uid(&settings);
+            if let Some(conn) = open_known(&root, uid.as_deref()) {
+                remember_uid(&settings, &conn);
+                let watch = arm_watch(&root, &jobs);
+                {
+                    let mut s = lock(&shared);
+                    s.read = Some(conn);
+                    s.offline = false;
+                    s.counts = None;
+                    s.watch = watch;
+                }
+                tracing::info!(target: "sirtone::library", "library folder back online");
+                let _ = jobs.send(Job::Reconcile { confirmed: false });
+                emit_changed(&app, &shared);
+            }
+        } else if !offline && !reachable {
+            go_offline(&app, &shared);
+        }
+    }
+}
+
+fn go_offline(app: &AppHandle, shared: &Mutex<Shared>) {
+    {
+        let mut s = lock(shared);
+        if s.offline {
+            return;
+        }
+        s.offline = true;
+        s.read = None;
+        s.watch = None;
+        s.counts = None;
+        s.gone_question = None;
+    }
+    tracing::warn!(target: "sirtone::library", "library folder unavailable — offline");
+    let _ = LibraryChanged { tracks: 0 }.emit(app);
+}
+
 fn import_worker(
     app: AppHandle,
     shared: Arc<Mutex<Shared>>,
-    rx: mpsc::Receiver<Vec<PathBuf>>,
+    rx: mpsc::Receiver<Job>,
     cancel: Arc<AtomicBool>,
     importing: Arc<AtomicBool>,
 ) {
     let deps = deps();
     let mut conn: Option<(PathBuf, Connection)> = None;
-    while let Ok(paths) = rx.recv() {
-        let Some(root) = lock(&shared).root.clone() else {
+    let mut backfilled: Option<PathBuf> = None;
+    while let Ok(job) = rx.recv() {
+        // Coalesce queued reconcile passes (a burst of watcher events = one pass).
+        let mut jobs = vec![job];
+        while let Ok(more) = rx.try_recv() {
+            jobs.push(more);
+        }
+        let mut reconcile_pass: Option<bool> = None;
+        let mut imports: Vec<PathBuf> = Vec::new();
+        for j in jobs {
+            match j {
+                Job::Import(p) => imports.extend(p),
+                Job::Reconcile { confirmed } => {
+                    reconcile_pass = Some(reconcile_pass.unwrap_or(false) || confirmed);
+                }
+            }
+        }
+        let (root, offline) = {
+            let s = lock(&shared);
+            (s.root.clone(), s.offline)
+        };
+        let Some(root) = root else {
             continue;
         };
+        if offline {
+            conn = None;
+            continue;
+        }
         if conn.as_ref().is_none_or(|(r, _)| *r != root) {
-            conn = open_db(&root).ok().map(|c| (root.clone(), c));
+            conn = sirtone_library::open_existing(&db_path(&root), medium(&root))
+                .ok()
+                .map(|c| (root.clone(), c));
         }
         let Some((_, db)) = conn.as_mut() else {
             continue;
         };
-        importing.store(true, Ordering::Relaxed);
+        let paths = imports;
         if let Err(e) = import::recover(db, &root, deps.fs.as_ref()) {
             tracing::error!(target: "sirtone::import", error = %e, "recovery failed");
         }
-        // Covers for albums imported before T1.26 (or without art on their first track).
-        if let Ok(n) = sirtone_library::covers::backfill(db, &root, deps.covers.as_ref(), 500)
-            && n > 0
-        {
-            tracing::info!(target: "sirtone::import", albums = n, "covers backfilled");
-            emit_changed(&app, &shared);
+        // Once per library: covers for albums imported before T1.26 (or without art on their
+        // first track).
+        if backfilled.as_deref() != Some(root.as_path()) {
+            backfilled = Some(root.clone());
+            if let Ok(n) = sirtone_library::covers::backfill(db, &root, deps.covers.as_ref(), 500)
+                && n > 0
+            {
+                tracing::info!(target: "sirtone::import", albums = n, "covers backfilled");
+                emit_changed(&app, &shared);
+            }
         }
         let mut batches = import::unfinished_batches(db).unwrap_or_default();
+        importing.store(!batches.is_empty() || !paths.is_empty(), Ordering::Relaxed);
         if !paths.is_empty() {
             match import::start_batch(db, &paths, "drop") {
                 Ok(b) => batches.push(b),
@@ -457,6 +653,47 @@ fn import_worker(
         }
         cancel.store(false, Ordering::Relaxed);
         importing.store(false, Ordering::Relaxed);
+        if let Some(confirmed) = reconcile_pass {
+            run_reconcile(&app, &shared, db, &root, &deps, confirmed);
+        }
+    }
+}
+
+/// One reconcile pass after the journal is settled (`recover` runs first on every job).
+fn run_reconcile(
+    app: &AppHandle,
+    shared: &Mutex<Shared>,
+    db: &mut Connection,
+    root: &Path,
+    deps: &ImportDeps,
+    confirmed: bool,
+) {
+    if let Err(e) = import::recover(db, root, deps.fs.as_ref()) {
+        tracing::error!(target: "sirtone::import", error = %e, "recovery failed");
+        return;
+    }
+    let started = Instant::now();
+    match sirtone_library::reconcile::reconcile(
+        db,
+        root,
+        deps,
+        sirtone_library::db::now_ms(),
+        confirmed,
+    ) {
+        Ok(Outcome::Offline) => go_offline(app, shared),
+        Ok(Outcome::Done(r)) => {
+            tracing::info!(target: "sirtone::library", ?r, ms = started.elapsed().as_millis() as u64, "reconcile");
+            if r != Report::default() {
+                emit_changed(app, shared);
+            }
+        }
+        Ok(Outcome::Question { gone, report }) => {
+            tracing::warn!(target: "sirtone::library", gone, "many files vanished — asking");
+            lock(shared).gone_question = Some(gone as u32);
+            let _ = report;
+            emit_changed(app, shared);
+        }
+        Err(e) => tracing::error!(target: "sirtone::library", error = %e, "reconcile failed"),
     }
 }
 
@@ -509,6 +746,18 @@ pub fn library_set_root(lib: State<'_, Library>, path: String) -> Result<Library
 #[specta::specta]
 pub fn import_paths(app: AppHandle, lib: State<'_, Library>, paths: Vec<String>) -> ImportStart {
     lib.import_paths(&app, paths.into_iter().map(PathBuf::from).collect())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn library_confirm_missing(lib: State<'_, Library>) {
+    lib.confirm_missing();
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn library_dismiss_question(lib: State<'_, Library>) {
+    lib.dismiss_question();
 }
 
 #[tauri::command]
