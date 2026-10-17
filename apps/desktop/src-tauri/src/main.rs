@@ -15,6 +15,7 @@ mod playback;
 mod playlists;
 mod search;
 mod settings_store;
+mod storage;
 mod tray;
 mod updates;
 mod window_chrome;

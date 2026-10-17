@@ -742,6 +742,15 @@ if (existsSync(corpus)) {
     neverListed && neverLeft.length === 0,
     `listed ${neverListed}, left ${neverLeft.length}`,
   );
+  // T2.14: «Хранилище» shows the service data next to the library.
+  const storageInfo = await invoke("storage_info", {});
+  check(
+    "storage shows the database and the cover cache",
+    (await page.getByText("База медиатеки").count()) > 0 &&
+      storageInfo.databaseBytes > 0 &&
+      storageInfo.coversFiles > 0,
+    `db ${storageInfo.databaseBytes} B, covers ${storageInfo.coversFiles}`,
+  );
   // T2.4: auto-detect — hardware + WebGL benchmark → a level, saved like a manual choice.
   await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
   await page.getByRole("button", { name: "Определить автоматически" }).click();

@@ -19,6 +19,8 @@ pub struct PlaylistRow {
     pub name: String,
     pub tracks: u32,
     pub duration_ms: u64,
+    /// Total size of the listed tracks (FR-DATA-004).
+    pub bytes: u64,
     /// Four different album covers of the first tracks → a 2×2 mosaic; otherwise at most one
     /// (Spotify, `01b` F-13).
     pub covers: Vec<String>,
@@ -120,6 +122,8 @@ pub fn list(conn: &Connection) -> Result<Vec<PlaylistRow>, LibraryError> {
                 (SELECT count(*) FROM playlist_item i JOIN track t ON t.id = i.track_id
                  WHERE i.playlist_id = p.id AND t.state = 'ok'),
                 (SELECT coalesce(sum(t.duration_ms), 0) FROM playlist_item i JOIN track t ON t.id = i.track_id
+                 WHERE i.playlist_id = p.id AND t.state = 'ok'),
+                (SELECT coalesce(sum(t.size_bytes), 0) FROM playlist_item i JOIN track t ON t.id = i.track_id
                  WHERE i.playlist_id = p.id AND t.state = 'ok')
          FROM playlist p WHERE p.kind = 'manual' ORDER BY p.sort_order, p.id",
     )?;
@@ -130,6 +134,7 @@ pub fn list(conn: &Connection) -> Result<Vec<PlaylistRow>, LibraryError> {
                 name: r.get(1)?,
                 tracks: r.get(2)?,
                 duration_ms: r.get::<_, i64>(3)? as u64,
+                bytes: r.get::<_, i64>(4)? as u64,
                 covers: Vec::new(),
             })
         })?

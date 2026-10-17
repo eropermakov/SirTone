@@ -1,11 +1,13 @@
 import { Check, Gauge, Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionSummary } from "@/app/library/CollectionScreen";
+import { mb } from "@/app/library/TrackCard";
 import { type NeverEntry, never, neverList } from "@/shared/ipc/feedback";
 import type { LibraryStatus } from "@/shared/ipc/library";
 import { perfHardware } from "@/shared/ipc/perf";
 import { getSettings, patchSettings } from "@/shared/ipc/settings";
+import { clearOldLogs, type StorageInfo, storageInfo } from "@/shared/ipc/storage";
 import {
   autostartAvailable,
   type HotkeyAction,
@@ -174,6 +176,7 @@ export function SettingsScreen({
               {library.root ?? t("settingsStorage.notChosen")}
             </span>
             {library.root && <CollectionSummary status={library} />}
+            {library.root && <ServiceData />}
             {!library.root && onChooseLibrary && (
               <button
                 type="button"
@@ -483,6 +486,56 @@ function NeverSection() {
           ))
         )}
       </div>
+    </div>
+  );
+}
+
+/** FR-DATA-004: what Сиртон keeps besides the music, and «Удалить старые журналы». */
+function ServiceData() {
+  const { t } = useTranslation("shell");
+  const [info, setInfo] = useState<StorageInfo | null>(null);
+  const load = useCallback(() => {
+    storageInfo()
+      .then(setInfo)
+      .catch(() => setInfo(null));
+  }, []);
+  useEffect(load, [load]);
+  if (!info) return null;
+  const mbOf = (b: number | null) => mb(b ?? 0);
+  return (
+    <div className="flex flex-col gap-2 border-t border-separator pt-3">
+      <span className="t-body-strong text-text-primary">{t("settingsStorage.service")}</span>
+      <dl className="t-caption grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-text-secondary">
+        <dt>{t("settingsStorage.database")}</dt>
+        <dd className="text-text-primary">
+          {t("trackCard.mb", { value: mbOf(info.databaseBytes) })}
+        </dd>
+        <dt>{t("settingsStorage.covers")}</dt>
+        <dd className="text-text-primary">
+          {t("settingsStorage.coversValue", {
+            value: mbOf(info.coversBytes),
+            count: info.coversFiles,
+          })}
+        </dd>
+        <dt>{t("settingsStorage.logs")}</dt>
+        <dd className="text-text-primary">{t("trackCard.mb", { value: mbOf(info.logsBytes) })}</dd>
+      </dl>
+      {info.oldLogs > 0 && (
+        <Button
+          variant="secondary"
+          className="self-start"
+          onClick={() =>
+            clearOldLogs()
+              .then((n) => {
+                notify(t("settingsStorage.logsCleared", { count: n }));
+                load();
+              })
+              .catch(() => notify(t("wave.failed")))
+          }
+        >
+          {t("settingsStorage.clearLogs", { count: info.oldLogs })}
+        </Button>
+      )}
     </div>
   );
 }

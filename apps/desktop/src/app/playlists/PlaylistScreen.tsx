@@ -1,6 +1,7 @@
 import { MoreHorizontal, Play, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { mb } from "@/app/library/TrackCard";
 import { type GoTo, TrackList } from "@/app/library/TrackList";
 import { playTracks } from "@/shared/ipc/library";
 import {
@@ -137,7 +138,8 @@ export function PlaylistScreen({
           )}
           <p className="t-caption text-text-secondary">
             {tc("count.tracks", { count: meta?.tracks ?? 0 })} ·{" "}
-            {t("playlists.minutes", { count: minutes })}
+            {t("playlists.minutes", { count: minutes })} ·{" "}
+            {t("trackCard.mb", { value: mb(meta?.bytes ?? 0) })}
           </p>
         </div>
         <Button

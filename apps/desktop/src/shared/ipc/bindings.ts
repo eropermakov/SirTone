@@ -99,6 +99,9 @@ export const commands = {
 	/**  The primary artist of a track («Никогда в волне» → исполнитель). */
 	trackPrimaryArtist: (track: number) => typedError<number, AppError>(__TAURI_INVOKE("track_primary_artist", { track })),
 	neverList: () => typedError<NeverEntry[], AppError>(__TAURI_INVOKE("never_list")),
+	storageInfo: () => __TAURI_INVOKE<StorageInfo>("storage_info"),
+	/**  «Удалить старые журналы»: diagnostic logs of earlier days (the app's own files, not music). */
+	storageClearLogs: () => typedError<number, AppError>(__TAURI_INVOKE("storage_clear_logs")),
 	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
 	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),
 };
@@ -317,6 +320,7 @@ export type PlaylistItem = {
 	name: string,
 	tracks: number,
 	durationMs: number | null,
+	bytes: number | null,
 	/**  Four hashes → a 2×2 mosaic, one → a single cover, none → placeholder. */
 	covers: string[],
 };
@@ -364,6 +368,16 @@ export type SearchResults = {
 	artists: ArtistItem[],
 	albums: AlbumItem[],
 	playlists: PlaylistHit[],
+};
+
+export type StorageInfo = {
+	/**  `library.db` with its WAL. */
+	databaseBytes: number | null,
+	coversBytes: number | null,
+	coversFiles: number,
+	logsBytes: number | null,
+	/**  Log files older than today (what «Удалить старые журналы» removes). */
+	oldLogs: number,
 };
 
 /**  What the user typed for a track (ручное назначение). */

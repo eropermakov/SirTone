@@ -18,6 +18,7 @@ pub struct PlaylistItem {
     pub name: String,
     pub tracks: u32,
     pub duration_ms: f64,
+    pub bytes: f64,
     /// Four hashes → a 2×2 mosaic, one → a single cover, none → placeholder.
     pub covers: Vec<String>,
 }
@@ -57,6 +58,7 @@ pub fn playlists_list(lib: State<'_, Library>) -> Result<Vec<PlaylistItem>, AppE
                 name: p.name,
                 tracks: p.tracks,
                 duration_ms: p.duration_ms as f64,
+                bytes: p.bytes as f64,
                 covers: p.covers,
             })
             .collect())

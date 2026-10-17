@@ -479,6 +479,11 @@ impl Library {
         Err(last.map_or_else(|| AppError::new(ErrorCode::Internal), AppError::from))
     }
 
+    /// The configured library folder.
+    pub(crate) fn root(&self) -> Option<PathBuf> {
+        lock(&self.shared).root.clone()
+    }
+
     pub(crate) fn with_read<T>(
         &self,
         f: impl FnOnce(&Connection) -> Result<T, sirtone_library::LibraryError>,
