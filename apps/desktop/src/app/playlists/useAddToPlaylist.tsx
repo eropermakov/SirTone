@@ -17,6 +17,8 @@ type Pending = { id: number; name: string; tracks: number[]; dup: number[] };
  */
 export function useAddToPlaylist(): {
   submenu: (tracks: number[]) => MenuItem[];
+  /** Add to a known playlist (drag and drop onto the sidebar), with the same question. */
+  add: (id: number, name: string, tracks: number[]) => void;
   dialog: ReactNode;
 } {
   const { t } = useTranslation("shell");
@@ -100,5 +102,5 @@ export function useAddToPlaylist(): {
     </Dialog>
   );
 
-  return { submenu, dialog };
+  return { submenu, add: (id, name, tracks) => void add(id, name, tracks), dialog };
 }

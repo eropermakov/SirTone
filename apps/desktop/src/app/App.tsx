@@ -39,6 +39,7 @@ import {
 } from "@/shared/theme/theme";
 import { notify, onNotify } from "@/shared/ui/notify";
 import { Toast } from "@/shared/ui/Toast";
+import { DndRoot } from "./dnd/dnd";
 import type { Open } from "./library/CollectionScreen";
 import type { GoTo } from "./library/TrackList";
 import { PlaylistScreen } from "./playlists/PlaylistScreen";
@@ -263,183 +264,185 @@ export function App() {
   const report = lib.report;
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex min-h-0 flex-1">
-        <Sidebar
-          current={screen}
-          collapsed={narrow || manualCollapsed}
-          onNavigate={setScreen}
-          badges={{ unknown: lib.status.unknown }}
-          onToggle={() => setManualCollapsed((c) => !c)}
-          progress={lib.progress}
-          onCancelImport={cancelImport}
-          offline={lib.status.offline}
-          playlists={playlists}
-          currentPlaylist={screen === "playlists" ? (here.playlist ?? null) : null}
-          playingPlaylist={null}
-          onOpenPlaylist={(id) => openPlaylist(id)}
-          onNewPlaylist={lib.status.tracks > 0 ? newPlaylist : undefined}
-        />
-        <main className="flex min-w-0 flex-1 flex-col overflow-auto rounded-tl-(--radius-xl) bg-bg-layer p-6">
-          {lib.rootNeeded && <RootPanel status={lib.status} onDone={rootChosen} />}
-          {screen === "settings" ? (
-            <SettingsScreen
-              theme={appearance.theme}
-              accent={appearance.accent}
-              onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
-              onAccent={(accent) => setAppearance((a) => ({ ...a, accent }))}
-              library={lib.status}
-              onChooseLibrary={() => lib.setRootNeeded(true)}
-            />
-          ) : screen === "search" && hasMusic ? (
-            <SearchScreen
-              playingId={snap.trackId}
-              version={lib.version}
-              onGo={goTo}
-              onOpenPlaylist={(id) => openPlaylist(id)}
-            />
-          ) : screen === "genres" && hasMusic ? (
-            <GenresScreen
-              version={lib.version}
-              playingId={snap.trackId}
-              open={here.genre ?? null}
-              onOpen={(g) => push({ screen: "genres", open: null, genre: g })}
-              onBack={back}
-              onGo={goTo}
-            />
-          ) : screen === "playlists" && here.playlist != null ? (
-            <PlaylistScreen
-              key={here.playlist}
-              id={here.playlist}
-              version={lib.version}
-              playingId={snap.trackId}
-              editName={here.fresh ?? false}
-              onGo={goTo}
-              onDeleted={() =>
-                setStack((st) => {
-                  const left = st.filter((e) => e.playlist !== here.playlist);
-                  return left.length > 0 ? left : [{ screen: "wave", open: null }];
-                })
-              }
-            />
-          ) : hasMusic && screen === "unknown" && lib.status.unknown > 0 ? (
-            <UnknownScreen version={lib.version} playingId={snap.trackId} onGo={goTo} />
-          ) : hasMusic && (screen === "albums" || screen === "artists") ? (
-            <CollectionScreen
-              key={screen}
-              kind={screen}
-              status={lib.status}
-              version={lib.version}
-              playingId={snap.trackId}
-              open={here.open}
-              onOpen={(o) => push({ screen, open: o })}
-              onBack={back}
-            />
-          ) : (
-            <EmptyScreen
-              screen={screen}
-              onAdd={["wave", "albums", "artists"].includes(screen) ? addMusic : undefined}
-            />
+    <DndRoot onNavigate={setScreen}>
+      <div className="flex h-full flex-col">
+        <div className="flex min-h-0 flex-1">
+          <Sidebar
+            current={screen}
+            collapsed={narrow || manualCollapsed}
+            onNavigate={setScreen}
+            badges={{ unknown: lib.status.unknown }}
+            onToggle={() => setManualCollapsed((c) => !c)}
+            progress={lib.progress}
+            onCancelImport={cancelImport}
+            offline={lib.status.offline}
+            playlists={playlists}
+            currentPlaylist={screen === "playlists" ? (here.playlist ?? null) : null}
+            playingPlaylist={null}
+            onOpenPlaylist={(id) => openPlaylist(id)}
+            onNewPlaylist={lib.status.tracks > 0 ? newPlaylist : undefined}
+          />
+          <main className="flex min-w-0 flex-1 flex-col overflow-auto rounded-tl-(--radius-xl) bg-bg-layer p-6">
+            {lib.rootNeeded && <RootPanel status={lib.status} onDone={rootChosen} />}
+            {screen === "settings" ? (
+              <SettingsScreen
+                theme={appearance.theme}
+                accent={appearance.accent}
+                onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
+                onAccent={(accent) => setAppearance((a) => ({ ...a, accent }))}
+                library={lib.status}
+                onChooseLibrary={() => lib.setRootNeeded(true)}
+              />
+            ) : screen === "search" && hasMusic ? (
+              <SearchScreen
+                playingId={snap.trackId}
+                version={lib.version}
+                onGo={goTo}
+                onOpenPlaylist={(id) => openPlaylist(id)}
+              />
+            ) : screen === "genres" && hasMusic ? (
+              <GenresScreen
+                version={lib.version}
+                playingId={snap.trackId}
+                open={here.genre ?? null}
+                onOpen={(g) => push({ screen: "genres", open: null, genre: g })}
+                onBack={back}
+                onGo={goTo}
+              />
+            ) : screen === "playlists" && here.playlist != null ? (
+              <PlaylistScreen
+                key={here.playlist}
+                id={here.playlist}
+                version={lib.version}
+                playingId={snap.trackId}
+                editName={here.fresh ?? false}
+                onGo={goTo}
+                onDeleted={() =>
+                  setStack((st) => {
+                    const left = st.filter((e) => e.playlist !== here.playlist);
+                    return left.length > 0 ? left : [{ screen: "wave", open: null }];
+                  })
+                }
+              />
+            ) : hasMusic && screen === "unknown" && lib.status.unknown > 0 ? (
+              <UnknownScreen version={lib.version} playingId={snap.trackId} onGo={goTo} />
+            ) : hasMusic && (screen === "albums" || screen === "artists") ? (
+              <CollectionScreen
+                key={screen}
+                kind={screen}
+                status={lib.status}
+                version={lib.version}
+                playingId={snap.trackId}
+                open={here.open}
+                onOpen={(o) => push({ screen, open: o })}
+                onBack={back}
+              />
+            ) : (
+              <EmptyScreen
+                screen={screen}
+                onAdd={["wave", "albums", "artists"].includes(screen) ? addMusic : undefined}
+              />
+            )}
+          </main>
+          {queueOpen && (
+            <div className="flex shrink-0 bg-bg-layer p-3 pl-0">
+              <QueuePanel
+                onClose={() => setQueueOpen(false)}
+                trackKey={`${snap.trackId}-${snap.title}`}
+              />
+            </div>
           )}
-        </main>
-        {queueOpen && (
-          <div className="flex shrink-0 bg-bg-layer p-3 pl-0">
-            <QueuePanel
-              onClose={() => setQueueOpen(false)}
-              trackKey={`${snap.trackId}-${snap.title}`}
-            />
-          </div>
+        </div>
+        <div className="t-caption bg-bg-base px-4 pt-1 text-center text-text-tertiary">
+          {t("proto")}
+        </div>
+        <PlayerBar
+          snap={snap}
+          receivedAt={receivedAt}
+          queueOpen={queueOpen}
+          onQueue={() => setQueueOpen((o) => !o)}
+        />
+        {lib.status.goneQuestion != null && !error && !report && (
+          <Toast
+            tone="info"
+            heading={t("library.goneTitle")}
+            message={t("library.gone", { count: lib.status.goneQuestion })}
+            closeLabel={tc("errors.close")}
+            action={{ label: t("library.goneConfirm"), onClick: confirmGone }}
+            onClose={dismissGone}
+          />
+        )}
+        {updated?.justUpdated && !error && !report && (
+          <Toast
+            tone="info"
+            heading={t("updates.updatedTitle", { version: updated.justUpdated })}
+            message={firstLine(updated.notes) ?? t("updates.updatedText")}
+            closeLabel={tc("errors.close")}
+            timeoutMs={8000}
+            onClose={() => setUpdated(null)}
+          />
+        )}
+        {toast && !error && !report && (
+          <Toast
+            tone="info"
+            heading={toast}
+            message=""
+            closeLabel={tc("errors.close")}
+            timeoutMs={3000}
+            onClose={() => setToast(null)}
+          />
+        )}
+        {report && !error && (
+          <Toast
+            tone="info"
+            heading={t("import.doneTitle")}
+            message={[
+              t("import.report", {
+                added: report.added,
+                unknown: report.unknown,
+                duplicates: report.duplicates,
+                rejected: report.rejected,
+              }),
+              report.rejectedReasons.length > 0
+                ? t("import.reasons", {
+                    list: report.rejectedReasons.map((r) => t(`import.reason.${r}`)).join(", "),
+                  })
+                : "",
+              report.canEject ? t("import.eject") : "",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+            closeLabel={tc("errors.close")}
+            timeoutMs={10000}
+            onClose={lib.clearReport}
+          />
+        )}
+        {error && (
+          <Toast
+            heading={tc("errors.title")}
+            message={[
+              tc(`errors.${error.error.code}`, { defaultValue: tc("errors.generic") }),
+              error.file,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+            closeLabel={tc("errors.close")}
+            action={
+              error.error.retryable
+                ? {
+                    label: tc("errors.retry"),
+                    onClick: () => {
+                      clearError();
+                      togglePlay();
+                    },
+                  }
+                : undefined
+            }
+            onClose={clearError}
+          />
         )}
       </div>
-      <div className="t-caption bg-bg-base px-4 pt-1 text-center text-text-tertiary">
-        {t("proto")}
-      </div>
-      <PlayerBar
-        snap={snap}
-        receivedAt={receivedAt}
-        queueOpen={queueOpen}
-        onQueue={() => setQueueOpen((o) => !o)}
-      />
-      {lib.status.goneQuestion != null && !error && !report && (
-        <Toast
-          tone="info"
-          heading={t("library.goneTitle")}
-          message={t("library.gone", { count: lib.status.goneQuestion })}
-          closeLabel={tc("errors.close")}
-          action={{ label: t("library.goneConfirm"), onClick: confirmGone }}
-          onClose={dismissGone}
-        />
-      )}
-      {updated?.justUpdated && !error && !report && (
-        <Toast
-          tone="info"
-          heading={t("updates.updatedTitle", { version: updated.justUpdated })}
-          message={firstLine(updated.notes) ?? t("updates.updatedText")}
-          closeLabel={tc("errors.close")}
-          timeoutMs={8000}
-          onClose={() => setUpdated(null)}
-        />
-      )}
-      {toast && !error && !report && (
-        <Toast
-          tone="info"
-          heading={toast}
-          message=""
-          closeLabel={tc("errors.close")}
-          timeoutMs={3000}
-          onClose={() => setToast(null)}
-        />
-      )}
-      {report && !error && (
-        <Toast
-          tone="info"
-          heading={t("import.doneTitle")}
-          message={[
-            t("import.report", {
-              added: report.added,
-              unknown: report.unknown,
-              duplicates: report.duplicates,
-              rejected: report.rejected,
-            }),
-            report.rejectedReasons.length > 0
-              ? t("import.reasons", {
-                  list: report.rejectedReasons.map((r) => t(`import.reason.${r}`)).join(", "),
-                })
-              : "",
-            report.canEject ? t("import.eject") : "",
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-          closeLabel={tc("errors.close")}
-          timeoutMs={10000}
-          onClose={lib.clearReport}
-        />
-      )}
-      {error && (
-        <Toast
-          heading={tc("errors.title")}
-          message={[
-            tc(`errors.${error.error.code}`, { defaultValue: tc("errors.generic") }),
-            error.file,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-          closeLabel={tc("errors.close")}
-          action={
-            error.error.retryable
-              ? {
-                  label: tc("errors.retry"),
-                  onClick: () => {
-                    clearError();
-                    togglePlay();
-                  },
-                }
-              : undefined
-          }
-          onClose={clearError}
-        />
-      )}
-    </div>
+    </DndRoot>
   );
 }
 

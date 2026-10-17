@@ -229,7 +229,8 @@ check("seek to middle", Math.abs(toMs(s) / toMs(dur) - 0.5) < 0.02, `${s} of ${d
 
 // 4. Broken file → toast, current track keeps playing.
 await invoke("playback_open", { paths: [join(fixtures, "broken", "text-as.mp3")] });
-const toast = page.getByRole("status");
+// dnd-kit keeps its own (empty) live region with role=status: take the toast by its text.
+const toast = page.getByRole("status").filter({ hasText: "text-as.mp3" });
 await toast.waitFor({ timeout: 3000 }).catch(() => {});
 const toastText = (await toast.count()) ? await toast.textContent() : "";
 check(
@@ -559,6 +560,93 @@ if (existsSync(corpus)) {
     "«Убрать из плейлиста» keeps the track in the library",
     (await plRows.count()) === 0 && tracksAfter === tracksBefore,
     `rows ${await plRows.count()}, tracks ${tracksBefore} → ${tracksAfter}`,
+  );
+  // T2.8: pointer drag — a track onto a sidebar playlist, reorder inside it, spring-loaded
+  // «Исполнители» and a drop onto an artist card (assign, confirmed).
+  const drag = async (from, to, holdMs = 0) => {
+    const a = await from.boundingBox();
+    const b = await to.boundingBox();
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(a.x + a.width / 2 + 12, a.y + a.height / 2, { steps: 4 });
+    await page.mouse.move(b.x + b.width / 2, b.y + Math.min(8, b.height / 2), { steps: 12 });
+    if (holdMs) await sleep(holdMs);
+    await page.mouse.up();
+  };
+  const road = (await invoke("playlists_list", {})).find((p) => p.name === "Дорога");
+  await page.getByRole("button", { name: "Неизвестные" }).click();
+  const uRows = page.getByRole("list", { name: "Треки" }).locator("li");
+  await uRows.first().waitFor({ timeout: 5000 });
+  const sideRoad = page.getByRole("navigation").getByRole("button", { name: "Дорога" });
+  await drag(uRows.nth(0), sideRoad);
+  await sleep(800);
+  await drag(uRows.nth(1), sideRoad);
+  await sleep(800);
+  const afterDrop = await invoke("playlist_tracks", { id: road.id });
+  check(
+    "drag a track onto a sidebar playlist adds it",
+    afterDrop.length === 2,
+    `${afterDrop.length} items`,
+  );
+  await sideRoad.click();
+  const pRows = page.getByRole("list", { name: "Треки" }).locator("li");
+  await pRows.nth(1).waitFor({ timeout: 5000 });
+  await drag(pRows.nth(1), pRows.nth(0));
+  await sleep(800);
+  const reordered = await invoke("playlist_tracks", { id: road.id });
+  check(
+    "drag reorders the playlist",
+    reordered[0]?.track.id === afterDrop[1]?.track.id &&
+      reordered[1]?.track.id === afterDrop[0]?.track.id,
+    reordered.map((e) => e.track.title).join(", "),
+  );
+  const unknownBefore = (await invoke("library_status", {})).unknown;
+  await page.getByRole("button", { name: "Неизвестные" }).click();
+  await uRows.first().waitFor({ timeout: 5000 });
+  const dragged = (await uRows.first().locator(".t-body").first().textContent())?.trim();
+  // Spring-loading: hold over «Исполнители» until it opens, then drop onto the first card.
+  const rowBox = await uRows.first().boundingBox();
+  await page.mouse.move(rowBox.x + rowBox.width / 2, rowBox.y + rowBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(rowBox.x + rowBox.width / 2 + 12, rowBox.y + rowBox.height / 2, {
+    steps: 4,
+  });
+  const navArtists = await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Исполнители" })
+    .boundingBox();
+  await page.mouse.move(navArtists.x + 40, navArtists.y + navArtists.height / 2, { steps: 10 });
+  await sleep(1300);
+  const firstArtist = page.getByRole("list", { name: "Исполнители" }).getByRole("button").first();
+  const opened = await firstArtist.waitFor({ timeout: 3000 }).then(
+    () => true,
+    () => false,
+  );
+  if (opened) {
+    const cardBox = await firstArtist.boundingBox();
+    await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2, {
+      steps: 10,
+    });
+  }
+  await page.mouse.up();
+  const confirm = page.getByRole("button", { name: "Отнести" });
+  const asked = await confirm.waitFor({ timeout: 3000 }).then(
+    () => true,
+    () => false,
+  );
+  const assignQuestion = asked ? await page.getByRole("dialog").locator("p").textContent() : "";
+  const consoleErrors = [];
+  page.on("console", (m) => {
+    if (m.type() === "error") consoleErrors.push(m.text());
+  });
+  if (asked) await confirm.click();
+  await sleep(1500);
+  const assignToast = (await page.getByRole("status").allTextContents()).join(" | ");
+  const unknownAfter = (await invoke("library_status", {})).unknown;
+  check(
+    "spring-loaded «Исполнители» + drop on an artist assigns the track",
+    opened && asked && unknownAfter === unknownBefore - 1,
+    `${dragged}: opened ${opened}, asked ${asked}, unknown ${unknownBefore} → ${unknownAfter}; ${assignToast}; ${assignQuestion}; ${consoleErrors.join(" ")}`,
   );
   // T2.13: Ctrl+F opens search; results as you type, the exact artist is the best match.
   await page.keyboard.press("Control+f");

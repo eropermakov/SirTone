@@ -1,7 +1,9 @@
+import { useDroppable } from "@dnd-kit/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ListEnd, ListStart, MoreHorizontal, Play, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { dropId } from "@/app/dnd/dnd";
 import { cn } from "@/shared/lib/utils";
 import { Cover } from "@/shared/ui/Cover";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
@@ -123,14 +125,15 @@ export function CardGrid({
                   </div>
                 ))
               : list.slice(row.index * columns, row.index * columns + columns).map((c) => (
-                  <div
+                  <CardShell
                     key={c.id}
+                    card={c}
+                    artist={kind === "artists"}
                     className={cn(
                       "group relative flex shrink-0 flex-col gap-3",
                       kind === "artists" &&
                         "items-center rounded-(--radius-lg) p-2 hover:bg-bg-hover",
                     )}
-                    style={{ width: CARD }}
                   >
                     <button
                       type="button"
@@ -190,7 +193,7 @@ export function CardGrid({
                         <div className="t-caption truncate text-text-secondary">{c.subtitle}</div>
                       )}
                     </div>
-                  </div>
+                  </CardShell>
                 ))}
           </li>
         ))}
@@ -203,6 +206,34 @@ export function CardGrid({
           onClose={() => setMenu(null)}
         />
       )}
+    </div>
+  );
+}
+
+/** A card; an artist card takes a dropped track (assign to this artist, `01b` F-35). */
+function CardShell({
+  card,
+  artist,
+  className,
+  children,
+}: {
+  card: Card;
+  artist: boolean;
+  className: string;
+  children: ReactNode;
+}) {
+  const { setNodeRef, isOver, active } = useDroppable({
+    id: artist ? dropId.artist(card.id) : `card:${card.id}`,
+    disabled: !artist,
+    data: { name: card.title },
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(className, isOver && active && "ring-2 ring-accent-text")}
+      style={{ width: CARD }}
+    >
+      {children}
     </div>
   );
 }

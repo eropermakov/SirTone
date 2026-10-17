@@ -1,3 +1,4 @@
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Disc3,
@@ -13,8 +14,9 @@ import {
   Radio,
   Trash2,
 } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { type DragTrack, dropId } from "@/app/dnd/dnd";
 import { useAddToPlaylist } from "@/app/playlists/useAddToPlaylist";
 import { timecode } from "@/app/shell/PlayerBar";
 import { type PlayContext, revealTrack, type TrackItem } from "@/shared/ipc/library";
@@ -46,6 +48,7 @@ export function TrackList({
   onGo,
   onSelect,
   onRemoveFromList,
+  playlist,
 }: {
   tracks: TrackItem[];
   playingId: number | null;
@@ -57,6 +60,8 @@ export function TrackList({
   onSelect?: ((index: number) => void) | undefined;
   /** A playlist page: «Убрать из плейлиста» in the menu and on Delete (FR-PLS-004). */
   onRemoveFromList?: ((index: number) => void) | undefined;
+  /** A playlist page: rows reorder by dragging (positions as stored). */
+  playlist?: { id: number; positions: number[] } | undefined;
 }) {
   const { t } = useTranslation("shell");
   const scroller = useRef<HTMLDivElement>(null);
@@ -189,10 +194,12 @@ export function TrackList({
           if (!tr) return null;
           const playing = tr.id === playingId;
           return (
-            <li
+            <DragRow
               key={`${row.index}:${tr.id}`}
-              className="group absolute inset-x-0 flex items-center"
-              style={{ transform: `translateY(${row.start}px)` }}
+              track={tr}
+              start={row.start}
+              playlist={playlist?.id}
+              position={playlist?.positions[row.index]}
             >
               <button
                 type="button"
@@ -267,7 +274,7 @@ export function TrackList({
               >
                 <MoreHorizontal size={20} strokeWidth={1.5} />
               </button>
-            </li>
+            </DragRow>
           );
         })}
       </ul>
@@ -289,5 +296,52 @@ export function TrackList({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * A draggable row (T2.8): the pointer lifts it after 6 px; on a playlist page it is also a drop
+ * target — the dragged item lands at this position (a line marks where).
+ */
+function DragRow({
+  track,
+  start,
+  playlist,
+  position,
+  children,
+}: {
+  track: TrackItem;
+  start: number;
+  playlist?: number | undefined;
+  position?: number | undefined;
+  children: ReactNode;
+}) {
+  const data: DragTrack = { id: track.id, title: track.title };
+  if (playlist != null && position != null) data.from = { playlist, position };
+  const drag = useDraggable({ id: `track:${start}:${track.id}`, data });
+  const drop = useDroppable({
+    id:
+      playlist != null && position != null
+        ? dropId.row(playlist, position)
+        : `nodrop:${start}:${track.id}`,
+    disabled: playlist == null || position == null,
+  });
+  return (
+    <li
+      ref={(el) => {
+        drag.setNodeRef(el);
+        drop.setNodeRef(el);
+      }}
+      {...drag.listeners}
+      className={cn(
+        "group absolute inset-x-0 flex items-center",
+        drag.isDragging && "opacity-40",
+        drop.isOver &&
+          "before:absolute before:inset-x-3 before:top-0 before:h-0.5 before:rounded-full before:bg-accent-text",
+      )}
+      style={{ transform: `translateY(${start}px)` }}
+    >
+      {children}
+    </li>
   );
 }

@@ -171,6 +171,7 @@ export function PlaylistScreen({
           context="playlist"
           onGo={onGo}
           onRemoveFromList={unlist}
+          playlist={{ id, positions: entries.map((e) => e.position) }}
         />
       )}
       {menu && (

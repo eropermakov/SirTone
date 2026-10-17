@@ -62,6 +62,7 @@
 | F-31/32 | Локализация, звуки интерфейса | слабые (◌) | 01b |
 | F-33 | Экспорт, waveform, первый запуск, хранилище | смешанные | 01b |
 | F-34 | Сортировка и жанры в медиатеке | 3 (○) | 01b |
+| F-35 | Перетаскивание внутри медиатеки | 4 (○/◌) | 01b |
 | W-01 | Самообучение: лайк, «не сейчас», «никогда», политики обучения | 6 | 01c |
 | W-02 | «Почему этот трек», чипы влияний, ручная настройка | 6 | 01c |
 | W-03 | Архитектура движка рекомендаций (кандидаты → ранжирование → секвенсор, Томпсон) | 7 | 01c |
@@ -205,6 +206,8 @@
 - **S131** Spotify, сортировка медиатеки: https://support.spotify.com/ug-sw/article/sort-and-filter · https://community.spotify.com/t5/Your-Library/New-Your-Library-view-iOS-amp-Android/td-p/5196161 ✔/○
 - **S132** Apple Music, «Sort By» (iOS 16): https://macrumors.com/how-to/sort-playlists-apple-music · https://nerdschalk.com/how-to-sort-playlists-in-apple-music-on-ios-16/ ○
 - **S133** Apple Music (Mac), колонка «Жанры»: https://support.apple.com/en-gb/guide/music/muscde0b85e0/mac ✔
+- **S134** Spotify, трек на плейлист в левой панели: https://businessinsider.nl/how-to-add-songs-to-spotify-playlist · https://community.spotify.com/t5/Your-Library/adding-to-playlist/m-p/4891911 ○
+- **S135** macOS spring-loading: https://kb.iu.edu/d/aehp · https://eshop.macsales.com/blog/52831-how-to-use-spring-loaded-folders-on-a-mac/ ○
 - **S75** Last.fm Scrobbling 2.0: https://www.last.fm/api/scrobbling
 - **S76** Шафл: https://engineering.atspotify.com/2025/11/shuffle-making-random-feel-more-human · https://discussions.apple.com/thread/2003430
 - **S77** Закрытие в трей: https://community.spotify.com/t5/Desktop-Windows/Close-button-should-minimize-and-Alt-F4/m-p/5960580 · https://support.discord.com/hc/en-us/community/posts/360072275671--Minimize-to-tray-option-is-all-or-nothing-Can-this-be-tweaked

@@ -156,7 +156,7 @@ test("commands go out, events come back, errors become a toast", async ({ page }
     error: { code: "DecodeFailed", retryable: false, details: null },
     file: "broken.flac",
   });
-  await expect(page.getByRole("status")).toContainText(
+  await expect(page.getByRole("status").filter({ hasText: "broken.flac" })).toContainText(
     "Файл повреждён или не читается · broken.flac",
   );
 

@@ -1,3 +1,4 @@
+import { useDroppable } from "@dnd-kit/core";
 import {
   ChevronDown,
   CircleHelp,
@@ -12,8 +13,9 @@ import {
   Waves,
   X,
 } from "lucide-react";
-import { type ComponentType, useState } from "react";
+import { type ComponentProps, type ComponentType, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { dropId } from "@/app/dnd/dnd";
 import type { PlaylistItem } from "@/shared/ipc/playlists";
 import { cn } from "@/shared/lib/utils";
 
@@ -82,9 +84,9 @@ export function Sidebar({
     const Icon = it.icon;
     const active = current === it.id && currentPlaylist == null;
     return (
-      <button
+      <SpringButton
         key={it.id}
-        type="button"
+        screen={it.id}
         onClick={() => onNavigate(it.id)}
         aria-current={active ? "page" : undefined}
         title={collapsed ? t(it.id) : undefined}
@@ -112,7 +114,7 @@ export function Sidebar({
             {badges?.[it.id]}
           </span>
         )}
-      </button>
+      </SpringButton>
     );
   };
 
@@ -193,9 +195,9 @@ export function Sidebar({
           {playlists.map((p) => {
             const active = currentPlaylist === p.id;
             return (
-              <button
+              <PlaylistDrop
                 key={p.id}
-                type="button"
+                playlistId={p.id}
                 onClick={() => onOpenPlaylist?.(p.id)}
                 aria-current={active ? "page" : undefined}
                 className={cn(
@@ -205,7 +207,7 @@ export function Sidebar({
                 )}
               >
                 <span className="t-body min-w-0 flex-1 truncate">{p.name}</span>
-              </button>
+              </PlaylistDrop>
             );
           })}
         </div>
@@ -258,5 +260,33 @@ export function Sidebar({
       )}
       {row(SETTINGS)}
     </nav>
+  );
+}
+
+type ButtonProps = ComponentProps<"button">;
+
+/** A sidebar item that opens its section when a dragged track rests on it (spring-loading). */
+function SpringButton({ screen, className, ...rest }: ButtonProps & { screen: Screen }) {
+  const { setNodeRef, isOver, active } = useDroppable({ id: dropId.nav(screen) });
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      {...rest}
+      className={cn(className, isOver && active && "ring-2 ring-accent-text")}
+    />
+  );
+}
+
+/** A sidebar playlist: dropping a track adds it (Spotify, `01b` F-35). */
+function PlaylistDrop({ playlistId, className, ...rest }: ButtonProps & { playlistId: number }) {
+  const { setNodeRef, isOver, active } = useDroppable({ id: dropId.playlist(playlistId) });
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      {...rest}
+      className={cn(className, isOver && active && "bg-bg-hover ring-2 ring-accent-text")}
+    />
   );
 }
