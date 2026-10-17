@@ -175,6 +175,7 @@ enum Job {
 /// A library track ready to play: absolute path, title, artists, album cover hash.
 #[derive(Debug, Clone)]
 pub struct Resolved {
+    pub id: u32,
     pub path: PathBuf,
     pub title: String,
     pub artists: String,
@@ -507,6 +508,7 @@ impl Library {
             for id in ids {
                 if let Ok(r) = st.query_row([id], |r| {
                     Ok(Resolved {
+                        id: *id,
                         path: r
                             .get::<_, String>(0)?
                             .split('/')
@@ -1086,7 +1088,13 @@ pub fn track_details(lib: State<'_, Library>, track: u32) -> Result<TrackDetails
 /// FR-DATA-001: «удалить файл с диска» (to the Recycle Bin) or «только убрать из приложения».
 #[tauri::command(async)]
 #[specta::specta]
-pub fn track_remove(lib: State<'_, Library>, track: u32, with_file: bool) -> Result<(), AppError> {
+pub fn track_remove(
+    lib: State<'_, Library>,
+    pb: State<'_, crate::playback::Playback>,
+    track: u32,
+    with_file: bool,
+) -> Result<(), AppError> {
+    pb.forget_tracks(&[track]);
     let (tx, rx) = mpsc::channel();
     lib.jobs
         .send(Job::Remove {
@@ -1126,11 +1134,14 @@ pub fn artist_removal_info(lib: State<'_, Library>, artist: u32) -> Result<Remov
 #[specta::specta]
 pub fn artist_remove(
     lib: State<'_, Library>,
+    pb: State<'_, crate::playback::Playback>,
     artist: u32,
     with_file: bool,
 ) -> Result<(), AppError> {
     let (ids, _) =
         lib.with_read(|c| sirtone_library::relocate::artist_tracks(c, i64::from(artist)))?;
+    let forget: Vec<u32> = ids.iter().filter_map(|&i| u32::try_from(i).ok()).collect();
+    pb.forget_tracks(&forget);
     let mut replies = Vec::with_capacity(ids.len());
     for track in ids {
         let (tx, rx) = mpsc::channel();

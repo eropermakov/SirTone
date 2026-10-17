@@ -518,6 +518,26 @@ impl Playback {
         }
     }
 
+    /// Removed tracks (FR-DATA-001/002) leave the queue; the playing one plays on.
+    pub fn forget_tracks(&self, ids: &[u32]) {
+        let mut q = self.queue();
+        let gone: Vec<usize> = q
+            .items()
+            .iter()
+            .enumerate()
+            .filter(|(_, i)| i.track_id.is_some_and(|t| ids.contains(&t)))
+            .map(|(n, _)| n)
+            .collect();
+        let mut changed = false;
+        for at in gone.into_iter().rev() {
+            changed |= q.remove(at);
+        }
+        drop(q);
+        if changed {
+            self.queue_edited();
+        }
+    }
+
     pub fn queue_move(&self, from: usize, to: usize) {
         if self.queue().move_item(from, to) {
             self.queue_edited();
@@ -778,12 +798,11 @@ fn items_for(
     Ok(lib
         .resolve(ids)?
         .into_iter()
-        .zip(ids.iter())
-        .map(|(r, id)| QueueItem {
+        .map(|r| QueueItem {
             path: r.path,
             title: r.title,
             artists: (!r.artists.is_empty()).then_some(r.artists),
-            track_id: Some(*id),
+            track_id: Some(r.id),
             cover: r.cover,
             source: context.into(),
             album_key: r.album_id.map_or(0, |v| v as u64),

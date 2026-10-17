@@ -36,6 +36,66 @@ fn clean(s: &str) -> Option<String> {
     (!t.is_empty()).then(|| t.to_string())
 }
 
+/// What the library knows about a track before an assignment.
+struct Current {
+    rel_path: String,
+    title: String,
+    artist_ids: Vec<ArtistId>,
+    artist_names: Vec<String>,
+    /// As the card shows it: names joined by ", ".
+    artists_joined: String,
+    album_id: Option<i64>,
+    album: Option<String>,
+    album_artist: Option<String>,
+    track_no: Option<u32>,
+    /// Track year, else the album's (as the card shows it).
+    year: Option<i32>,
+    disc_no: Option<u32>,
+    multi_disc: bool,
+}
+
+fn current(conn: &Connection, track: TrackId) -> Result<Current, LibraryError> {
+    let mut c = conn
+        .query_row(
+            "SELECT t.rel_path, t.title, t.album_id, al.title, aa.name, t.track_no,
+                    coalesce(t.year, al.year), t.disc_no,
+                    EXISTS(SELECT 1 FROM track o WHERE o.album_id = t.album_id AND o.disc_no > 1)
+             FROM track t LEFT JOIN album al ON al.id = t.album_id
+             LEFT JOIN artist aa ON aa.id = al.album_artist_id
+             WHERE t.id = ?1",
+            [track],
+            |r| {
+                Ok(Current {
+                    rel_path: r.get(0)?,
+                    title: r.get(1)?,
+                    artist_ids: Vec::new(),
+                    artist_names: Vec::new(),
+                    artists_joined: String::new(),
+                    album_id: r.get(2)?,
+                    album: r.get(3)?,
+                    album_artist: r.get(4)?,
+                    track_no: r.get(5)?,
+                    year: r.get(6)?,
+                    disc_no: r.get(7)?,
+                    multi_disc: r.get::<_, i64>(8)? != 0 || r.get::<_, Option<u32>>(7)? > Some(1),
+                })
+            },
+        )
+        .optional()?
+        .ok_or_else(|| LibraryError::Invalid(format!("no track {track}")))?;
+    let mut st = conn.prepare(
+        "SELECT a.id, a.name FROM track_artist ta JOIN artist a ON a.id = ta.artist_id
+         WHERE ta.track_id = ?1 ORDER BY ta.position",
+    )?;
+    let mut q = st.query([track])?;
+    while let Some(r) = q.next()? {
+        c.artist_ids.push(r.get(0)?);
+        c.artist_names.push(r.get(1)?);
+    }
+    c.artists_joined = c.artist_names.join(", ");
+    Ok(c)
+}
+
 /// Applies the assignment: canonical path, durable move, then the row. Returns the new path.
 pub fn assign(
     conn: &mut Connection,
@@ -45,30 +105,48 @@ pub fn assign(
     fsops: &dyn FileOps,
 ) -> Result<String, LibraryError> {
     let title = clean(&a.title).ok_or_else(|| LibraryError::Invalid("title is empty".into()))?;
-    let names: Vec<String> = a.artists.split(',').filter_map(clean).collect();
+    let cur = current(conn, track)?;
+    let album = a.album.as_deref().and_then(clean);
+    // The track card sends everything back: unchanged fields keep what the library knows
+    // (artist links — names may contain commas, «Earth, Wind & Fire»; the album with its own
+    // album artist and discs), and an unchanged form changes nothing at all.
+    let same_artists = a.artists.trim() == cur.artists_joined;
+    let same_album = album == cur.album;
+    if same_artists
+        && same_album
+        && title == cur.title
+        && a.track_no == cur.track_no
+        && a.year == cur.year
+    {
+        return Ok(cur.rel_path);
+    }
+    let names: Vec<String> = if same_artists && !cur.artist_names.is_empty() {
+        cur.artist_names.clone()
+    } else {
+        a.artists.split(',').filter_map(clean).collect()
+    };
     let primary = names
         .first()
         .cloned()
         .ok_or_else(|| LibraryError::Invalid("artist is empty".into()))?;
-    let album = a.album.as_deref().and_then(clean);
-    let old_rel: String = conn
-        .query_row("SELECT rel_path FROM track WHERE id = ?1", [track], |r| {
-            r.get(0)
-        })
-        .optional()?
-        .ok_or_else(|| LibraryError::Invalid(format!("no track {track}")))?;
+    let old_rel = cur.rel_path.clone();
     let ext = Path::new(&old_rel)
         .extension()
         .map(|e| e.to_string_lossy().to_ascii_lowercase())
         .unwrap_or_default();
+    let keep_album = same_album && cur.album_id.is_some();
     let placement = layout::canonical(&TrackPlace {
         artist: &primary,
-        album_artist: None,
+        album_artist: if keep_album {
+            cur.album_artist.as_deref()
+        } else {
+            None
+        },
         album: album.as_deref(),
         title: &title,
         track_no: a.track_no,
-        disc_no: None,
-        multi_disc: false,
+        disc_no: if keep_album { cur.disc_no } else { None },
+        multi_disc: keep_album && cur.multi_disc,
         ext: &ext,
     });
     let rel = if placement.rel_path.eq_ignore_ascii_case(&old_rel) {
@@ -112,11 +190,16 @@ pub fn assign(
     };
 
     let tx = conn.transaction()?;
-    let artist_ids = names
-        .iter()
-        .map(|n| repo::artist_get_or_create(&tx, n))
-        .collect::<Result<Vec<_>, _>>()?;
+    let artist_ids = if same_artists && !cur.artist_ids.is_empty() {
+        cur.artist_ids.clone()
+    } else {
+        names
+            .iter()
+            .map(|n| repo::artist_get_or_create(&tx, n))
+            .collect::<Result<Vec<_>, _>>()?
+    };
     let album_id = match (&album, artist_ids.first()) {
+        _ if keep_album => cur.album_id,
         (Some(al), Some(&aa)) => Some(repo::album_get_or_create(&tx, al, aa, a.year)?),
         _ => None,
     };
@@ -361,6 +444,83 @@ mod tests {
             )
             .unwrap();
         assert_eq!(ignored, 2, "the watcher must not import them again");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    fn track(c: &mut Connection, rel: &str, artists: Vec<ArtistId>, album: Option<i64>) -> TrackId {
+        track_insert(
+            c,
+            &NewTrack {
+                rel_path: rel.into(),
+                size_bytes: 5,
+                mtime_ms: 0,
+                content_hash: rel.into(),
+                container: "mp3".into(),
+                codec: "mp3".into(),
+                lossless: false,
+                sample_rate: None,
+                channels: None,
+                duration_ms: 1000,
+                title: "September".into(),
+                album_id: album,
+                disc_no: Some(2),
+                track_no: Some(3),
+                year: Some(1978),
+                identity: Identity::Inferred,
+                identity_conf: 0.9,
+                unknown_reason: None,
+                artists,
+            },
+        )
+        .unwrap()
+    }
+
+    fn journal_rows(c: &Connection) -> i64 {
+        c.query_row("SELECT count(*) FROM fs_journal", [], |r| r.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn saving_an_unchanged_card_touches_nothing() {
+        let root = std::env::temp_dir().join(format!("sirtone-same-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        // An album on two discs: the disc prefix is not in the form.
+        let rel = "Earth, Wind & Fire/Hits/2-03 - September.mp3";
+        fs::create_dir_all(root.join("Earth, Wind & Fire/Hits")).unwrap();
+        fs::write(root.join(rel), b"audio").unwrap();
+        let mut c = open(&root.join(".sirtone/library.db"), crate::Medium::Fixed).unwrap();
+        let ewf = repo::artist_get_or_create(&c, "Earth, Wind & Fire").unwrap();
+        let album = repo::album_get_or_create(&c, "Hits", ewf, Some(1978)).unwrap();
+        let id = track(&mut c, rel, vec![ewf], Some(album));
+        let same = Assignment {
+            title: "September".into(),
+            artists: "Earth, Wind & Fire".into(),
+            album: Some("Hits".into()),
+            track_no: Some(3),
+            year: Some(1978),
+        };
+        assert_eq!(assign(&mut c, &root, id, &same, &Ops).unwrap(), rel);
+        assert_eq!(journal_rows(&c), 0, "no move planned");
+        assert!(root.join(rel).exists());
+
+        // Only the title changes: the file keeps its disc and album, the artist
+        // keeps its comma (one artist, not «Earth» + «Wind & Fire»).
+        let renamed = Assignment {
+            title: "September (Live)".into(),
+            ..same
+        };
+        let moved = assign(&mut c, &root, id, &renamed, &Ops).unwrap();
+        assert_eq!(moved, "Earth, Wind & Fire/Hits/2-03 - September (Live).mp3");
+        assert!(root.join(&moved).exists());
+        let (artists, album_now): (i64, Option<i64>) = c
+            .query_row(
+                "SELECT (SELECT count(*) FROM track_artist WHERE track_id = ?1), album_id
+                 FROM track WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((artists, album_now), (1, Some(album)));
         let _ = fs::remove_dir_all(&root);
     }
 }

@@ -1,6 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
-  Copy,
   Disc3,
   FolderSearch,
   ListEnd,
@@ -134,18 +133,6 @@ export function TrackList({
           icon: FolderSearch,
           onSelect: () => {
             revealTrack(tr.id).catch(() => {});
-          },
-        },
-        {
-          id: "share",
-          label: t("trackMenu.share"),
-          icon: Copy,
-          onSelect: () => {
-            const text = tr.artists ? `${tr.artists} — ${tr.title}` : tr.title;
-            navigator.clipboard
-              ?.writeText(text)
-              .then(() => notify(t("trackMenu.copied", { text })))
-              .catch(() => {});
           },
         },
       ],

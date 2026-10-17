@@ -423,6 +423,28 @@ if (existsSync(corpus)) {
     artistTitle !== albumTitle && backTitle === albumTitle,
     `${albumTitle} → ${artistTitle} → ${backTitle}`,
   );
+  // T2.10: «Сохранить» on an unchanged card of an identified track moves nothing.
+  await rows.nth(1).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Ещё" }).click();
+  await page.getByRole("menuitem", { name: "Изменить данные" }).click();
+  const albumCard = page.getByRole("dialog");
+  const pathBefore =
+    (await albumCard.locator("dd.break-all").textContent({ timeout: 5000 }))?.trim() ?? "";
+  await albumCard.getByRole("button", { name: "Сохранить" }).click();
+  await albumCard.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  await rows.nth(1).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Ещё" }).click();
+  await page.getByRole("menuitem", { name: "Изменить данные" }).click();
+  const pathAfter =
+    (
+      await page.getByRole("dialog").locator("dd.break-all").textContent({ timeout: 5000 })
+    )?.trim() ?? "";
+  await page.keyboard.press("Escape");
+  check(
+    "unchanged track card keeps the file where it is",
+    pathBefore !== "" && pathAfter === pathBefore && existsSync(pathBefore),
+    `${pathBefore} → ${pathAfter}`,
+  );
   // T1.31: the journal — the first track was heard to its end, the second was skipped.
   await sleep(1500);
   const journal = readJournal();
