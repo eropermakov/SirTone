@@ -652,7 +652,13 @@ pub(crate) fn fill(
                 break;
             }
             deck.decoded_in += (deck.decoded.len() / deck.source.channels.max(1)) as u64;
-            map_channels(&deck.decoded, deck.source.channels, ch, &mut deck.pending);
+            map_channels(
+                &deck.decoded,
+                deck.source.channels,
+                deck.source.channel_mask,
+                ch,
+                &mut deck.pending,
+            );
         }
         let have = deck.pending.len() / ch;
         let at_end = have < need;
@@ -756,20 +762,70 @@ pub(crate) fn new_deck(
     })
 }
 
-/// mono → every front channel, stereo → L/R, more source channels → first two, extra device
-/// channels → silence. (Proper down/up-mix matrices: T1.3.)
-fn map_channels(input: &[f32], in_ch: usize, out_ch: usize, out: &mut Vec<f32>) {
+/// Stereo weights of a speaker position (bit of the WAVE/symphonia channel mask): the default
+/// downmix of ffmpeg/libswresample for float output, without normalisation — measured with
+/// `ffmpeg -ac 2` on test tones (5.1, 7.1, 7.1(wide), 4.0, 2.1; 2026-10-17). Centre −3 dB to
+/// both sides, surrounds −3 dB to their side, rear centre −6 dB to both, LFE dropped.
+fn stereo_weights(bit: u32) -> (f32, f32) {
+    const H: f32 = std::f32::consts::FRAC_1_SQRT_2;
+    match bit {
+        0 | 6 => (1.0, 0.0), // FL, FLC
+        1 | 7 => (0.0, 1.0), // FR, FRC
+        2 => (H, H),         // FC
+        4 | 9 => (H, 0.0),   // RL, SL
+        5 | 10 => (0.0, H),  // RR, SR
+        8 => (0.5, 0.5),     // RC
+        _ => (0.0, 0.0),     // LFE, height channels
+    }
+}
+
+/// The usual layout of a file that does not say (WAVE/Vorbis/FLAC defaults by channel count).
+fn default_mask(channels: usize) -> u64 {
+    match channels {
+        3 => 0x7,   // FL FR FC
+        4 => 0x33,  // FL FR RL RR
+        5 => 0x37,  // FL FR FC RL RR
+        6 => 0x3F,  // 5.1
+        7 => 0x70F, // 6.1: FL FR FC LFE RC SL SR
+        8 => 0x63F, // 7.1: FL FR FC LFE RL RR SL SR
+        _ => 0,
+    }
+}
+
+/// Source frames → device frames. Mono → both front speakers; stereo → L/R; same count →
+/// as is; more source channels → the stereo downmix above (by the channel mask, or the usual
+/// layout); extra device channels → silence.
+fn map_channels(input: &[f32], in_ch: usize, mask: u64, out_ch: usize, out: &mut Vec<f32>) {
     let in_ch = in_ch.max(1);
+    let mask = if mask.count_ones() as usize == in_ch {
+        mask
+    } else {
+        default_mask(in_ch)
+    };
+    let mut weights = [(0f32, 0f32); 32];
+    let mut bits = (0..64u32).filter(|b| mask & (1 << b) != 0);
+    for w in weights.iter_mut().take(in_ch.min(32)) {
+        *w = bits.next().map_or((0.0, 0.0), stereo_weights);
+    }
     for frame in input.chunks_exact(in_ch) {
+        if in_ch == out_ch && in_ch > 2 {
+            out.extend_from_slice(frame);
+            continue;
+        }
+        let (l, r) = match in_ch {
+            1 => (frame[0], frame[0]),
+            2 => (frame[0], frame[1]),
+            _ => frame
+                .iter()
+                .zip(weights.iter())
+                .fold((0.0, 0.0), |(l, r), (v, (wl, wr))| (l + v * wl, r + v * wr)),
+        };
         for c in 0..out_ch {
-            let v = if in_ch == 1 {
-                if c < 2 { frame[0] } else { 0.0 }
-            } else if c < 2 {
-                frame[c]
-            } else {
-                0.0
-            };
-            out.push(v);
+            out.push(match c {
+                0 => l,
+                1 => r,
+                _ => 0.0,
+            });
         }
     }
 }
@@ -781,13 +837,46 @@ mod tests {
     #[test]
     fn channel_map_mono_and_surround() {
         let mut out = Vec::new();
-        map_channels(&[0.5, -0.5], 1, 2, &mut out);
+        map_channels(&[0.5, -0.5], 1, 0, 2, &mut out);
         assert_eq!(out, [0.5, 0.5, -0.5, -0.5]);
         out.clear();
-        map_channels(&[0.1, 0.2], 2, 6, &mut out);
+        map_channels(&[0.1, 0.2], 2, 0, 6, &mut out);
         assert_eq!(out, [0.1, 0.2, 0.0, 0.0, 0.0, 0.0]);
         out.clear();
-        map_channels(&[0.1, 0.2, 0.3, 0.4, 0.5, 0.6], 6, 2, &mut out);
-        assert_eq!(out, [0.1, 0.2]);
+        map_channels(&[0.1, 0.2, 0.3, 0.4, 0.5, 0.6], 6, 0x3F, 6, &mut out);
+        assert_eq!(
+            out,
+            [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+            "same layout passes through"
+        );
+    }
+
+    /// The ffmpeg reference (`ffmpeg -ac 2`, float): 5.1 frame [0.1 0.2 0.3 0.4 0.05 0.06]
+    /// → [0.34749 0.45456]; all six at 0.4 → 0.9657 per side (no normalisation).
+    #[test]
+    fn surround_downmix_matches_ffmpeg() {
+        let mut out = Vec::new();
+        map_channels(&[0.1, 0.2, 0.3, 0.4, 0.05, 0.06], 6, 0x3F, 2, &mut out);
+        assert!(
+            (out[0] - 0.34749).abs() < 1e-4 && (out[1] - 0.45456).abs() < 1e-4,
+            "{out:?}"
+        );
+        out.clear();
+        map_channels(&[0.4; 6], 6, 0, 2, &mut out); // no mask: the usual 5.1
+        assert!((out[0] - 0.9657).abs() < 1e-3, "{out:?}");
+        out.clear();
+        // 7.1(wide): front-left-of-centre goes to the left at full level
+        map_channels(
+            &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.4, 0.0],
+            8,
+            0xFF,
+            2,
+            &mut out,
+        );
+        assert_eq!(out, [0.4, 0.0]);
+        out.clear();
+        // 2.1: LFE dropped
+        map_channels(&[0.4, 0.2, 0.1], 3, 0xB, 2, &mut out);
+        assert_eq!(out, [0.4, 0.2]);
     }
 }

@@ -255,3 +255,72 @@ pub fn latency(args: &[String]) -> ExitCode {
         }
     }
 }
+
+/// `drift --minutes N <long file>` — T1.4: reported position against the wall clock while
+/// playing (target ≤ 20 ms/h). Every snapshot gives (wall time, position); the slope of their
+/// difference is the drift, so the 250 ms snapshot cadence does not matter.
+pub fn drift(args: &[String]) -> ExitCode {
+    let Some(file) = files(args).into_iter().next() else {
+        eprintln!("drift: give a long audio file");
+        return ExitCode::from(2);
+    };
+    let minutes: f64 = flag(args, "--minutes").unwrap_or(10.0);
+    let (tx, rx) = mpsc::channel();
+    let engine = match sirtone_audio::start(Box::new(move |ev| {
+        let _ = tx.send((Instant::now(), ev));
+    })) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("drift: engine {:?}", e.code);
+            return ExitCode::FAILURE;
+        }
+    };
+    engine.send(EngineCmd::SetVolume(0.0));
+    engine.send(EngineCmd::Load {
+        path: file,
+        autoplay: true,
+    });
+    let start = Instant::now();
+    let end = start + Duration::from_secs_f64(minutes * 60.0);
+    // (seconds since start, position − wall in ms), after a 3 s settle.
+    let mut points: Vec<(f64, f64)> = Vec::new();
+    while Instant::now() < end {
+        if let Ok((at, EngineEvent::Snapshot(s))) = rx.recv_timeout(Duration::from_millis(500))
+            && s.state == PlayState::Playing
+        {
+            let t = at.duration_since(start).as_secs_f64();
+            if t > 3.0 {
+                points.push((t, s.position_ms as f64 - t * 1000.0));
+            }
+        }
+    }
+    engine.send(EngineCmd::Shutdown);
+    if points.len() < 10 {
+        eprintln!("drift: not enough snapshots");
+        return ExitCode::FAILURE;
+    }
+    // Least-squares slope of (position − wall) over time: ms per second → ms per hour.
+    let n = points.len() as f64;
+    let (sx, sy) = points
+        .iter()
+        .fold((0.0, 0.0), |(a, b), (x, y)| (a + x, b + y));
+    let (mx, my) = (sx / n, sy / n);
+    let (num, den) = points.iter().fold((0.0, 0.0), |(a, b), (x, y)| {
+        (a + (x - mx) * (y - my), b + (x - mx).powi(2))
+    });
+    let per_hour = num / den * 3600.0;
+    let jitter = points
+        .iter()
+        .map(|(x, y)| (y - (my + num / den * (x - mx))).abs())
+        .fold(0.0, f64::max);
+    println!(
+        "drift: {per_hour:+.1} ms/h over {minutes} min ({} snapshots, jitter ±{jitter:.0} ms) → {}",
+        points.len(),
+        if per_hour.abs() <= 20.0 {
+            "OK"
+        } else {
+            "OVER 20 ms/h"
+        }
+    );
+    ExitCode::SUCCESS
+}

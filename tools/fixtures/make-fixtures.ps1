@@ -39,6 +39,11 @@ $formats = @(
 )
 foreach ($f in $formats) { FF (@('-i', $src) + $f[1] + @('-bitexact', "$out\formats\$($f[0])")) }
 
+# 5.1 surround (six different tones) and ffmpeg's own stereo downmix of it: the reference for
+# the engine's downmix (T1.3, coefficients of `ffmpeg -ac 2`).
+FF @('-f', 'lavfi', '-i', 'aevalsrc=0.3*sin(2*PI*220*t)|0.3*sin(2*PI*330*t)|0.3*sin(2*PI*440*t)|0.3*sin(2*PI*55*t)|0.3*sin(2*PI*550*t)|0.3*sin(2*PI*660*t):s=48000:d=3:c=5.1', '-c:a', 'flac', '-bitexact', "$out\formats\surround-51.flac")
+FF @('-i', "$out\formats\surround-51.flac", '-ac', '2', '-c:a', 'pcm_f32le', '-bitexact', "$out\signals\surround-51-ffmpeg-stereo.wav")
+
 # Gapless pair: one continuous sine split in two (phase must be continuous across the joint).
 FF @('-f', 'lavfi', '-i', 'sine=frequency=1000:duration=8:sample_rate=44100', '-c:a', 'pcm_s16le', '-bitexact', "$out\signals\gapless-full.wav")
 FF @('-i', "$out\signals\gapless-full.wav", '-t', '4', '-c:a', 'libmp3lame', '-b:a', '256k', "$out\signals\gapless-a.mp3")

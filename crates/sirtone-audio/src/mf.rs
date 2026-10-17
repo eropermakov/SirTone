@@ -8,11 +8,12 @@ use std::sync::OnceLock;
 
 use sirtone_core::error::{AppError, ErrorCode};
 use windows::Win32::Media::MediaFoundation::{
-    IMFSourceReader, MF_MT_AUDIO_NUM_CHANNELS, MF_MT_AUDIO_SAMPLES_PER_SECOND, MF_MT_MAJOR_TYPE,
-    MF_MT_SUBTYPE, MF_PD_DURATION, MF_SOURCE_READER_FIRST_AUDIO_STREAM,
-    MF_SOURCE_READER_MEDIASOURCE, MF_SOURCE_READERF_ENDOFSTREAM, MF_VERSION, MFAudioFormat_Float,
-    MFAudioFormat_WMAudio_Lossless, MFCreateMediaType, MFCreateSourceReaderFromURL,
-    MFMediaType_Audio, MFSTARTUP_NOSOCKET, MFStartup,
+    IMFSourceReader, MF_MT_AUDIO_CHANNEL_MASK, MF_MT_AUDIO_NUM_CHANNELS,
+    MF_MT_AUDIO_SAMPLES_PER_SECOND, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_PD_DURATION,
+    MF_SOURCE_READER_FIRST_AUDIO_STREAM, MF_SOURCE_READER_MEDIASOURCE,
+    MF_SOURCE_READERF_ENDOFSTREAM, MF_VERSION, MFAudioFormat_Float, MFAudioFormat_WMAudio_Lossless,
+    MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Audio, MFSTARTUP_NOSOCKET,
+    MFStartup,
 };
 use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
@@ -55,6 +56,8 @@ pub struct MfReader {
     pub rate: u32,
     pub channels: usize,
     pub duration_ms: Option<u64>,
+    /// WAVEFORMATEXTENSIBLE speaker mask (same bits as symphonia's positions); 0 = unknown.
+    pub channel_mask: u64,
     /// `wmal` for WMA Lossless, `wma` otherwise.
     pub codec: &'static str,
     /// After a seek: drop decoded frames before this time (100 ns).
@@ -88,6 +91,9 @@ impl MfReader {
                 .GetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND)
                 .map_err(failed)?;
             let channels = got.GetUINT32(&MF_MT_AUDIO_NUM_CHANNELS).map_err(failed)? as usize;
+            let channel_mask = got
+                .GetUINT32(&MF_MT_AUDIO_CHANNEL_MASK)
+                .map_or(0, u64::from);
             if rate == 0 || channels == 0 {
                 return Err(AppError::new(ErrorCode::UnsupportedFormat));
             }
@@ -101,6 +107,7 @@ impl MfReader {
                 rate,
                 channels,
                 duration_ms,
+                channel_mask,
                 codec: if lossless { "wmal" } else { "wma" },
                 skip_until: None,
             })

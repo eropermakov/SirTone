@@ -45,6 +45,8 @@ pub struct Source {
     pub rate: u32,
     /// Native channel count.
     pub channels: usize,
+    /// Speaker positions (WAVE/symphonia bit mask, channels in ascending bit order); 0 = unknown.
+    pub channel_mask: u64,
     /// Track length in milliseconds, when the container knows it.
     pub duration_ms: Option<u64>,
     /// Decoder short name (`flac`, `mp3`, `aac`, `alac`, `vorbis`, `opus`, `pcm_s16le`, …).
@@ -95,6 +97,7 @@ impl Source {
                 channels: r.channels,
                 duration_ms: r.duration_ms,
                 codec: r.codec.into(),
+                channel_mask: r.channel_mask,
                 backend: Backend::Mf(r),
                 skip_until: None,
                 scratch: Vec::new(),
@@ -176,6 +179,10 @@ impl Source {
                 },
                 rate,
                 channels,
+                channel_mask: match params.channels.as_ref() {
+                    Some(symphonia::core::audio::Channels::Positioned(p)) => p.bits(),
+                    _ => 0,
+                },
                 duration_ms,
                 codec,
                 skip_until: None,
@@ -223,6 +230,9 @@ impl Source {
                 };
                 let ch = audio.spec().channels().count().max(1);
                 self.channels = ch;
+                if let symphonia::core::audio::Channels::Positioned(p) = audio.spec().channels() {
+                    self.channel_mask = p.bits();
+                }
                 self.scratch.resize(audio.samples_interleaved(), 0.0);
                 audio.copy_to_slice_interleaved(&mut self.scratch);
                 let mut start = 0usize;

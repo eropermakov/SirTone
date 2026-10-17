@@ -61,6 +61,10 @@ const RING_MS: usize = 200;
 pub(crate) const PAUSE_RAMP_S: f32 = 0.015;
 pub(crate) const VOLUME_SMOOTH_S: f32 = 0.008;
 
+/// Test hook: called on the render thread right before its real-time loop starts, so a test
+/// allocator can assert that the loop never allocates (T1.3, `assert_no_alloc` style).
+pub static RT_ENTER: std::sync::OnceLock<fn()> = std::sync::OnceLock::new();
+
 impl Output {
     /// Opens the default render endpoint at its mix format. Returns the ring producer the engine
     /// fills. COM objects are thread-bound, so the device is opened on the render thread.
@@ -244,6 +248,10 @@ fn render_loop(
 
     let free = client.get_available_space_in_frames().map_err(device_err)? as usize;
     fill(free, &mut ring)?;
+    // Everything below is the real-time loop: no allocation, lock, log or I/O (CLAUDE.md).
+    if let Some(enter) = RT_ENTER.get() {
+        enter();
+    }
     client.start_stream().map_err(device_err)?;
     while !shared.stop.load(Ordering::Relaxed) {
         // 1 s without a device event = the endpoint is gone (unplugged/invalidated).

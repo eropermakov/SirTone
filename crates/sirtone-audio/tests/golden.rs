@@ -152,3 +152,29 @@ fn gapless_chain_equals_the_uncut_file() {
     assert_eq!(joined.len(), whole.len());
     assert_eq!(joined, whole, "the joint is not sample-exact");
 }
+
+/// T1.3: a 5.1 file plays as ffmpeg's own stereo downmix of it (`ffmpeg -ac 2`): centre and
+/// surrounds are heard, LFE is dropped — not just the first two channels.
+#[test]
+fn surround_plays_as_the_ffmpeg_downmix() {
+    let (src, reference) = (
+        fixture("formats/surround-51.flac"),
+        fixture("signals/surround-51-ffmpeg-stereo.wav"),
+    );
+    if !(src.exists() && reference.exists()) {
+        return;
+    }
+    let fmt = DeviceFormat {
+        rate: 48_000,
+        channels: 2,
+    };
+    let ours = render(&[src], fmt, 1.0).unwrap();
+    let want = render(&[reference], fmt, 1.0).unwrap();
+    assert_eq!(ours.len(), want.len());
+    let worst = ours
+        .iter()
+        .zip(&want)
+        .map(|(a, b)| (a - b).abs())
+        .fold(0f32, f32::max);
+    assert!(worst < 1e-5, "differs from ffmpeg by {worst}");
+}
