@@ -9,6 +9,7 @@ mod hotkeys;
 mod ipc;
 mod journal;
 mod library;
+mod perf;
 mod playback;
 mod playlists;
 mod search;

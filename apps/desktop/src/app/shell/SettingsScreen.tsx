@@ -1,8 +1,9 @@
-import { Check, Plus } from "lucide-react";
+import { Check, Gauge, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionSummary } from "@/app/library/CollectionScreen";
 import type { LibraryStatus } from "@/shared/ipc/library";
+import { perfHardware } from "@/shared/ipc/perf";
 import { getSettings, patchSettings } from "@/shared/ipc/settings";
 import {
   autostartAvailable,
@@ -13,9 +14,12 @@ import {
 } from "@/shared/ipc/window";
 import { accelFromEvent } from "@/shared/lib/hotkeys";
 import { cn } from "@/shared/lib/utils";
+import { benchmark, score } from "@/shared/theme/autodetect";
 import { applyPerformance, profile } from "@/shared/theme/performance";
 import { ACCENT_SLUGS, type AccentSource, isPalette, type ThemePref } from "@/shared/theme/theme";
+import { Button } from "@/shared/ui/Button";
 import { Chip } from "@/shared/ui/Chip";
+import { notify } from "@/shared/ui/notify";
 import { Switch } from "@/shared/ui/Switch";
 
 type Props = {
@@ -381,6 +385,19 @@ function PerformanceSection() {
     applyPerformance(profile(l, {}));
     patchSettings({ performance: { level: l, overrides: {} } }).catch(() => {});
   };
+  const [detecting, setDetecting] = useState(false);
+  // FR-PERF-003: hardware + a 1.5 s WebGL benchmark → a level, applied like a manual choice.
+  const detect = () => {
+    setDetecting(true);
+    Promise.all([perfHardware(), benchmark()])
+      .then(([hw, median]) => {
+        const l = score(hw, median);
+        choose(l);
+        notify(t("settingsPerf.detected", { level: levels[l] ?? "" }));
+      })
+      .catch(() => notify(t("settingsPerf.detectFailed")))
+      .finally(() => setDetecting(false));
+  };
   const flip = (key: string, on: boolean) => {
     const next = { ...overrides, [key]: on };
     setOverrides(next);
@@ -407,6 +424,10 @@ function PerformanceSection() {
             </Chip>
           ))}
         </fieldset>
+        <Button variant="secondary" disabled={detecting} onClick={detect} className="self-start">
+          <Gauge size={16} strokeWidth={1.5} />
+          {detecting ? t("settingsPerf.detecting") : t("settingsPerf.detect")}
+        </Button>
         <div className="flex flex-col divide-y divide-border">
           {switches.map((s) => (
             <div key={s.key} className="flex items-center gap-4 py-3">

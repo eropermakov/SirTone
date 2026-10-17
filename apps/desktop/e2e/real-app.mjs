@@ -615,6 +615,21 @@ if (existsSync(corpus)) {
   const genreRows = page.getByRole("list", { name: "Треки" }).locator("button[aria-pressed]");
   await genreRows.first().waitFor({ timeout: 5000 });
   check("genre page lists its tracks", (await page.locator("h1").first().textContent()) === "Rock");
+  // T2.4: auto-detect — hardware + WebGL benchmark → a level, saved like a manual choice.
+  await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
+  await page.getByRole("button", { name: "Определить автоматически" }).click();
+  const detected = await page
+    .getByText(/^Определено: /)
+    .first()
+    .textContent({ timeout: 10000 })
+    .catch(() => null);
+  await sleep(1500); // debounced settings write
+  const perfLevel = settings().performance?.level;
+  check(
+    "performance auto-detect picks and saves a level",
+    detected !== null && Number.isInteger(perfLevel),
+    `${detected?.trim()} (level ${perfLevel})`,
+  );
   await page.getByRole("button", { name: "Настройки" }).click();
   check("storage shows the folder", (await page.getByText(libDir).count()) > 0);
 } else {

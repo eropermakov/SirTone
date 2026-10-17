@@ -142,6 +142,10 @@ fn main() -> ExitCode {
         Some("wave") if args.get(1).map(String::as_str) == Some("calendar") && args.len() > 2 => {
             wave::calendar(&args[2])
         }
+        Some("hw") => {
+            println!("{:?}", sirtone_platform::hardware::hardware());
+            ExitCode::SUCCESS
+        }
         Some("smtc") if args.get(1).map(String::as_str) == Some("toggle") && args.len() > 2 => {
             match sirtone_platform::smtc::toggle_session(&args[2]) {
                 Ok(true) => ExitCode::SUCCESS,

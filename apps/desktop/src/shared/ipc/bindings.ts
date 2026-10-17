@@ -90,6 +90,7 @@ export const commands = {
 	playlistRemove: (id: number, positions: number[]) => typedError<null, AppError>(__TAURI_INVOKE("playlist_remove", { id, positions })),
 	playlistMove: (id: number, from: number, to: number) => typedError<null, AppError>(__TAURI_INVOKE("playlist_move", { id, from, to })),
 	librarySearch: (query: string) => typedError<SearchResults, AppError>(__TAURI_INVOKE("library_search", { query })),
+	perfHardware: () => __TAURI_INVOKE<HardwareInfo>("perf_hardware"),
 	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
 	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),
 };
@@ -164,6 +165,14 @@ export type GenreItem = {
 	key: string,
 	name: string,
 	tracks: number,
+};
+
+export type HardwareInfo = {
+	cores: number,
+	ramMb: number,
+	gpuName: string | null,
+	vramMb: number,
+	discreteGpu: boolean,
 };
 
 export type HotkeyAction = "playPause" | "next" | "prev" | "volumeUp" | "volumeDown" | "mute";
