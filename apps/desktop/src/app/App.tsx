@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionScreen } from "@/app/library/CollectionScreen";
+import { GenresScreen } from "@/app/library/GenresScreen";
 import { RootPanel } from "@/app/library/RootPanel";
 import { UnknownScreen } from "@/app/library/UnknownScreen";
 import { useLibrary } from "@/app/library/useLibrary";
@@ -9,6 +10,7 @@ import {
   cancelImport,
   confirmMissing,
   dismissQuestion,
+  type GenreItem,
   importPaths,
   type LibraryStatus,
   pickFolder,
@@ -57,6 +59,8 @@ type NavEntry = {
   /** A playlist page; `fresh` — just created, the name starts in edit mode. */
   playlist?: number;
   fresh?: boolean;
+  /** An opened genre page. */
+  genre?: GenreItem;
 };
 
 /** Shell (prototype slice of T2.1/T2.2): three zones from DESIGN.md §7. Appearance lives in Rust settings (T0.6). */
@@ -103,7 +107,8 @@ export function App() {
         top.screen === e.screen &&
         top.open?.id === e.open?.id &&
         top.open?.kind === e.open?.kind &&
-        top.playlist === e.playlist
+        top.playlist === e.playlist &&
+        top.genre?.key === e.genre?.key
       ) {
         return s;
       }
@@ -292,6 +297,15 @@ export function App() {
               version={lib.version}
               onGo={goTo}
               onOpenPlaylist={(id) => openPlaylist(id)}
+            />
+          ) : screen === "genres" && hasMusic ? (
+            <GenresScreen
+              version={lib.version}
+              playingId={snap.trackId}
+              open={here.genre ?? null}
+              onOpen={(g) => push({ screen: "genres", open: null, genre: g })}
+              onBack={back}
+              onGo={goTo}
             />
           ) : screen === "playlists" && here.playlist != null ? (
             <PlaylistScreen

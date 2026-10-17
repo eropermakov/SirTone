@@ -1,4 +1,4 @@
-import { ArrowLeft, Play } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, Play } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -13,10 +13,24 @@ import {
   type TrackItem,
 } from "@/shared/ipc/library";
 import { queueAppend, queuePlayNext } from "@/shared/ipc/playback";
+import { Button } from "@/shared/ui/Button";
 import { Cover } from "@/shared/ui/Cover";
+import { Menu } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
 import { ArtistRemove } from "./ArtistRemove";
 import { type Card, CardGrid } from "./CardGrid";
+import {
+  ALBUM_SORTS,
+  type AlbumSort,
+  ARTIST_SORTS,
+  type ArtistSort,
+  loadSort,
+  next,
+  type Sort,
+  saveSort,
+  sortAlbums,
+  sortArtists,
+} from "./sort";
 import { type GoTo, TrackList } from "./TrackList";
 
 type Kind = "albums" | "artists";
@@ -75,6 +89,9 @@ export function CollectionScreen({
   const { t } = useTranslation("shell");
   const { t: tc } = useTranslation("common");
   const [albums, setAlbums] = useState<AlbumItem[]>([]);
+  const [albumSort, setAlbumSort] = useState(() => loadSort("albums", ALBUM_SORTS, "title"));
+  const [artistSort, setArtistSort] = useState(() => loadSort("artists", ARTIST_SORTS, "name"));
+  const [sortMenu, setSortMenu] = useState<{ x: number; y: number } | null>(null);
   const [artists, setArtists] = useState<ArtistItem[]>([]);
   // Skeletons until the first page arrives (DESIGN.md §9: never a spinner).
   const [loaded, setLoaded] = useState(false);
@@ -175,27 +192,65 @@ export function CollectionScreen({
   const cards: Card[] | null = !loaded
     ? null
     : kind === "albums"
-      ? albums.map((a) => ({
+      ? sortAlbums(albums, albumSort).map((a) => ({
           id: a.id,
           title: a.title,
           subtitle: [a.artist, a.year].filter(Boolean).join(" · "),
           cover: a.cover,
           count: a.tracks,
         }))
-      : artists.map((a) => ({
+      : sortArtists(artists, artistSort).map((a) => ({
           id: a.id,
           title: a.name,
           subtitle: tc("count.tracks", { count: a.tracks }),
           cover: null,
           count: a.tracks,
         }));
+  const current: Sort<string> = kind === "albums" ? albumSort : artistSort;
+  const options: readonly string[] = kind === "albums" ? ALBUM_SORTS : ARTIST_SORTS;
   const tracksOf = (c: Card) => (kind === "albums" ? albumTracks(c.id) : artistTracks(c.id));
   const ctx = kind === "albums" ? "album" : "artist";
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-2">
-      <h1 className="t-page-title text-primary-text">{t(`empty.${kind}.title`)}</h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="t-page-title text-primary-text">{t(`empty.${kind}.title`)}</h1>
+        <Button
+          variant="ghost"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            setSortMenu({ x: r.right - 240, y: r.bottom + 4 });
+          }}
+          className="gap-2"
+        >
+          <ArrowUpDown size={16} strokeWidth={1.5} />
+          {t(`sort.${current.by}`)}
+        </Button>
+      </div>
       <CollectionSummary status={status} />
+      {sortMenu && (
+        <Menu
+          at={sortMenu}
+          label={t("sort.label")}
+          onClose={() => setSortMenu(null)}
+          items={options.map((by) => ({
+            id: by,
+            label: t(`sort.${by}`),
+            icon: by === current.by ? (current.reverse ? ArrowUp : ArrowDown) : undefined,
+            onSelect: () => {
+              if (kind === "albums") {
+                const s = next(albumSort, by as AlbumSort);
+                setAlbumSort(s);
+                saveSort("albums", s);
+              } else {
+                const s = next(artistSort, by as ArtistSort);
+                setArtistSort(s);
+                saveSort("artists", s);
+              }
+            },
+          }))}
+        />
+      )}
       <div className="mt-4 flex min-h-0 flex-1 flex-col">
         <CardGrid
           kind={kind}

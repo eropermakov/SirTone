@@ -4,6 +4,7 @@ import {
   type ArtistPage,
   commands,
   events,
+  type GenreItem,
   type ImportFinished,
   type ImportProgress,
   type LibraryStatus,
@@ -34,7 +35,7 @@ export type {
   TrackItem,
   UnknownItem,
 } from "./bindings";
-export type { RemovalInfo, TrackDetails };
+export type { GenreItem, RemovalInfo, TrackDetails };
 
 export const EMPTY_STATUS: LibraryStatus = {
   root: null,
@@ -147,3 +148,10 @@ export const artistRemovalInfo = async (artist: number): Promise<RemovalInfo> =>
 export const removeArtist = async (artist: number, withFile: boolean): Promise<void> => {
   if (isTauri()) unwrap(await commands.artistRemove(artist, withFile));
 };
+
+/** Genres from tags (FR-LIB-002; spellings merged). */
+export const collectionGenres = async (): Promise<GenreItem[]> =>
+  isTauri() ? unwrap(await commands.collectionGenres()) : [];
+
+export const genreTracks = async (key: string): Promise<TrackItem[]> =>
+  isTauri() ? unwrap(await commands.genreTracks(key)) : [];

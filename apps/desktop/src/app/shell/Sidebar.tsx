@@ -8,6 +8,7 @@ import {
   Plus,
   Search,
   Settings,
+  Tags,
   Waves,
   X,
 } from "lucide-react";
@@ -21,6 +22,7 @@ export type Screen =
   | "wave"
   | "artists"
   | "albums"
+  | "genres"
   | "playlists"
   | "unknown"
   | "settings";
@@ -32,6 +34,7 @@ const TOP: Item[] = [{ id: "wave", icon: Waves }];
 const COLLECTION: Item[] = [
   { id: "artists", icon: Mic2 },
   { id: "albums", icon: Disc3 },
+  { id: "genres", icon: Tags },
 ];
 const SETTINGS: Item = { id: "settings", icon: Settings };
 const REST: Item[] = [{ id: "unknown", icon: CircleHelp }];

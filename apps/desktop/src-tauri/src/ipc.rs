@@ -67,6 +67,8 @@ pub fn builder() -> Builder<tauri::Wry> {
             library::artist_removal_info,
             library::artist_remove,
             library::artist_tracks,
+            library::collection_genres,
+            library::genre_tracks,
             playlists::playlists_list,
             playlists::playlist_create,
             playlists::playlist_rename,

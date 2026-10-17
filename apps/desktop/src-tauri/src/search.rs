@@ -39,6 +39,7 @@ fn artist(a: ArtistRow) -> ArtistItem {
         id: a.id as u32,
         name: a.name,
         tracks: a.tracks,
+        added_at: a.added_at as f64,
     }
 }
 
@@ -50,6 +51,7 @@ fn album(a: AlbumRow) -> AlbumItem {
         year: a.year,
         tracks: a.tracks,
         cover: a.cover,
+        added_at: a.added_at as f64,
     }
 }
 

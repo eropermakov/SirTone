@@ -54,6 +54,8 @@ def audio(rel, meta, fmt=None, cover=None):
     return rel
 
 
+# Genres (T2.7): «Rock» / «rock» must merge into one genre.
+GENRES = ["Rock", "Поп", "rock", "Jazz", "Электроника"]
 # 1. Albums with full tags: 30 albums × ~11 tracks ≈ 330. Covers (T1.26): even albums in
 #    MP3/FLAC/M4A embed a picture, the others keep a `cover.jpg` next to the tracks.
 covers = []        # (cover_path, hue)
@@ -71,7 +73,8 @@ for a in range(30):
     for n in range(1, rng.randint(8, 13) + 1):
         t = title()
         audio(f"{album_dir}/{n:02d} - {t}", {"artist": artist, "album_artist": artist, "album": album,
-                                             "title": t, "track": str(n), "date": str(year)}, fmt, cover)
+                                             "title": t, "track": str(n), "date": str(year),
+                                             "genre": GENRES[a % len(GENRES)]}, fmt, cover)
 # 2. Singles with feats: 40
 for i in range(40):
     a1, a2 = rng.sample(ARTISTS, 2)

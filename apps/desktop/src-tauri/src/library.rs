@@ -81,6 +81,8 @@ pub struct AlbumItem {
     pub tracks: u32,
     /// Cover hash: `http://sirtone-cover.localhost/<hash>/<size>`.
     pub cover: Option<String>,
+    /// Newest track, ms (sort «Недавно добавленные»).
+    pub added_at: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
@@ -96,6 +98,8 @@ pub struct ArtistItem {
     pub id: u32,
     pub name: String,
     pub tracks: u32,
+    /// Newest track, ms (sort «Недавно добавленные»).
+    pub added_at: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
@@ -948,6 +952,7 @@ pub fn collection_albums(
                     year: a.year,
                     tracks: a.tracks,
                     cover: a.cover,
+                    added_at: a.added_at as f64,
                 })
                 .collect(),
             next: next.map(|n| PageCursor {
@@ -978,6 +983,7 @@ pub fn collection_artists(
                     id: a.id as u32,
                     name: a.name,
                     tracks: a.tracks,
+                    added_at: a.added_at as f64,
                 })
                 .collect(),
             next: next.map(|n| PageCursor {
@@ -1257,6 +1263,42 @@ pub fn unknown_tracks(lib: State<'_, Library>) -> Result<Vec<TrackItem>, AppErro
 pub fn album_tracks(lib: State<'_, Library>, album: u32) -> Result<Vec<TrackItem>, AppError> {
     lib.with_read(|c| {
         Ok(collection::album_tracks(c, i64::from(album))?
+            .into_iter()
+            .map(track_item)
+            .collect())
+    })
+}
+
+/// A genre card (FR-LIB-002; `01b` F-34).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct GenreItem {
+    /// The page address (normalised name).
+    pub key: String,
+    pub name: String,
+    pub tracks: u32,
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+pub fn collection_genres(lib: State<'_, Library>) -> Result<Vec<GenreItem>, AppError> {
+    lib.with_read(|c| {
+        Ok(collection::genres(c)?
+            .into_iter()
+            .map(|g| GenreItem {
+                key: g.key,
+                name: g.name,
+                tracks: g.tracks,
+            })
+            .collect())
+    })
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+pub fn genre_tracks(lib: State<'_, Library>, key: String) -> Result<Vec<TrackItem>, AppError> {
+    lib.with_read(|c| {
+        Ok(collection::genre_tracks(c, &key)?
             .into_iter()
             .map(track_item)
             .collect())

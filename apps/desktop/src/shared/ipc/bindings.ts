@@ -76,6 +76,8 @@ export const commands = {
 	 */
 	artistRemove: (artist: number, withFile: boolean) => typedError<null, AppError>(__TAURI_INVOKE("artist_remove", { artist, withFile })),
 	artistTracks: (artist: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("artist_tracks", { artist })),
+	collectionGenres: () => typedError<GenreItem[], AppError>(__TAURI_INVOKE("collection_genres")),
+	genreTracks: (key: string) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("genre_tracks", { key })),
 	playlistsList: () => typedError<PlaylistItem[], AppError>(__TAURI_INVOKE("playlists_list")),
 	playlistCreate: (name: string) => typedError<number, AppError>(__TAURI_INVOKE("playlist_create", { name })),
 	playlistRename: (id: number, name: string) => typedError<null, AppError>(__TAURI_INVOKE("playlist_rename", { id, name })),
@@ -114,6 +116,8 @@ export type AlbumItem = {
 	tracks: number,
 	/**  Cover hash: `http://sirtone-cover.localhost/<hash>/<size>`. */
 	cover: string | null,
+	/**  Newest track, ms (sort «Недавно добавленные»). */
+	addedAt: number | null,
 };
 
 export type AlbumPage = {
@@ -132,6 +136,8 @@ export type ArtistItem = {
 	id: number,
 	name: string,
 	tracks: number,
+	/**  Newest track, ms (sort «Недавно добавленные»). */
+	addedAt: number | null,
 };
 
 export type ArtistPage = {
@@ -151,6 +157,14 @@ export type Bootstrap = {
 export type ErrorCode = "FileNotFound" | "UnsupportedFormat" | "DecodeFailed" | "PathTooLong" | "DiskFull" | "PermissionDenied" | "DeviceUnavailable" | "DeviceBusy" | "NetworkOffline" | "RateLimited" | "RemoteError" | "DbBusy" | "DbCorrupt" | "Cancelled" | "InvalidArgument" | "LibraryOffline" | 
 /**  No library folder chosen yet (docs/03 §8.2): the UI asks for one. */
 "LibraryRootNotSet" | "NotSupported" | "InvalidConfig" | "Internal";
+
+/**  A genre card (FR-LIB-002; `01b` F-34). */
+export type GenreItem = {
+	/**  The page address (normalised name). */
+	key: string,
+	name: string,
+	tracks: number,
+};
 
 export type HotkeyAction = "playPause" | "next" | "prev" | "volumeUp" | "volumeDown" | "mute";
 

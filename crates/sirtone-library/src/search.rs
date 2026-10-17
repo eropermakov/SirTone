@@ -166,6 +166,7 @@ pub fn search(conn: &Connection, query: &str) -> Result<Results, LibraryError> {
                     id: r.get(0)?,
                     name: r.get(1)?,
                     tracks: r.get(3)?,
+                    added_at: 0,
                 },
                 r.get::<_, String>(2)? == qn,
             ))
@@ -191,6 +192,7 @@ pub fn search(conn: &Connection, query: &str) -> Result<Results, LibraryError> {
                     cover_id: r.get(4)?,
                     cover: r.get(5)?,
                     tracks: r.get(7)?,
+                    added_at: 0,
                 },
                 r.get::<_, String>(6)? == qn,
             ))

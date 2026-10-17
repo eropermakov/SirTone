@@ -583,6 +583,38 @@ if (existsSync(corpus)) {
     exact.best?.kind === "artist" && Math.max(...times) <= 80,
     `${exact.best?.kind}, max ${Math.max(...times).toFixed(1)} ms`,
   );
+  // T2.7: sort albums «По году» — the newest album comes first.
+  await page.getByRole("navigation").getByRole("button", { name: "Альбомы" }).click();
+  await page.getByRole("button", { name: "По названию" }).click();
+  await page.getByRole("menuitem", { name: "По году" }).click();
+  const allAlbums = (await invoke("collection_albums", { after: null, limit: 500 })).rows;
+  const newest = Math.max(...allAlbums.map((a) => a.year ?? 0));
+  const firstSub = await page
+    .getByRole("list", { name: "Альбомы" })
+    .locator(".t-caption")
+    .first()
+    .textContent();
+  check(
+    "albums sort «По году» puts the newest first",
+    firstSub?.endsWith(String(newest)),
+    `${firstSub} / ${newest}`,
+  );
+  await page.getByRole("button", { name: "По году" }).click();
+  await page.getByRole("menuitem", { name: "По названию" }).click();
+  // T2.7: «Жанры» from tags — «Rock» and «rock» are one genre; its page lists its tracks.
+  await page.getByRole("navigation").getByRole("button", { name: "Жанры" }).click();
+  const genreList = page.getByRole("list", { name: "Жанры" });
+  await genreList.waitFor({ timeout: 5000 });
+  const tiles = await genreList.locator(".t-body-strong").allTextContents();
+  check(
+    "genres merge «Rock» and «rock»",
+    tiles.includes("Rock") && !tiles.includes("rock") && tiles.length === 4,
+    tiles.join(", "),
+  );
+  await genreList.getByText("Rock", { exact: true }).click();
+  const genreRows = page.getByRole("list", { name: "Треки" }).locator("button[aria-pressed]");
+  await genreRows.first().waitFor({ timeout: 5000 });
+  check("genre page lists its tracks", (await page.locator("h1").first().textContent()) === "Rock");
   await page.getByRole("button", { name: "Настройки" }).click();
   check("storage shows the folder", (await page.getByText(libDir).count()) > 0);
 } else {

@@ -6,7 +6,7 @@ export type MenuItem =
   | {
       id: string;
       label: string;
-      icon?: LucideIcon;
+      icon?: LucideIcon | undefined;
       /** Hotkey hint on the right (`shortcut`, text-tertiary). */
       shortcut?: string;
       danger?: boolean;
