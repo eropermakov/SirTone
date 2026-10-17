@@ -1,11 +1,19 @@
 import { isTauri } from "@tauri-apps/api/core";
-import { commands, events, type PlaybackError, type PlaybackSnapshot } from "./bindings";
+import {
+  commands,
+  events,
+  type PlaybackError,
+  type PlaybackSnapshot,
+  type PlayContext,
+  type QueueView,
+  type RepeatMode,
+} from "./bindings";
 
 /**
  * Playback IPC (prototype 0.2). Commands and events are generated (`bindings.ts`); outside Tauri
  * (browser preview, Playwright) everything is a no-op and the player stays empty.
  */
-export type { PlaybackError, PlaybackSnapshot };
+export type { PlaybackError, PlaybackSnapshot, QueueView, RepeatMode };
 
 export const EMPTY_SNAPSHOT: PlaybackSnapshot = {
   state: "empty",
@@ -15,6 +23,8 @@ export const EMPTY_SNAPSHOT: PlaybackSnapshot = {
   hasNext: false,
   hasPrev: false,
   cover: null,
+  repeat: "off",
+  shuffle: false,
   underruns: 0,
   positionMs: 0,
   durationMs: null,
@@ -53,4 +63,44 @@ export function next(): void {
 
 export function prev(): void {
   if (isTauri()) void commands.playbackPrev();
+}
+
+export function setRepeat(mode: RepeatMode): void {
+  if (isTauri()) void commands.playbackSetRepeat(mode);
+}
+
+export function setShuffle(on: boolean): void {
+  if (isTauri()) void commands.playbackSetShuffle(on);
+}
+
+export const EMPTY_QUEUE: QueueView = { items: [], position: 0, repeat: "off", shuffle: false };
+
+export async function getQueue(): Promise<QueueView> {
+  return isTauri() ? commands.queueGet() : EMPTY_QUEUE;
+}
+
+/** «Воспроизвести далее» / «В конец очереди» (FR-PLAY-006). */
+export function queuePlayNext(ids: number[], context: PlayContext): void {
+  if (isTauri()) void commands.queuePlayNext(ids, context);
+}
+
+export function queueAppend(ids: number[], context: PlayContext): void {
+  if (isTauri()) void commands.queueAppend(ids, context);
+}
+
+export function queueRemove(index: number): void {
+  if (isTauri()) void commands.queueRemove(index);
+}
+
+export function queueMove(from: number, to: number): void {
+  if (isTauri()) void commands.queueMove(from, to);
+}
+
+export function queueJump(index: number): void {
+  if (isTauri()) void commands.queueJump(index);
+}
+
+export async function onQueueChanged(cb: () => void): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  return events.queueChanged.listen(() => cb());
 }

@@ -298,7 +298,7 @@ if (existsSync(corpus)) {
     `${covers.filter(Boolean).length}/${covers.length}`,
   );
   await page.locator("main ul li button").first().click();
-  const rows = page.getByRole("list", { name: "Треки" }).getByRole("button");
+  const rows = page.getByRole("list", { name: "Треки" }).locator("button[aria-pressed]");
   await rows.first().waitFor({ timeout: 5000 });
   const firstTitle = (await rows.first().locator(".t-body").textContent())?.trim();
   await rows.first().dblclick();
@@ -338,6 +338,55 @@ if (existsSync(corpus)) {
   await sleep(1200);
   const second = await footer.locator(".t-body-strong").first().textContent();
   check("next plays the following track", second !== playing, `${playing} → ${second}`);
+  // T2.11: track menu → «Воспроизвести далее» puts that track right after the current one.
+  const lastRow = rows.last();
+  const lastTitle = (await lastRow.locator(".t-body").textContent())?.trim();
+  await lastRow.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Воспроизвести далее" }).click();
+  await sleep(500);
+  const qv = await invoke("queue_get", {});
+  check(
+    "«Воспроизвести далее» queues the track next",
+    qv.items[qv.position + 1]?.title === lastTitle,
+    `${qv.items[qv.position + 1]?.title} / ${lastTitle}`,
+  );
+  await footer.getByRole("button", { name: "Очередь" }).click();
+  const panel = page.getByRole("complementary", { name: "Очередь" });
+  await panel.waitFor({ timeout: 3000 });
+  const listed = await panel
+    .getByText(lastTitle, { exact: true })
+    .first()
+    .waitFor({ timeout: 3000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  check("queue panel lists the queue", listed);
+  await footer.getByRole("button", { name: "Очередь" }).click();
+  // FR-PLAY-007: repeat cycles off → all → one; shuffle on/off.
+  await footer.getByRole("button", { name: "Повтор" }).click();
+  await sleep(300);
+  const r1 = (await invoke("playback_snapshot", {})).repeat;
+  await footer.getByRole("button", { name: "Повторять всё" }).click();
+  await sleep(300);
+  const r2 = (await invoke("playback_snapshot", {})).repeat;
+  await footer.getByRole("button", { name: "Повторять трек" }).click();
+  await sleep(300);
+  const r3 = (await invoke("playback_snapshot", {})).repeat;
+  check(
+    "repeat cycles off → all → one → off",
+    r1 === "all" && r2 === "one" && r3 === "off",
+    `${r1} ${r2} ${r3}`,
+  );
+  await footer.getByRole("button", { name: "Перемешать" }).click();
+  await sleep(400);
+  const sh = await invoke("playback_snapshot", {});
+  const q2 = await invoke("queue_get", {});
+  check(
+    "shuffle on keeps the playing track",
+    sh.shuffle === true && q2.items[q2.position]?.title === sh.title,
+  );
+  await footer.getByRole("button", { name: "Перемешать" }).click();
   // T1.31: the journal — the first track was heard to its end, the second was skipped.
   await sleep(1500);
   const journal = readJournal();
@@ -360,7 +409,7 @@ if (existsSync(corpus)) {
   check("service folder is hidden", /Hidden/.test(attrs), attrs.trim());
   await page.getByRole("button", { name: "Неизвестные" }).click();
   await page.getByText(/35 треков/).waitFor({ timeout: 5000 });
-  const unknownRows = page.getByRole("list", { name: "Треки" }).getByRole("button");
+  const unknownRows = page.getByRole("list", { name: "Треки" }).locator("button[aria-pressed]");
   await unknownRows.first().dblclick();
   await sleep(1000);
   const unknownTitle = (await unknownRows.first().locator(".t-body").textContent())?.trim();

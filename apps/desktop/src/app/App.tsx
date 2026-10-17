@@ -33,9 +33,13 @@ import {
   resolveTheme,
   type ThemePref,
 } from "@/shared/theme/theme";
+import { onNotify } from "@/shared/ui/notify";
 import { Toast } from "@/shared/ui/Toast";
+import type { OpenRequest } from "./library/CollectionScreen";
+import type { GoTo } from "./library/TrackList";
 import { EmptyScreen } from "./shell/EmptyScreen";
 import { PlayerBar } from "./shell/PlayerBar";
+import { QueuePanel } from "./shell/QueuePanel";
 import { SettingsScreen } from "./shell/SettingsScreen";
 import { type Screen, Sidebar } from "./shell/Sidebar";
 import { usePlayback } from "./shell/usePlayback";
@@ -88,6 +92,14 @@ export function App() {
   const [addAfterRoot, setAddAfterRoot] = useState(false);
   const [appearance, setAppearanceState] = useState<Appearance>(DEFAULT);
   const [manualCollapsed, setManualCollapsed] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
+  const [openRequest, setOpenRequest] = useState<OpenRequest | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => onNotify(setToast), []);
+  const goTo: GoTo = (kind, id, title) => {
+    setScreen(kind);
+    setOpenRequest((r) => ({ kind, id, title, seq: (r?.seq ?? 0) + 1 }));
+  };
   const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW).matches);
 
   // Load settings once (and move prototype 0.1 choices over), then follow changes from Rust.
@@ -181,7 +193,7 @@ export function App() {
               onChooseLibrary={() => lib.setRootNeeded(true)}
             />
           ) : hasMusic && screen === "unknown" && lib.status.unknown > 0 ? (
-            <UnknownScreen version={lib.version} playingId={snap.trackId} />
+            <UnknownScreen version={lib.version} playingId={snap.trackId} onGo={goTo} />
           ) : hasMusic && (screen === "albums" || screen === "artists") ? (
             <CollectionScreen
               key={screen}
@@ -189,6 +201,7 @@ export function App() {
               status={lib.status}
               version={lib.version}
               playingId={snap.trackId}
+              openRequest={openRequest?.kind === screen ? openRequest : null}
             />
           ) : (
             <EmptyScreen
@@ -197,11 +210,24 @@ export function App() {
             />
           )}
         </main>
+        {queueOpen && (
+          <div className="flex shrink-0 bg-bg-layer p-3 pl-0">
+            <QueuePanel
+              onClose={() => setQueueOpen(false)}
+              trackKey={`${snap.trackId}-${snap.title}`}
+            />
+          </div>
+        )}
       </div>
       <div className="t-caption bg-bg-base px-4 pt-1 text-center text-text-tertiary">
         {t("proto")}
       </div>
-      <PlayerBar snap={snap} receivedAt={receivedAt} />
+      <PlayerBar
+        snap={snap}
+        receivedAt={receivedAt}
+        queueOpen={queueOpen}
+        onQueue={() => setQueueOpen((o) => !o)}
+      />
       {lib.status.goneQuestion != null && !error && !report && (
         <Toast
           tone="info"
@@ -210,6 +236,16 @@ export function App() {
           closeLabel={tc("errors.close")}
           action={{ label: t("library.goneConfirm"), onClick: confirmGone }}
           onClose={dismissGone}
+        />
+      )}
+      {toast && !error && !report && (
+        <Toast
+          tone="info"
+          heading={toast}
+          message=""
+          closeLabel={tc("errors.close")}
+          timeoutMs={3000}
+          onClose={() => setToast(null)}
         />
       )}
       {report && !error && (

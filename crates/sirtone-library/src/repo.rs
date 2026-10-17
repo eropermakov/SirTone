@@ -278,6 +278,9 @@ pub struct TrackRow {
     pub album: Option<String>,
     pub duration_ms: u64,
     pub rel_path: String,
+    /// For «К альбому» / «К исполнителю» (DESIGN.md §9 track menu).
+    pub album_id: Option<AlbumId>,
+    pub artist_id: Option<ArtistId>,
 }
 
 /// Keyset cursor for «by title» pages (S-15: p95 0.9 ms on 100 000 tracks).
@@ -297,7 +300,8 @@ pub fn tracks_by_title(
         "SELECT t.id, t.title, t.title_norm, t.duration_ms, al.title, t.rel_path,
                 (SELECT group_concat(name, ', ') FROM
                    (SELECT a.name FROM track_artist ta JOIN artist a ON a.id = ta.artist_id
-                    WHERE ta.track_id = t.id ORDER BY ta.position))
+                    WHERE ta.track_id = t.id ORDER BY ta.position)),
+                t.album_id, (SELECT ta.artist_id FROM track_artist ta WHERE ta.track_id = t.id ORDER BY ta.position LIMIT 1)
          FROM track t LEFT JOIN album al ON al.id = t.album_id
          WHERE t.state = 'ok' AND (t.title_norm, t.id) > (?1, ?2)
          ORDER BY t.title_norm, t.id LIMIT ?3",
@@ -315,6 +319,8 @@ pub fn tracks_by_title(
             album: r.get(4)?,
             rel_path: r.get(5)?,
             artists: r.get::<_, Option<String>>(6)?.unwrap_or_default(),
+            album_id: r.get(7)?,
+            artist_id: r.get(8)?,
         });
         next = Some(TitleCursor { title_norm, id });
     }

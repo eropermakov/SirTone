@@ -44,7 +44,11 @@
     "volume": "",
     "pause": "",
     "seek": "",
-    "ended": ""
+    "ended": "",
+    "repeatOff": "Repeat off",
+    "repeatAll": "Repeat all",
+    "repeatOne": "Repeat track",
+    "shuffleOn": "Shuffled"
   },
   "settings": {
     "title": "",
@@ -159,5 +163,27 @@
       "volumeDown": "Quieter",
       "mute": "Mute"
     }
+  },
+  "queue": {
+    "title": "Queue",
+    "empty": "The queue is empty — play a track or an album",
+    "now": "Now playing",
+    "next": "Next up",
+    "remove": "Remove from queue",
+    "close": "Close queue"
+  },
+  "trackMenu": {
+    "label": "Track actions",
+    "more": "More",
+    "playNext": "Play next",
+    "addToQueue": "Add to queue",
+    "addToPlaylist": "Add to playlist",
+    "toAlbum": "Go to album",
+    "toArtist": "Go to artist",
+    "share": "Copy title",
+    "remove": "Remove from library",
+    "copied": "Copied: {text}",
+    "queuedNext": "Plays next: {title}",
+    "queued": "Added to queue: {title}"
   }
 }

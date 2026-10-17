@@ -10,7 +10,7 @@ use sirtone_audio::{EngineCmd, EngineEvent, EngineHandle, PlayState};
 use sirtone_core::error::{AppError, ErrorCode};
 use sirtone_core::wave::{EndReason, PlaySource};
 use sirtone_platform::smtc::{Smtc, SmtcButton, SmtcState, SmtcTrack};
-use sirtone_playback::{Queue, Step};
+use sirtone_playback::{Queue, Repeat, ShuffleKey, Step};
 use tauri::{AppHandle, Manager, State};
 
 use crate::journal::{Item as JournalItem, Journal};
@@ -46,6 +46,8 @@ pub struct PlaybackSnapshot {
     pub has_prev: bool,
     /// Album cover hash of the current track.
     pub cover: Option<String>,
+    pub repeat: RepeatMode,
+    pub shuffle: bool,
     /// Output underruns since start (diagnostics, P-13).
     pub underruns: u32,
     pub position_ms: u32,
@@ -72,6 +74,74 @@ pub struct QueueItem {
     pub cover: Option<String>,
     /// Where playback was started from (journal, T1.31).
     pub source: PlaySource,
+    /// Album and primary artist (shuffle spreading); 0 = unknown.
+    pub album_key: u64,
+    pub artist_key: u64,
+}
+
+/// FR-PLAY-007 repeat mode over IPC.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+pub enum RepeatMode {
+    Off,
+    One,
+    All,
+}
+
+impl From<Repeat> for RepeatMode {
+    fn from(r: Repeat) -> Self {
+        match r {
+            Repeat::Off => Self::Off,
+            Repeat::One => Self::One,
+            Repeat::All => Self::All,
+        }
+    }
+}
+
+impl From<RepeatMode> for Repeat {
+    fn from(r: RepeatMode) -> Self {
+        match r {
+            RepeatMode::Off => Self::Off,
+            RepeatMode::One => Self::One,
+            RepeatMode::All => Self::All,
+        }
+    }
+}
+
+/// One row of the queue panel.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueEntry {
+    pub title: String,
+    pub artists: Option<String>,
+    pub track_id: Option<u32>,
+    pub cover: Option<String>,
+}
+
+/// The queue panel (FR-PLAY-006): everything, the playing position and the modes.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueView {
+    pub items: Vec<QueueEntry>,
+    pub position: u32,
+    pub repeat: RepeatMode,
+    pub shuffle: bool,
+}
+
+/// The queue changed (order, contents, modes): the panel refetches.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Event)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueChanged {
+    pub len: u32,
+}
+
+/// What goes to the engine in advance for a gapless joint (repeat-one replays via Load instead).
+fn handover(q: &Queue<QueueItem>) -> Option<&QueueItem> {
+    if q.repeat() == Repeat::One {
+        None
+    } else {
+        q.upcoming()
+    }
 }
 
 /// The screen a list was played from (`play_event.source`).
@@ -94,6 +164,8 @@ impl From<PlayContext> for PlaySource {
 }
 
 pub struct Playback {
+    /// For events from user commands (queue edits); set once the app runs.
+    app: OnceLock<AppHandle>,
     engine: EngineHandle,
     settings: Arc<SettingsStore>,
     last: Arc<Mutex<PlaybackSnapshot>>,
@@ -171,6 +243,8 @@ fn empty_snapshot() -> PlaybackSnapshot {
         has_next: false,
         has_prev: false,
         cover: None,
+        repeat: RepeatMode::Off,
+        shuffle: false,
         underruns: 0,
         position_ms: 0,
         duration_ms: None,
@@ -191,6 +265,7 @@ impl Playback {
         // The sink needs the handle to auto-advance; it exists only after `start` returns.
         let handle: Arc<OnceLock<EngineHandle>> = Arc::new(OnceLock::new());
         let sink_handle = handle.clone();
+        let app_for_events = app.clone();
         let journal = Arc::new(Journal::start(settings.clone()));
         let sink_journal = journal.clone();
         // Media keys, the Windows 11 flyout and widgets (T1.23): buttons go straight to this
@@ -220,12 +295,13 @@ impl Playback {
             EngineEvent::Snapshot(s) => {
                 let mut q = sink_queue.lock().unwrap_or_else(|p| p.into_inner());
                 // Gapless (T1.5): the engine moved on to the track we handed it in advance.
-                if q.peek_next()
-                    .is_some_and(|n| Some(n.path.as_path()) == s.path.as_deref())
+                if q.current()
+                    .is_none_or(|c| Some(c.path.as_path()) != s.path.as_deref())
+                    && handover(&q).is_some_and(|n| Some(n.path.as_path()) == s.path.as_deref())
                 {
                     q.advance();
                     if let Some(h) = sink_handle.get() {
-                        h.send(EngineCmd::SetNext(q.peek_next().map(|i| i.path.clone())));
+                        h.send(EngineCmd::SetNext(handover(&q).map(|i| i.path.clone())));
                     }
                 }
                 sink_journal.observe(
@@ -242,14 +318,14 @@ impl Playback {
                 if s.state == PlayState::Ended
                     && q.current()
                         .is_some_and(|c| Some(c.path.as_path()) == s.path.as_deref())
-                    && let Step::Play(next) = q.advance()
+                    && let Step::Play(next) = q.on_track_end()
                     && let Some(h) = sink_handle.get()
                 {
                     h.send(EngineCmd::Load {
                         path: next.path,
                         autoplay: true,
                     });
-                    h.send(EngineCmd::SetNext(q.peek_next().map(|i| i.path.clone())));
+                    h.send(EngineCmd::SetNext(handover(&q).map(|i| i.path.clone())));
                     return;
                 }
                 let current = q
@@ -257,6 +333,7 @@ impl Playback {
                     .filter(|c| Some(c.path.as_path()) == s.path.as_deref())
                     .cloned();
                 let (has_next, has_prev) = (q.has_next(), q.has_prev());
+                let (repeat, shuffle) = (q.repeat().into(), q.shuffled());
                 drop(q);
                 let snap = PlaybackSnapshot {
                     state: match s.state {
@@ -276,6 +353,8 @@ impl Playback {
                     has_next: current.is_some() && has_next,
                     has_prev: current.is_some() && has_prev,
                     cover: current.as_ref().and_then(|c| c.cover.clone()),
+                    repeat,
+                    shuffle,
                     underruns: u32::try_from(s.underruns).unwrap_or(u32::MAX),
                     position_ms: u32::try_from(s.position_ms).unwrap_or(u32::MAX),
                     duration_ms: s.duration_ms.map(|d| u32::try_from(d).unwrap_or(u32::MAX)),
@@ -328,6 +407,11 @@ impl Playback {
             journal,
             muted_from: Mutex::new(None),
             _smtc: smtc,
+            app: {
+                let cell = OnceLock::new();
+                let _ = cell.set(app_for_events);
+                cell
+            },
         })
     }
 
@@ -348,6 +432,8 @@ impl Playback {
                     track_id: None,
                     cover: None,
                     source: PlaySource::External,
+                    album_key: 0,
+                    artist_key: 0,
                 };
                 self.play_queue(vec![item], 0);
             }
@@ -368,8 +454,118 @@ impl Playback {
 
     /// Tells the engine what follows the current track, so it continues without a gap.
     fn hand_next(&self) {
-        let next = self.queue().peek_next().map(|i| i.path.clone());
+        let next = handover(&self.queue()).map(|i| i.path.clone());
         self.engine.send(EngineCmd::SetNext(next));
+    }
+
+    /// After a queue edit: the engine gets the new «next», the player bar its flags, the panel
+    /// a refetch event.
+    fn queue_edited(&self) {
+        self.hand_next();
+        let (has_next, has_prev, repeat, shuffle, len) = {
+            let q = self.queue();
+            (
+                q.has_next(),
+                q.has_prev(),
+                q.repeat().into(),
+                q.shuffled(),
+                q.len(),
+            )
+        };
+        let snap = self.last.lock().ok().map(|mut l| {
+            if l.title.is_some() {
+                l.has_next = has_next;
+                l.has_prev = has_prev;
+            }
+            l.repeat = repeat;
+            l.shuffle = shuffle;
+            l.clone()
+        });
+        if let Some(app) = self.app.get() {
+            if let Some(s) = snap {
+                let _ = s.emit(app);
+            }
+            let _ = QueueChanged { len: len as u32 }.emit(app);
+        }
+    }
+
+    pub fn play_next(&self, items: Vec<QueueItem>) {
+        let step = self.queue().play_next(items);
+        self.start_if_new(step);
+        self.queue_edited();
+    }
+
+    pub fn append(&self, items: Vec<QueueItem>) {
+        let step = self.queue().append(items);
+        self.start_if_new(step);
+        self.queue_edited();
+    }
+
+    /// An empty queue starts playing what was added.
+    fn start_if_new(&self, step: Step<QueueItem>) {
+        if let Step::Play(item) = step {
+            self.journal.close(EndReason::Skip);
+            self.engine.send(EngineCmd::Load {
+                path: item.path,
+                autoplay: true,
+            });
+        }
+    }
+
+    pub fn queue_remove(&self, at: usize) {
+        if self.queue().remove(at) {
+            self.queue_edited();
+        }
+    }
+
+    pub fn queue_move(&self, from: usize, to: usize) {
+        if self.queue().move_item(from, to) {
+            self.queue_edited();
+        }
+    }
+
+    pub fn queue_jump(&self, at: usize) {
+        let step = self.queue().jump(at);
+        self.start_if_new(step);
+        self.queue_edited();
+    }
+
+    pub fn set_repeat(&self, r: Repeat) {
+        self.queue().set_repeat(r);
+        self.queue_edited();
+    }
+
+    /// Shuffle on/off (FR-PLAY-007): «Fewer Repeats» over the upcoming tracks; tracks heard in
+    /// the last day go later.
+    pub fn set_shuffle(&self, on: bool, recent: &std::collections::HashSet<i64>) {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(1, |d| d.as_nanos() as u64);
+        self.queue().set_shuffle(on, seed, |i| ShuffleKey {
+            artist: i.artist_key,
+            album: i.album_key,
+            recent: i.track_id.is_some_and(|t| recent.contains(&i64::from(t))),
+        });
+        self.queue_edited();
+    }
+
+    pub fn queue_view(&self) -> QueueView {
+        let q = self.queue();
+        QueueView {
+            items: q
+                .items()
+                .iter()
+                .map(|i| QueueEntry {
+                    title: i.title.clone(),
+                    artists: i.artists.clone(),
+                    track_id: i.track_id,
+                    cover: i.cover.clone(),
+                })
+                .collect(),
+            position: q.position() as u32,
+            repeat: q.repeat().into(),
+            shuffle: q.shuffled(),
+        }
     }
 
     /// Plays `items` as the new context from `start` (FR-PLAY-006: replaces the queue).
@@ -573,6 +769,29 @@ pub fn playback_prev(pb: State<'_, Playback>) {
     pb.prev();
 }
 
+/// Library tracks as queue items.
+fn items_for(
+    lib: &crate::library::Library,
+    ids: &[u32],
+    context: PlayContext,
+) -> Result<Vec<QueueItem>, AppError> {
+    Ok(lib
+        .resolve(ids)?
+        .into_iter()
+        .zip(ids.iter())
+        .map(|(r, id)| QueueItem {
+            path: r.path,
+            title: r.title,
+            artists: (!r.artists.is_empty()).then_some(r.artists),
+            track_id: Some(*id),
+            cover: r.cover,
+            source: context.into(),
+            album_key: r.album_id.map_or(0, |v| v as u64),
+            artist_key: r.artist_id.map_or(0, |v| v as u64),
+        })
+        .collect())
+}
+
 /// Plays library tracks `ids` as one context starting at `start` (double-click in a list).
 #[tauri::command(async)]
 #[specta::specta]
@@ -583,19 +802,73 @@ pub fn play_tracks(
     start: u32,
     context: PlayContext,
 ) -> Result<(), AppError> {
-    let resolved = lib.resolve(&ids)?;
-    let items = resolved
-        .into_iter()
-        .zip(ids.iter())
-        .map(|((path, title, artists, cover), id)| QueueItem {
-            path,
-            title,
-            artists: (!artists.is_empty()).then_some(artists),
-            track_id: Some(*id),
-            cover,
-            source: context.into(),
-        })
-        .collect();
-    pb.play_queue(items, start as usize);
+    pb.play_queue(items_for(&lib, &ids, context)?, start as usize);
     Ok(())
+}
+
+/// «Воспроизвести далее» (FR-PLAY-006).
+#[tauri::command(async)]
+#[specta::specta]
+pub fn queue_play_next(
+    pb: State<'_, Playback>,
+    lib: State<'_, crate::library::Library>,
+    ids: Vec<u32>,
+    context: PlayContext,
+) -> Result<(), AppError> {
+    pb.play_next(items_for(&lib, &ids, context)?);
+    Ok(())
+}
+
+/// «В конец очереди».
+#[tauri::command(async)]
+#[specta::specta]
+pub fn queue_append(
+    pb: State<'_, Playback>,
+    lib: State<'_, crate::library::Library>,
+    ids: Vec<u32>,
+    context: PlayContext,
+) -> Result<(), AppError> {
+    pb.append(items_for(&lib, &ids, context)?);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn queue_get(pb: State<'_, Playback>) -> QueueView {
+    pb.queue_view()
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn queue_remove(pb: State<'_, Playback>, index: u32) {
+    pb.queue_remove(index as usize);
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn queue_move(pb: State<'_, Playback>, from: u32, to: u32) {
+    pb.queue_move(from as usize, to as usize);
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn queue_jump(pb: State<'_, Playback>, index: u32) {
+    pb.queue_jump(index as usize);
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn playback_set_repeat(pb: State<'_, Playback>, mode: RepeatMode) {
+    pb.set_repeat(mode.into());
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+pub fn playback_set_shuffle(
+    pb: State<'_, Playback>,
+    lib: State<'_, crate::library::Library>,
+    on: bool,
+) {
+    let day_ago = sirtone_library::db::now_ms() - 24 * 3600 * 1000;
+    pb.set_shuffle(on, &lib.recent_track_ids(day_ago));
 }

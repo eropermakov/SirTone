@@ -32,6 +32,14 @@ pub fn builder() -> Builder<tauri::Wry> {
             playback::playback_next,
             playback::playback_prev,
             playback::play_tracks,
+            playback::queue_play_next,
+            playback::queue_append,
+            playback::queue_get,
+            playback::queue_remove,
+            playback::queue_move,
+            playback::queue_jump,
+            playback::playback_set_repeat,
+            playback::playback_set_shuffle,
             autostart::autostart_available,
             hotkeys::hotkeys_status,
             autostart::autostart_set,
@@ -57,7 +65,8 @@ pub fn builder() -> Builder<tauri::Wry> {
             library::ImportFinished,
             library::LibraryChanged,
             library::LibraryRootNeeded,
-            hotkeys::HotkeyConflict
+            hotkeys::HotkeyConflict,
+            playback::QueueChanged
         ])
 }
 

@@ -3,6 +3,7 @@ import {
   Pause,
   Play,
   Repeat,
+  Repeat1,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -14,10 +15,14 @@ import {
   next,
   type PlaybackSnapshot,
   prev,
+  type RepeatMode,
   seek,
+  setRepeat,
+  setShuffle,
   setVolume,
   togglePlay,
 } from "@/shared/ipc/playback";
+import { cn } from "@/shared/lib/utils";
 import { Cover } from "@/shared/ui/Cover";
 import { Slider } from "@/shared/ui/Slider";
 
@@ -30,16 +35,23 @@ export function timecode(ms: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
+const NEXT_REPEAT: Record<RepeatMode, RepeatMode> = { off: "all", all: "one", one: "off" };
+
 /**
- * PlayerBar per DESIGN.md §9, prototype 0.2: play/pause, seek, volume work; shuffle, prev/next,
- * repeat and the queue need the queue (T1.8) and stay disabled — honest state, not fake buttons.
+ * PlayerBar per DESIGN.md §9: transport, seek, volume; shuffle and repeat (FR-PLAY-007) — when on,
+ * the icon is `accent-text` with a 4 px dot; repeat cycles off → all → one. The queue button opens
+ * the queue panel.
  */
 export function PlayerBar({
   snap,
   receivedAt,
+  queueOpen,
+  onQueue,
 }: {
   snap: PlaybackSnapshot;
   receivedAt: RefObject<number>;
+  queueOpen: boolean;
+  onQueue: () => void;
 }) {
   const { t } = useTranslation("shell");
   const loaded = snap.state !== "empty";
@@ -65,16 +77,36 @@ export function PlayerBar({
     return () => cancelAnimationFrame(raf);
   }, [playing, duration, snap.positionMs, receivedAt]);
 
-  const icon = (Icon: typeof Shuffle, label: string) => (
+  const toggle = (
+    Icon: typeof Shuffle,
+    label: string,
+    on: boolean,
+    onClick: () => void,
+    disabled = false,
+  ) => (
     <button
       type="button"
-      disabled
       aria-label={label}
-      className="flex size-9 items-center justify-center rounded-full text-icon disabled:opacity-40"
+      aria-pressed={on}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "relative flex size-9 items-center justify-center rounded-full hover:bg-bg-hover disabled:opacity-40",
+        on ? "text-accent-text" : "text-icon",
+      )}
     >
       <Icon size={20} strokeWidth={1.5} />
+      {on && (
+        <span aria-hidden className="absolute bottom-0.5 size-1 rounded-full bg-accent-text" />
+      )}
     </button>
   );
+  const repeatLabel =
+    snap.repeat === "one"
+      ? t("player.repeatOne")
+      : snap.repeat === "all"
+        ? t("player.repeatAll")
+        : t("player.repeat");
   const PlayIcon = playing ? Pause : Play;
 
   return (
@@ -97,7 +129,13 @@ export function PlayerBar({
 
       <div className="flex flex-1 flex-col items-center gap-1">
         <div className="flex items-center gap-2">
-          {icon(Shuffle, t("player.shuffle"))}
+          {toggle(
+            Shuffle,
+            t("player.shuffle"),
+            snap.shuffle,
+            () => setShuffle(!snap.shuffle),
+            !loaded,
+          )}
           <button
             type="button"
             disabled={!loaded}
@@ -125,7 +163,12 @@ export function PlayerBar({
           >
             <SkipForward size={20} strokeWidth={1.5} />
           </button>
-          {icon(Repeat, t("player.repeat"))}
+          {toggle(
+            snap.repeat === "one" ? Repeat1 : Repeat,
+            repeatLabel,
+            snap.repeat !== "off",
+            () => setRepeat(NEXT_REPEAT[snap.repeat]),
+          )}
         </div>
         <div className="flex w-full max-w-xl items-center gap-2">
           <span className="t-timecode w-12 text-right text-text-tertiary">
@@ -146,7 +189,7 @@ export function PlayerBar({
       </div>
 
       <div className="flex w-72 items-center justify-end gap-2">
-        {icon(ListMusic, t("player.queue"))}
+        {toggle(ListMusic, t("player.queue"), queueOpen, onQueue)}
         <Volume2 size={20} strokeWidth={1.5} aria-hidden className="text-icon" />
         <Slider
           className="w-24"

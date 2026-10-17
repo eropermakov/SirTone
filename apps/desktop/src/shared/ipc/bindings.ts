@@ -19,6 +19,16 @@ export const commands = {
 	playbackPrev: () => __TAURI_INVOKE<void>("playback_prev"),
 	/**  Plays library tracks `ids` as one context starting at `start` (double-click in a list). */
 	playTracks: (ids: number[], start: number, context: PlayContext) => typedError<null, AppError>(__TAURI_INVOKE("play_tracks", { ids, start, context })),
+	/**  «Воспроизвести далее» (FR-PLAY-006). */
+	queuePlayNext: (ids: number[], context: PlayContext) => typedError<null, AppError>(__TAURI_INVOKE("queue_play_next", { ids, context })),
+	/**  «В конец очереди». */
+	queueAppend: (ids: number[], context: PlayContext) => typedError<null, AppError>(__TAURI_INVOKE("queue_append", { ids, context })),
+	queueGet: () => __TAURI_INVOKE<QueueView>("queue_get"),
+	queueRemove: (index: number) => __TAURI_INVOKE<void>("queue_remove", { index }),
+	queueMove: (from: number, to: number) => __TAURI_INVOKE<void>("queue_move", { from, to }),
+	queueJump: (index: number) => __TAURI_INVOKE<void>("queue_jump", { index }),
+	playbackSetRepeat: (mode: RepeatMode) => __TAURI_INVOKE<void>("playback_set_repeat", { mode }),
+	playbackSetShuffle: (on: boolean) => __TAURI_INVOKE<void>("playback_set_shuffle", { on }),
 	autostartAvailable: () => __TAURI_INVOKE<boolean>("autostart_available"),
 	/**  Settings → «Горячие клавиши»: what is configured and what Windows refused. */
 	hotkeysStatus: () => __TAURI_INVOKE<HotkeyStatus[]>("hotkeys_status"),
@@ -60,6 +70,7 @@ export const events = {
 	libraryRootNeeded: makeEvent<LibraryRootNeeded>("library-root-needed"),
 	playbackError: makeEvent<PlaybackError>("playback-error"),
 	playbackSnapshot: makeEvent<PlaybackSnapshot>("playback-snapshot"),
+	queueChanged: makeEvent<QueueChanged>("queue-changed"),
 };
 
 /* Types */
@@ -201,6 +212,8 @@ export type PlaybackSnapshot = {
 	hasPrev: boolean,
 	/**  Album cover hash of the current track. */
 	cover: string | null,
+	repeat: RepeatMode,
+	shuffle: boolean,
 	/**  Output underruns since start (diagnostics, P-13). */
 	underruns: number,
 	positionMs: number,
@@ -211,12 +224,38 @@ export type PlaybackSnapshot = {
 
 export type PlaybackState = "empty" | "playing" | "paused" | "ended";
 
+/**  The queue changed (order, contents, modes): the panel refetches. */
+export type QueueChanged = {
+	len: number,
+};
+
+/**  One row of the queue panel. */
+export type QueueEntry = {
+	title: string,
+	artists: string | null,
+	trackId: number | null,
+	cover: string | null,
+};
+
+/**  The queue panel (FR-PLAY-006): everything, the playing position and the modes. */
+export type QueueView = {
+	items: QueueEntry[],
+	position: number,
+	repeat: RepeatMode,
+	shuffle: boolean,
+};
+
+/**  FR-PLAY-007 repeat mode over IPC. */
+export type RepeatMode = "off" | "one" | "all";
+
 export type TrackItem = {
 	id: number,
 	title: string,
 	artists: string,
 	album: string | null,
 	durationMs: number,
+	albumId: number | null,
+	artistId: number | null,
 };
 
 export type TrackPage = {

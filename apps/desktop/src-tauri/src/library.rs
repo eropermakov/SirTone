@@ -60,6 +60,8 @@ pub struct TrackItem {
     pub artists: String,
     pub album: Option<String>,
     pub duration_ms: u32,
+    pub album_id: Option<u32>,
+    pub artist_id: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
@@ -157,7 +159,16 @@ enum Job {
 }
 
 /// A library track ready to play: absolute path, title, artists, album cover hash.
-pub type Resolved = (PathBuf, String, String, Option<String>);
+#[derive(Debug, Clone)]
+pub struct Resolved {
+    pub path: PathBuf,
+    pub title: String,
+    pub artists: String,
+    pub cover: Option<String>,
+    pub album_id: Option<i64>,
+    /// Primary artist (shuffle spreading, «К исполнителю»).
+    pub artist_id: Option<i64>,
+}
 
 struct Shared {
     root: Option<PathBuf>,
@@ -441,6 +452,19 @@ impl Library {
         std::fs::read(path).ok()
     }
 
+    /// Library tracks heard since `since_ms` (shuffle pushes them later, `01b` F-21).
+    pub fn recent_track_ids(&self, since_ms: i64) -> std::collections::HashSet<i64> {
+        self.with_read(|c| {
+            let mut st =
+                c.prepare_cached("SELECT DISTINCT track_id FROM play_event WHERE ts >= ?1")?;
+            let ids = st
+                .query_map([since_ms], |r| r.get::<_, i64>(0))?
+                .collect::<Result<_, _>>()?;
+            Ok(ids)
+        })
+        .unwrap_or_default()
+    }
+
     /// 512 px JPEG of an album cover for the Windows media controls (docs/07 §3).
     pub fn smtc_cover(&self, hash: &str) -> Option<PathBuf> {
         let root = lock(&self.shared).root.clone()?;
@@ -460,20 +484,27 @@ impl Library {
                         coalesce((SELECT group_concat(name, ', ') FROM
                           (SELECT a.name FROM track_artist ta JOIN artist a ON a.id = ta.artist_id
                            WHERE ta.track_id = t.id ORDER BY ta.position)), ''),
-                        (SELECT cv.hash FROM album al JOIN cover cv ON cv.id = al.cover_id WHERE al.id = t.album_id)
+                        (SELECT cv.hash FROM album al JOIN cover cv ON cv.id = al.cover_id WHERE al.id = t.album_id),
+                        t.album_id,
+                        (SELECT ta.artist_id FROM track_artist ta WHERE ta.track_id = t.id ORDER BY ta.position LIMIT 1)
                  FROM track t WHERE t.id = ?1",
             )?;
             let mut out = Vec::with_capacity(ids.len());
             for id in ids {
-                if let Ok((rel, title, artists, cover)) = st.query_row([id], |r| {
-                    Ok((
-                        r.get::<_, String>(0)?,
-                        r.get::<_, String>(1)?,
-                        r.get::<_, String>(2)?,
-                        r.get::<_, Option<String>>(3)?,
-                    ))
+                if let Ok(r) = st.query_row([id], |r| {
+                    Ok(Resolved {
+                        path: r
+                            .get::<_, String>(0)?
+                            .split('/')
+                            .fold(root.clone(), |p, c| p.join(c)),
+                        title: r.get(1)?,
+                        artists: r.get(2)?,
+                        cover: r.get(3)?,
+                        album_id: r.get(4)?,
+                        artist_id: r.get(5)?,
+                    })
                 }) {
-                    out.push((rel.split('/').fold(root.clone(), |p, c| p.join(c)), title, artists, cover));
+                    out.push(r);
                 }
             }
             Ok(out)
@@ -728,6 +759,8 @@ fn track_item(r: repo::TrackRow) -> TrackItem {
         artists: r.artists,
         album: r.album,
         duration_ms: u32::try_from(r.duration_ms).unwrap_or(u32::MAX),
+        album_id: r.album_id.map(|v| v as u32),
+        artist_id: r.artist_id.map(|v| v as u32),
     }
 }
 

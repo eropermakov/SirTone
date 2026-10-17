@@ -164,6 +164,17 @@ impl<T: Clone> Queue<T> {
         true
     }
 
+    /// A click in the queue panel: play that item, the queue stays as it is.
+    pub fn jump(&mut self, at: usize) -> Step<T> {
+        match self.items.get(at) {
+            Some(t) => {
+                self.index = at;
+                Step::Play(t.clone())
+            }
+            None => Step::End,
+        }
+    }
+
     pub fn items(&self) -> &[T] {
         &self.items
     }
@@ -305,6 +316,9 @@ mod tests {
         assert!(q.move_item(3, 0));
         assert_eq!((q.items(), q.position()), (&[7, 9, 2, 1][..], 3));
         assert_eq!(q.advance(), Step::End);
+        assert_eq!(q.jump(1), Step::Play(9));
+        assert_eq!(q.position(), 1);
+        assert_eq!(q.jump(9), Step::End);
     }
 
     #[test]
