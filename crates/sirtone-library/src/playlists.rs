@@ -57,28 +57,29 @@ fn touch(tx: &Transaction<'_>, id: PlaylistId) -> Result<(), LibraryError> {
     Ok(())
 }
 
-/// All items in order: (track, added_at).
-fn items(tx: &Transaction<'_>, id: PlaylistId) -> Result<Vec<(TrackId, i64)>, LibraryError> {
+/// One stored item: its position (may have gaps after a cascade), track, added_at.
+type Item = (i64, TrackId, i64);
+
+/// All items in order. Positions are as stored: `ON DELETE CASCADE` (a track left the library)
+/// leaves gaps, so callers match on the stored position, never on the index.
+fn items(tx: &Transaction<'_>, id: PlaylistId) -> Result<Vec<Item>, LibraryError> {
     let mut st = tx.prepare(
-        "SELECT track_id, added_at FROM playlist_item WHERE playlist_id = ?1 ORDER BY position",
+        "SELECT position, track_id, added_at FROM playlist_item WHERE playlist_id = ?1
+         ORDER BY position",
     )?;
     let rows = st
-        .query_map([id], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .query_map([id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
         .collect::<Result<_, _>>()?;
     Ok(rows)
 }
 
 /// Rewrites the items densely (delete + insert: `UPDATE position` would collide on the key).
-fn rewrite(
-    tx: &Transaction<'_>,
-    id: PlaylistId,
-    items: &[(TrackId, i64)],
-) -> Result<(), LibraryError> {
+fn rewrite(tx: &Transaction<'_>, id: PlaylistId, items: &[Item]) -> Result<(), LibraryError> {
     tx.execute("DELETE FROM playlist_item WHERE playlist_id = ?1", [id])?;
     let mut ins = tx.prepare(
         "INSERT INTO playlist_item(playlist_id, position, track_id, added_at) VALUES (?1, ?2, ?3, ?4)",
     )?;
-    for (n, (track, added)) in items.iter().enumerate() {
+    for (n, (_, track, added)) in items.iter().enumerate() {
         ins.execute(params![id, n as i64, track, added])?;
     }
     Ok(())
@@ -229,9 +230,7 @@ pub fn remove(
     exists(&tx, id)?;
     let kept: Vec<_> = items(&tx, id)?
         .into_iter()
-        .enumerate()
-        .filter(|(n, _)| !positions.contains(&(*n as i64)))
-        .map(|(_, it)| it)
+        .filter(|(pos, _, _)| !positions.contains(pos))
         .collect();
     rewrite(&tx, id, &kept)?;
     touch(&tx, id)?;
@@ -249,13 +248,15 @@ pub fn move_item(
     let tx = conn.transaction()?;
     exists(&tx, id)?;
     let mut all = items(&tx, id)?;
-    let n = all.len() as i64;
-    if !(0..n).contains(&from) || !(0..n).contains(&to) {
-        return Err(LibraryError::Invalid(format!("move {from} → {to} of {n}")));
-    }
-    if from != to {
-        let it = all.remove(from as usize);
-        all.insert(to as usize, it);
+    let at = |p: i64| all.iter().position(|(pos, _, _)| *pos == p);
+    let (Some(f), Some(t)) = (at(from), at(to)) else {
+        return Err(LibraryError::Invalid(format!(
+            "move {from} → {to}: no such item"
+        )));
+    };
+    if f != t {
+        let it = all.remove(f);
+        all.insert(t, it);
         rewrite(&tx, id, &all)?;
         touch(&tx, id)?;
     }
@@ -378,6 +379,27 @@ mod tests {
         c.execute("UPDATE track SET state = 'ok' WHERE id = ?1", [b])
             .unwrap();
         assert_eq!(titles(&c, p2), ["T2"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn edits_after_a_cascade_gap_hit_the_right_item() {
+        let (root, mut c) = lib("gap");
+        let ids: Vec<_> = (1..=4).map(|n| track(&mut c, n)).collect();
+        let p = create(&c, "Дыра").unwrap();
+        add(&mut c, p, &ids).unwrap();
+        // T2 leaves the library: positions are now 0, 2, 3.
+        track_remove(&mut c, ids[1]).unwrap();
+        let pos: Vec<i64> = tracks(&c, p).unwrap().iter().map(|t| t.position).collect();
+        assert_eq!(pos, [0, 2, 3]);
+        move_item(&mut c, p, 3, 0).unwrap(); // T4 to the top
+        assert_eq!(titles(&c, p), ["T4", "T1", "T3"]);
+        c.execute("DELETE FROM track WHERE id = ?1", [ids[0]])
+            .unwrap(); // gap again
+        let t3 = tracks(&c, p).unwrap()[1].position;
+        remove(&mut c, p, &[t3]).unwrap();
+        assert_eq!(titles(&c, p), ["T4"]);
+        assert!(move_item(&mut c, p, 7, 0).is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

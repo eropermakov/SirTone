@@ -440,10 +440,12 @@ impl Library {
         ImportStart::Started
     }
 
-    /// Runs a short write on the writer connection of the current (online) library.
+    /// Runs a short write on the writer connection of the current (online) library. A failed
+    /// attempt reopens the connection and tries once more (a stick pulled and put back leaves a
+    /// dead handle; each write is one transaction, so a failed one changed nothing).
     pub(crate) fn with_write<T>(
         &self,
-        f: impl FnOnce(&mut Connection) -> Result<T, sirtone_library::LibraryError>,
+        mut f: impl FnMut(&mut Connection) -> Result<T, sirtone_library::LibraryError>,
     ) -> Result<T, AppError> {
         let root = {
             let s = lock(&self.shared);
@@ -453,19 +455,24 @@ impl Library {
             }
         };
         let mut w = lock(&self.writer);
-        if w.as_ref().is_none_or(|(r, _)| *r != root) {
-            let conn = sirtone_library::open_existing(&db_path(&root), medium(&root))?;
-            *w = Some((root, conn));
+        let mut last = None;
+        for _ in 0..2 {
+            if w.as_ref().is_none_or(|(r, _)| *r != root) {
+                let conn = sirtone_library::open_existing(&db_path(&root), medium(&root))?;
+                *w = Some((root.clone(), conn));
+            }
+            let Some((_, conn)) = w.as_mut() else {
+                return Err(AppError::new(ErrorCode::Internal));
+            };
+            match f(conn) {
+                Ok(v) => return Ok(v),
+                Err(e) => {
+                    *w = None;
+                    last = Some(e);
+                }
+            }
         }
-        let Some((_, conn)) = w.as_mut() else {
-            return Err(AppError::new(ErrorCode::Internal));
-        };
-        let r = f(conn).map_err(AppError::from);
-        if r.is_err() {
-            // A broken connection (pulled stick) must not stick around.
-            *w = None;
-        }
-        r
+        Err(last.map_or_else(|| AppError::new(ErrorCode::Internal), AppError::from))
     }
 
     pub(crate) fn with_read<T>(

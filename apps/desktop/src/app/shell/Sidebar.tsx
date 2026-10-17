@@ -148,6 +148,21 @@ export function Sidebar({
           )}
         </div>
       </div>
+      {/* DESIGN.md §9: «Новый плейлист» first, then the main items. */}
+      {onNewPlaylist && (
+        <button
+          type="button"
+          onClick={onNewPlaylist}
+          title={collapsed ? t("newPlaylist") : undefined}
+          className={cn(
+            "flex h-(--item-height) w-full items-center gap-3 rounded-(--radius-md) px-3 text-left text-text-primary hover:bg-bg-hover [&_svg]:text-icon",
+            collapsed && "justify-center px-0",
+          )}
+        >
+          <Plus size={20} strokeWidth={1.5} />
+          {!collapsed && <span className="t-body min-w-0 flex-1 truncate">{t("newPlaylist")}</span>}
+        </button>
+      )}
       {TOP.map(row)}
       {!collapsed && (
         <div className="t-group-label mt-4 mb-1 px-3 text-text-secondary">{t("collection")}</div>
@@ -168,20 +183,6 @@ export function Sidebar({
             strokeWidth={1.5}
             className={cn("transition-transform duration-(--dur-fast)", !listsOpen && "-rotate-90")}
           />
-        </button>
-      )}
-      {onNewPlaylist && (
-        <button
-          type="button"
-          onClick={onNewPlaylist}
-          title={collapsed ? t("newPlaylist") : undefined}
-          className={cn(
-            "flex h-(--item-height) w-full items-center gap-3 rounded-(--radius-md) px-3 text-left text-text-primary hover:bg-bg-hover [&_svg]:text-icon",
-            collapsed && "justify-center px-0",
-          )}
-        >
-          <Plus size={20} strokeWidth={1.5} />
-          {!collapsed && <span className="t-body min-w-0 flex-1 truncate">{t("newPlaylist")}</span>}
         </button>
       )}
       {!collapsed && listsOpen && (
