@@ -8,6 +8,7 @@ pub mod error;
 pub mod import;
 pub mod layout;
 pub mod repo;
+pub mod wave;
 
 pub use db::{Medium, SCHEMA_VERSION, open, open_in_memory};
 pub use error::LibraryError;

@@ -18,7 +18,10 @@ pub enum Medium {
     Removable,
 }
 
-const MIGRATIONS: &[M<'static>] = &[M::up(include_str!("../migrations/0001_init.sql"))];
+const MIGRATIONS: &[M<'static>] = &[
+    M::up(include_str!("../migrations/0001_init.sql")),
+    M::up(include_str!("../migrations/0002_wave.sql")),
+];
 
 /// Current schema version (`PRAGMA user_version` and `meta.schema_version`).
 pub const SCHEMA_VERSION: usize = MIGRATIONS.len();
@@ -115,11 +118,78 @@ mod tests {
         // Reopen: same library, nothing re-created.
         let c = open(&path, Medium::Fixed).unwrap();
         assert_eq!(meta(&c, "library_uid").unwrap().unwrap(), uid);
-        assert_eq!(meta(&c, "schema_version").unwrap().as_deref(), Some("1"));
+        assert_eq!(
+            meta(&c, "schema_version").unwrap(),
+            Some(SCHEMA_VERSION.to_string())
+        );
         let v: i64 = c
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 1);
+        assert_eq!(v as usize, SCHEMA_VERSION);
+        drop(c);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The owner's library was created by 0001 (prototypes 0.5–0.8): 0002 must keep every row,
+    /// the search index and the covers, and add the journal next to them.
+    #[test]
+    fn upgrade_from_0001_keeps_data() {
+        use crate::repo::{artist_get_or_create, track_count, track_insert};
+        let dir = std::env::temp_dir().join(format!("sirtone-lib-up-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("library.db");
+        let t = {
+            let mut c = Connection::open(&path).unwrap();
+            c.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+            Migrations::from_slice(&MIGRATIONS[..1])
+                .to_latest(&mut c)
+                .unwrap();
+            let a = artist_get_or_create(&c, "Кино").unwrap();
+            let t = track_insert(&mut c, &crate::wave::tests::new_track("Город.flac", a)).unwrap();
+            c.execute(
+                "INSERT INTO cover(hash, source, width, height, created_at) VALUES ('h', 'embedded', 1, 1, 0)",
+                [],
+            )
+            .unwrap();
+            t
+        };
+        let c = open(&path, Medium::Fixed).unwrap();
+        assert_eq!(track_count(&c).unwrap(), 1);
+        let found: i64 = c
+            .query_row(
+                "SELECT rowid FROM search_fts WHERE search_fts MATCH 'город'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(found, t);
+        let covers: i64 = c
+            .query_row("SELECT count(*) FROM cover", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(covers, 1);
+        let liked: Option<i64> = c
+            .query_row("SELECT liked_at FROM track WHERE id = ?1", [t], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(liked, None);
+        for table in [
+            "play_event",
+            "feedback",
+            "track_features",
+            "wave_state",
+            "event_pref",
+        ] {
+            let n: i64 = c
+                .query_row(
+                    "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                    [table],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(n, 1, "{table}");
+        }
         drop(c);
         let _ = std::fs::remove_dir_all(&dir);
     }
