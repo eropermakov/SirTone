@@ -773,6 +773,56 @@ if (existsSync(corpus)) {
   const afterSkip = (await invoke("playback_snapshot", {})).trackId;
   check("wave: «Не сейчас» goes to the next track", afterSkip !== nowId, `${nowId} → ${afterSkip}`);
   await axeScreen("«Моя волна»");
+  // T2.20 / P-01 (DESIGN.md §1, `08` §1): event → the frame that shows the change, measured
+  // in the page. Direct actions ≤ 100 ms, a screen change ≤ 400 ms.
+  const reaction = (pick, changed) =>
+    page.evaluate(
+      async ([pickSrc, changedSrc]) => {
+        const el = new Function(`return (${pickSrc})()`)();
+        const done = new Function("el", "before", `return (${changedSrc})(el, before)`);
+        const before = el.getAttribute("aria-pressed") ?? el.getAttribute("aria-label") ?? "";
+        const t0 = performance.now();
+        el.click();
+        await new Promise((res) => {
+          const tick = () =>
+            done(el, before) ? requestAnimationFrame(() => res()) : requestAnimationFrame(tick);
+          tick();
+        });
+        return performance.now() - t0;
+      },
+      [pick.toString(), changed.toString()],
+    );
+  const likeMs = [];
+  for (let i = 0; i < 4; i++) {
+    likeMs.push(
+      await reaction(
+        () => document.querySelector('main button[aria-label="Нравится"]'),
+        (el, before) => el.getAttribute("aria-pressed") !== before,
+      ),
+    );
+    await sleep(300);
+  }
+  const playMs = [];
+  for (let i = 0; i < 4; i++) {
+    playMs.push(
+      await reaction(
+        () => document.querySelectorAll("footer button[aria-label]")[2],
+        (el, before) => el.getAttribute("aria-label") !== before,
+      ),
+    );
+    await sleep(400);
+  }
+  const navMs = await reaction(
+    () =>
+      [...document.querySelectorAll("nav button")].find((b) => b.textContent?.trim() === "Альбомы"),
+    () => document.querySelector("h1")?.textContent === "Альбомы",
+  );
+  check(
+    "P-01: ♡ and play/pause ≤ 100 ms, a screen change ≤ 400 ms",
+    Math.max(...likeMs) <= 100 && Math.max(...playMs) <= 100 && navMs <= 400,
+    `♡ ${likeMs.map((v) => v.toFixed(0)).join("/")} ms, play ${playMs.map((v) => v.toFixed(0)).join("/")} ms, screen ${navMs.toFixed(0)} ms`,
+  );
+  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
   await page.getByRole("main").getByRole("button", { name: "Ещё" }).click();
   await page.getByRole("menuitem", { name: "Никогда в волне" }).click();
   await page.getByRole("menuitem", { name: "Этого исполнителя" }).click();
