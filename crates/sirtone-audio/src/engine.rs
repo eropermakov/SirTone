@@ -170,6 +170,8 @@ struct Engine {
     pause_on_device_loss: bool,
     /// A default-device change waiting to settle (see `DEVICE_SETTLE`).
     default_changed_at: Option<Instant>,
+    /// Underruns already reported in the log (diagnostics; the RT thread only counts).
+    logged_underruns: u64,
 }
 
 impl Engine {
@@ -191,6 +193,7 @@ impl Engine {
             next_source: None,
             pause_on_device_loss: true,
             default_changed_at: None,
+            logged_underruns: 0,
         }
     }
 
@@ -211,6 +214,20 @@ impl Engine {
             }
             if self.shared.failed.load(Ordering::Acquire) {
                 self.on_device_lost();
+            }
+            // Every underrun lands in the log with where it happened (owner-reported choppy
+            // sound must never be a guess again).
+            let u = self.shared.underruns.load(Ordering::Relaxed);
+            if u > self.logged_underruns {
+                tracing::warn!(
+                    target: "sirtone::audio",
+                    underruns = u,
+                    new = u - self.logged_underruns,
+                    position_ms = self.position_ms(),
+                    feeding_next = self.feeding.is_some(),
+                    "output underrun"
+                );
+                self.logged_underruns = u;
             }
             if self
                 .default_changed_at

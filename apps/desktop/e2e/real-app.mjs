@@ -289,6 +289,16 @@ if (existsSync(corpus)) {
   await page.getByRole("button", { name: "Альбомы" }).click();
   await page.getByText(/Вся коллекция: 438 треков/).waitFor({ timeout: 5000 });
   check("collection summary", true);
+  // Optional screenshots for a human look (SMOKE_SHOTS=<dir>).
+  if (process.env.SMOKE_SHOTS) {
+    await sleep(1200);
+    await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "albums.png") });
+    await page.getByRole("button", { name: "Исполнители" }).click();
+    await sleep(1000);
+    await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "artists.png") });
+    await page.getByRole("button", { name: "Альбомы" }).click();
+    await sleep(800);
+  }
   // Covers (T1.26): album rows show WebP from sirtone-cover:// that really decode.
   await sleep(800);
   const covers = await page.evaluate(() =>
