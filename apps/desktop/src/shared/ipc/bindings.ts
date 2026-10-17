@@ -58,6 +58,12 @@ export const commands = {
 } | null, limit: number) => typedError<ArtistPage, AppError>(__TAURI_INVOKE("collection_artists", { after, limit })),
 	albumTracks: (album: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("album_tracks", { album })),
 	unknownTracks: () => typedError<TrackItem[], AppError>(__TAURI_INVOKE("unknown_tracks")),
+	unknownList: () => typedError<UnknownItem[], AppError>(__TAURI_INVOKE("unknown_list")),
+	/**
+	 *  «Назначить»: the track leaves «Неизвестные» and its file moves to the canonical place
+	 *  (through the journal, on the import worker; the audio file itself is not changed).
+	 */
+	trackAssign: (track: number, assignment: TrackAssignment) => typedError<null, AppError>(__TAURI_INVOKE("track_assign", { track, assignment })),
 	artistTracks: (artist: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("artist_tracks", { artist })),
 	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
 	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),
@@ -250,6 +256,16 @@ export type QueueView = {
 /**  FR-PLAY-007 repeat mode over IPC. */
 export type RepeatMode = "off" | "one" | "all";
 
+/**  What the user typed for a track (ручное назначение). */
+export type TrackAssignment = {
+	title: string,
+	/**  Several artists separated by commas. */
+	artists: string,
+	album: string | null,
+	trackNo: number | null,
+	year: number | null,
+};
+
 export type TrackItem = {
 	id: number,
 	title: string,
@@ -263,6 +279,13 @@ export type TrackItem = {
 export type TrackPage = {
 	rows: TrackItem[],
 	next: PageCursor | null,
+};
+
+/**  A track in «Неизвестные» with its reason (docs/05 §4.7). */
+export type UnknownItem = {
+	track: TrackItem,
+	/**  no_metadata | conflict | low_confidence | offline_pending | possible_non_track | needs_review */
+	reason: string | null,
 };
 
 /**  What the UI needs: the running version and, once, «just updated». */

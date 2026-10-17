@@ -9,7 +9,9 @@ import {
   type LibraryStatus,
   type PageCursor,
   type PlayContext,
+  type TrackAssignment,
   type TrackItem,
+  type UnknownItem,
 } from "./bindings";
 
 /**
@@ -26,7 +28,9 @@ export type {
   LibraryStatus,
   PageCursor,
   PlayContext,
+  TrackAssignment,
   TrackItem,
+  UnknownItem,
 } from "./bindings";
 
 export const EMPTY_STATUS: LibraryStatus = {
@@ -107,3 +111,12 @@ export const onRootNeeded = (cb: () => void) => listen(events.libraryRootNeeded,
 
 export const unknownTracks = async (): Promise<TrackItem[]> =>
   isTauri() ? unwrap(await commands.unknownTracks()) : [];
+
+/** «Неизвестные» with reasons (docs/05 §4.7). */
+export const unknownList = async (): Promise<UnknownItem[]> =>
+  isTauri() ? unwrap(await commands.unknownList()) : [];
+
+/** «Назначить»: who and what the track is; the file moves to its canonical place. */
+export const assignTrack = async (track: number, a: TrackAssignment): Promise<void> => {
+  if (isTauri()) unwrap(await commands.trackAssign(track, a));
+};

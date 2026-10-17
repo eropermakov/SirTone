@@ -155,7 +155,15 @@ pub enum ImportStart {
 /// pipeline's own placements can never race the watcher (docs/05 §7).
 enum Job {
     Import(Vec<PathBuf>),
-    Reconcile { confirmed: bool },
+    Reconcile {
+        confirmed: bool,
+    },
+    /// Manual assignment from «Неизвестные» / the track card: move + row, then reply.
+    Assign {
+        track: i64,
+        assignment: sirtone_library::relocate::Assignment,
+        reply: mpsc::Sender<Result<String, AppError>>,
+    },
 }
 
 /// A library track ready to play: absolute path, title, artists, album cover hash.
@@ -585,9 +593,15 @@ fn import_worker(
         }
         let mut reconcile_pass: Option<bool> = None;
         let mut imports: Vec<PathBuf> = Vec::new();
+        let mut assigns = Vec::new();
         for j in jobs {
             match j {
                 Job::Import(p) => imports.extend(p),
+                Job::Assign {
+                    track,
+                    assignment,
+                    reply,
+                } => assigns.push((track, assignment, reply)),
                 Job::Reconcile { confirmed } => {
                     reconcile_pass = Some(reconcile_pass.unwrap_or(false) || confirmed);
                 }
@@ -612,6 +626,23 @@ fn import_worker(
         let Some((_, db)) = conn.as_mut() else {
             continue;
         };
+        if !assigns.is_empty() {
+            for (track, assignment, reply) in assigns {
+                let r = sirtone_library::relocate::assign(
+                    db,
+                    &root,
+                    track,
+                    &assignment,
+                    deps.fs.as_ref(),
+                )
+                .map_err(AppError::from);
+                if let Err(e) = &r {
+                    tracing::warn!(target: "sirtone::library", code = ?e.code, "assignment failed");
+                }
+                let _ = reply.send(r);
+            }
+            emit_changed(&app, &shared);
+        }
         let paths = imports;
         if let Err(e) = import::recover(db, &root, deps.fs.as_ref()) {
             tracing::error!(target: "sirtone::import", error = %e, "recovery failed");
@@ -897,6 +928,69 @@ pub fn collection_artists(
             }),
         })
     })
+}
+
+/// A track in «Неизвестные» with its reason (docs/05 §4.7).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct UnknownItem {
+    pub track: TrackItem,
+    /// no_metadata | conflict | low_confidence | offline_pending | possible_non_track | needs_review
+    pub reason: Option<String>,
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+pub fn unknown_list(lib: State<'_, Library>) -> Result<Vec<UnknownItem>, AppError> {
+    lib.with_read(|c| {
+        Ok(collection::unknown_rows(c, 5000)?
+            .into_iter()
+            .map(|u| UnknownItem {
+                track: track_item(u.track),
+                reason: u.reason,
+            })
+            .collect())
+    })
+}
+
+/// What the user typed for a track (ручное назначение).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackAssignment {
+    pub title: String,
+    /// Several artists separated by commas.
+    pub artists: String,
+    pub album: Option<String>,
+    pub track_no: Option<u32>,
+    pub year: Option<i32>,
+}
+
+/// «Назначить»: the track leaves «Неизвестные» and its file moves to the canonical place
+/// (through the journal, on the import worker; the audio file itself is not changed).
+#[tauri::command(async)]
+#[specta::specta]
+pub fn track_assign(
+    lib: State<'_, Library>,
+    track: u32,
+    assignment: TrackAssignment,
+) -> Result<(), AppError> {
+    let (tx, rx) = mpsc::channel();
+    lib.jobs
+        .send(Job::Assign {
+            track: i64::from(track),
+            assignment: sirtone_library::relocate::Assignment {
+                title: assignment.title,
+                artists: assignment.artists,
+                album: assignment.album,
+                track_no: assignment.track_no,
+                year: assignment.year,
+            },
+            reply: tx,
+        })
+        .map_err(|_| AppError::new(ErrorCode::Internal))?;
+    rx.recv_timeout(Duration::from_secs(60))
+        .map_err(|_| AppError::new(ErrorCode::Internal).with_details("assignment timed out"))?
+        .map(|_| ())
 }
 
 #[tauri::command(async)]

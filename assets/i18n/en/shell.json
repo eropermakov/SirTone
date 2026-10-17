@@ -202,5 +202,29 @@
     "uiAnimations": "Interface animations",
     "listAnimations": "List animations",
     "blur": "Blur and transparency"
+  },
+  "unknownScreen": {
+    "all": "All",
+    "hint": "Pick a track and say who it is — the file moves to the artist. The file itself is not changed.",
+    "assignTitle": "Assign",
+    "title": "Title",
+    "artists": "Artist",
+    "artistsHint": "Several — separated by commas",
+    "album": "Album",
+    "trackNo": "No.",
+    "year": "Year",
+    "assign": "Assign",
+    "assigned": "Moved: {title}",
+    "failed": "Could not move it — check the fields",
+    "pick": "Pick a track on the left",
+    "reason": {
+      "no_metadata": "No data",
+      "conflict": "Tags vs name",
+      "low_confidence": "Not sure",
+      "offline_pending": "Waits for network",
+      "possible_non_track": "Maybe not a track",
+      "needs_review": "Needs review",
+      "none": "No reason"
+    }
   }
 }

@@ -176,6 +176,31 @@ pub fn unknown_tracks(conn: &Connection, limit: u32) -> Result<Vec<TrackRow>, Li
     Ok(rows)
 }
 
+/// An «Неизвестные» row: the track, why it is there, its file name (docs/05 §4.7).
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnknownRow {
+    pub track: TrackRow,
+    pub reason: Option<String>,
+}
+
+/// «Неизвестные» with their reasons, newest first.
+pub fn unknown_rows(conn: &Connection, limit: u32) -> Result<Vec<UnknownRow>, LibraryError> {
+    let mut st = conn.prepare_cached(&format!(
+        "SELECT {TRACK_COLS}, t.unknown_reason FROM track t LEFT JOIN album al ON al.id = t.album_id
+         WHERE t.state = 'ok' AND t.identity_state = 'unknown'
+         ORDER BY t.added_at DESC, t.id DESC LIMIT ?1"
+    ))?;
+    let rows = st
+        .query_map([limit], |r| {
+            Ok(UnknownRow {
+                track: track_row(r)?,
+                reason: r.get(8)?,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
 pub fn counts(conn: &Connection) -> Result<Counts, LibraryError> {
     Ok(conn.query_row(
         "SELECT

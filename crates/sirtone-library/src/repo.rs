@@ -167,7 +167,7 @@ pub fn track_insert_in(tx: &Connection, t: &NewTrack) -> Result<TrackId, Library
     Ok(id)
 }
 
-fn set_track_artists(
+pub(crate) fn set_track_artists(
     conn: &Connection,
     id: TrackId,
     artists: &[ArtistId],

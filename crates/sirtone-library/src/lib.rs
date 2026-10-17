@@ -8,6 +8,7 @@ pub mod error;
 pub mod import;
 pub mod layout;
 pub mod reconcile;
+pub mod relocate;
 pub mod repo;
 pub mod watch;
 pub mod wave;

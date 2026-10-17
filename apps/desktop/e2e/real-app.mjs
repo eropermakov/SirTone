@@ -443,6 +443,21 @@ if (existsSync(corpus)) {
   const unknownTitle = (await unknownRows.first().locator(".t-body").textContent())?.trim();
   const nowPlaying = await footer.locator(".t-body-strong").first().textContent();
   check("«Неизвестные» list plays", nowPlaying === unknownTitle, `${nowPlaying} / ${unknownTitle}`);
+  // T2.9: pick an unknown track, say who it is — it leaves the list, its file moves.
+  const before = (await invoke("library_status", {})).unknown;
+  await unknownRows.nth(1).click();
+  const assignPanel = page.getByRole("complementary", { name: "Назначить" });
+  await assignPanel.getByLabel("Название").fill("Проверочная песня");
+  await assignPanel.getByLabel("Исполнитель").fill("Проверочный исполнитель");
+  await assignPanel.getByRole("button", { name: "Назначить" }).click();
+  await sleep(1500);
+  const after = (await invoke("library_status", {})).unknown;
+  const movedDir = join(libDir, "Проверочный исполнитель");
+  check(
+    "assigning an unknown track moves it out",
+    after === before - 1 && existsSync(movedDir),
+    `${before} → ${after}, folder ${existsSync(movedDir)}`,
+  );
   await page.getByRole("button", { name: "Настройки" }).click();
   check("storage shows the folder", (await page.getByText(libDir).count()) > 0);
 } else {
