@@ -111,8 +111,10 @@ fn update_smtc(
     app: &AppHandle,
     smtc: &Arc<Smtc>,
     last: &Mutex<Option<(Option<String>, Option<String>)>>,
+    generation: &Arc<std::sync::atomic::AtomicU64>,
     snap: &PlaybackSnapshot,
 ) {
+    use std::sync::atomic::Ordering;
     let key = (snap.title.clone(), snap.cover.clone());
     let changed = last
         .lock()
@@ -130,6 +132,9 @@ fn update_smtc(
             cover: None,
             duration_ms: u64::from(snap.duration_ms.unwrap_or(0)),
         });
+        // Fast skipping: a slow cover of an earlier track must not overwrite a later one.
+        let mine = generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let generation = generation.clone();
         let (app, smtc, hash) = (app.clone(), smtc.clone(), snap.cover.clone());
         std::thread::spawn(move || {
             let track = track.map(|mut t| {
@@ -139,7 +144,9 @@ fn update_smtc(
                 });
                 t
             });
-            smtc.set_track(track);
+            if generation.load(Ordering::SeqCst) == mine {
+                smtc.set_track(track);
+            }
         });
     }
     let state = match snap.state {
@@ -194,7 +201,11 @@ impl Playback {
                 return;
             };
             match b {
-                SmtcButton::Play | SmtcButton::Pause | SmtcButton::Toggle => pb.toggle(),
+                // Explicit Play/Pause (headsets, lock screen, the play key after Windows maps it):
+                // a stale status must never turn «Pause» into «play».
+                SmtcButton::Play => pb.play(),
+                SmtcButton::Pause => pb.pause(),
+                SmtcButton::Toggle => pb.toggle(),
                 SmtcButton::Next => pb.next(),
                 SmtcButton::Previous => pb.prev(),
                 SmtcButton::Stop => pb.pause(),
@@ -204,6 +215,7 @@ impl Playback {
         .map(Arc::new);
         let sink_smtc = smtc.clone();
         let smtc_last: Mutex<Option<(Option<String>, Option<String>)>> = Mutex::new(None);
+        let smtc_gen = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let engine = sirtone_audio::start(Box::new(move |ev| match ev {
             EngineEvent::Snapshot(s) => {
                 let mut q = sink_queue.lock().unwrap_or_else(|p| p.into_inner());
@@ -276,7 +288,7 @@ impl Playback {
                     *l = snap.clone();
                 }
                 if let Some(smtc) = sink_smtc.as_ref() {
-                    update_smtc(&app, smtc, &smtc_last, &snap);
+                    update_smtc(&app, smtc, &smtc_last, &smtc_gen, &snap);
                 }
                 crate::tray::update(
                     &app,
@@ -409,6 +421,10 @@ impl Playback {
 
     pub fn pause(&self) {
         self.engine.send(EngineCmd::Pause);
+    }
+
+    pub fn play(&self) {
+        self.engine.send(EngineCmd::Play);
     }
 
     /// Current player volume (0..1), as the engine last reported it.

@@ -449,6 +449,49 @@ check(
   hk.map((h) => `${h.accel}:${h.registered ? "ok" : "taken"}`).join(" "),
 );
 
+// FR-WIN-001: changing a hotkey applies at once (re-registration from a settings command).
+await invoke("settings_patch", { patch: { hotkeys: { mute: "Ctrl+Alt+M" } } });
+const hk6 = await invoke("hotkeys_status", {});
+await invoke("settings_patch", { patch: { hotkeys: { mute: null } } });
+const hk5 = await invoke("hotkeys_status", {});
+check(
+  "hotkey change applies without a restart",
+  hk6.length === 6 && hk5.length === 5,
+  `${hk6.length} → ${hk5.length}`,
+);
+
+// T1.23 «при закрытом окне»: ✕ hides the window, media controls still drive the player.
+if (existsSync(join(libDir, ".sirtone", "library.db"))) {
+  // The longest track, so it is still playing while the window is closed.
+  const page1 = await invoke("collection_tracks", { after: null, limit: 200 });
+  const longest = page1.rows.reduce((a, b) => (b.durationMs > a.durationMs ? b : a));
+  await invoke("play_tracks", { ids: [longest.id], start: 0, context: "collection" });
+  await sleep(1500);
+  const playingNow = (await invoke("playback_snapshot", {})).title;
+  spawnSync("powershell", [
+    "-NoProfile",
+    "-Command",
+    `Add-Type -Name U -Namespace W -MemberDefinition '[DllImport("user32.dll")] public static extern bool PostMessageW(System.IntPtr h, uint m, System.IntPtr w, System.IntPtr l);'; [W.U]::PostMessageW((Get-Process -Id ${app.pid}).MainWindowHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero)`,
+  ]);
+  await sleep(800);
+  const afterClose = spawnSync("powershell", [
+    "-NoProfile",
+    "-Command",
+    `$t = (Get-Process -Id ${app.pid}).MainWindowTitle; if ($t -and $t -notlike '*-siw') { 'shown' } else { 'hidden' }`,
+  ])
+    .stdout.toString()
+    .trim();
+  const seen = spawnSync(cli, ["smtc"], { encoding: "utf8" }).stdout.trim();
+  const tog = spawnSync(cli, ["smtc", "toggle", playingNow], { encoding: "utf8" });
+  await sleep(700);
+  const st2 = await invoke("playback_snapshot", {});
+  check(
+    "✕ hides; media controls still pause",
+    afterClose === "hidden" && st2.state === "paused",
+    `${afterClose}, ${st2.state}; want «${playingNow}»; toggle exit ${tog.status} ${tog.stderr}; smtc: ${seen}`,
+  );
+}
+
 // 10. Autostart launches with --minimized (T1.24): straight to the tray, no window shown.
 await browser.close();
 app.kill();

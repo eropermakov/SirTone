@@ -4,6 +4,7 @@
 //! Rust playback service, so the tray works even when the WebView is gone (D-52).
 
 use std::sync::Mutex;
+use std::sync::mpsc::{Sender, channel};
 
 use tauri::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
@@ -59,8 +60,13 @@ struct Items {
     last: Option<TrayState>,
 }
 
+/// Native menu calls wait for the main thread (tauri `run_item_main_thread!`), so they never run
+/// on the caller's thread: updates go to the `sirtone-tray` thread, latest wins.
 #[derive(Default)]
-pub struct TrayMenu(Mutex<Option<Items>>);
+pub struct TrayMenu {
+    items: Mutex<Option<Items>>,
+    tx: Mutex<Option<Sender<TrayState>>>,
+}
 
 /// What the tray shows about playback.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -91,12 +97,20 @@ fn texts(l: &Labels, s: &TrayState) -> (String, String) {
     }
 }
 
-/// Reflects playback in the tray menu and tooltip (called from the playback service).
+/// Reflects playback in the tray (called from the engine's event sink): never blocks.
 pub fn update(app: &AppHandle, s: &TrayState) {
+    if let Some(menu) = app.try_state::<TrayMenu>()
+        && let Some(tx) = menu.tx.lock().unwrap_or_else(|p| p.into_inner()).as_ref()
+    {
+        let _ = tx.send(s.clone());
+    }
+}
+
+fn apply(app: &AppHandle, s: &TrayState) {
     let Some(menu) = app.try_state::<TrayMenu>() else {
         return;
     };
-    let mut guard = menu.0.lock().unwrap_or_else(|p| p.into_inner());
+    let mut guard = menu.items.lock().unwrap_or_else(|p| p.into_inner());
     let Some(items) = guard.as_mut() else { return };
     if items.last.as_ref() == Some(s) {
         return;
@@ -187,7 +201,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
     }
     let tray = builder.build(app)?;
     let state = app.state::<TrayMenu>();
-    *state.0.lock().unwrap_or_else(|p| p.into_inner()) = Some(Items {
+    *state.items.lock().unwrap_or_else(|p| p.into_inner()) = Some(Items {
         now,
         play_pause,
         prev,
@@ -195,6 +209,20 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
         labels: l,
         last: None,
     });
+    let (tx, rx) = channel::<TrayState>();
+    let handle = app.clone();
+    std::thread::Builder::new()
+        .name("sirtone-tray".into())
+        .spawn(move || {
+            while let Ok(mut s) = rx.recv() {
+                while let Ok(newer) = rx.try_recv() {
+                    s = newer;
+                }
+                apply(&handle, &s);
+            }
+        })
+        .ok();
+    *state.tx.lock().unwrap_or_else(|p| p.into_inner()) = Some(tx);
     Ok(tray)
 }
 

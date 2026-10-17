@@ -172,6 +172,9 @@ struct Session {
     duration_ms: u64,
     last_state: Option<SmtcState>,
     last_timeline: Instant,
+    /// Last reported (state, position, next, prev): re-applied after a track change, which can
+    /// arrive later than the state it belongs to (the cover is built off the engine thread).
+    current: Option<(SmtcState, u64, bool, bool)>,
 }
 
 impl Session {
@@ -220,6 +223,7 @@ impl Session {
             duration_ms: 0,
             last_state: None,
             last_timeline: Instant::now(),
+            current: None,
         })
     }
 
@@ -245,7 +249,10 @@ impl Session {
         }
         du.Update()?;
         self.duration_ms = t.duration_ms;
-        self.last_state = None; // force a timeline refresh for the new track
+        self.last_state = None; // force status + timeline for the new track
+        if let Some((st, pos, next, prev)) = self.current {
+            self.state(st, pos, next, prev)?;
+        }
         Ok(())
     }
 
@@ -256,6 +263,7 @@ impl Session {
         next: bool,
         prev: bool,
     ) -> windows::core::Result<()> {
+        self.current = Some((s, pos, next, prev));
         let changed = self.last_state != Some(s);
         if changed {
             self.smtc.SetPlaybackStatus(match s {
