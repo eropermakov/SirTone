@@ -52,6 +52,7 @@ import { SettingsScreen } from "./shell/SettingsScreen";
 import { type Screen, Sidebar } from "./shell/Sidebar";
 import { usePerformance } from "./shell/usePerformance";
 import { usePlayback } from "./shell/usePlayback";
+import { WaveScreen } from "./wave/WaveScreen";
 
 /** One place in the app: a sidebar section, maybe with an album/artist opened. */
 type NavEntry = {
@@ -293,6 +294,8 @@ export function App() {
                 library={lib.status}
                 onChooseLibrary={() => lib.setRootNeeded(true)}
               />
+            ) : screen === "wave" && hasMusic ? (
+              <WaveScreen snap={snap} onGo={goTo} />
             ) : screen === "search" && hasMusic ? (
               <SearchScreen
                 playingId={snap.trackId}

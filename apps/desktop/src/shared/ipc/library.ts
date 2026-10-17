@@ -14,6 +14,7 @@ import {
   type TrackAssignment,
   type TrackDetails,
   type TrackItem,
+  type TrackPage,
   type UnknownItem,
 } from "./bindings";
 
@@ -155,3 +156,16 @@ export const collectionGenres = async (): Promise<GenreItem[]> =>
 
 export const genreTracks = async (key: string): Promise<TrackItem[]> =>
   isTauri() ? unwrap(await commands.genreTracks(key)) : [];
+
+/** Every playable track id (keyset pages of 500) — «Слушать всё вперемешку». */
+export const allTrackIds = async (): Promise<number[]> => {
+  if (!isTauri()) return [];
+  const ids: number[] = [];
+  let after: PageCursor | null = null;
+  for (;;) {
+    const page: TrackPage = unwrap(await commands.collectionTracks(after, 500));
+    ids.push(...page.rows.map((r) => r.id));
+    if (!page.next) return ids;
+    after = page.next;
+  }
+};

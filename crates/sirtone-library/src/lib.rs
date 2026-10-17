@@ -5,6 +5,7 @@ pub mod collection;
 pub mod covers;
 pub mod db;
 pub mod error;
+pub mod feedback;
 pub mod import;
 pub mod layout;
 pub mod playlists;

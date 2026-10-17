@@ -1080,6 +1080,8 @@ pub struct TrackDetails {
     pub path: String,
     pub added_at: f64,
     pub identity: String,
+    /// «К альбому» from the player.
+    pub album_id: Option<u32>,
 }
 
 #[tauri::command(async)]
@@ -1097,7 +1099,7 @@ pub fn track_details(lib: State<'_, Library>, track: u32) -> Result<TrackDetails
                        WHERE ta.track_id = t.id ORDER BY ta.position)), ''),
                     al.title, t.track_no, coalesce(t.year, al.year), t.genre_main, t.codec, t.container,
                     t.lossless, t.sample_rate, t.channels, t.duration_ms, t.size_bytes, t.rel_path,
-                    t.added_at, t.identity_state
+                    t.added_at, t.identity_state, t.album_id
              FROM track t LEFT JOIN album al ON al.id = t.album_id WHERE t.id = ?1",
             [track],
             |r| {
@@ -1124,6 +1126,7 @@ pub fn track_details(lib: State<'_, Library>, track: u32) -> Result<TrackDetails
                         .into_owned(),
                     added_at: r.get::<_, i64>(15)? as f64,
                     identity: r.get(16)?,
+                    album_id: r.get::<_, Option<i64>>(17)?.map(|a| a as u32),
                 })
             },
         )?)

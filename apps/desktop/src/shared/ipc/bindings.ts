@@ -91,6 +91,14 @@ export const commands = {
 	playlistMove: (id: number, from: number, to: number) => typedError<null, AppError>(__TAURI_INVOKE("playlist_move", { id, from, to })),
 	librarySearch: (query: string) => typedError<SearchResults, AppError>(__TAURI_INVOKE("library_search", { query })),
 	perfHardware: () => __TAURI_INVOKE<HardwareInfo>("perf_hardware"),
+	trackFeedback: (track: number) => typedError<TrackFeedback, AppError>(__TAURI_INVOKE("track_feedback", { track })),
+	feedbackLike: (track: number, on: boolean) => typedError<null, AppError>(__TAURI_INVOKE("feedback_like", { track, on })),
+	/**  «Не сейчас»: a minus in this daypart only, and on to the next track. */
+	feedbackNotNow: (track: number) => typedError<null, AppError>(__TAURI_INVOKE("feedback_not_now", { track })),
+	feedbackNever: (scope: NeverScope, id: number, on: boolean) => typedError<null, AppError>(__TAURI_INVOKE("feedback_never", { scope, id, on })),
+	/**  The primary artist of a track («Никогда в волне» → исполнитель). */
+	trackPrimaryArtist: (track: number) => typedError<number, AppError>(__TAURI_INVOKE("track_primary_artist", { track })),
+	neverList: () => typedError<NeverEntry[], AppError>(__TAURI_INVOKE("never_list")),
 	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
 	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),
 };
@@ -243,6 +251,17 @@ export type LibraryStatus = {
 	goneQuestion: number | null,
 };
 
+/**  A «Никогда в волне» row in Settings. */
+export type NeverEntry = {
+	scope: NeverScope,
+	id: number,
+	title: string,
+	/**  Artists of a track; empty for an artist. */
+	subtitle: string,
+};
+
+export type NeverScope = "track" | "artist";
+
 export type PageCursor = {
 	key: string,
 	id: number,
@@ -378,6 +397,14 @@ export type TrackDetails = {
 	path: string,
 	addedAt: number | null,
 	identity: string,
+	/**  «К альбому» from the player. */
+	albumId: number | null,
+};
+
+export type TrackFeedback = {
+	liked: boolean,
+	neverTrack: boolean,
+	neverArtist: boolean,
 };
 
 export type TrackItem = {

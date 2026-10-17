@@ -703,6 +703,45 @@ if (existsSync(corpus)) {
   const genreRows = page.getByRole("list", { name: "Треки" }).locator("button[aria-pressed]");
   await genreRows.first().waitFor({ timeout: 5000 });
   check("genre page lists its tracks", (await page.locator("h1").first().textContent()) === "Rock");
+  // T2.5 / T2.19: «Моя волна» is the player — like, «не сейчас» skips, «никогда» for the artist
+  // lands in Settings and comes back from there.
+  await genreRows.first().dblclick();
+  await sleep(800);
+  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  const heart = page.getByRole("button", { name: "Нравится" });
+  await heart.click();
+  await sleep(500);
+  const nowId = (await invoke("playback_snapshot", {})).trackId;
+  const fbState = await invoke("track_feedback", { track: nowId });
+  check(
+    "wave: ♡ likes the playing track",
+    fbState.liked && (await heart.getAttribute("aria-pressed")) === "true",
+  );
+  await page.getByRole("button", { name: "Не сейчас" }).click();
+  await sleep(1200);
+  const afterSkip = (await invoke("playback_snapshot", {})).trackId;
+  check("wave: «Не сейчас» goes to the next track", afterSkip !== nowId, `${nowId} → ${afterSkip}`);
+  await page.getByRole("main").getByRole("button", { name: "Ещё" }).click();
+  await page.getByRole("menuitem", { name: "Никогда в волне" }).click();
+  await page.getByRole("menuitem", { name: "Этого исполнителя" }).click();
+  await sleep(600);
+  await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
+  const backBtn = page.getByRole("button", { name: "Вернуть", exact: true });
+  const neverListed = await backBtn
+    .first()
+    .waitFor({ timeout: 3000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  if (neverListed) await backBtn.first().click();
+  await sleep(600);
+  const neverLeft = await invoke("never_list", {});
+  check(
+    "«Никогда» is listed in Settings and «Вернуть» lifts it",
+    neverListed && neverLeft.length === 0,
+    `listed ${neverListed}, left ${neverLeft.length}`,
+  );
   // T2.4: auto-detect — hardware + WebGL benchmark → a level, saved like a manual choice.
   await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
   await page.getByRole("button", { name: "Определить автоматически" }).click();

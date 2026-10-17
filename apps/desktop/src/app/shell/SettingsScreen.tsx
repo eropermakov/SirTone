@@ -2,6 +2,7 @@ import { Check, Gauge, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionSummary } from "@/app/library/CollectionScreen";
+import { type NeverEntry, never, neverList } from "@/shared/ipc/feedback";
 import type { LibraryStatus } from "@/shared/ipc/library";
 import { perfHardware } from "@/shared/ipc/perf";
 import { getSettings, patchSettings } from "@/shared/ipc/settings";
@@ -191,6 +192,8 @@ export function SettingsScreen({
       <StartupSection />
 
       <HotkeysSection />
+
+      <NeverSection />
 
       <div className="flex flex-col gap-2">
         <h2 className="t-shelf-title text-primary-text">{t("settings.about")}</h2>
@@ -436,6 +439,49 @@ function PerformanceSection() {
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** «Никогда в волне» (FR-WENG-009): what was excluded, and «Вернуть». Optimistic. */
+function NeverSection() {
+  const { t } = useTranslation("shell");
+  const [items, setItems] = useState<NeverEntry[]>([]);
+  useEffect(() => {
+    neverList()
+      .then(setItems)
+      .catch(() => setItems([]));
+  }, []);
+  const back = (e: NeverEntry) => {
+    setItems((l) => l.filter((x) => !(x.scope === e.scope && x.id === e.id)));
+    never(e.scope, e.id, false).catch(() => {
+      setItems((l) => [...l, e]);
+      notify(t("wave.failed"));
+    });
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsNever.title")}</h2>
+      <p className="t-caption text-text-secondary">{t("settingsNever.hint")}</p>
+      <div className="flex flex-col divide-y divide-border rounded-(--radius-xl) border border-border bg-bg-raised px-6">
+        {items.length === 0 ? (
+          <p className="t-body py-4 text-text-secondary">{t("settingsNever.empty")}</p>
+        ) : (
+          items.map((e) => (
+            <div key={`${e.scope}:${e.id}`} className="flex items-center gap-4 py-3">
+              <div className="min-w-0 flex-1">
+                <div className="t-body truncate text-text-primary">{e.title}</div>
+                <div className="t-caption truncate text-text-secondary">
+                  {e.scope === "artist" ? t("settingsNever.artist") : e.subtitle}
+                </div>
+              </div>
+              <Button variant="secondary" onClick={() => back(e)}>
+                {t("settingsNever.back")}
+              </Button>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

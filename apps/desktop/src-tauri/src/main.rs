@@ -5,6 +5,7 @@
 mod autostart;
 mod bootstrap;
 mod diagnostics;
+mod feedback;
 mod hotkeys;
 mod ipc;
 mod journal;
