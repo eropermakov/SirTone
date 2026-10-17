@@ -23,7 +23,7 @@ use sirtone_audio::{EngineCmd, EngineEvent, PlayState};
 
 fn usage() -> ExitCode {
     eprintln!(
-        "sirtone-cli {}\nusage: sirtone-cli probe <file>... | play <file> [--volume 0..1] | render <file> --out <wav> | import <root> [src]... | verify <root> | wave calendar <year>",
+        "sirtone-cli {}\nusage: sirtone-cli probe <file>... | play <file> [--volume 0..1] | render <file> --out <wav> | import <root> [src]... | verify <root> | wave calendar <year> | smtc [toggle <title>]",
         env!("CARGO_PKG_VERSION")
     );
     ExitCode::from(2)
@@ -140,6 +140,32 @@ fn main() -> ExitCode {
         Some("wave") if args.get(1).map(String::as_str) == Some("calendar") && args.len() > 2 => {
             wave::calendar(&args[2])
         }
+        Some("smtc") if args.get(1).map(String::as_str) == Some("toggle") && args.len() > 2 => {
+            match sirtone_platform::smtc::toggle_session(&args[2]) {
+                Ok(true) => ExitCode::SUCCESS,
+                Ok(false) => {
+                    eprintln!("smtc: no such session");
+                    ExitCode::FAILURE
+                }
+                Err(e) => {
+                    eprintln!("smtc: {e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        Some("smtc") => match sirtone_platform::smtc::sessions() {
+            // What the Windows 11 media flyout and widgets see (T1.23 check).
+            Ok(list) => {
+                for s in list {
+                    println!("{}	{}	{}	{}", s.app, s.status, s.title, s.artist);
+                }
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("smtc: {e}");
+                ExitCode::FAILURE
+            }
+        },
         Some("render") => {
             eprintln!("render: offline WAV render arrives with T1.7");
             ExitCode::FAILURE

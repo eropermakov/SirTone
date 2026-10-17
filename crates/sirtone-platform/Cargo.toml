@@ -23,5 +23,17 @@ windows = { workspace = true, features = [
     "Win32_System_Time",
     "Win32_System_Variant",
     "Win32_UI_Shell_PropertiesSystem",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
+    "std",
+    "Win32_System_LibraryLoader",
+    "Win32_System_WinRT",
+    "Foundation",
+    "Foundation_Collections",
+    "Media",
+    "Media_Control",
+    "Storage",
+    "Storage_Streams",
 ] }
 trash.workspace = true
+tracing.workspace = true

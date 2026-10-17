@@ -25,6 +25,8 @@ specta-typescript = { workspace = true }
 tauri-specta = { workspace = true }
 tauri-plugin-single-instance = { workspace = true }
 tauri-plugin-dialog = { workspace = true }
+tauri-plugin-autostart = { workspace = true }
+tauri-plugin-global-shortcut = { workspace = true }
 sirtone-library = { workspace = true }
 sirtone-recognize = { workspace = true }
 sirtone-playback = { workspace = true }

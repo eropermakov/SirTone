@@ -84,7 +84,13 @@
     "open": "Открыть Сиртон",
     "playPause": "Слушать / пауза",
     "quit": "Выход",
-    "tooltip": "Сиртон"
+    "tooltip": "Сиртон",
+    "nowPlaying": "Играет: {title}",
+    "nothing": "Ничего не играет",
+    "play": "Играть",
+    "pause": "Пауза",
+    "prev": "Назад",
+    "next": "Вперёд"
   },
   "collection": {
     "summary": "Вся коллекция: {tracks, plural, one {# трек} few {# трека} many {# треков} other {# трека}} · {hours} ч {minutes} мин · {size}",
@@ -131,5 +137,24 @@
     "goneTitle": "Файлы пропали из папки",
     "gone": "{count, plural, one {Пропал # файл} few {Пропало # файла} many {Пропало # файлов} other {Пропало # файла}}. Библиотека пока не изменена.",
     "goneConfirm": "Они удалены"
+  },
+  "settingsStartup": {
+    "title": "Запуск",
+    "autostart": "Запускать вместе с Windows",
+    "autostartHint": "Сиртон откроется свёрнутым в трей",
+    "autostartUnavailable": "Доступно в установленной версии"
+  },
+  "settingsHotkeys": {
+    "title": "Горячие клавиши",
+    "hint": "Работают во всей системе, даже когда окно свёрнуто",
+    "taken": "Занято другой программой",
+    "action": {
+      "playPause": "Играть / пауза",
+      "next": "Следующий трек",
+      "prev": "Предыдущий трек",
+      "volumeUp": "Громче",
+      "volumeDown": "Тише",
+      "mute": "Без звука"
+    }
   }
 }

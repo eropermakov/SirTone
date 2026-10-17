@@ -305,6 +305,16 @@ if (existsSync(corpus)) {
   await sleep(1200);
   const playing = await footer.locator(".t-body-strong").first().textContent();
   check("double click plays the track", playing === firstTitle, `${playing} / ${firstTitle}`);
+  // T1.23: Windows media controls (flyout, media keys, widgets) show the track and their ⏯
+  // reaches the player — on this isolated instance only (matched by the track title).
+  const smtcList = spawnSync(cli, ["smtc"], { encoding: "utf8" }).stdout;
+  check("media controls show the track", smtcList.includes(playing), smtcList.trim());
+  spawnSync(cli, ["smtc", "toggle", playing], { encoding: "utf8" });
+  await sleep(600);
+  const paused = await invoke("playback_snapshot", {});
+  check("media-controls ⏯ pauses", paused.state === "paused", paused.state);
+  spawnSync(cli, ["smtc", "toggle", playing], { encoding: "utf8" });
+  await sleep(600);
   // The album continues by itself (gapless handoff from the queue): no button pressed.
   const auto = await page
     .waitForFunction(
@@ -429,6 +439,34 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
     `${Date.now() - t0} ms, ${back.tracks}/${before}`,
   );
 }
+
+// T1.22: five default hotkeys configured; each either registered or reported as taken (when the
+// owner's own Сиртон holds them, this isolated copy must see a conflict, not fail).
+const hk = await invoke("hotkeys_status", {});
+check(
+  "hotkeys configured, conflicts reported",
+  hk.length === 5 && hk.every((h) => typeof h.registered === "boolean"),
+  hk.map((h) => `${h.accel}:${h.registered ? "ok" : "taken"}`).join(" "),
+);
+
+// 10. Autostart launches with --minimized (T1.24): straight to the tray, no window shown.
+await browser.close();
+app.kill();
+await sleep(800);
+app = launch(["--minimized"]);
+({ browser, page } = await connect());
+await sleep(4000); // past the show fallback
+// The only visible top-level window may be a helper (single-instance «-siw»); the main window,
+// titled like the app, must not be shown.
+const shown = spawnSync("powershell", [
+  "-NoProfile",
+  "-Command",
+  `$t = (Get-Process -Id ${app.pid}).MainWindowTitle; if ($t -and $t -notlike '*-siw') { 'shown' } else { 'hidden' }`,
+])
+  .stdout.toString()
+  .trim();
+check("--minimized keeps the window hidden", shown === "hidden", shown);
+check("--minimized instance is alive", (await invoke("playback_snapshot", {})) !== null);
 
 await browser.close();
 app.kill();

@@ -2,8 +2,10 @@
 // No console window in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod autostart;
 mod bootstrap;
 mod diagnostics;
+mod hotkeys;
 mod ipc;
 mod journal;
 mod library;
@@ -59,13 +61,18 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(autostart::plugin())
+        .plugin(hotkeys::plugin())
+        .manage(hotkeys::Hotkeys::default())
         // Covers without IPC (docs/03 §5.6); work off the main thread.
         .register_asynchronous_uri_scheme_protocol("sirtone-cover", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             let path = request.uri().path().to_string();
             std::thread::spawn(move || responder.respond(library::cover_protocol(&app, &path)));
         })
-        .manage(ShownOnce::default())
+        // Started by the Run entry (`--minimized`): stay in the tray, never show the window.
+        .manage(ShownOnce(Arc::new(AtomicBool::new(autostart::started_minimized()))))
+        .manage(tray::TrayMenu::default())
         .manage(settings)
         .invoke_handler(specta.invoke_handler())
         // Native file drop (D-07): paths stay in Rust and go to the library import (FR-IMP-001).
@@ -90,12 +97,14 @@ fn main() {
                 tracing::error!(target: "sirtone::startup", error = %e, "tray failed");
             }
             let store = app.state::<Arc<settings_store::SettingsStore>>().inner().clone();
+            autostart::sync(app.handle(), &store);
             app.manage(library::Library::start(app.handle().clone(), store.clone()));
             match playback::Playback::start(app.handle().clone(), store) {
                 Ok(pb) => {
                     let args: Vec<String> = std::env::args().collect();
                     pb.open_paths(app.handle(), &playback::paths_from_args(&args));
                     app.manage(pb);
+                    hotkeys::apply(app.handle());
                 }
                 Err(e) => {
                     tracing::error!(target: "sirtone::startup", code = ?e.code, "audio engine failed to start");
@@ -127,10 +136,13 @@ fn main() {
 
     match app {
         Ok(app) => app.run(|handle, event| {
-            if let tauri::RunEvent::Exit = event
-                && let Some(pb) = handle.try_state::<playback::Playback>()
-            {
-                pb.shutdown();
+            if let tauri::RunEvent::Exit = event {
+                // Orderly exit (docs/07 §1): journal and engine stop, hotkeys are released.
+                use tauri_plugin_global_shortcut::GlobalShortcutExt;
+                let _ = handle.global_shortcut().unregister_all();
+                if let Some(pb) = handle.try_state::<playback::Playback>() {
+                    pb.shutdown();
+                }
             }
         }),
         Err(err) => {

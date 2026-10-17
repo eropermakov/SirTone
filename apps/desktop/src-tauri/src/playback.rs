@@ -9,8 +9,9 @@ use serde::{Deserialize, Serialize};
 use sirtone_audio::{EngineCmd, EngineEvent, EngineHandle, PlayState};
 use sirtone_core::error::{AppError, ErrorCode};
 use sirtone_core::wave::{EndReason, PlaySource};
+use sirtone_platform::smtc::{Smtc, SmtcButton, SmtcState, SmtcTrack};
 use sirtone_playback::{Queue, Step};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::journal::{Item as JournalItem, Journal};
 use crate::settings_store::SettingsStore;
@@ -98,6 +99,60 @@ pub struct Playback {
     last: Arc<Mutex<PlaybackSnapshot>>,
     queue: Arc<Mutex<Queue<QueueItem>>>,
     journal: Arc<Journal>,
+    /// Volume before «без звука» (mute hotkey), restored by the next press.
+    muted_from: Mutex<Option<f32>>,
+    /// Keeps the media-controls session alive for the app's lifetime.
+    _smtc: Option<Arc<Smtc>>,
+}
+
+/// Mirrors a snapshot into the Windows media controls: the track (with a cover built off the
+/// engine thread) when it changes, the state and position always (throttled inside).
+fn update_smtc(
+    app: &AppHandle,
+    smtc: &Arc<Smtc>,
+    last: &Mutex<Option<(Option<String>, Option<String>)>>,
+    snap: &PlaybackSnapshot,
+) {
+    let key = (snap.title.clone(), snap.cover.clone());
+    let changed = last
+        .lock()
+        .map(|mut l| {
+            let changed = l.as_ref() != Some(&key);
+            *l = Some(key);
+            changed
+        })
+        .unwrap_or(false);
+    if changed {
+        let track = snap.title.clone().map(|title| SmtcTrack {
+            title,
+            artist: snap.artists.clone().unwrap_or_default(),
+            album: String::new(),
+            cover: None,
+            duration_ms: u64::from(snap.duration_ms.unwrap_or(0)),
+        });
+        let (app, smtc, hash) = (app.clone(), smtc.clone(), snap.cover.clone());
+        std::thread::spawn(move || {
+            let track = track.map(|mut t| {
+                t.cover = hash.and_then(|h| {
+                    app.try_state::<crate::library::Library>()
+                        .and_then(|l| l.smtc_cover(&h))
+                });
+                t
+            });
+            smtc.set_track(track);
+        });
+    }
+    let state = match snap.state {
+        PlaybackState::Playing => SmtcState::Playing,
+        PlaybackState::Paused => SmtcState::Paused,
+        PlaybackState::Empty | PlaybackState::Ended => SmtcState::Stopped,
+    };
+    smtc.set_state(
+        state,
+        u64::from(snap.position_ms),
+        snap.has_next,
+        snap.has_prev,
+    );
 }
 
 fn empty_snapshot() -> PlaybackSnapshot {
@@ -131,6 +186,24 @@ impl Playback {
         let sink_handle = handle.clone();
         let journal = Arc::new(Journal::start(settings.clone()));
         let sink_journal = journal.clone();
+        // Media keys, the Windows 11 flyout and widgets (T1.23): buttons go straight to this
+        // service, so they work with the window hidden.
+        let smtc_app = app.clone();
+        let smtc = Smtc::start(move |b| {
+            let Some(pb) = smtc_app.try_state::<Playback>() else {
+                return;
+            };
+            match b {
+                SmtcButton::Play | SmtcButton::Pause | SmtcButton::Toggle => pb.toggle(),
+                SmtcButton::Next => pb.next(),
+                SmtcButton::Previous => pb.prev(),
+                SmtcButton::Stop => pb.pause(),
+                SmtcButton::Seek(ms) => pb.engine.send(EngineCmd::Seek(ms)),
+            }
+        })
+        .map(Arc::new);
+        let sink_smtc = smtc.clone();
+        let smtc_last: Mutex<Option<(Option<String>, Option<String>)>> = Mutex::new(None);
         let engine = sirtone_audio::start(Box::new(move |ev| match ev {
             EngineEvent::Snapshot(s) => {
                 let mut q = sink_queue.lock().unwrap_or_else(|p| p.into_inner());
@@ -202,6 +275,19 @@ impl Playback {
                     }
                     *l = snap.clone();
                 }
+                if let Some(smtc) = sink_smtc.as_ref() {
+                    update_smtc(&app, smtc, &smtc_last, &snap);
+                }
+                crate::tray::update(
+                    &app,
+                    &crate::tray::TrayState {
+                        title: snap.title.clone(),
+                        artists: snap.artists.clone(),
+                        playing: snap.state == PlaybackState::Playing,
+                        has_prev: snap.has_prev,
+                        has_next: snap.has_next,
+                    },
+                );
                 let _ = snap.emit(&app);
             }
             EngineEvent::Error { error, path } => {
@@ -228,6 +314,8 @@ impl Playback {
             last,
             queue,
             journal,
+            muted_from: Mutex::new(None),
+            _smtc: smtc,
         })
     }
 
@@ -319,6 +407,47 @@ impl Playback {
         self.engine.send(EngineCmd::Toggle);
     }
 
+    pub fn pause(&self) {
+        self.engine.send(EngineCmd::Pause);
+    }
+
+    /// Current player volume (0..1), as the engine last reported it.
+    pub fn volume(&self) -> f32 {
+        self.last.lock().map(|s| s.volume).unwrap_or(1.0)
+    }
+
+    /// Sets the player volume (only Сиртон's, never the system's) and remembers it (D-64).
+    pub fn set_volume(&self, volume: f32) {
+        let volume = if volume.is_finite() {
+            volume.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        if let Ok(mut m) = self.muted_from.lock() {
+            *m = None;
+        }
+        self.engine.send(EngineCmd::SetVolume(volume));
+        // Remembered between launches (D-64); the store debounces disk writes to 1/s.
+        let _ = self
+            .settings
+            .patch(&serde_json::json!({ "playback": { "volume": volume } }));
+    }
+
+    /// «Без звука» and back to the previous volume.
+    pub fn toggle_mute(&self) {
+        let restore = self.muted_from.lock().ok().and_then(|mut m| m.take());
+        match restore {
+            Some(v) => self.set_volume(v),
+            None => {
+                let current = self.volume();
+                self.engine.send(EngineCmd::SetVolume(0.0));
+                if let Ok(mut m) = self.muted_from.lock() {
+                    *m = Some(current);
+                }
+            }
+        }
+    }
+
     pub fn shutdown(&self) {
         self.journal.shutdown();
         self.engine.send(EngineCmd::Shutdown);
@@ -388,16 +517,7 @@ pub fn playback_seek(pb: State<'_, Playback>, position_ms: u32) {
 #[tauri::command]
 #[specta::specta]
 pub fn playback_set_volume(pb: State<'_, Playback>, volume: f32) {
-    let volume = if volume.is_finite() {
-        volume.clamp(0.0, 1.0)
-    } else {
-        1.0
-    };
-    pb.engine.send(EngineCmd::SetVolume(volume));
-    // Remembered between launches (D-64); the store debounces disk writes to 1/s.
-    let _ = pb
-        .settings
-        .patch(&serde_json::json!({ "playback": { "volume": volume } }));
+    pb.set_volume(volume);
 }
 
 #[cfg(test)]

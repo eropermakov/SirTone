@@ -23,6 +23,7 @@ pub struct Settings {
     pub sleep: Sleep,
     pub focus: Focus,
     pub sfx: Sfx,
+    pub hotkeys: Hotkeys,
     pub window: WindowPrefs,
     pub library: LibraryPrefs,
     pub network: Network,
@@ -45,6 +46,7 @@ impl Default for Settings {
             sleep: Sleep::default(),
             focus: Focus::default(),
             sfx: Sfx::default(),
+            hotkeys: Hotkeys::default(),
             window: WindowPrefs::default(),
             library: LibraryPrefs::default(),
             network: Network::default(),
@@ -392,6 +394,31 @@ impl Default for Sfx {
     }
 }
 
+/// Global hotkeys (FR-WIN-001, docs/07 §2): accelerator per action, `null` = none.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Hotkeys {
+    pub play_pause: Option<String>,
+    pub next: Option<String>,
+    pub prev: Option<String>,
+    pub volume_up: Option<String>,
+    pub volume_down: Option<String>,
+    pub mute: Option<String>,
+}
+
+impl Default for Hotkeys {
+    fn default() -> Self {
+        Self {
+            play_pause: Some("Ctrl+Alt+Space".into()),
+            next: Some("Ctrl+Alt+Right".into()),
+            prev: Some("Ctrl+Alt+Left".into()),
+            volume_up: Some("Ctrl+Alt+Up".into()),
+            volume_down: Some("Ctrl+Alt+Down".into()),
+            mute: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WindowPrefs {
@@ -609,6 +636,8 @@ mod tests {
         assert_eq!(s.appearance.accent.preset, "sirkov");
         assert!((s.playback.normalization.target_lufs + 14.0).abs() < f32::EPSILON);
         assert_eq!(s.wave.repeat_window_h, 24);
+        assert_eq!(s.hotkeys.play_pause.as_deref(), Some("Ctrl+Alt+Space"));
+        assert_eq!(s.hotkeys.mute, None);
     }
 
     #[test]

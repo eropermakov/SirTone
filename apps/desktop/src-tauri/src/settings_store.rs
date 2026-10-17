@@ -132,6 +132,9 @@ pub fn settings_patch(
     let (doc, changed) = store
         .patch(&patch.0)
         .map_err(|e| AppError::new(ErrorCode::InvalidArgument).with_details(e))?;
+    if changed.iter().any(|k| k == "hotkeys") {
+        crate::hotkeys::apply(&app); // FR-WIN-001: applied without a restart
+    }
     let _ = app.emit("settings://changed", &changed);
     Ok(Json(doc))
 }

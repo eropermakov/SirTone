@@ -276,11 +276,7 @@ mod frozen {
     #[test]
     fn shipped_migrations_are_frozen() {
         for (name, sql, want) in FROZEN {
-            let sql = sql.replace(
-                "
-", "
-",
-            );
+            let sql = sql.replace("\r\n", "\n");
             let hash = blake3::hash(sql.as_bytes()).to_hex().to_string();
             assert_eq!(
                 hash, *want,

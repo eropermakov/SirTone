@@ -84,7 +84,13 @@
     "open": "",
     "playPause": "",
     "quit": "",
-    "tooltip": ""
+    "tooltip": "",
+    "nowPlaying": "Playing: {title}",
+    "nothing": "Nothing is playing",
+    "play": "Play",
+    "pause": "Pause",
+    "prev": "Previous",
+    "next": "Next"
   },
   "collection": {
     "summary": "",
@@ -131,5 +137,24 @@
     "goneTitle": "Files vanished from the folder",
     "gone": "{count, plural, one {# file is} other {# files are}} gone. The library is unchanged for now.",
     "goneConfirm": "They are deleted"
+  },
+  "settingsStartup": {
+    "title": "Startup",
+    "autostart": "Start with Windows",
+    "autostartHint": "SirTone opens minimized to the tray",
+    "autostartUnavailable": "Available in the installed version"
+  },
+  "settingsHotkeys": {
+    "title": "Hotkeys",
+    "hint": "Work system-wide, even when the window is minimized",
+    "taken": "Taken by another program",
+    "action": {
+      "playPause": "Play / pause",
+      "next": "Next track",
+      "prev": "Previous track",
+      "volumeUp": "Louder",
+      "volumeDown": "Quieter",
+      "mute": "Mute"
+    }
   }
 }

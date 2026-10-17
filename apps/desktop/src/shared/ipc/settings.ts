@@ -18,7 +18,10 @@ export type SettingsDoc = {
   };
   [key: string]: unknown;
 };
-export type SettingsPatch = { appearance?: { theme?: string; accent?: Record<string, unknown> } };
+export type SettingsPatch = {
+  appearance?: { theme?: string; accent?: Record<string, unknown> };
+  hotkeys?: Record<string, string | null>;
+};
 
 const WEB_KEY = "sirtone.web.settings";
 const LEGACY_PROTO_KEY = "sirtone.proto.appearance";

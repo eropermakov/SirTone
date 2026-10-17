@@ -441,6 +441,13 @@ impl Library {
         std::fs::read(path).ok()
     }
 
+    /// 512 px JPEG of an album cover for the Windows media controls (docs/07 §3).
+    pub fn smtc_cover(&self, hash: &str) -> Option<PathBuf> {
+        let root = lock(&self.shared).root.clone()?;
+        let dir = crate::diagnostics::data_dir().join("cache").join("smtc");
+        sirtone_library::covers::smtc_jpeg(&root, hash, &dir).ok()
+    }
+
     /// Absolute paths + display data + album cover hash for track ids (in that order).
     pub fn resolve(&self, ids: &[u32]) -> Result<Vec<Resolved>, AppError> {
         let root = lock(&self.shared)

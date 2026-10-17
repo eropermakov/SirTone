@@ -19,6 +19,11 @@ export const commands = {
 	playbackPrev: () => __TAURI_INVOKE<void>("playback_prev"),
 	/**  Plays library tracks `ids` as one context starting at `start` (double-click in a list). */
 	playTracks: (ids: number[], start: number, context: PlayContext) => typedError<null, AppError>(__TAURI_INVOKE("play_tracks", { ids, start, context })),
+	autostartAvailable: () => __TAURI_INVOKE<boolean>("autostart_available"),
+	/**  Settings → «Горячие клавиши»: what is configured and what Windows refused. */
+	hotkeysStatus: () => __TAURI_INVOKE<HotkeyStatus[]>("hotkeys_status"),
+	/**  Turns «Запускать вместе с Windows» on/off and saves the setting; returns the real state. */
+	autostartSet: (on: boolean) => typedError<boolean, AppError>(__TAURI_INVOKE("autostart_set", { on })),
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
 	/**  Folder picker (native dialog); `None` when the user cancels. */
 	libraryPickFolder: () => __TAURI_INVOKE<string | null>("library_pick_folder"),
@@ -47,6 +52,7 @@ export const commands = {
 
 /** Events */
 export const events = {
+	hotkeyConflict: makeEvent<HotkeyConflict>("hotkey-conflict"),
 	importFinished: makeEvent<ImportFinished>("import-finished"),
 	importProgress: makeEvent<ImportProgress>("import-progress"),
 	libraryChanged: makeEvent<LibraryChanged>("library-changed"),
@@ -99,6 +105,22 @@ export type Bootstrap = {
 export type ErrorCode = "FileNotFound" | "UnsupportedFormat" | "DecodeFailed" | "PathTooLong" | "DiskFull" | "PermissionDenied" | "DeviceUnavailable" | "DeviceBusy" | "NetworkOffline" | "RateLimited" | "RemoteError" | "DbBusy" | "DbCorrupt" | "Cancelled" | "InvalidArgument" | "LibraryOffline" | 
 /**  No library folder chosen yet (docs/03 §8.2): the UI asks for one. */
 "LibraryRootNotSet" | "NotSupported" | "InvalidConfig" | "Internal";
+
+export type HotkeyAction = "playPause" | "next" | "prev" | "volumeUp" | "volumeDown" | "mute";
+
+/**  A hotkey could not be registered (FR-WIN-001 «обнаружение конфликтов»). */
+export type HotkeyConflict = {
+	action: HotkeyAction,
+	accel: string,
+};
+
+/**  One configured hotkey and whether Windows gave it to us. */
+export type HotkeyStatus = {
+	action: HotkeyAction,
+	accel: string,
+	/**  `false` = taken by another program (or not a valid combination). */
+	registered: boolean,
+};
 
 /**  Batch report (docs/05 §3.2): «Добавлено · Неизвестные · Дубли · Не добавлено». */
 export type ImportFinished = {

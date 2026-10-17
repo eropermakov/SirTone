@@ -1,9 +1,19 @@
 import { Check, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionSummary } from "@/app/library/CollectionScreen";
 import type { LibraryStatus } from "@/shared/ipc/library";
+import { getSettings, patchSettings } from "@/shared/ipc/settings";
+import {
+  autostartAvailable,
+  type HotkeyAction,
+  type HotkeyStatus,
+  hotkeysStatus,
+  setAutostart,
+} from "@/shared/ipc/window";
 import { cn } from "@/shared/lib/utils";
 import { ACCENT_SLUGS, type AccentSource, type ThemePref } from "@/shared/theme/theme";
+import { Switch } from "@/shared/ui/Switch";
 
 type Props = {
   theme: ThemePref;
@@ -163,6 +173,10 @@ export function SettingsScreen({
         </div>
       )}
 
+      <StartupSection />
+
+      <HotkeysSection />
+
       <div className="flex flex-col gap-2">
         <h2 className="t-shelf-title text-primary-text">{t("settings.about")}</h2>
         <p className="t-body text-text-secondary">
@@ -170,5 +184,105 @@ export function SettingsScreen({
         </p>
       </div>
     </section>
+  );
+}
+
+/** «Запуск» (FR-SHELL-007): start with Windows, minimized to the tray. Optimistic: the switch
+ * moves at once and rolls back if Windows refuses. */
+function StartupSection() {
+  const { t } = useTranslation("shell");
+  const [available, setAvailable] = useState(false);
+  const [on, setOn] = useState(false);
+
+  useEffect(() => {
+    autostartAvailable().then(setAvailable);
+    getSettings().then((s) => {
+      const w = s.window as { autostart?: boolean } | undefined;
+      setOn(Boolean(w?.autostart));
+    });
+  }, []);
+
+  const change = (next: boolean) => {
+    setOn(next);
+    setAutostart(next)
+      .then(setOn)
+      .catch(() => setOn(!next));
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsStartup.title")}</h2>
+      <div className="flex items-center gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="t-body-strong text-text-primary">{t("settingsStartup.autostart")}</span>
+          <span className="t-caption text-text-secondary">
+            {available
+              ? t("settingsStartup.autostartHint")
+              : t("settingsStartup.autostartUnavailable")}
+          </span>
+        </div>
+        <Switch
+          checked={on}
+          onChange={change}
+          label={t("settingsStartup.autostart")}
+          disabled={!available}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Defaults from settings (docs/03 §6): a switched-off action gets its default back on. */
+const HOTKEYS: { action: HotkeyAction; key: string; def: string }[] = [
+  { action: "playPause", key: "play_pause", def: "Ctrl+Alt+Space" },
+  { action: "next", key: "next", def: "Ctrl+Alt+Right" },
+  { action: "prev", key: "prev", def: "Ctrl+Alt+Left" },
+  { action: "volumeUp", key: "volume_up", def: "Ctrl+Alt+Up" },
+  { action: "volumeDown", key: "volume_down", def: "Ctrl+Alt+Down" },
+  { action: "mute", key: "mute", def: "Ctrl+Alt+M" },
+];
+
+/** «Горячие клавиши» (FR-WIN-001): combination, on/off, «занято другой программой». */
+function HotkeysSection() {
+  const { t } = useTranslation("shell");
+  const [status, setStatus] = useState<HotkeyStatus[]>([]);
+  const reload = () => {
+    hotkeysStatus().then(setStatus);
+  };
+  useEffect(reload, []);
+
+  const toggle = (key: string, def: string, on: boolean) => {
+    patchSettings({ hotkeys: { [key]: on ? def : null } }).then(reload, reload);
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsHotkeys.title")}</h2>
+      <p className="t-caption text-text-secondary">{t("settingsHotkeys.hint")}</p>
+      <div className="flex flex-col divide-y divide-border rounded-(--radius-xl) border border-border bg-bg-raised">
+        {HOTKEYS.map((h) => {
+          const st = status.find((s) => s.action === h.action);
+          const label = t(`settingsHotkeys.action.${h.action}`);
+          return (
+            <div key={h.action} className="flex items-center gap-4 px-6 py-3">
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="t-body text-text-primary">{label}</span>
+                {st && !st.registered && (
+                  <span className="t-caption text-danger">{t("settingsHotkeys.taken")}</span>
+                )}
+              </div>
+              <span className="t-caption rounded-(--radius-md) border border-border px-2 py-1 text-text-secondary">
+                {st?.accel ?? h.def}
+              </span>
+              <Switch
+                checked={Boolean(st)}
+                onChange={(on) => toggle(h.key, st?.accel ?? h.def, on)}
+                label={label}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

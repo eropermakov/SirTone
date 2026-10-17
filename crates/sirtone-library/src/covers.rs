@@ -165,6 +165,31 @@ pub fn variant(root: &Path, hash: &str, size: u32) -> Result<PathBuf, LibraryErr
     Ok(out)
 }
 
+/// A 512 px JPEG of the cover for Windows media controls (docs/07 §3): SMTC thumbnails come from
+/// a file; JPEG is what every widget reading them understands. Cached by hash in `dir`.
+pub fn smtc_jpeg(root: &Path, hash: &str, dir: &Path) -> Result<PathBuf, LibraryError> {
+    if !valid_hash(hash) {
+        return Err(LibraryError::Invalid("bad cover request".into()));
+    }
+    let out = dir.join(format!("{hash}.jpg"));
+    if out.exists() {
+        return Ok(out);
+    }
+    let webp = variant(root, hash, 512)?;
+    let img = image::ImageReader::open(&webp)?
+        .with_guessed_format()?
+        .decode()
+        .map_err(|e| LibraryError::Invalid(e.to_string()))?
+        .to_rgb8();
+    let mut bytes = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, 85)
+        .encode_image(&img)
+        .map_err(|e| LibraryError::Invalid(e.to_string()))?;
+    fs::create_dir_all(dir)?;
+    write_atomic(&out, &bytes)?;
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
