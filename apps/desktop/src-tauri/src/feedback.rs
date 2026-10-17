@@ -55,7 +55,7 @@ pub fn feedback_like(lib: State<'_, Library>, track: u32, on: bool) -> Result<()
     lib.with_write(|c| feedback::set_like(c, i64::from(track), on))
 }
 
-/// «Не сейчас»: a minus in this daypart only, and on to the next track.
+/// «Не сейчас»: a minus in this context bucket only (D-77), and on to the next track.
 #[tauri::command(async)]
 #[specta::specta]
 pub fn feedback_not_now(
@@ -64,7 +64,7 @@ pub fn feedback_not_now(
     track: u32,
 ) -> Result<(), AppError> {
     let ctx = ContextBuilder::default().snapshot(&SystemClock);
-    let key = format!("daypart:{}", ctx.daypart as u8);
+    let key = sirtone_wave::context::bucket_key(&ctx);
     lib.with_write(|c| feedback::not_now(c, i64::from(track), &key))?;
     pb.next();
     Ok(())
