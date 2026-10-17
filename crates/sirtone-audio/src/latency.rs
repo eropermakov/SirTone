@@ -95,12 +95,11 @@ impl Probe {
                         if armed == 0 || h.load(Ordering::Relaxed) != 0 {
                             continue;
                         }
-                        let first_loud =
-                            buf[..frames as usize * ch * 4]
-                                .chunks_exact(4)
-                                .position(|b| {
-                                    f32::from_le_bytes([b[0], b[1], b[2], b[3]]).abs() > THRESHOLD
-                                });
+                        let first_loud = buf[..frames as usize * ch * 4]
+                            .as_chunks::<4>()
+                            .0
+                            .iter()
+                            .position(|b| f32::from_le_bytes(*b).abs() > THRESHOLD);
                         let Some(i) = first_loud else { continue };
                         let t = info.timestamp + (i / ch) as u64 * 10_000_000 / u64::from(rate);
                         if t + 3_000_000 < armed {
