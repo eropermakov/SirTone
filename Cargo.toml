@@ -19,6 +19,7 @@ sirtone-platform = { path = "crates/sirtone-platform" }
 sirtone-library = { path = "crates/sirtone-library" }
 sirtone-recognize = { path = "crates/sirtone-recognize" }
 sirtone-playback = { path = "crates/sirtone-playback" }
+sirtone-wave = { path = "crates/sirtone-wave" }
 tauri = { version = "2.12", features = [] }
 tauri-build = "2.7"
 tauri-plugin-single-instance = "2.5"

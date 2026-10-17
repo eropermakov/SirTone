@@ -11,6 +11,7 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 mod library;
+mod wave;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -22,7 +23,7 @@ use sirtone_audio::{EngineCmd, EngineEvent, PlayState};
 
 fn usage() -> ExitCode {
     eprintln!(
-        "sirtone-cli {}\nusage: sirtone-cli probe <file>... | play <file> [--volume 0..1] | render <file> --out <wav>",
+        "sirtone-cli {}\nusage: sirtone-cli probe <file>... | play <file> [--volume 0..1] | render <file> --out <wav> | import <root> [src]... | verify <root> | wave calendar <year>",
         env!("CARGO_PKG_VERSION")
     );
     ExitCode::from(2)
@@ -136,6 +137,9 @@ fn main() -> ExitCode {
         }
         Some("import") if args.len() > 1 => library::import(&args[1], &args[2..]),
         Some("verify") if args.len() > 1 => library::verify(&args[1]),
+        Some("wave") if args.get(1).map(String::as_str) == Some("calendar") && args.len() > 2 => {
+            wave::calendar(&args[2])
+        }
         Some("render") => {
             eprintln!("render: offline WAV render arrives with T1.7");
             ExitCode::FAILURE

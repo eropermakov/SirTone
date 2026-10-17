@@ -1,0 +1,12 @@
+{
+  "schema": "sirtone.context/1",
+  "_note": "Daypart by the clock when no coordinates are known (FR-CTX-001). Temporary values, D-69.",
+  "daypart_by_clock": [
+    { "daypart": "dawn", "from": "05:00" },
+    { "daypart": "morning", "from": "07:00" },
+    { "daypart": "day", "from": "12:00" },
+    { "daypart": "evening", "from": "17:00" },
+    { "daypart": "dusk", "from": "21:00" },
+    { "daypart": "night", "from": "22:00" }
+  ]
+}

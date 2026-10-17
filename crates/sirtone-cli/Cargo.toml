@@ -17,4 +17,5 @@ sirtone-audio.workspace = true
 sirtone-library.workspace = true
 sirtone-recognize.workspace = true
 sirtone-platform.workspace = true
+sirtone-wave.workspace = true
 rusqlite.workspace = true

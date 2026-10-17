@@ -674,6 +674,8 @@ CREATE TABLE wave_state (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWI
 -- focus_today ({day, cycles}), learning_frozen, last_suggestion_day, …
 ```
 
+**Коды в хранимых полях** (неизменяемы, тест `stored_codes_are_frozen`, D-69): `season` зима 0 · весна 1 · лето 2 · осень 3; `daypart` рассвет 0 · утро 1 · день 2 · вечер 3 · закат 4 · ночь 5; `weather` clear 0 · cloudy 1 · fog 2 · drizzle_rain 3 · snow 4 · storm 5; `weekday` 0 = понедельник.
+
 ### 18.2. Хранение, приватность, портативность
 
 - `play_event` — внутренние данные, **нет раздела «История»** ✅ (не противоречит `§23` ТЗ: вне скоупа — раздел истории в интерфейсе). Старше 2 лет → `play_event_rollup` (задача `rollup_play_events`, раз в неделю) ✅. Размер: ~100 Б/запись → 30 прослушиваний в день × 2 года ≈ 2,2 МБ.
@@ -728,4 +730,4 @@ CREATE TABLE wave_state (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWI
 
 ## 22. Конфиги и ассеты (`assets/wave/`)
 
-`profiles/*.json` (встроенные профили) · `seasons.json` (профили звучания сезонов, окно перехода, поправка погодой) · `events.json` (календарь) · `dict/ru.json`, `dict/en.json` (слова сезонов и событий) · `genre_universality.json` · `tones.json` (тоны событий → вайб и классы AudioSet) · `themes.json` (сезонные/событийные палитры; значения — от владельца, D-3) · `effects.json` (типы частиц, плотности, бюджеты по пресетам). Все — с полем `schema`/`version`, валидация при загрузке, правятся без перекомпиляции (`12` §4).
+`profiles/*.json` (встроенные профили) · `context.json` (время суток по часам, D-69) · `seasons.json` (профили звучания сезонов, окно перехода, поправка погодой) · `events.json` (календарь) · `dict/ru.json`, `dict/en.json` (слова сезонов и событий) · `genre_universality.json` · `tones.json` (тоны событий → вайб и классы AudioSet) · `themes.json` (сезонные/событийные палитры; значения — от владельца, D-3) · `effects.json` (типы частиц, плотности, бюджеты по пресетам). Все — с полем `schema`/`version`, валидация при загрузке, правятся без перекомпиляции (`12` §4).

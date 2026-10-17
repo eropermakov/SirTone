@@ -4,3 +4,4 @@ pub mod error;
 pub mod ports;
 pub mod settings;
 pub mod text;
+pub mod wave;

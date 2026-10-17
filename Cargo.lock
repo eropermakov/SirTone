@@ -3768,6 +3768,7 @@ dependencies = [
  "sirtone-library",
  "sirtone-platform",
  "sirtone-recognize",
+ "sirtone-wave",
 ]
 
 [[package]]
@@ -3842,7 +3843,10 @@ dependencies = [
 name = "sirtone-wave"
 version = "0.1.7"
 dependencies = [
+ "serde",
+ "serde_json",
  "sirtone-core",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
