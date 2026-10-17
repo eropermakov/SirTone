@@ -11,6 +11,7 @@ pub mod playlists;
 pub mod reconcile;
 pub mod relocate;
 pub mod repo;
+pub mod search;
 pub mod watch;
 pub mod wave;
 

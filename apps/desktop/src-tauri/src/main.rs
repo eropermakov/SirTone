@@ -11,6 +11,7 @@ mod journal;
 mod library;
 mod playback;
 mod playlists;
+mod search;
 mod settings_store;
 mod tray;
 mod updates;

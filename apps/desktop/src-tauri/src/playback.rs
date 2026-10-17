@@ -152,6 +152,7 @@ pub enum PlayContext {
     Artist,
     Collection,
     Playlist,
+    Search,
 }
 
 impl From<PlayContext> for PlaySource {
@@ -161,6 +162,7 @@ impl From<PlayContext> for PlaySource {
             PlayContext::Artist => PlaySource::Artist,
             PlayContext::Collection => PlaySource::Collection,
             PlayContext::Playlist => PlaySource::Playlist,
+            PlayContext::Search => PlaySource::Search,
         }
     }
 }

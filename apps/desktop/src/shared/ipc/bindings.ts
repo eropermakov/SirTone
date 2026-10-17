@@ -87,6 +87,7 @@ export const commands = {
 	/**  «Убрать из плейлиста»: the items go, the tracks stay (FR-PLS-004). */
 	playlistRemove: (id: number, positions: number[]) => typedError<null, AppError>(__TAURI_INVOKE("playlist_remove", { id, positions })),
 	playlistMove: (id: number, from: number, to: number) => typedError<null, AppError>(__TAURI_INVOKE("playlist_move", { id, from, to })),
+	librarySearch: (query: string) => typedError<SearchResults, AppError>(__TAURI_INVOKE("library_search", { query })),
 	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
 	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),
 };
@@ -137,6 +138,8 @@ export type ArtistPage = {
 	rows: ArtistItem[],
 	next: PageCursor | null,
 };
+
+export type BestMatch = { kind: "track"; item: TrackItem } | { kind: "artist"; item: ArtistItem } | { kind: "album"; item: AlbumItem };
 
 export type Bootstrap = {
 	version: string,
@@ -223,7 +226,7 @@ export type PageCursor = {
 };
 
 /**  The screen a list was played from (`play_event.source`). */
-export type PlayContext = "album" | "artist" | "collection" | "playlist";
+export type PlayContext = "album" | "artist" | "collection" | "playlist" | "search";
 
 /**  A track or device error; the UI shows `errors.<code>` in a toast (DESIGN.md §9). */
 export type PlaybackError = {
@@ -259,6 +262,11 @@ export type PlaybackState = "empty" | "playing" | "paused" | "ended";
 export type PlaylistEntry = {
 	position: number,
 	track: TrackItem,
+};
+
+export type PlaylistHit = {
+	id: number,
+	name: string,
 };
 
 /**  A sidebar row. */
@@ -307,6 +315,14 @@ export type RemovalInfo = {
 
 /**  FR-PLAY-007 repeat mode over IPC. */
 export type RepeatMode = "off" | "one" | "all";
+
+export type SearchResults = {
+	best: BestMatch | null,
+	tracks: TrackItem[],
+	artists: ArtistItem[],
+	albums: AlbumItem[],
+	playlists: PlaylistHit[],
+};
 
 /**  What the user typed for a track (ручное назначение). */
 export type TrackAssignment = {

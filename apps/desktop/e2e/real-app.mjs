@@ -560,6 +560,29 @@ if (existsSync(corpus)) {
     (await plRows.count()) === 0 && tracksAfter === tracksBefore,
     `rows ${await plRows.count()}, tracks ${tracksBefore} → ${tracksAfter}`,
   );
+  // T2.13: Ctrl+F opens search; results as you type, the exact artist is the best match.
+  await page.keyboard.press("Control+f");
+  const searchField = page.getByLabel("Поиск по медиатеке");
+  await searchField.waitFor({ timeout: 3000 });
+  await searchField.fill("ленин");
+  const bestCard = page.getByRole("button", { name: "Ленинград", exact: true }).first();
+  const found = await bestCard.waitFor({ timeout: 3000 }).then(
+    () => true,
+    () => false,
+  );
+  check("Ctrl+F search finds the artist as you type", found);
+  const times = [];
+  for (const q of ["ленинград", "dream", "мо", "плоковник"]) {
+    const t0 = performance.now();
+    await invoke("library_search", { query: q });
+    times.push(performance.now() - t0);
+  }
+  const exact = await invoke("library_search", { query: "ленинград" });
+  check(
+    "search: exact artist is the best match, IPC round trip ≤ 80 ms",
+    exact.best?.kind === "artist" && Math.max(...times) <= 80,
+    `${exact.best?.kind}, max ${Math.max(...times).toFixed(1)} ms`,
+  );
   await page.getByRole("button", { name: "Настройки" }).click();
   check("storage shows the folder", (await page.getByText(libDir).count()) > 0);
 } else {

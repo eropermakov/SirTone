@@ -5,7 +5,7 @@
 use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::{
-    autostart, bootstrap, hotkeys, library, playback, playlists, settings_store, updates,
+    autostart, bootstrap, hotkeys, library, playback, playlists, search, settings_store, updates,
     window_chrome,
 };
 
@@ -76,6 +76,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             playlists::playlist_add,
             playlists::playlist_remove,
             playlists::playlist_move,
+            search::library_search,
             window_chrome::window_set_theme,
         ])
         .events(collect_events![

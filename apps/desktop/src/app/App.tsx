@@ -41,6 +41,7 @@ import type { Open } from "./library/CollectionScreen";
 import type { GoTo } from "./library/TrackList";
 import { PlaylistScreen } from "./playlists/PlaylistScreen";
 import { nextName, usePlaylists } from "./playlists/usePlaylists";
+import { SearchScreen } from "./search/SearchScreen";
 import { EmptyScreen } from "./shell/EmptyScreen";
 import { PlayerBar } from "./shell/PlayerBar";
 import { QueuePanel } from "./shell/QueuePanel";
@@ -164,6 +165,10 @@ export function App() {
       } else if (e.ctrlKey && !e.altKey && e.key === "ArrowLeft") {
         e.preventDefault();
         prevTrack();
+      } else if (e.ctrlKey && !e.altKey && (e.key === "f" || e.key === "F" || e.code === "KeyF")) {
+        // DESIGN.md §10: Ctrl+F — поиск (instead of the WebView find bar).
+        e.preventDefault();
+        setScreen("search");
       } else if (e.ctrlKey && e.key === ",") {
         e.preventDefault();
         setScreen("settings");
@@ -280,6 +285,13 @@ export function App() {
               onAccent={(accent) => setAppearance((a) => ({ ...a, accent }))}
               library={lib.status}
               onChooseLibrary={() => lib.setRootNeeded(true)}
+            />
+          ) : screen === "search" && hasMusic ? (
+            <SearchScreen
+              playingId={snap.trackId}
+              version={lib.version}
+              onGo={goTo}
+              onOpenPlaylist={(id) => openPlaylist(id)}
             />
           ) : screen === "playlists" && here.playlist != null ? (
             <PlaylistScreen
