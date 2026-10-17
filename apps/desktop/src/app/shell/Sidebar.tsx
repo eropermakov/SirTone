@@ -1,17 +1,19 @@
 import {
+  ChevronDown,
   CircleHelp,
   Disc3,
-  ListMusic,
   Mic2,
   PanelLeftClose,
   PanelLeftOpen,
+  Plus,
   Search,
   Settings,
   Waves,
   X,
 } from "lucide-react";
-import type { ComponentType } from "react";
+import { type ComponentType, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { PlaylistItem } from "@/shared/ipc/playlists";
 import { cn } from "@/shared/lib/utils";
 
 export type Screen =
@@ -32,10 +34,7 @@ const COLLECTION: Item[] = [
   { id: "albums", icon: Disc3 },
 ];
 const SETTINGS: Item = { id: "settings", icon: Settings };
-const REST: Item[] = [
-  { id: "playlists", icon: ListMusic },
-  { id: "unknown", icon: CircleHelp },
-];
+const REST: Item[] = [{ id: "unknown", icon: CircleHelp }];
 
 type Props = {
   current: Screen;
@@ -49,6 +48,14 @@ type Props = {
   offline?: boolean;
   /** Counters next to items (DESIGN.md §9: `accent-fill` circle with `accent-on`). */
   badges?: Partial<Record<Screen, number>>;
+  /** Manual playlists: group «Плейлисты» with nested rows (DESIGN.md §9 Sidebar). */
+  playlists?: PlaylistItem[];
+  currentPlaylist?: number | null;
+  /** Reserved for the «playing» bars (needs the playlist id in the play context, Stage 3). */
+  playingPlaylist?: number | null;
+  onOpenPlaylist?: (id: number) => void;
+  /** «Новый плейлист»; absent while the library is empty. */
+  onNewPlaylist?: (() => void) | undefined;
 };
 
 export function Sidebar({
@@ -60,12 +67,17 @@ export function Sidebar({
   onCancelImport,
   offline,
   badges,
+  playlists = [],
+  currentPlaylist = null,
+  onOpenPlaylist,
+  onNewPlaylist,
 }: Props) {
+  const [listsOpen, setListsOpen] = useState(true);
   const { t } = useTranslation("nav");
   const { t: ts } = useTranslation("shell");
   const row = (it: Item) => {
     const Icon = it.icon;
-    const active = current === it.id;
+    const active = current === it.id && currentPlaylist == null;
     return (
       <button
         key={it.id}
@@ -143,6 +155,57 @@ export function Sidebar({
       {COLLECTION.map(row)}
       <div className="mt-4" />
       {REST.map(row)}
+      {!collapsed && (onNewPlaylist || playlists.length > 0) && (
+        <button
+          type="button"
+          onClick={() => setListsOpen((o) => !o)}
+          aria-expanded={listsOpen}
+          className="t-group-label mt-4 mb-1 flex items-center gap-1 px-3 text-left text-text-secondary"
+        >
+          {t("playlists")}
+          <ChevronDown
+            size={16}
+            strokeWidth={1.5}
+            className={cn("transition-transform duration-(--dur-fast)", !listsOpen && "-rotate-90")}
+          />
+        </button>
+      )}
+      {onNewPlaylist && (
+        <button
+          type="button"
+          onClick={onNewPlaylist}
+          title={collapsed ? t("newPlaylist") : undefined}
+          className={cn(
+            "flex h-(--item-height) w-full items-center gap-3 rounded-(--radius-md) px-3 text-left text-text-primary hover:bg-bg-hover [&_svg]:text-icon",
+            collapsed && "justify-center px-0",
+          )}
+        >
+          <Plus size={20} strokeWidth={1.5} />
+          {!collapsed && <span className="t-body min-w-0 flex-1 truncate">{t("newPlaylist")}</span>}
+        </button>
+      )}
+      {!collapsed && listsOpen && (
+        <div className="flex min-h-0 flex-col gap-1 overflow-y-auto">
+          {playlists.map((p) => {
+            const active = currentPlaylist === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => onOpenPlaylist?.(p.id)}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex h-(--item-height) w-full shrink-0 items-center rounded-(--radius-md) pr-3 pl-11 text-left",
+                  "transition-colors duration-(--dur-fast)",
+                  active ? "bg-primary text-on-primary" : "text-text-primary hover:bg-bg-hover",
+                )}
+              >
+                <span className="t-body min-w-0 flex-1 truncate">{p.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="flex-1" />
       {offline && !collapsed && (
         <p role="status" className="t-caption mb-2 px-3 text-text-secondary">

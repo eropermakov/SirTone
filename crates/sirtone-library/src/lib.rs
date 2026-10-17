@@ -7,6 +7,7 @@ pub mod db;
 pub mod error;
 pub mod import;
 pub mod layout;
+pub mod playlists;
 pub mod reconcile;
 pub mod relocate;
 pub mod repo;

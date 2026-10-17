@@ -116,14 +116,14 @@ pub fn albums_page(
     Ok(finish(rows, last, limit))
 }
 
-const TRACK_COLS: &str = "t.id, t.title, t.duration_ms, al.title, t.rel_path,
+pub(crate) const TRACK_COLS: &str = "t.id, t.title, t.duration_ms, al.title, t.rel_path,
     coalesce((SELECT group_concat(name, ', ') FROM
       (SELECT a.name FROM track_artist ta JOIN artist a ON a.id = ta.artist_id
        WHERE ta.track_id = t.id ORDER BY ta.position)), ''),
     t.album_id,
     (SELECT ta.artist_id FROM track_artist ta WHERE ta.track_id = t.id ORDER BY ta.position LIMIT 1)";
 
-fn track_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<TrackRow> {
+pub(crate) fn track_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<TrackRow> {
     Ok(TrackRow {
         id: r.get(0)?,
         title: r.get(1)?,

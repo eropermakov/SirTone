@@ -201,6 +201,9 @@ pub struct Library {
     jobs: Sender<Job>,
     cancel: Arc<AtomicBool>,
     importing: Arc<AtomicBool>,
+    /// Short user edits (playlists): their own connection, so a write waiting on the import
+    /// worker never holds `shared` (lists keep answering in ≤ 100 ms).
+    writer: Mutex<Option<(PathBuf, Connection)>>,
 }
 
 fn deps() -> ImportDeps {
@@ -288,7 +291,7 @@ pub fn default_root() -> PathBuf {
         .join("SirTone")
 }
 
-fn lock(m: &Mutex<Shared>) -> std::sync::MutexGuard<'_, Shared> {
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|p| p.into_inner())
 }
 
@@ -340,6 +343,7 @@ impl Library {
             jobs,
             cancel,
             importing,
+            writer: Mutex::new(None),
         };
         // Recover the journal, resume interrupted batches and reconcile with the disk right away
         // (docs/05 §3.3, §7).
@@ -436,7 +440,35 @@ impl Library {
         ImportStart::Started
     }
 
-    fn with_read<T>(
+    /// Runs a short write on the writer connection of the current (online) library.
+    pub(crate) fn with_write<T>(
+        &self,
+        f: impl FnOnce(&mut Connection) -> Result<T, sirtone_library::LibraryError>,
+    ) -> Result<T, AppError> {
+        let root = {
+            let s = lock(&self.shared);
+            match (&s.root, &s.read) {
+                (Some(root), Some(_)) => root.clone(),
+                _ => return Err(AppError::new(ErrorCode::LibraryRootNotSet)),
+            }
+        };
+        let mut w = lock(&self.writer);
+        if w.as_ref().is_none_or(|(r, _)| *r != root) {
+            let conn = sirtone_library::open_existing(&db_path(&root), medium(&root))?;
+            *w = Some((root, conn));
+        }
+        let Some((_, conn)) = w.as_mut() else {
+            return Err(AppError::new(ErrorCode::Internal));
+        };
+        let r = f(conn).map_err(AppError::from);
+        if r.is_err() {
+            // A broken connection (pulled stick) must not stick around.
+            *w = None;
+        }
+        r
+    }
+
+    pub(crate) fn with_read<T>(
         &self,
         f: impl FnOnce(&Connection) -> Result<T, sirtone_library::LibraryError>,
     ) -> Result<T, AppError> {
@@ -802,7 +834,7 @@ fn emit_changed(app: &AppHandle, shared: &Mutex<Shared>) {
 
 // ---------- commands ----------
 
-fn track_item(r: repo::TrackRow) -> TrackItem {
+pub(crate) fn track_item(r: repo::TrackRow) -> TrackItem {
     TrackItem {
         id: r.id as u32,
         title: r.title,

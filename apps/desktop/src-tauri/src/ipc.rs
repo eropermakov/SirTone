@@ -5,7 +5,8 @@
 use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::{
-    autostart, bootstrap, hotkeys, library, playback, settings_store, updates, window_chrome,
+    autostart, bootstrap, hotkeys, library, playback, playlists, settings_store, updates,
+    window_chrome,
 };
 
 /// Free-form JSON across IPC, exported as TS `unknown`. specta inlines `serde_json::Value`
@@ -66,6 +67,15 @@ pub fn builder() -> Builder<tauri::Wry> {
             library::artist_removal_info,
             library::artist_remove,
             library::artist_tracks,
+            playlists::playlists_list,
+            playlists::playlist_create,
+            playlists::playlist_rename,
+            playlists::playlist_delete,
+            playlists::playlist_tracks,
+            playlists::playlist_already_in,
+            playlists::playlist_add,
+            playlists::playlist_remove,
+            playlists::playlist_move,
             window_chrome::window_set_theme,
         ])
         .events(collect_events![
@@ -76,7 +86,8 @@ pub fn builder() -> Builder<tauri::Wry> {
             library::LibraryChanged,
             library::LibraryRootNeeded,
             hotkeys::HotkeyConflict,
-            playback::QueueChanged
+            playback::QueueChanged,
+            playlists::PlaylistsChanged
         ])
 }
 

@@ -10,6 +10,7 @@ mod ipc;
 mod journal;
 mod library;
 mod playback;
+mod playlists;
 mod settings_store;
 mod tray;
 mod updates;

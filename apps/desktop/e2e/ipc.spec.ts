@@ -62,6 +62,7 @@ async function mockTauri(page: Page) {
             return settings;
           }
           case "hotkeys_status":
+          case "playlists_list":
             return [];
           case "autostart_available":
             return false;

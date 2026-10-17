@@ -14,6 +14,7 @@ import {
   pickFolder,
 } from "@/shared/ipc/library";
 import { next as nextTrack, prev as prevTrack, togglePlay } from "@/shared/ipc/playback";
+import { createPlaylist } from "@/shared/ipc/playlists";
 import {
   getSettings,
   migrateLegacyAppearance,
@@ -34,10 +35,12 @@ import {
   resolveTheme,
   type ThemePref,
 } from "@/shared/theme/theme";
-import { onNotify } from "@/shared/ui/notify";
+import { notify, onNotify } from "@/shared/ui/notify";
 import { Toast } from "@/shared/ui/Toast";
 import type { Open } from "./library/CollectionScreen";
 import type { GoTo } from "./library/TrackList";
+import { PlaylistScreen } from "./playlists/PlaylistScreen";
+import { nextName, usePlaylists } from "./playlists/usePlaylists";
 import { EmptyScreen } from "./shell/EmptyScreen";
 import { PlayerBar } from "./shell/PlayerBar";
 import { QueuePanel } from "./shell/QueuePanel";
@@ -47,7 +50,13 @@ import { usePerformance } from "./shell/usePerformance";
 import { usePlayback } from "./shell/usePlayback";
 
 /** One place in the app: a sidebar section, maybe with an album/artist opened. */
-type NavEntry = { screen: Screen; open: Open | null };
+type NavEntry = {
+  screen: Screen;
+  open: Open | null;
+  /** A playlist page; `fresh` — just created, the name starts in edit mode. */
+  playlist?: number;
+  fresh?: boolean;
+};
 
 /** Shell (prototype slice of T2.1/T2.2): three zones from DESIGN.md §7. Appearance lives in Rust settings (T0.6). */
 type Appearance = { theme: ThemePref; accent: AccentSource };
@@ -92,7 +101,8 @@ export function App() {
         top &&
         top.screen === e.screen &&
         top.open?.id === e.open?.id &&
-        top.open?.kind === e.open?.kind
+        top.open?.kind === e.open?.kind &&
+        top.playlist === e.playlist
       ) {
         return s;
       }
@@ -125,6 +135,15 @@ export function App() {
       if (u?.justUpdated) setUpdated(u);
     });
   }, []);
+  const playlists = usePlaylists();
+  const openPlaylist = (id: number, fresh = false) =>
+    push({ screen: "playlists", open: null, playlist: id, fresh });
+  const newPlaylist = () => {
+    const name = nextName(playlists, (n) => t("playlists.defaultName", { n }));
+    createPlaylist(name)
+      .then((id) => openPlaylist(id, true))
+      .catch(() => notify(t("playlists.failed")));
+  };
   const goTo: GoTo = (kind, id, title) =>
     push({ screen: kind, open: { kind, id, title, subtitle: "", cover: null } });
 
@@ -245,6 +264,11 @@ export function App() {
           progress={lib.progress}
           onCancelImport={cancelImport}
           offline={lib.status.offline}
+          playlists={playlists}
+          currentPlaylist={screen === "playlists" ? (here.playlist ?? null) : null}
+          playingPlaylist={null}
+          onOpenPlaylist={(id) => openPlaylist(id)}
+          onNewPlaylist={lib.status.tracks > 0 ? newPlaylist : undefined}
         />
         <main className="flex min-w-0 flex-1 flex-col overflow-auto rounded-tl-(--radius-xl) bg-bg-layer p-6">
           {lib.rootNeeded && <RootPanel status={lib.status} onDone={rootChosen} />}
@@ -256,6 +280,21 @@ export function App() {
               onAccent={(accent) => setAppearance((a) => ({ ...a, accent }))}
               library={lib.status}
               onChooseLibrary={() => lib.setRootNeeded(true)}
+            />
+          ) : screen === "playlists" && here.playlist != null ? (
+            <PlaylistScreen
+              key={here.playlist}
+              id={here.playlist}
+              version={lib.version}
+              playingId={snap.trackId}
+              editName={here.fresh ?? false}
+              onGo={goTo}
+              onDeleted={() =>
+                setStack((st) => {
+                  const left = st.filter((e) => e.playlist !== here.playlist);
+                  return left.length > 0 ? left : [{ screen: "wave", open: null }];
+                })
+              }
             />
           ) : hasMusic && screen === "unknown" && lib.status.unknown > 0 ? (
             <UnknownScreen version={lib.version} playingId={snap.trackId} onGo={goTo} />

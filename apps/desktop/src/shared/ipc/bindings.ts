@@ -76,6 +76,17 @@ export const commands = {
 	 */
 	artistRemove: (artist: number, withFile: boolean) => typedError<null, AppError>(__TAURI_INVOKE("artist_remove", { artist, withFile })),
 	artistTracks: (artist: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("artist_tracks", { artist })),
+	playlistsList: () => typedError<PlaylistItem[], AppError>(__TAURI_INVOKE("playlists_list")),
+	playlistCreate: (name: string) => typedError<number, AppError>(__TAURI_INVOKE("playlist_create", { name })),
+	playlistRename: (id: number, name: string) => typedError<null, AppError>(__TAURI_INVOKE("playlist_rename", { id, name })),
+	playlistDelete: (id: number) => typedError<null, AppError>(__TAURI_INVOKE("playlist_delete", { id })),
+	playlistTracks: (id: number) => typedError<PlaylistEntry[], AppError>(__TAURI_INVOKE("playlist_tracks", { id })),
+	/**  Which of `tracks` the playlist already has («Уже в плейлисте», `01b` F-13). */
+	playlistAlreadyIn: (id: number, tracks: number[]) => typedError<number[], AppError>(__TAURI_INVOKE("playlist_already_in", { id, tracks })),
+	playlistAdd: (id: number, tracks: number[]) => typedError<number, AppError>(__TAURI_INVOKE("playlist_add", { id, tracks })),
+	/**  «Убрать из плейлиста»: the items go, the tracks stay (FR-PLS-004). */
+	playlistRemove: (id: number, positions: number[]) => typedError<null, AppError>(__TAURI_INVOKE("playlist_remove", { id, positions })),
+	playlistMove: (id: number, from: number, to: number) => typedError<null, AppError>(__TAURI_INVOKE("playlist_move", { id, from, to })),
 	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
 	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),
 };
@@ -89,6 +100,7 @@ export const events = {
 	libraryRootNeeded: makeEvent<LibraryRootNeeded>("library-root-needed"),
 	playbackError: makeEvent<PlaybackError>("playback-error"),
 	playbackSnapshot: makeEvent<PlaybackSnapshot>("playback-snapshot"),
+	playlistsChanged: makeEvent<PlaylistsChanged>("playlists-changed"),
 	queueChanged: makeEvent<QueueChanged>("queue-changed"),
 };
 
@@ -211,7 +223,7 @@ export type PageCursor = {
 };
 
 /**  The screen a list was played from (`play_event.source`). */
-export type PlayContext = "album" | "artist" | "collection";
+export type PlayContext = "album" | "artist" | "collection" | "playlist";
 
 /**  A track or device error; the UI shows `errors.<code>` in a toast (DESIGN.md §9). */
 export type PlaybackError = {
@@ -242,6 +254,28 @@ export type PlaybackSnapshot = {
 };
 
 export type PlaybackState = "empty" | "playing" | "paused" | "ended";
+
+/**  A playlist page row: the position addresses remove / move (a track may repeat). */
+export type PlaylistEntry = {
+	position: number,
+	track: TrackItem,
+};
+
+/**  A sidebar row. */
+export type PlaylistItem = {
+	id: number,
+	name: string,
+	tracks: number,
+	durationMs: number | null,
+	/**  Four hashes → a 2×2 mosaic, one → a single cover, none → placeholder. */
+	covers: string[],
+};
+
+/**  Playlists were created, renamed, deleted or edited. */
+export type PlaylistsChanged = {
+	/**  The edited playlist (0 when several or a deletion). */
+	id: number,
+};
 
 /**  The queue changed (order, contents, modes): the panel refetches. */
 export type QueueChanged = {

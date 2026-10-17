@@ -3,6 +3,7 @@ import {
   Disc3,
   FolderSearch,
   ListEnd,
+  ListMinus,
   ListPlus,
   ListStart,
   MicVocal,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useAddToPlaylist } from "@/app/playlists/useAddToPlaylist";
 import { timecode } from "@/app/shell/PlayerBar";
 import { type PlayContext, revealTrack, type TrackItem } from "@/shared/ipc/library";
 import { queueAppend, queuePlayNext } from "@/shared/ipc/playback";
@@ -43,6 +45,7 @@ export function TrackList({
   context,
   onGo,
   onSelect,
+  onRemoveFromList,
 }: {
   tracks: TrackItem[];
   playingId: number | null;
@@ -52,6 +55,8 @@ export function TrackList({
   onGo?: GoTo | undefined;
   /** Selection follows clicks (e.g. «Неизвестные» shows the assignment panel). */
   onSelect?: ((index: number) => void) | undefined;
+  /** A playlist page: «Убрать из плейлиста» in the menu and on Delete (FR-PLS-004). */
+  onRemoveFromList?: ((index: number) => void) | undefined;
 }) {
   const { t } = useTranslation("shell");
   const scroller = useRef<HTMLDivElement>(null);
@@ -59,6 +64,7 @@ export function TrackList({
   const [menu, setMenu] = useState<{ index: number; at: { x: number; y: number } } | null>(null);
   const [card, setCard] = useState<{ id: number; confirmDelete: boolean } | null>(null);
   const closeCard = useCallback(() => setCard(null), []);
+  const toPlaylist = useAddToPlaylist();
   const v = useVirtualizer({
     count: tracks.length,
     getScrollElement: () => scroller.current,
@@ -66,7 +72,7 @@ export function TrackList({
     overscan: 8,
   });
 
-  const items = (tr: TrackItem): MenuItem[] => [
+  const items = (tr: TrackItem, index: number): MenuItem[] => [
     {
       id: "next",
       label: t("trackMenu.playNext"),
@@ -85,9 +91,13 @@ export function TrackList({
         notify(t("trackMenu.queued", { title: tr.title }));
       },
     },
-    // Q-23 (`06` §12): seven items, the rest under «Ещё ›». Playlists arrive with T2.11, the wave
-    // with Stage 4.
-    { id: "playlist", label: t("trackMenu.addToPlaylist"), icon: ListPlus, disabled: true },
+    // Q-23 (`06` §12): seven items, the rest under «Ещё ›». The wave arrives with Stage 4.
+    {
+      id: "playlist",
+      label: t("trackMenu.addToPlaylist"),
+      icon: ListPlus,
+      submenu: toPlaylist.submenu([tr.id]),
+    },
     { id: "wave", label: t("trackMenu.wave"), icon: Radio, disabled: true },
     {
       id: "goto",
@@ -138,6 +148,16 @@ export function TrackList({
       ],
     },
     { separator: true },
+    ...(onRemoveFromList
+      ? [
+          {
+            id: "unlist",
+            label: t("playlists.removeFrom"),
+            icon: ListMinus,
+            onSelect: () => onRemoveFromList(index),
+          },
+        ]
+      : []),
     {
       id: "remove",
       label: t("trackMenu.remove"),
@@ -170,7 +190,7 @@ export function TrackList({
           const playing = tr.id === playingId;
           return (
             <li
-              key={tr.id}
+              key={`${row.index}:${tr.id}`}
               className="group absolute inset-x-0 flex items-center"
               style={{ transform: `translateY(${row.start}px)` }}
             >
@@ -188,6 +208,9 @@ export function TrackList({
                   if (e.key === "Enter") {
                     e.preventDefault();
                     onPlay(row.index);
+                  } else if (e.key === "Delete" && onRemoveFromList) {
+                    e.preventDefault();
+                    onRemoveFromList(row.index);
                   } else if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
                     e.preventDefault();
                     const r = e.currentTarget.getBoundingClientRect();
@@ -250,12 +273,13 @@ export function TrackList({
       </ul>
       {menu && menuTrack && (
         <Menu
-          items={items(menuTrack)}
+          items={items(menuTrack, menu.index)}
           at={menu.at}
           label={t("trackMenu.label")}
           onClose={() => setMenu(null)}
         />
       )}
+      {toPlaylist.dialog}
       {card && (
         <TrackCard
           key={card.id}

@@ -524,6 +524,42 @@ if (existsSync(corpus)) {
     artistsAfter < artistsBefore,
     `${artistsBefore} → ${artistsAfter}`,
   );
+  // T2.11: new playlist from the sidebar, named in place; a track via «Добавить в плейлист ›»;
+  // «Убрать из плейлиста» keeps the track in the library (FR-PLS-004).
+  await page.getByRole("button", { name: "Новый плейлист" }).click();
+  const nameField = page.getByLabel("Название плейлиста");
+  await nameField.waitFor({ timeout: 5000 });
+  await nameField.fill("Дорога");
+  await nameField.press("Enter");
+  await page.getByRole("button", { name: "Неизвестные" }).click();
+  const firstUnknown = page
+    .getByRole("list", { name: "Треки" })
+    .locator("button[aria-pressed]")
+    .first();
+  const plTitle = (await firstUnknown.locator(".t-body").textContent())?.trim();
+  await firstUnknown.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Добавить в плейлист" }).click();
+  await page.getByRole("menuitem", { name: "Дорога" }).click();
+  await sleep(800);
+  await page.getByRole("navigation").getByRole("button", { name: "Дорога" }).click();
+  const plRows = page.getByRole("list", { name: "Треки" }).locator("button[aria-pressed]");
+  await plRows.first().waitFor({ timeout: 5000 });
+  const plListed = (await plRows.first().locator(".t-body").textContent())?.trim();
+  check(
+    "playlist: created, named and the track added",
+    plListed === plTitle,
+    `${plListed} / ${plTitle}`,
+  );
+  const tracksBefore = (await invoke("library_status", {})).tracks;
+  await plRows.first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Убрать из плейлиста" }).click();
+  await sleep(800);
+  const tracksAfter = (await invoke("library_status", {})).tracks;
+  check(
+    "«Убрать из плейлиста» keeps the track in the library",
+    (await plRows.count()) === 0 && tracksAfter === tracksBefore,
+    `rows ${await plRows.count()}, tracks ${tracksBefore} → ${tracksAfter}`,
+  );
   await page.getByRole("button", { name: "Настройки" }).click();
   check("storage shows the folder", (await page.getByText(libDir).count()) > 0);
 } else {
