@@ -27,7 +27,11 @@ export const ACCENT_SLUGS = [
   "bordeaux",
 ] as const;
 export type AccentSlug = (typeof ACCENT_SLUGS)[number];
-export type AccentSource = { kind: "preset"; slug: AccentSlug } | { kind: "custom"; hex: string };
+export type AccentSource =
+  | { kind: "preset"; slug: AccentSlug }
+  | { kind: "custom"; hex: string }
+  /** «Авто» (T2.2, DESIGN.md §4): the set picked from the playing cover. */
+  | { kind: "auto" };
 
 const media = () => window.matchMedia("(prefers-color-scheme: light)");
 
@@ -40,7 +44,14 @@ export function resolveTheme(pref: ThemePref): Theme {
 const CUSTOM_VARS = ["accent-fill", "accent-text", "accent-on", "primary", "primary-text"] as const;
 
 /** Applies theme + accent to <html> with one write per change (docs/06 §4.2, D-58). */
-export function applyAppearance(pref: ThemePref, accent: AccentSource): void {
+export function applyAppearance(
+  pref: ThemePref,
+  source: AccentSource,
+  /** For «Авто»: the set picked from the cover (Sir.kov until there is one). */
+  autoSlug: AccentSlug = "sirkov",
+): void {
+  const accent: Exclude<AccentSource, { kind: "auto" }> =
+    source.kind === "auto" ? { kind: "preset", slug: autoSlug } : source;
   const root = document.documentElement;
   const theme = resolveTheme(pref);
   root.dataset.theme = theme;

@@ -4,7 +4,8 @@ import { Button } from "./Button";
 
 /**
  * A neutral Panel over a scrim (DESIGN.md §9 Panel; confirmations are allowed, error dialogs are
- * not — errors are toasts). Esc and the cross close it; focus moves inside and returns.
+ * not — errors are toasts). Esc and the cross close it; focus moves inside, stays there (Tab
+ * wraps) and returns.
  */
 export function Dialog({
   title,
@@ -25,6 +26,23 @@ export function Dialog({
       if (e.key === "Escape") {
         e.stopPropagation();
         onClose();
+      } else if (e.key === "Tab" && ref.current) {
+        // Focus stays inside the dialog (WAI-ARIA modal dialog, T2.16).
+        const items = [
+          ...ref.current.querySelectorAll<HTMLElement>(
+            "button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex='-1'])",
+          ),
+        ];
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (!first || !last) return;
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
     window.addEventListener("keydown", key, true);

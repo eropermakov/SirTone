@@ -531,6 +531,23 @@ export function AccentSwatches({
       className="m-0 border-0 p-0 flex flex-wrap gap-3 disabled:opacity-40"
       aria-label={t("settings.color")}
     >
+      <button
+        type="button"
+        aria-pressed={accent.kind === "auto"}
+        aria-label={t("accent.auto")}
+        title={t("accent.autoHint")}
+        onClick={() => onAccent({ kind: "auto" })}
+        className={cn(
+          "relative flex size-8 items-center justify-center rounded-full",
+          accent.kind === "auto" &&
+            "ring-2 ring-text-primary ring-offset-[3px] ring-offset-bg-raised",
+        )}
+        style={{
+          // DESIGN.md §9 AccentPicker: «Авто» — four sectors, first in the row.
+          background:
+            "conic-gradient(var(--accent-blue-fill) 0 25%, var(--accent-yellow-fill) 0 50%, var(--accent-red-fill) 0 75%, var(--accent-sirkov-fill) 0)",
+        }}
+      />
       {ACCENT_SLUGS.map((slug) => {
         const selected = accent.kind === "preset" && accent.slug === slug;
         return (

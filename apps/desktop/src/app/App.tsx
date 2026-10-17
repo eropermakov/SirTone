@@ -28,6 +28,7 @@ import {
 } from "@/shared/ipc/settings";
 import { type UpdateStatus, updateStatus } from "@/shared/ipc/updates";
 import { setWindowTheme } from "@/shared/ipc/window";
+import { autoSlug } from "@/shared/theme/autoAccent";
 import {
   ACCENT_SLUGS,
   type AccentSlug,
@@ -74,22 +75,26 @@ const DEFAULT: Appearance = { theme: "system", accent: { kind: "preset", slug: "
 function fromDoc(doc: SettingsDoc): Appearance {
   const a = doc.appearance.accent;
   const accent: AccentSource =
-    a.source === "custom" && a.custom
-      ? { kind: "custom", hex: a.custom }
-      : {
-          kind: "preset",
-          slug: (ACCENT_SLUGS as readonly string[]).includes(a.preset)
-            ? (a.preset as AccentSlug)
-            : "sirkov",
-        };
+    a.source === "auto"
+      ? { kind: "auto" }
+      : a.source === "custom" && a.custom
+        ? { kind: "custom", hex: a.custom }
+        : {
+            kind: "preset",
+            slug: (ACCENT_SLUGS as readonly string[]).includes(a.preset)
+              ? (a.preset as AccentSlug)
+              : "sirkov",
+          };
   return { theme: doc.appearance.theme, accent };
 }
 
 function toPatch(a: Appearance): SettingsPatch {
   const accent =
-    a.accent.kind === "custom"
-      ? { source: "custom", custom: a.accent.hex }
-      : { source: "preset", preset: a.accent.slug };
+    a.accent.kind === "auto"
+      ? { source: "auto" }
+      : a.accent.kind === "custom"
+        ? { source: "custom", custom: a.accent.hex }
+        : { source: "preset", preset: a.accent.slug };
   return { appearance: { theme: a.theme, accent } };
 }
 
@@ -137,6 +142,7 @@ export function App() {
   const [manualCollapsed, setManualCollapsed] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
   const [onboard, setOnboard] = useState<"setup" | "tips" | null>(null);
+  const [coverSlug, setCoverSlug] = useState<AccentSlug>("sirkov");
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => onNotify(setToast), []);
   // «Сиртон обновлён до X» once, on the first start of a new version (D-76).
@@ -231,7 +237,7 @@ export function App() {
 
   useEffect(() => {
     const apply = () => {
-      applyAppearance(appearance.theme, appearance.accent);
+      applyAppearance(appearance.theme, appearance.accent, coverSlug);
       setWindowTheme(
         resolveTheme(appearance.theme),
         isPalette(appearance.theme) ? appearance.theme : null,
@@ -240,7 +246,21 @@ export function App() {
     apply();
     if (appearance.theme !== "system") return;
     return onSystemThemeChange(apply);
-  }, [appearance]);
+  }, [appearance, coverSlug]);
+
+  // «Авто» (T2.2): the playing cover picks the set; computed once per cover (cached).
+  useEffect(() => {
+    if (appearance.accent.kind !== "auto" || !snap.cover) return;
+    let alive = true;
+    autoSlug(snap.cover)
+      .then((s) => {
+        if (alive) setCoverSlug(s);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [appearance.accent.kind, snap.cover]);
 
   useEffect(() => {
     const m = window.matchMedia(NARROW);

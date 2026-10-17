@@ -1344,6 +1344,8 @@ pub fn cover_protocol(app: &AppHandle, path: &str) -> tauri::http::Response<Vec<
             .status(200)
             .header("Content-Type", "image/webp")
             .header("Cache-Control", "public, max-age=31536000, immutable")
+            // «Авто» reads the pixels on a canvas (T2.2): a cross-origin image must allow it.
+            .header("Access-Control-Allow-Origin", "*")
             .body(bytes),
         None => tauri::http::Response::builder()
             .status(404)

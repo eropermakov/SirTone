@@ -21,7 +21,7 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 const require = createRequire(import.meta.url);
@@ -98,6 +98,21 @@ const times = async () =>
 const playLabel = () => footer.locator("button[aria-label]").nth(2).getAttribute("aria-label");
 const invoke = (cmd, args) =>
   page.evaluate(([c, a]) => window.__TAURI_INTERNALS__.invoke(c, a), [cmd, args]);
+// T2.16: axe on the real screens with data; critical violations are collected per screen.
+const axePath = require.resolve("axe-core/axe.min.js", {
+  paths: [dirname(require.resolve("@axe-core/playwright"))],
+});
+const axeCritical = [];
+const axeScreen = async (name) => {
+  // The app's CSP forbids injected <script>s (good); DevTools evaluation is not a page script.
+  if (!(await page.evaluate(() => "axe" in window)))
+    await page.evaluate(readFileSync(axePath, "utf8"));
+  const ids = await page.evaluate(async () => {
+    const r = await window.axe.run(document, { resultTypes: ["violations"] });
+    return r.violations.filter((v) => v.impact === "critical").map((v) => v.id);
+  });
+  for (const id of ids) axeCritical.push(`${name}: ${id}`);
+};
 
 // 0. T2.15: a fresh install opens the first-start setup «1 из 4»; step through, skip the folder
 // (chosen later by the library checks), then the tips.
@@ -693,6 +708,7 @@ if (existsSync(corpus)) {
     () => false,
   );
   check("Ctrl+F search finds the artist as you type", found);
+  await axeScreen("search results");
   const times = [];
   for (const q of ["ленинград", "dream", "мо", "плоковник"]) {
     const t0 = performance.now();
@@ -737,6 +753,7 @@ if (existsSync(corpus)) {
   const genreRows = page.getByRole("list", { name: "Треки" }).locator("button[aria-pressed]");
   await genreRows.first().waitFor({ timeout: 5000 });
   check("genre page lists its tracks", (await page.locator("h1").first().textContent()) === "Rock");
+  await axeScreen("genre page");
   // T2.5 / T2.19: «Моя волна» is the player — like, «не сейчас» skips, «никогда» for the artist
   // lands in Settings and comes back from there.
   await genreRows.first().dblclick();
@@ -755,6 +772,7 @@ if (existsSync(corpus)) {
   await sleep(1200);
   const afterSkip = (await invoke("playback_snapshot", {})).trackId;
   check("wave: «Не сейчас» goes to the next track", afterSkip !== nowId, `${nowId} → ${afterSkip}`);
+  await axeScreen("«Моя волна»");
   await page.getByRole("main").getByRole("button", { name: "Ещё" }).click();
   await page.getByRole("menuitem", { name: "Никогда в волне" }).click();
   await page.getByRole("menuitem", { name: "Этого исполнителя" }).click();
@@ -784,6 +802,26 @@ if (existsSync(corpus)) {
       storageInfo.databaseBytes > 0 &&
       storageInfo.coversFiles > 0,
     `db ${storageInfo.databaseBytes} B, covers ${storageInfo.coversFiles}`,
+  );
+  // T2.2: «Авто» — the playing cover picks one of the sets (DESIGN.md §4), saved as «auto».
+  await page.getByRole("button", { name: "Авто", exact: true }).click();
+  let autoAccent = "";
+  for (let i = 0; i < 15 && !autoAccent; i++) {
+    await sleep(200);
+    const a = await page.evaluate(() => document.documentElement.dataset.accent ?? "");
+    if (a && a !== "custom") autoAccent = a;
+  }
+  for (let i = 0; i < 15 && settings().appearance?.accent?.source !== "auto"; i++) await sleep(200);
+  check(
+    "«Авто» picks a set from the cover and is saved",
+    autoAccent !== "" && settings().appearance?.accent?.source === "auto",
+    `${autoAccent}, cover ${(await invoke("playback_snapshot", {})).cover}`,
+  );
+  await axeScreen("settings");
+  check(
+    "axe: no critical violations on screens with data",
+    axeCritical.length === 0,
+    axeCritical.join("; ") || "none",
   );
   // T2.4: auto-detect — hardware + WebGL benchmark → a level, saved like a manual choice.
   await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
