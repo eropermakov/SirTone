@@ -44,6 +44,36 @@
     --primary-text var(--dur-theme) var(--ease-out);
 }
 
+/* Skeletons pulse softly instead of spinners (DESIGN.md §9 «Пустые состояния и загрузка»). */
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+.skeleton {
+  background: var(--artwork-placeholder);
+  animation: skeleton-pulse var(--skeleton-pulse) ease-in-out infinite;
+}
+
+/* MenuFlyout appears in 150 ms: fade + 4 px shift (DESIGN.md §9). */
+@keyframes flyout-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.flyout-in {
+  animation: flyout-in var(--dur-fast) var(--ease-out);
+}
+
 /* D-61: reduced motion = short fades only, no movement. */
 @media (prefers-reduced-motion: reduce) {
   *,
