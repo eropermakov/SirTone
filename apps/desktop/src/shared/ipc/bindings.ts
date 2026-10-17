@@ -93,7 +93,7 @@ export const commands = {
 	perfHardware: () => __TAURI_INVOKE<HardwareInfo>("perf_hardware"),
 	trackFeedback: (track: number) => typedError<TrackFeedback, AppError>(__TAURI_INVOKE("track_feedback", { track })),
 	feedbackLike: (track: number, on: boolean) => typedError<null, AppError>(__TAURI_INVOKE("feedback_like", { track, on })),
-	/**  «Не сейчас»: a minus in this daypart only, and on to the next track. */
+	/**  «Не сейчас»: a minus in this context bucket only (D-77), and on to the next track. */
 	feedbackNotNow: (track: number) => typedError<null, AppError>(__TAURI_INVOKE("feedback_not_now", { track })),
 	feedbackNever: (scope: NeverScope, id: number, on: boolean) => typedError<null, AppError>(__TAURI_INVOKE("feedback_never", { scope, id, on })),
 	/**  The primary artist of a track («Никогда в волне» → исполнитель). */
