@@ -7,6 +7,7 @@ pub mod decode;
 pub mod devices;
 pub mod engine;
 pub mod gapless;
+pub mod mf;
 pub mod output;
 pub mod probe;
 

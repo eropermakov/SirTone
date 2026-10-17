@@ -14,10 +14,10 @@ use tauri::{AppHandle, State};
 use crate::settings_store::SettingsStore;
 use tauri_specta::Event;
 
-/// Extensions the prototype opens (docs/04 §2 minus WMA/APE/WV, which need T1.2).
+/// Extensions the player opens (docs/04 §2; APE/WV/TTA/MPC need the optional decoder pack).
 const PLAYABLE: &[&str] = &[
     "mp3", "flac", "wav", "wave", "m4a", "mp4", "m4b", "aac", "ogg", "oga", "opus", "aif", "aiff",
-    "caf",
+    "wma", "caf",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]

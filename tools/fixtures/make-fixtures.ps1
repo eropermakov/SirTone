@@ -71,6 +71,10 @@ foreach ($t in $tagSets) {
     $codec = if ($t[0].EndsWith('.flac')) { @('-c:a', 'flac') } else { @('-c:a', 'libmp3lame', '-b:a', '192k', '-id3v2_version', '3') }
     FF (@('-i', $src, '-t', '5') + $codec + @('-metadata', "artist=$($t[1])", '-metadata', "title=$($t[2])", '-metadata', "album=$($t[3])", "$out\tags\$($t[0])"))
 }
+# WMA tags are read through the Windows Property System (T1.15): every field it maps.
+FF @('-i', $src, '-t', '5', '-c:a', 'wmav2', '-b:a', '128k', '-metadata', 'title=Город', '-metadata', 'artist=Кино',
+     '-metadata', 'album=Группа крови', '-metadata', 'album_artist=Кино', '-metadata', 'track=3', '-metadata', 'disc=1/2',
+     '-metadata', 'WM/Year=1988', '-metadata', 'genre=Rock', "$out\tags\wma-tagged.wma")
 
 # --- names: «poison» and parser cases (no tags) ---
 $names = @(

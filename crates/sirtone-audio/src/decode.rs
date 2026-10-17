@@ -1,8 +1,7 @@
 //! Decoder layer (docs/04 §2, S-02): probe → symphonia (+ libopus adapter). Every call into the
 //! decoder runs under `catch_unwind`: a hostile file is a track error, never a crash.
 //!
-//! Not yet here (T1.2/T1.5): Media Foundation for WMA, AAC priming trim (`elst`/`iTunSMPB`),
-//! Opus pre-skip after seek.
+//! What symphonia cannot open (WMA/ASF) goes to Media Foundation (`crate::mf`, T1.2).
 
 use std::fs::File;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -41,9 +40,7 @@ fn decode_failed(e: impl std::fmt::Display) -> AppError {
 
 /// One opened audio track, decoded packet by packet into interleaved `f32` at its native rate.
 pub struct Source {
-    format: Box<dyn FormatReader>,
-    decoder: Box<dyn AudioDecoder>,
-    track_id: u32,
+    backend: Backend,
     /// Native sample rate (Hz).
     pub rate: u32,
     /// Native channel count.
@@ -63,8 +60,53 @@ pub struct Source {
     pre_skip: u64,
 }
 
+enum Backend {
+    Symphonia {
+        format: Box<dyn FormatReader>,
+        decoder: Box<dyn AudioDecoder>,
+        track_id: u32,
+    },
+    Mf(crate::mf::MfReader),
+}
+
+/// Containers only Media Foundation reads (docs/04 §2).
+fn mf_only(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "wma" | "asf"))
+}
+
 impl Source {
     pub fn open(path: &Path) -> Result<Self, AppError> {
+        match Self::open_symphonia(path) {
+            Err(e) if e.code == ErrorCode::UnsupportedFormat && mf_only(path) => {
+                Self::open_mf(path)
+            }
+            other => other,
+        }
+    }
+
+    fn open_mf(path: &Path) -> Result<Self, AppError> {
+        let path = path.to_path_buf();
+        guarded(move || {
+            let r = crate::mf::MfReader::open(&path)?;
+            Ok(Self {
+                rate: r.rate,
+                channels: r.channels,
+                duration_ms: r.duration_ms,
+                codec: r.codec.into(),
+                backend: Backend::Mf(r),
+                skip_until: None,
+                scratch: Vec::new(),
+                trim: None,
+                drop_left: 0,
+                valid_left: None,
+                pre_skip: 0,
+            })
+        })
+    }
+
+    fn open_symphonia(path: &Path) -> Result<Self, AppError> {
         let file = File::open(path).map_err(|e| {
             let code = match e.kind() {
                 std::io::ErrorKind::NotFound => ErrorCode::FileNotFound,
@@ -127,9 +169,11 @@ impl Source {
                 0
             };
             Ok(Self {
-                format,
-                decoder,
-                track_id,
+                backend: Backend::Symphonia {
+                    format,
+                    decoder,
+                    track_id,
+                },
                 rate,
                 channels,
                 duration_ms,
@@ -148,12 +192,20 @@ impl Source {
     /// Returns `Ok(false)` at end of stream. Corrupt packets are skipped (counted by the caller
     /// as nothing decoded), only unrecoverable errors are returned.
     pub fn next_into(&mut self, out: &mut Vec<f32>) -> Result<bool, AppError> {
+        let (format, decoder, track_id) = match &mut self.backend {
+            Backend::Mf(r) => return guarded(|| r.next_into(out)),
+            Backend::Symphonia {
+                format,
+                decoder,
+                track_id,
+            } => (format, decoder, *track_id),
+        };
         guarded(|| {
             loop {
                 if self.valid_left == Some(0) {
                     return Ok(false); // encoder padding reached (T1.5)
                 }
-                let packet = match self.format.next_packet() {
+                let packet = match format.next_packet() {
                     Ok(Some(p)) => p,
                     Ok(None) => return Ok(false),
                     Err(SymError::ResetRequired) => return Ok(false),
@@ -161,10 +213,10 @@ impl Source {
                     Err(SymError::IoError(_)) => return Ok(false),
                     Err(e) => return Err(decode_failed(e)),
                 };
-                if packet.track_id != self.track_id {
+                if packet.track_id != track_id {
                     continue;
                 }
-                let audio = match self.decoder.decode(&packet) {
+                let audio = match decoder.decode(&packet) {
                     Ok(a) => a,
                     Err(SymError::DecodeError(_)) => continue,
                     Err(e) => return Err(decode_failed(e)),
@@ -205,25 +257,32 @@ impl Source {
 
     /// Sample-accurate seek (`SeekMode::Accurate`); the next `next_into` starts at `ms`.
     pub fn seek(&mut self, ms: u64) -> Result<(), AppError> {
+        let (format, decoder, track_id) = match &mut self.backend {
+            Backend::Mf(r) => return guarded(|| r.seek(ms)),
+            Backend::Symphonia {
+                format,
+                decoder,
+                track_id,
+            } => (format, decoder, *track_id),
+        };
         guarded(|| {
             // MP4: the media timeline starts with the encoder delay; seek past it.
             let priming = self.trim.map_or(0, |t| t.start);
             let media_ms = ms as f64 / 1000.0 + priming as f64 / f64::from(self.rate);
             let time = Time::try_from_secs_f64(media_ms)
                 .ok_or_else(|| AppError::new(ErrorCode::InvalidArgument))?;
-            let seeked = self
-                .format
+            let seeked = format
                 .seek(
                     SeekMode::Accurate,
                     SeekTo::Time {
                         time,
-                        track_id: Some(self.track_id),
+                        track_id: Some(track_id),
                     },
                 )
                 .map_err(decode_failed)?;
             // Opus: the decoder trims pre-skip only once; after a reset it is ours to drop.
             self.skip_until = Some(seeked.required_ts.get() + self.pre_skip as i64);
-            self.decoder.reset();
+            decoder.reset();
             self.drop_left = 0;
             if let Some(valid) = self.trim.and_then(|t| t.valid) {
                 self.valid_left = Some(valid.saturating_sub(ms * u64::from(self.rate) / 1000));
@@ -312,6 +371,50 @@ mod tests {
     fn aac_and_opus_seek_are_sample_accurate() {
         seek_matches("formats/aac-256.m4a", 44100);
         seek_matches("formats/opus-160.opus", 48000);
+    }
+
+    #[test]
+    fn wma_decodes_via_media_foundation() {
+        let Some(p) = fixture("formats/wma-192.wma") else {
+            return;
+        };
+        let (s, out) = decode_all(&p).unwrap();
+        assert_eq!(s.codec, "wma");
+        assert_eq!((s.rate, s.channels), (44100, 2));
+        let frames = out.len() / 2;
+        // MF trims the WMA decoder delay itself; the last block may come out short (≤ 2048).
+        assert!(frames.abs_diff(441_000) <= 2048, "{frames}");
+        assert!(s.duration_ms.is_some_and(|d| d.abs_diff(10_000) < 100));
+        assert!(out.iter().any(|v| v.abs() > 0.1), "silence");
+    }
+
+    /// D-68: MF timestamps after a WMA seek are approximate — the landing is within one
+    /// WMA block (2048 frames) plus decoder latency of the target, never worse.
+    #[test]
+    fn wma_seek_lands_within_a_block() {
+        let (Some(wav), Some(p)) = (
+            fixture("formats/wav-16-44.wav"),
+            fixture("formats/wma-192.wma"),
+        ) else {
+            return;
+        };
+        let wav = decode_all(&wav).unwrap().1;
+        for ms in [1000u64, 3000, 4321, 7777] {
+            let mut src = Source::open(&p).unwrap();
+            src.seek(ms).unwrap();
+            let mut out = Vec::new();
+            while out.len() < 16384 * 2 && src.next_into(&mut out).unwrap() {}
+            let at = (ms as usize * 441 / 10 + 4096) as i64 * 2;
+            let err = |lag: i64| -> f32 {
+                (0..8192)
+                    .map(|i| (out[4096 * 2 + i] - wav[(at + lag * 2) as usize + i]).abs())
+                    .sum()
+            };
+            let best = (-3000i64..=3000)
+                .min_by(|&a, &b| err(a).total_cmp(&err(b)))
+                .unwrap();
+            assert!(best.abs() <= 2600, "seek {ms}: {best} frames off");
+        }
     }
 
     #[test]

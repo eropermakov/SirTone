@@ -11,7 +11,8 @@ use crate::decode::Source;
 pub struct SymphoniaProbe;
 
 fn lossless(codec: &str) -> bool {
-    codec.starts_with("pcm") || matches!(codec, "flac" | "alac" | "wavpack" | "ape" | "tta")
+    codec.starts_with("pcm")
+        || matches!(codec, "flac" | "alac" | "wavpack" | "ape" | "tta" | "wmal")
 }
 
 impl MediaProbe for SymphoniaProbe {
@@ -68,6 +69,7 @@ mod tests {
             ("formats/alac-16-44.m4a", "alac", true),
             ("formats/aac-256.m4a", "aac", false),
             ("formats/opus-160.opus", "opus", false),
+            ("formats/wma-192.wma", "wma", false),
         ];
         for (rel, codec, lossless) in cases {
             let Some(p) = fixture(rel) else { return };

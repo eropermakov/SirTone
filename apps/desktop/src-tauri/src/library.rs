@@ -164,7 +164,9 @@ pub struct Library {
 fn deps() -> ImportDeps {
     ImportDeps {
         probe: Arc::new(sirtone_audio::probe::SymphoniaProbe),
-        tags: Arc::new(sirtone_recognize::LoftyTags),
+        tags: Arc::new(sirtone_platform::tags::WinTags::new(Arc::new(
+            sirtone_recognize::LoftyTags,
+        ))),
         identify: Arc::new(sirtone_recognize::TagIdentify),
         fs: Arc::new(sirtone_platform::files::WinFiles),
         volume: Arc::new(sirtone_platform::files::WinVolume),

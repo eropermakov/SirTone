@@ -2,3 +2,4 @@
 
 pub mod caption;
 pub mod files;
+pub mod tags;
