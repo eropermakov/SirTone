@@ -25,6 +25,7 @@ tauri-build = "2.7"
 tauri-plugin-single-instance = "2.5"
 tauri-plugin-dialog = "2.8"
 tauri-plugin-autostart = "2.5"
+tauri-plugin-updater = "2.9"
 tauri-plugin-global-shortcut = "2.3"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 specta = { version = "=2.0.0-rc.25", features = ["derive", "serde_json"] }

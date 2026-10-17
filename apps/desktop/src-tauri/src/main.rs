@@ -12,6 +12,7 @@ mod library;
 mod playback;
 mod settings_store;
 mod tray;
+mod updates;
 mod window_chrome;
 
 use std::sync::Arc;
@@ -63,6 +64,8 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(autostart::plugin())
         .plugin(hotkeys::plugin())
+        .plugin(updates::plugin())
+        .manage(updates::Updates::default())
         .manage(hotkeys::Hotkeys::default())
         // Covers without IPC (docs/03 §5.6); work off the main thread.
         .register_asynchronous_uri_scheme_protocol("sirtone-cover", |ctx, request, responder| {
@@ -98,6 +101,7 @@ fn main() {
             }
             let store = app.state::<Arc<settings_store::SettingsStore>>().inner().clone();
             autostart::sync(app.handle(), &store);
+            updates::start(app.handle());
             app.manage(library::Library::start(app.handle().clone(), store.clone()));
             match playback::Playback::start(app.handle().clone(), store) {
                 Ok(pb) => {
@@ -143,6 +147,8 @@ fn main() {
                 if let Some(pb) = handle.try_state::<playback::Playback>() {
                     pb.shutdown();
                 }
+                // A downloaded update installs on a full exit (docs/07 §9.3).
+                updates::install_on_exit(handle);
             }
         }),
         Err(err) => {

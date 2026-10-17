@@ -65,6 +65,8 @@ async function mockTauri(page: Page) {
             return [];
           case "autostart_available":
             return false;
+          case "update_status":
+            return { current: "0.1.2", ready: null, available: false };
           case "playback_toggle":
           case "playback_seek":
           case "playback_set_volume":

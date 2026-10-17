@@ -4,7 +4,9 @@
 
 use tauri_specta::{Builder, collect_commands, collect_events};
 
-use crate::{autostart, bootstrap, hotkeys, library, playback, settings_store, window_chrome};
+use crate::{
+    autostart, bootstrap, hotkeys, library, playback, settings_store, updates, window_chrome,
+};
 
 /// Free-form JSON across IPC, exported as TS `unknown`. specta inlines `serde_json::Value`
 /// recursively and overflows; the UI owns the typed view of these documents.
@@ -42,6 +44,9 @@ pub fn builder() -> Builder<tauri::Wry> {
             playback::playback_set_shuffle,
             autostart::autostart_available,
             hotkeys::hotkeys_status,
+            updates::update_status,
+            updates::update_check,
+            updates::update_install,
             autostart::autostart_set,
             library::library_status,
             library::library_pick_folder,
@@ -66,7 +71,8 @@ pub fn builder() -> Builder<tauri::Wry> {
             library::LibraryChanged,
             library::LibraryRootNeeded,
             hotkeys::HotkeyConflict,
-            playback::QueueChanged
+            playback::QueueChanged,
+            updates::UpdateReady
         ])
 }
 

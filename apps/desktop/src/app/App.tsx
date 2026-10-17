@@ -22,6 +22,7 @@ import {
   type SettingsDoc,
   type SettingsPatch,
 } from "@/shared/ipc/settings";
+import { installUpdate, onUpdateReady, type UpdateReady } from "@/shared/ipc/updates";
 import { setWindowTheme } from "@/shared/ipc/window";
 import {
   ACCENT_SLUGS,
@@ -96,6 +97,19 @@ export function App() {
   const [openRequest, setOpenRequest] = useState<OpenRequest | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => onNotify(setToast), []);
+  const [update, setUpdate] = useState<UpdateReady | null>(null);
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    let alive = true;
+    onUpdateReady(setUpdate).then((f) => {
+      if (alive) off = f;
+      else f();
+    });
+    return () => {
+      alive = false;
+      off?.();
+    };
+  }, []);
   const goTo: GoTo = (kind, id, title) => {
     setScreen(kind);
     setOpenRequest((r) => ({ kind, id, title, seq: (r?.seq ?? 0) + 1 }));
@@ -236,6 +250,16 @@ export function App() {
           closeLabel={tc("errors.close")}
           action={{ label: t("library.goneConfirm"), onClick: confirmGone }}
           onClose={dismissGone}
+        />
+      )}
+      {update && !error && !report && (
+        <Toast
+          tone="info"
+          heading={t("updates.toastTitle", { version: update.version })}
+          message={t("updates.toastText")}
+          closeLabel={tc("errors.close")}
+          action={{ label: t("updates.installNow"), onClick: installUpdate }}
+          onClose={() => setUpdate(null)}
         />
       )}
       {toast && !error && !report && (

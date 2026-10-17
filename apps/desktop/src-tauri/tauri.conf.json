@@ -41,6 +41,18 @@
       "nsis": {
         "installMode": "currentUser"
       }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE1N0I1NTVGNDI2MDE0RjAKUldUd0ZHQkNYMVY3RlpVeTFtejBYZ04zUFEwcmRDcVBvdUpJZ3d3NzhhWjN0clpiTWlWN1dCU0MK",
+      "endpoints": [
+        "https://github.com/eropermakov/SirTone/releases/download/update-channel/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

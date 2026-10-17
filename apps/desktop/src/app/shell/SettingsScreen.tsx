@@ -5,6 +5,12 @@ import { CollectionSummary } from "@/app/library/CollectionScreen";
 import type { LibraryStatus } from "@/shared/ipc/library";
 import { getSettings, patchSettings } from "@/shared/ipc/settings";
 import {
+  checkForUpdate,
+  installUpdate,
+  type UpdateStatus,
+  updateStatus,
+} from "@/shared/ipc/updates";
+import {
   autostartAvailable,
   type HotkeyAction,
   type HotkeyStatus,
@@ -14,6 +20,7 @@ import {
 import { accelFromEvent } from "@/shared/lib/hotkeys";
 import { cn } from "@/shared/lib/utils";
 import { ACCENT_SLUGS, type AccentSource, isPalette, type ThemePref } from "@/shared/theme/theme";
+import { Button } from "@/shared/ui/Button";
 import { Switch } from "@/shared/ui/Switch";
 
 type Props = {
@@ -189,6 +196,7 @@ export function SettingsScreen({
         <p className="t-body text-text-secondary">
           {t("settings.version", { version: __APP_VERSION__ })}
         </p>
+        <UpdatesRow />
       </div>
     </section>
   );
@@ -351,6 +359,55 @@ function HotkeysSection() {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/** FR-UPD-001: «Проверить обновления» and «Обновить сейчас» (D-76). */
+function UpdatesRow() {
+  const { t } = useTranslation("shell");
+  const [status, setStatus] = useState<UpdateStatus | null>(null);
+  const [state, setState] = useState<"idle" | "checking" | "none" | "failed">("idle");
+  useEffect(() => {
+    updateStatus().then(setStatus);
+  }, []);
+  if (!status) return null;
+  if (!status.available) {
+    return <p className="t-caption text-text-tertiary">{t("updates.onlyInstalled")}</p>;
+  }
+  const check = () => {
+    setState("checking");
+    checkForUpdate()
+      .then((v) => {
+        setState(v ? "idle" : "none");
+        updateStatus().then(setStatus);
+      })
+      .catch(() => setState("failed"));
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      {status.ready ? (
+        <>
+          <span className="t-body text-text-primary">
+            {t("updates.ready", { version: status.ready })}
+          </span>
+          <Button variant="primary" onClick={installUpdate}>
+            {t("updates.installNow")}
+          </Button>
+        </>
+      ) : (
+        <>
+          <Button variant="secondary" onClick={check} disabled={state === "checking"}>
+            {state === "checking" ? t("updates.checking") : t("updates.check")}
+          </Button>
+          {state === "none" && (
+            <span className="t-caption text-text-secondary">{t("updates.upToDate")}</span>
+          )}
+          {state === "failed" && (
+            <span className="t-caption text-danger">{t("updates.failed")}</span>
+          )}
+        </>
+      )}
     </div>
   );
 }
