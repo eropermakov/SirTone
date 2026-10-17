@@ -3732,6 +3732,7 @@ dependencies = [
  "sirtone-platform",
  "sirtone-playback",
  "sirtone-recognize",
+ "sirtone-wave",
  "specta",
  "specta-typescript",
  "tauri",

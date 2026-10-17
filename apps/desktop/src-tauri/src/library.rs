@@ -174,17 +174,20 @@ fn deps() -> ImportDeps {
     }
 }
 
-fn db_path(root: &Path) -> PathBuf {
+pub(crate) fn db_path(root: &Path) -> PathBuf {
     root.join(SERVICE_DIR).join("library.db")
 }
 
-fn open_db(root: &Path) -> Result<Connection, AppError> {
-    let medium = if sirtone_platform::files::WinVolume.is_removable(root) {
+pub(crate) fn medium(root: &Path) -> Medium {
+    if sirtone_platform::files::WinVolume.is_removable(root) {
         Medium::Removable
     } else {
         Medium::Fixed
-    };
-    sirtone_library::open(&db_path(root), medium).map_err(AppError::from)
+    }
+}
+
+fn open_db(root: &Path) -> Result<Connection, AppError> {
+    sirtone_library::open(&db_path(root), medium(root)).map_err(AppError::from)
 }
 
 /// `%USERPROFILE%\Music\SirTone` (docs/03 §8.2). Isolated test instances (`SIRTONE_DATA_DIR`)

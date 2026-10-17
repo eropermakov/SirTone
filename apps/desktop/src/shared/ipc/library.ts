@@ -8,6 +8,7 @@ import {
   type ImportProgress,
   type LibraryStatus,
   type PageCursor,
+  type PlayContext,
   type TrackItem,
 } from "./bindings";
 
@@ -24,6 +25,7 @@ export type {
   ImportProgress,
   LibraryStatus,
   PageCursor,
+  PlayContext,
   TrackItem,
 } from "./bindings";
 
@@ -73,9 +75,9 @@ export const albumTracks = async (id: number): Promise<TrackItem[]> =>
 export const artistTracks = async (id: number): Promise<TrackItem[]> =>
   isTauri() ? unwrap(await commands.artistTracks(id)) : [];
 
-/** Plays `ids` as one context from `start` (FR-PLAY-006). */
-export const playTracks = (ids: number[], start: number): void => {
-  if (isTauri()) void commands.playTracks(ids, start);
+/** Plays `ids` as one context from `start` (FR-PLAY-006); `context` goes to the journal. */
+export const playTracks = (ids: number[], start: number, context: PlayContext): void => {
+  if (isTauri()) void commands.playTracks(ids, start, context);
 };
 
 type Off = () => void;

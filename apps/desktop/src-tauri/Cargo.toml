@@ -28,6 +28,7 @@ tauri-plugin-dialog = { workspace = true }
 sirtone-library = { workspace = true }
 sirtone-recognize = { workspace = true }
 sirtone-playback = { workspace = true }
+sirtone-wave = { workspace = true }
 rusqlite = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

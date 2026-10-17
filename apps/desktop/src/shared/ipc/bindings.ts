@@ -18,7 +18,7 @@ export const commands = {
 	playbackNext: () => __TAURI_INVOKE<void>("playback_next"),
 	playbackPrev: () => __TAURI_INVOKE<void>("playback_prev"),
 	/**  Plays library tracks `ids` as one context starting at `start` (double-click in a list). */
-	playTracks: (ids: number[], start: number) => typedError<null, AppError>(__TAURI_INVOKE("play_tracks", { ids, start })),
+	playTracks: (ids: number[], start: number, context: PlayContext) => typedError<null, AppError>(__TAURI_INVOKE("play_tracks", { ids, start, context })),
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
 	/**  Folder picker (native dialog); `None` when the user cancels. */
 	libraryPickFolder: () => __TAURI_INVOKE<string | null>("library_pick_folder"),
@@ -147,6 +147,9 @@ export type PageCursor = {
 	key: string,
 	id: number,
 };
+
+/**  The screen a list was played from (`play_event.source`). */
+export type PlayContext = "album" | "artist" | "collection";
 
 /**  A track or device error; the UI shows `errors.<code>` in a toast (DESIGN.md §9). */
 export type PlaybackError = {

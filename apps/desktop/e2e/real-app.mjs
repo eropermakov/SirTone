@@ -14,6 +14,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("@playwright/test");
@@ -43,6 +44,19 @@ const toMs = (tc) => {
   return (p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]) * 1000;
 };
 const settings = () => JSON.parse(readFileSync(join(dataDir, "settings.json"), "utf8"));
+// The listening journal of the isolated library (read-only; WAL lets the app keep writing).
+const readJournal = () => {
+  const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+  try {
+    return db
+      .prepare(
+        "SELECT track_id, played_ms, end_reason, source, daypart, length(season_w) AS season_len FROM play_event ORDER BY id",
+      )
+      .all();
+  } finally {
+    db.close();
+  }
+};
 
 function launch(args = []) {
   return spawn(exe, args, { env, detached: false, stdio: "ignore" });
@@ -306,6 +320,20 @@ if (existsSync(corpus)) {
   await sleep(1200);
   const second = await footer.locator(".t-body-strong").first().textContent();
   check("next plays the following track", second !== playing, `${playing} → ${second}`);
+  // T1.31: the journal — the first track was heard to its end, the second was skipped.
+  await sleep(1500);
+  const journal = readJournal();
+  const finished = journal.find((r) => r.end_reason === "finished" && r.source === "album");
+  check(
+    "journal: album track finished with its context",
+    !!finished && finished.season_len === 4 && finished.daypart >= 0 && finished.played_ms > 1000,
+    JSON.stringify(finished),
+  );
+  check(
+    "journal: «next» is a skip",
+    journal.some((r) => r.end_reason === "skip"),
+    journal.map((r) => r.end_reason).join(","),
+  );
   const attrs = spawnSync("powershell", [
     "-NoProfile",
     "-Command",
@@ -343,6 +371,9 @@ await sleep(800);
 check("theme after restart", (await page.locator("html").getAttribute("data-theme")) === "light");
 const vol = await footer.getByRole("slider", { name: "Громкость" }).getAttribute("aria-valuenow");
 check("volume after restart", vol === "37", vol);
+if (existsSync(join(libDir, ".sirtone", "library.db"))) {
+  check("journal survives a kill", readJournal().length >= 2);
+}
 
 await browser.close();
 app.kill();

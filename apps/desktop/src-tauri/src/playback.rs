@@ -8,9 +8,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
 use sirtone_audio::{EngineCmd, EngineEvent, EngineHandle, PlayState};
 use sirtone_core::error::{AppError, ErrorCode};
+use sirtone_core::wave::{EndReason, PlaySource};
 use sirtone_playback::{Queue, Step};
 use tauri::{AppHandle, State};
 
+use crate::journal::{Item as JournalItem, Journal};
 use crate::settings_store::SettingsStore;
 use tauri_specta::Event;
 
@@ -67,6 +69,27 @@ pub struct QueueItem {
     pub artists: Option<String>,
     pub track_id: Option<u32>,
     pub cover: Option<String>,
+    /// Where playback was started from (journal, T1.31).
+    pub source: PlaySource,
+}
+
+/// The screen a list was played from (`play_event.source`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+pub enum PlayContext {
+    Album,
+    Artist,
+    Collection,
+}
+
+impl From<PlayContext> for PlaySource {
+    fn from(c: PlayContext) -> Self {
+        match c {
+            PlayContext::Album => PlaySource::Album,
+            PlayContext::Artist => PlaySource::Artist,
+            PlayContext::Collection => PlaySource::Collection,
+        }
+    }
 }
 
 pub struct Playback {
@@ -74,6 +97,7 @@ pub struct Playback {
     settings: Arc<SettingsStore>,
     last: Arc<Mutex<PlaybackSnapshot>>,
     queue: Arc<Mutex<Queue<QueueItem>>>,
+    journal: Arc<Journal>,
 }
 
 fn empty_snapshot() -> PlaybackSnapshot {
@@ -105,6 +129,8 @@ impl Playback {
         // The sink needs the handle to auto-advance; it exists only after `start` returns.
         let handle: Arc<OnceLock<EngineHandle>> = Arc::new(OnceLock::new());
         let sink_handle = handle.clone();
+        let journal = Arc::new(Journal::start(settings.clone()));
+        let sink_journal = journal.clone();
         let engine = sirtone_audio::start(Box::new(move |ev| match ev {
             EngineEvent::Snapshot(s) => {
                 let mut q = sink_queue.lock().unwrap_or_else(|p| p.into_inner());
@@ -117,6 +143,16 @@ impl Playback {
                         h.send(EngineCmd::SetNext(q.peek_next().map(|i| i.path.clone())));
                     }
                 }
+                sink_journal.observe(
+                    &s,
+                    q.current()
+                        .filter(|c| Some(c.path.as_path()) == s.path.as_deref())
+                        .map(|c| JournalItem {
+                            path: &c.path,
+                            track_id: c.track_id,
+                            source: c.source,
+                        }),
+                );
                 // End of a track with more in the context: the next one (FR-PLAY-005).
                 if s.state == PlayState::Ended
                     && q.current()
@@ -169,6 +205,7 @@ impl Playback {
                 let _ = snap.emit(&app);
             }
             EngineEvent::Error { error, path } => {
+                sink_journal.on_error(path.as_deref());
                 tracing::warn!(target: "sirtone::playback", code = ?error.code, "playback error");
                 let _ = PlaybackError {
                     error,
@@ -190,6 +227,7 @@ impl Playback {
             settings,
             last,
             queue,
+            journal,
         })
     }
 
@@ -209,6 +247,7 @@ impl Playback {
                     artists: None,
                     track_id: None,
                     cover: None,
+                    source: PlaySource::External,
                 };
                 self.play_queue(vec![item], 0);
             }
@@ -235,6 +274,7 @@ impl Playback {
 
     /// Plays `items` as the new context from `start` (FR-PLAY-006: replaces the queue).
     pub fn play_queue(&self, items: Vec<QueueItem>, start: usize) {
+        self.journal.close(EndReason::Skip);
         if let Step::Play(item) = self.queue().replace(items, start) {
             self.engine.send(EngineCmd::Load {
                 path: item.path,
@@ -245,6 +285,7 @@ impl Playback {
     }
 
     pub fn next(&self) {
+        self.journal.close(EndReason::Skip);
         if let Step::Play(item) = self.queue().advance() {
             self.engine.send(EngineCmd::Load {
                 path: item.path,
@@ -255,6 +296,7 @@ impl Playback {
     }
 
     pub fn prev(&self) {
+        self.journal.close(EndReason::Skip);
         match self.queue().back() {
             Step::Play(item) => self.engine.send(EngineCmd::Load {
                 path: item.path,
@@ -278,6 +320,7 @@ impl Playback {
     }
 
     pub fn shutdown(&self) {
+        self.journal.shutdown();
         self.engine.send(EngineCmd::Shutdown);
     }
 }
@@ -402,6 +445,7 @@ pub fn play_tracks(
     lib: State<'_, crate::library::Library>,
     ids: Vec<u32>,
     start: u32,
+    context: PlayContext,
 ) -> Result<(), AppError> {
     let resolved = lib.resolve(&ids)?;
     let items = resolved
@@ -413,6 +457,7 @@ pub fn play_tracks(
             artists: (!artists.is_empty()).then_some(artists),
             track_id: Some(*id),
             cover,
+            source: context.into(),
         })
         .collect();
     pb.play_queue(items, start as usize);

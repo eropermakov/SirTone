@@ -5,6 +5,7 @@
 mod bootstrap;
 mod diagnostics;
 mod ipc;
+mod journal;
 mod library;
 mod playback;
 mod settings_store;
