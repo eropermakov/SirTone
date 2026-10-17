@@ -507,11 +507,19 @@ impl Default for ContextPrefs {
 #[serde(default)]
 pub struct Updates {
     pub auto_check: bool,
+    /// The version that ran last time: a newer running version = «Сиртон обновлён» (D-76).
+    pub last_version: Option<String>,
+    /// Release notes of the downloaded update, shown after it is installed.
+    pub notes: Option<String>,
 }
 
 impl Default for Updates {
     fn default() -> Self {
-        Self { auto_check: true }
+        Self {
+            auto_check: true,
+            last_version: None,
+            notes: None,
+        }
     }
 }
 

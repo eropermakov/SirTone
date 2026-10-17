@@ -22,7 +22,7 @@ import {
   type SettingsDoc,
   type SettingsPatch,
 } from "@/shared/ipc/settings";
-import { installUpdate, onUpdateReady, type UpdateReady } from "@/shared/ipc/updates";
+import { type UpdateStatus, updateStatus } from "@/shared/ipc/updates";
 import { setWindowTheme } from "@/shared/ipc/window";
 import {
   ACCENT_SLUGS,
@@ -97,18 +97,12 @@ export function App() {
   const [openRequest, setOpenRequest] = useState<OpenRequest | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => onNotify(setToast), []);
-  const [update, setUpdate] = useState<UpdateReady | null>(null);
+  // «Сиртон обновлён до X» once, on the first start of a new version (D-76).
+  const [updated, setUpdated] = useState<UpdateStatus | null>(null);
   useEffect(() => {
-    let off: (() => void) | undefined;
-    let alive = true;
-    onUpdateReady(setUpdate).then((f) => {
-      if (alive) off = f;
-      else f();
+    updateStatus().then((u) => {
+      if (u?.justUpdated) setUpdated(u);
     });
-    return () => {
-      alive = false;
-      off?.();
-    };
   }, []);
   const goTo: GoTo = (kind, id, title) => {
     setScreen(kind);
@@ -252,14 +246,14 @@ export function App() {
           onClose={dismissGone}
         />
       )}
-      {update && !error && !report && (
+      {updated?.justUpdated && !error && !report && (
         <Toast
           tone="info"
-          heading={t("updates.toastTitle", { version: update.version })}
-          message={t("updates.toastText")}
+          heading={t("updates.updatedTitle", { version: updated.justUpdated })}
+          message={firstLine(updated.notes) ?? t("updates.updatedText")}
           closeLabel={tc("errors.close")}
-          action={{ label: t("updates.installNow"), onClick: installUpdate }}
-          onClose={() => setUpdate(null)}
+          timeoutMs={8000}
+          onClose={() => setUpdated(null)}
         />
       )}
       {toast && !error && !report && (
@@ -323,4 +317,10 @@ export function App() {
       )}
     </div>
   );
+}
+
+/** The first line of release notes, for a one-line toast. */
+function firstLine(text: string | null): string | null {
+  const line = text?.split(/\r?\n/).find((l) => l.trim() !== "");
+  return line ? line.replace(/^[#*\s-]+/, "").replace(/\*\*/g, "") : null;
 }

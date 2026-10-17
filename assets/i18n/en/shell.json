@@ -191,14 +191,8 @@
     "queued": "Added to queue: {title}"
   },
   "updates": {
-    "check": "Check for updates",
-    "checking": "Checking…",
-    "upToDate": "You have the latest version",
-    "ready": "Version {version} downloaded — installs when you quit",
-    "installNow": "Update now",
-    "failed": "Could not check for updates",
-    "onlyInstalled": "Updates work in the installed version",
-    "toastTitle": "Update {version} available",
-    "toastText": "It installs when you quit SirTone"
+    "auto": "Updates itself automatically",
+    "updatedTitle": "SirTone updated to {version}",
+    "updatedText": "The new version installed itself"
   }
 }

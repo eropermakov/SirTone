@@ -51,7 +51,7 @@
         "https://github.com/eropermakov/SirTone/releases/download/update-channel/latest.json"
       ],
       "windows": {
-        "installMode": "passive"
+        "installMode": "quiet"
       }
     }
   }

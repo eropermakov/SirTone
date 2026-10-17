@@ -45,8 +45,6 @@ pub fn builder() -> Builder<tauri::Wry> {
             autostart::autostart_available,
             hotkeys::hotkeys_status,
             updates::update_status,
-            updates::update_check,
-            updates::update_install,
             autostart::autostart_set,
             library::library_status,
             library::library_pick_folder,
@@ -71,8 +69,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             library::LibraryChanged,
             library::LibraryRootNeeded,
             hotkeys::HotkeyConflict,
-            playback::QueueChanged,
-            updates::UpdateReady
+            playback::QueueChanged
         ])
 }
 

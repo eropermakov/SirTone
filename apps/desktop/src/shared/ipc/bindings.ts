@@ -32,11 +32,8 @@ export const commands = {
 	autostartAvailable: () => __TAURI_INVOKE<boolean>("autostart_available"),
 	/**  Settings → «Горячие клавиши»: what is configured and what Windows refused. */
 	hotkeysStatus: () => __TAURI_INVOKE<HotkeyStatus[]>("hotkeys_status"),
+	/**  Version and, the first time after an update, «Сиртон обновлён до X» (taken once). */
 	updateStatus: () => __TAURI_INVOKE<UpdateStatus>("update_status"),
-	/**  «Проверить обновления» (FR-UPD-001): returns the version found (and downloaded), if any. */
-	updateCheck: () => typedError<string | null, AppError>(__TAURI_INVOKE("update_check")),
-	/**  «Обновить сейчас». */
-	updateInstall: () => typedError<boolean, AppError>(__TAURI_INVOKE("update_install")),
 	/**  Turns «Запускать вместе с Windows» on/off and saves the setting; returns the real state. */
 	autostartSet: (on: boolean) => typedError<boolean, AppError>(__TAURI_INVOKE("autostart_set", { on })),
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
@@ -76,7 +73,6 @@ export const events = {
 	playbackError: makeEvent<PlaybackError>("playback-error"),
 	playbackSnapshot: makeEvent<PlaybackSnapshot>("playback-snapshot"),
 	queueChanged: makeEvent<QueueChanged>("queue-changed"),
-	updateReady: makeEvent<UpdateReady>("update-ready"),
 };
 
 /* Types */
@@ -269,18 +265,12 @@ export type TrackPage = {
 	next: PageCursor | null,
 };
 
-/**  A newer version is downloaded and ready to install. */
-export type UpdateReady = {
-	version: string,
-	notes: string | null,
-};
-
+/**  What the UI needs: the running version and, once, «just updated». */
 export type UpdateStatus = {
 	current: string,
-	/**  Downloaded and waiting (installs at quit or on «Обновить сейчас»). */
-	ready: string | null,
-	/**  Only the installed copy updates itself (not dev builds or test instances). */
-	available: boolean,
+	/**  Set on the first start after an update (shown once as a toast). */
+	justUpdated: string | null,
+	notes: string | null,
 };
 
 /* Tauri Specta runtime */
