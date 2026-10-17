@@ -65,7 +65,8 @@ $latest = [ordered]@{
 }
 $latestFile = Join-Path $env:TEMP 'latest.json'
 [IO.File]::WriteAllText($latestFile, ($latest | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
-gh release view update-channel --repo $Repo *> $null
+# cmd /c: Windows PowerShell 5.1 turns a native command's stderr into a terminating error.
+cmd /c "gh release view update-channel --repo $Repo >nul 2>&1"
 if ($LASTEXITCODE -ne 0) {
     gh release create update-channel --repo $Repo --prerelease --title 'Канал обновлений' --notes 'Служебный релиз: latest.json для автообновления установленных копий (D-76). Не удалять.' --target $head
     Must 'gh release create update-channel'
