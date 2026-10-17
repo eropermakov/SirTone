@@ -11,6 +11,7 @@ import {
   hotkeysStatus,
   setAutostart,
 } from "@/shared/ipc/window";
+import { accelFromEvent } from "@/shared/lib/hotkeys";
 import { cn } from "@/shared/lib/utils";
 import { ACCENT_SLUGS, type AccentSource, isPalette, type ThemePref } from "@/shared/theme/theme";
 import { Switch } from "@/shared/ui/Switch";
@@ -252,14 +253,54 @@ const HOTKEYS: { action: HotkeyAction; key: string; def: string }[] = [
 function HotkeysSection() {
   const { t } = useTranslation("shell");
   const [status, setStatus] = useState<HotkeyStatus[]>([]);
+  const [recording, setRecording] = useState<string | null>(null);
+  const [problem, setProblem] = useState<{ action: string; text: string } | null>(null);
   const reload = () => {
     hotkeysStatus().then(setStatus);
   };
   useEffect(reload, []);
 
-  const toggle = (key: string, def: string, on: boolean) => {
-    patchSettings({ hotkeys: { [key]: on ? def : null } }).then(reload, reload);
+  const save = (key: string, accel: string | null) => {
+    patchSettings({ hotkeys: { [key]: accel } }).then(reload, reload);
   };
+
+  // Recording a new combination (FR-WIN-001 editor): the next usable key press wins.
+  useEffect(() => {
+    if (!recording) return;
+    const h = HOTKEYS.find((x) => x.key === recording);
+    const down = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === "Escape") {
+        setRecording(null);
+        setProblem(null);
+        return;
+      }
+      const accel = accelFromEvent(e);
+      if (!accel) {
+        if (!["Control", "Alt", "Shift", "Meta"].includes(e.key) && h) {
+          setProblem({ action: h.action, text: t("settingsHotkeys.needModifier") });
+        }
+        return;
+      }
+      const clash = status.find((s) => s.accel === accel && s.action !== h?.action);
+      if (clash && h) {
+        setProblem({
+          action: h.action,
+          text: t("settingsHotkeys.duplicate", {
+            action: t(`settingsHotkeys.action.${clash.action}`),
+          }),
+        });
+        return;
+      }
+      setRecording(null);
+      setProblem(null);
+      const refresh = () => hotkeysStatus().then(setStatus);
+      patchSettings({ hotkeys: { [recording]: accel } }).then(refresh, refresh);
+    };
+    window.addEventListener("keydown", down, true);
+    return () => window.removeEventListener("keydown", down, true);
+  }, [recording, status, t]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -269,20 +310,41 @@ function HotkeysSection() {
         {HOTKEYS.map((h) => {
           const st = status.find((s) => s.action === h.action);
           const label = t(`settingsHotkeys.action.${h.action}`);
+          const isRecording = recording === h.key;
           return (
             <div key={h.action} className="flex items-center gap-4 px-6 py-3">
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="t-body text-text-primary">{label}</span>
-                {st && !st.registered && (
-                  <span className="t-caption text-danger">{t("settingsHotkeys.taken")}</span>
+                {problem?.action === h.action ? (
+                  <span className="t-caption text-danger">{problem.text}</span>
+                ) : (
+                  st &&
+                  !st.registered && (
+                    <span className="t-caption text-danger">{t("settingsHotkeys.taken")}</span>
+                  )
                 )}
               </div>
-              <span className="t-caption rounded-(--radius-md) border border-border px-2 py-1 text-text-secondary">
-                {st?.accel ?? h.def}
-              </span>
+              <button
+                type="button"
+                aria-label={t("settingsHotkeys.change", { action: label })}
+                aria-pressed={isRecording}
+                disabled={!st}
+                onClick={() => {
+                  setProblem(null);
+                  setRecording(isRecording ? null : h.key);
+                }}
+                className={cn(
+                  "t-caption rounded-(--radius-md) border px-2 py-1 disabled:opacity-40",
+                  isRecording
+                    ? "border-accent-text text-accent-text"
+                    : "border-border text-text-secondary hover:bg-bg-hover",
+                )}
+              >
+                {isRecording ? t("settingsHotkeys.record") : (st?.accel ?? h.def)}
+              </button>
               <Switch
                 checked={Boolean(st)}
-                onChange={(on) => toggle(h.key, st?.accel ?? h.def, on)}
+                onChange={(on) => save(h.key, on ? (st?.accel ?? h.def) : null)}
                 label={label}
               />
             </div>

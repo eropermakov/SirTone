@@ -498,6 +498,15 @@ check(
   hk.map((h) => `${h.accel}:${h.registered ? "ok" : "taken"}`).join(" "),
 );
 
+// T2.14 combination editor: click the combination, press a new one — registered at once.
+await page.getByRole("button", { name: "Настройки" }).click();
+await page.getByRole("button", { name: "Изменить сочетание: Играть / пауза" }).click();
+await page.keyboard.press("Control+Alt+KeyP");
+await sleep(500);
+const edited = (await invoke("hotkeys_status", {})).find((h) => h.action === "playPause");
+check("combination editor sets Ctrl+Alt+P", edited?.accel === "Ctrl+Alt+P", JSON.stringify(edited));
+await invoke("settings_patch", { patch: { hotkeys: { play_pause: "Ctrl+Alt+Space" } } });
+
 // FR-WIN-001: changing a hotkey applies at once (re-registration from a settings command).
 await invoke("settings_patch", { patch: { hotkeys: { mute: "Ctrl+Alt+M" } } });
 const hk6 = await invoke("hotkeys_status", {});

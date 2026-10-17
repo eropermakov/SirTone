@@ -162,7 +162,11 @@
       "volumeUp": "Louder",
       "volumeDown": "Quieter",
       "mute": "Mute"
-    }
+    },
+    "record": "Press a combination… (Esc cancels)",
+    "change": "Change the combination: {action}",
+    "duplicate": "Already used: {action}",
+    "needModifier": "Ctrl, Alt or Win is required"
   },
   "queue": {
     "title": "Queue",
