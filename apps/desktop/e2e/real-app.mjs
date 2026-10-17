@@ -391,6 +391,20 @@ if (existsSync(corpus)) {
     sh.shuffle === true && q2.items[q2.position]?.title === sh.title,
   );
   await footer.getByRole("button", { name: "Перемешать" }).click();
+  // T2.1: the track menu «К исполнителю» opens the artist; Alt+← goes back to the album.
+  const albumTitle = await page.locator("h1").first().textContent();
+  await rows.first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "К исполнителю" }).click();
+  await sleep(600);
+  const artistTitle = await page.locator("h1").first().textContent();
+  await page.keyboard.press("Alt+ArrowLeft");
+  await sleep(400);
+  const backTitle = await page.locator("h1").first().textContent();
+  check(
+    "track menu → artist, Alt+← → back to the album",
+    artistTitle !== albumTitle && backTitle === albumTitle,
+    `${albumTitle} → ${artistTitle} → ${backTitle}`,
+  );
   // T1.31: the journal — the first track was heard to its end, the second was skipped.
   await sleep(1500);
   const journal = readJournal();

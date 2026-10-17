@@ -13,7 +13,7 @@ import {
   type LibraryStatus,
   pickFolder,
 } from "@/shared/ipc/library";
-import { togglePlay } from "@/shared/ipc/playback";
+import { next as nextTrack, prev as prevTrack, togglePlay } from "@/shared/ipc/playback";
 import {
   getSettings,
   migrateLegacyAppearance,
@@ -36,7 +36,7 @@ import {
 } from "@/shared/theme/theme";
 import { onNotify } from "@/shared/ui/notify";
 import { Toast } from "@/shared/ui/Toast";
-import type { OpenRequest } from "./library/CollectionScreen";
+import type { Open } from "./library/CollectionScreen";
 import type { GoTo } from "./library/TrackList";
 import { EmptyScreen } from "./shell/EmptyScreen";
 import { PlayerBar } from "./shell/PlayerBar";
@@ -44,6 +44,9 @@ import { QueuePanel } from "./shell/QueuePanel";
 import { SettingsScreen } from "./shell/SettingsScreen";
 import { type Screen, Sidebar } from "./shell/Sidebar";
 import { usePlayback } from "./shell/usePlayback";
+
+/** One place in the app: a sidebar section, maybe with an album/artist opened. */
+type NavEntry = { screen: Screen; open: Open | null };
 
 /** Shell (prototype slice of T2.1/T2.2): three zones from DESIGN.md §7. Appearance lives in Rust settings (T0.6). */
 type Appearance = { theme: ThemePref; accent: AccentSource };
@@ -77,7 +80,25 @@ export function App() {
   const { t } = useTranslation("shell");
   const { t: tc } = useTranslation("common");
   const { snap, receivedAt, error, clearError, hydrate } = usePlayback();
-  const [screen, setScreen] = useState<Screen>("wave");
+  // Navigation stack (T2.1): sidebar sections and opened albums/artists; «назад» pops.
+  const [stack, setStack] = useState<NavEntry[]>([{ screen: "wave", open: null }]);
+  const here = stack[stack.length - 1] ?? { screen: "wave" as Screen, open: null };
+  const screen = here.screen;
+  const push = (e: NavEntry) =>
+    setStack((s) => {
+      const top = s[s.length - 1];
+      if (
+        top &&
+        top.screen === e.screen &&
+        top.open?.id === e.open?.id &&
+        top.open?.kind === e.open?.kind
+      ) {
+        return s;
+      }
+      return [...s.slice(-49), e];
+    });
+  const setScreen = (sc: Screen) => push({ screen: sc, open: null });
+  const back = () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
   const [bootLibrary, setBootLibrary] = useState<LibraryStatus | null>(null);
   const lib = useLibrary(bootLibrary);
   // The question about vanished files is answered optimistically: the toast goes at once.
@@ -94,7 +115,6 @@ export function App() {
   const [appearance, setAppearanceState] = useState<Appearance>(DEFAULT);
   const [manualCollapsed, setManualCollapsed] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
-  const [openRequest, setOpenRequest] = useState<OpenRequest | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => onNotify(setToast), []);
   // «Сиртон обновлён до X» once, on the first start of a new version (D-76).
@@ -104,10 +124,44 @@ export function App() {
       if (u?.justUpdated) setUpdated(u);
     });
   }, []);
-  const goTo: GoTo = (kind, id, title) => {
-    setScreen(kind);
-    setOpenRequest((r) => ({ kind, id, title, seq: (r?.seq ?? 0) + 1 }));
-  };
+  const goTo: GoTo = (kind, id, title) =>
+    push({ screen: kind, open: { kind, id, title, subtitle: "", cover: null } });
+
+  // DESIGN.md §10 keys (Space lives in usePlayback): Alt+← / mouse «back» — назад,
+  // Ctrl+→/← — next/previous track, Ctrl+, — settings.
+  useEffect(() => {
+    const typing = (t: EventTarget | null) =>
+      t instanceof HTMLElement &&
+      (t.isContentEditable || ["INPUT", "TEXTAREA"].includes(t.tagName));
+    const key = (e: KeyboardEvent) => {
+      if (typing(e.target)) return;
+      if ((e.altKey && e.key === "ArrowLeft") || e.key === "BrowserBack") {
+        e.preventDefault();
+        back();
+      } else if (e.ctrlKey && !e.altKey && e.key === "ArrowRight") {
+        e.preventDefault();
+        nextTrack();
+      } else if (e.ctrlKey && !e.altKey && e.key === "ArrowLeft") {
+        e.preventDefault();
+        prevTrack();
+      } else if (e.ctrlKey && e.key === ",") {
+        e.preventDefault();
+        setScreen("settings");
+      }
+    };
+    const mouse = (e: MouseEvent) => {
+      if (e.button === 3) {
+        e.preventDefault();
+        back();
+      }
+    };
+    window.addEventListener("keydown", key);
+    window.addEventListener("mouseup", mouse);
+    return () => {
+      window.removeEventListener("keydown", key);
+      window.removeEventListener("mouseup", mouse);
+    };
+  });
   const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW).matches);
 
   // Load settings once (and move prototype 0.1 choices over), then follow changes from Rust.
@@ -184,6 +238,7 @@ export function App() {
           current={screen}
           collapsed={narrow || manualCollapsed}
           onNavigate={setScreen}
+          badges={{ unknown: lib.status.unknown }}
           onToggle={() => setManualCollapsed((c) => !c)}
           progress={lib.progress}
           onCancelImport={cancelImport}
@@ -209,7 +264,9 @@ export function App() {
               status={lib.status}
               version={lib.version}
               playingId={snap.trackId}
-              openRequest={openRequest?.kind === screen ? openRequest : null}
+              open={here.open}
+              onOpen={(o) => push({ screen, open: o })}
+              onBack={back}
             />
           ) : (
             <EmptyScreen

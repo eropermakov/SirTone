@@ -47,6 +47,8 @@ type Props = {
   onCancelImport?: () => void;
   /** The library folder cannot be reached (FR-FS-004). */
   offline?: boolean;
+  /** Counters next to items (DESIGN.md §9: `accent-fill` circle with `accent-on`). */
+  badges?: Partial<Record<Screen, number>>;
 };
 
 export function Sidebar({
@@ -57,6 +59,7 @@ export function Sidebar({
   progress,
   onCancelImport,
   offline,
+  badges,
 }: Props) {
   const { t } = useTranslation("nav");
   const { t: ts } = useTranslation("shell");
@@ -79,8 +82,21 @@ export function Sidebar({
           collapsed && "justify-center px-0",
         )}
       >
-        <Icon size={20} strokeWidth={1.5} />
-        {!collapsed && <span className="t-body truncate">{t(it.id)}</span>}
+        <span className="relative flex">
+          <Icon size={20} strokeWidth={1.5} />
+          {collapsed && (badges?.[it.id] ?? 0) > 0 && (
+            <span
+              aria-hidden
+              className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-accent-fill"
+            />
+          )}
+        </span>
+        {!collapsed && <span className="t-body min-w-0 flex-1 truncate">{t(it.id)}</span>}
+        {!collapsed && (badges?.[it.id] ?? 0) > 0 && (
+          <span className="t-badge flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-fill px-1.5 text-accent-on">
+            {badges?.[it.id]}
+          </span>
+        )}
       </button>
     );
   };

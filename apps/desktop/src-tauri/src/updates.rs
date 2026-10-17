@@ -127,6 +127,7 @@ async fn check_and_download(app: &AppHandle) -> Result<(), AppError> {
         return Ok(());
     }
     let Some(update) = updater(app, false)?.check().await.map_err(err)? else {
+        tracing::info!(target: "sirtone::update", "up to date");
         return Ok(());
     };
     tracing::info!(target: "sirtone::update", version = %update.version, "update found, downloading");
