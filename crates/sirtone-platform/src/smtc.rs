@@ -188,7 +188,8 @@ impl Session {
         >()?;
         // SAFETY: `hwnd` is our live service window.
         let smtc: SystemMediaTransportControls = unsafe { interop.GetForWindow(hwnd)? };
-        smtc.SetIsEnabled(true)?;
+        // Enabled with the first track: an idle session would sit empty in the flyout.
+        smtc.SetIsEnabled(false)?;
         smtc.SetIsPlayEnabled(true)?;
         smtc.SetIsPauseEnabled(true)?;
         smtc.SetIsStopEnabled(true)?;
@@ -233,8 +234,10 @@ impl Session {
         let Some(t) = t else {
             self.smtc.SetPlaybackStatus(MediaPlaybackStatus::Closed)?;
             self.duration_ms = 0;
-            return du.Update();
+            du.Update()?;
+            return self.smtc.SetIsEnabled(false);
         };
+        self.smtc.SetIsEnabled(true)?;
         du.SetType(MediaPlaybackType::Music)?;
         let mp = du.MusicProperties()?;
         mp.SetTitle(&HSTRING::from(t.title.as_str()))?;
@@ -336,6 +339,12 @@ fn run(rx: &Receiver<Cmd>, on_button: Arc<dyn Fn(SmtcButton) + Send + Sync>, rea
     let _ = unsafe { DestroyWindow(hwnd) };
 }
 
+/// The session manager is a WinRT object: the calling thread joins the MTA first.
+fn mta() {
+    // SAFETY: plain COM initialisation; S_FALSE / RPC_E_CHANGED_MODE are fine.
+    let _ = unsafe { CoInitializeEx(None, windows::Win32::System::Com::COINIT_MULTITHREADED) };
+}
+
 /// One media session as Windows sees it (verification: `sirtone-cli smtc`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionInfo {
@@ -348,10 +357,14 @@ pub struct SessionInfo {
 /// Every media session Windows knows about, read the way the flyout and widgets read them.
 pub fn sessions() -> windows::core::Result<Vec<SessionInfo>> {
     use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager as Manager;
+    mta();
     let manager = Manager::RequestAsync()?.join()?;
     let mut out = Vec::new();
     for s in manager.GetSessions()? {
-        let props = s.TryGetMediaPropertiesAsync()?.join()?;
+        // A session without a track answers «not ready»: list the others.
+        let Ok(props) = s.TryGetMediaPropertiesAsync().and_then(|op| op.join()) else {
+            continue;
+        };
         let status = s
             .GetPlaybackInfo()
             .and_then(|i| i.PlaybackStatus())
@@ -371,9 +384,12 @@ pub fn sessions() -> windows::core::Result<Vec<SessionInfo>> {
 /// check of the button path; the owner's own session is never matched by a test title).
 pub fn toggle_session(title: &str) -> windows::core::Result<bool> {
     use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager as Manager;
+    mta();
     let manager = Manager::RequestAsync()?.join()?;
     for s in manager.GetSessions()? {
-        let props = s.TryGetMediaPropertiesAsync()?.join()?;
+        let Ok(props) = s.TryGetMediaPropertiesAsync().and_then(|op| op.join()) else {
+            continue;
+        };
         if props.Title()?.to_string().contains(title) {
             return s.TryTogglePlayPauseAsync()?.join();
         }
