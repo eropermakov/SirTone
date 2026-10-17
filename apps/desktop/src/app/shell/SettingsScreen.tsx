@@ -33,6 +33,9 @@ type Props = {
   /** «Хранилище» (FR-DATA-004, FR-ONB-003): library folder and counters. */
   library?: LibraryStatus;
   onChooseLibrary?: () => void;
+  /** FR-ONB-002/003: the setup and the tips again. */
+  onReplaySetup?: () => void;
+  onReplayTips?: () => void;
 };
 
 const THEMES: { id: ThemePref; key: string }[] = [
@@ -51,9 +54,10 @@ export function SettingsScreen({
   onAccent,
   library,
   onChooseLibrary,
+  onReplaySetup,
+  onReplayTips,
 }: Props) {
   const { t } = useTranslation("shell");
-  const customHex = accent.kind === "custom" ? accent.hex : "#3b82f6";
 
   return (
     <section className="flex max-w-3xl flex-col gap-12">
@@ -64,27 +68,7 @@ export function SettingsScreen({
 
         <div className="flex flex-col gap-3 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
           <span className="t-card-title text-text-primary">{t("settings.theme")}</span>
-          <fieldset
-            className="m-0 border-0 p-0 flex flex-wrap gap-2"
-            aria-label={t("settings.theme")}
-          >
-            {THEMES.map((it) => (
-              <button
-                key={it.id}
-                type="button"
-                aria-pressed={theme === it.id}
-                onClick={() => onTheme(it.id)}
-                className={cn(
-                  "t-menu h-(--chip-height) rounded-full px-3",
-                  theme === it.id
-                    ? "bg-primary text-on-primary"
-                    : "border border-border text-text-primary hover:bg-bg-hover",
-                )}
-              >
-                {t(it.key)}
-              </button>
-            ))}
-          </fieldset>
+          <ThemeChips theme={theme} onTheme={onTheme} />
         </div>
 
         <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
@@ -92,62 +76,8 @@ export function SettingsScreen({
           {isPalette(theme) && (
             <span className="t-caption text-text-secondary">{t("settings.accentByTheme")}</span>
           )}
-          <fieldset
-            disabled={isPalette(theme)}
-            className="m-0 border-0 p-0 flex flex-wrap gap-3 disabled:opacity-40"
-            aria-label={t("settings.color")}
-          >
-            {ACCENT_SLUGS.map((slug) => {
-              const selected = accent.kind === "preset" && accent.slug === slug;
-              return (
-                <button
-                  key={slug}
-                  type="button"
-                  aria-pressed={selected}
-                  aria-label={t(`accent.${slug}`)}
-                  title={t(`accent.${slug}`)}
-                  onClick={() => onAccent({ kind: "preset", slug })}
-                  className={cn(
-                    "relative flex size-8 items-center justify-center rounded-full",
-                    selected && "ring-2 ring-text-primary ring-offset-[3px] ring-offset-bg-raised",
-                  )}
-                  style={
-                    slug === "sirkov"
-                      ? {
-                          background: `linear-gradient(135deg, var(--accent-${slug}-primary) 50%, var(--accent-${slug}-fill) 50%)`,
-                        }
-                      : { background: `var(--accent-${slug}-fill)` }
-                  }
-                >
-                  {selected && (
-                    <Check
-                      size={16}
-                      strokeWidth={2}
-                      style={{ color: `var(--accent-${slug}-on)` }}
-                    />
-                  )}
-                </button>
-              );
-            })}
-            <label
-              title={t("settings.custom")}
-              className={cn(
-                "relative flex size-8 cursor-pointer items-center justify-center rounded-full border border-border text-icon",
-                accent.kind === "custom" &&
-                  "ring-2 ring-text-primary ring-offset-[3px] ring-offset-bg-raised",
-              )}
-              style={accent.kind === "custom" ? { background: customHex } : undefined}
-            >
-              <Plus size={16} strokeWidth={1.5} />
-              <input
-                type="color"
-                aria-label={t("settings.custom")}
-                value={customHex}
-                onChange={(e) => onAccent({ kind: "custom", hex: e.target.value })}
-                className="absolute inset-0 cursor-pointer opacity-0"
-              />
-            </label>
-          </fieldset>
+          <AccentSwatches theme={theme} accent={accent} onAccent={onAccent} />
+          <SeasonSwitch />
 
           <div className="mt-2 flex items-center gap-4 border-t border-separator pt-4">
             <span className="t-caption text-text-tertiary">{t("settings.preview")}</span>
@@ -204,6 +134,18 @@ export function SettingsScreen({
           {t("settings.version", { version: __APP_VERSION__ })}
         </p>
         <p className="t-caption text-text-tertiary">{t("updates.auto")}</p>
+        <div className="flex flex-wrap gap-3 pt-2">
+          {onReplayTips && (
+            <Button variant="secondary" onClick={onReplayTips}>
+              {t("tips.again")}
+            </Button>
+          )}
+          {onReplaySetup && (
+            <Button variant="ghost" onClick={onReplaySetup}>
+              {t("onboarding.again")}
+            </Button>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -371,7 +313,7 @@ function HotkeysSection() {
 }
 
 /** «Производительность» (T2.3, FR-PERF-001/002): five presets + point switches over them. */
-function PerformanceSection() {
+export function PerformanceSection() {
   const { t } = useTranslation("shell");
   const [level, setLevel] = useState(3);
   const [overrides, setOverrides] = useState<Record<string, unknown>>({});
@@ -536,6 +478,134 @@ function ServiceData() {
           {t("settingsStorage.clearLogs", { count: info.oldLogs })}
         </Button>
       )}
+    </div>
+  );
+}
+
+/** Theme chips (Settings and the first-start setup, FR-ONB-003). */
+export function ThemeChips({
+  theme,
+  onTheme,
+}: {
+  theme: ThemePref;
+  onTheme: (t: ThemePref) => void;
+}) {
+  const { t } = useTranslation("shell");
+  return (
+    <fieldset className="m-0 border-0 p-0 flex flex-wrap gap-2" aria-label={t("settings.theme")}>
+      {THEMES.map((it) => (
+        <button
+          key={it.id}
+          type="button"
+          aria-pressed={theme === it.id}
+          onClick={() => onTheme(it.id)}
+          className={cn(
+            "t-menu h-(--chip-height) rounded-full px-3",
+            theme === it.id
+              ? "bg-primary text-on-primary"
+              : "border border-border text-text-primary hover:bg-bg-hover",
+          )}
+        >
+          {t(it.key)}
+        </button>
+      ))}
+    </fieldset>
+  );
+}
+
+/** AccentPicker swatches (DESIGN.md §9): Sir.kov, 16 colours, «Свой». */
+export function AccentSwatches({
+  theme,
+  accent,
+  onAccent,
+}: {
+  theme: ThemePref;
+  accent: AccentSource;
+  onAccent: (a: AccentSource) => void;
+}) {
+  const { t } = useTranslation("shell");
+  const customHex = accent.kind === "custom" ? accent.hex : "#3b82f6";
+  return (
+    <fieldset
+      disabled={isPalette(theme)}
+      className="m-0 border-0 p-0 flex flex-wrap gap-3 disabled:opacity-40"
+      aria-label={t("settings.color")}
+    >
+      {ACCENT_SLUGS.map((slug) => {
+        const selected = accent.kind === "preset" && accent.slug === slug;
+        return (
+          <button
+            key={slug}
+            type="button"
+            aria-pressed={selected}
+            aria-label={t(`accent.${slug}`)}
+            title={t(`accent.${slug}`)}
+            onClick={() => onAccent({ kind: "preset", slug })}
+            className={cn(
+              "relative flex size-8 items-center justify-center rounded-full",
+              selected && "ring-2 ring-text-primary ring-offset-[3px] ring-offset-bg-raised",
+            )}
+            style={
+              slug === "sirkov"
+                ? {
+                    background: `linear-gradient(135deg, var(--accent-${slug}-primary) 50%, var(--accent-${slug}-fill) 50%)`,
+                  }
+                : { background: `var(--accent-${slug}-fill)` }
+            }
+          >
+            {selected && (
+              <Check size={16} strokeWidth={2} style={{ color: `var(--accent-${slug}-on)` }} />
+            )}
+          </button>
+        );
+      })}
+      <label
+        title={t("settings.custom")}
+        className={cn(
+          "relative flex size-8 cursor-pointer items-center justify-center rounded-full border border-border text-icon",
+          accent.kind === "custom" &&
+            "ring-2 ring-text-primary ring-offset-[3px] ring-offset-bg-raised",
+        )}
+        style={accent.kind === "custom" ? { background: customHex } : undefined}
+      >
+        <Plus size={16} strokeWidth={1.5} />
+        <input
+          type="color"
+          aria-label={t("settings.custom")}
+          value={customHex}
+          onChange={(e) => onAccent({ kind: "custom", hex: e.target.value })}
+          className="absolute inset-0 cursor-pointer opacity-0"
+        />
+      </label>
+    </fieldset>
+  );
+}
+
+/** «Тема по сезону» (FR-ONB-001 step 2, FR-UI-003): stored now, the seasonal themes come with
+ * Stage 4. */
+export function SeasonSwitch() {
+  const { t } = useTranslation("shell");
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    getSettings().then((s) => {
+      const a = s.appearance as { seasonal_theme?: boolean } | undefined;
+      setOn(Boolean(a?.seasonal_theme));
+    });
+  }, []);
+  return (
+    <div className="flex items-center gap-4 border-t border-separator pt-3">
+      <div className="min-w-0 flex-1">
+        <div className="t-body text-text-primary">{t("settings.seasonal")}</div>
+        <div className="t-caption text-text-secondary">{t("settings.seasonalHint")}</div>
+      </div>
+      <Switch
+        checked={on}
+        label={t("settings.seasonal")}
+        onChange={(v) => {
+          setOn(v);
+          patchSettings({ appearance: { seasonal_theme: v } }).catch(() => setOn(!v));
+        }}
+      />
     </div>
   );
 }

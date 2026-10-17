@@ -29,6 +29,7 @@ pub struct Settings {
     pub network: Network,
     pub context: ContextPrefs,
     pub updates: Updates,
+    pub onboarding: Onboarding,
 }
 
 impl Default for Settings {
@@ -52,8 +53,18 @@ impl Default for Settings {
             network: Network::default(),
             context: ContextPrefs::default(),
             updates: Updates::default(),
+            onboarding: Onboarding::default(),
         }
     }
+}
+
+/// First start (T2.15, FR-ONB-001/002): the 4-step setup and the tips, each once (both can be
+/// replayed from Settings).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Onboarding {
+    pub done: bool,
+    pub tips_seen: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -15,6 +15,7 @@ async function mockTauri(page: Page) {
     const settings = {
       appearance: { theme: "dark", accent: { source: "preset", preset: "blue", custom: null } },
       playback: { volume: 0.5 },
+      onboarding: { done: true, tips_seen: true },
     };
     const w = window as unknown as Record<string, unknown>;
     w.isTauri = true;

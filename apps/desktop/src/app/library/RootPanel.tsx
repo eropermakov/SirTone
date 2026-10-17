@@ -10,9 +10,12 @@ import { type LibraryStatus, pickFolder, setRoot } from "@/shared/ipc/library";
 export function RootPanel({
   status,
   onDone,
+  bare = false,
 }: {
   status: LibraryStatus;
   onDone: (s: LibraryStatus) => void;
+  /** Inside the first-start setup: no panel of its own. */
+  bare?: boolean;
 }) {
   const { t } = useTranslation("shell");
   const [path, setPath] = useState(status.root ?? status.defaultRoot);
@@ -40,7 +43,11 @@ export function RootPanel({
   return (
     <section
       aria-labelledby="root-panel-title"
-      className="mx-auto mt-6 flex max-w-xl flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6"
+      className={
+        bare
+          ? "flex flex-col gap-4"
+          : "mx-auto mt-6 flex max-w-xl flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6"
+      }
     >
       <h2 id="root-panel-title" className="t-card-title text-text-primary">
         {t("root.title")}

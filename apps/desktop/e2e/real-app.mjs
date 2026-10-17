@@ -99,6 +99,33 @@ const playLabel = () => footer.locator("button[aria-label]").nth(2).getAttribute
 const invoke = (cmd, args) =>
   page.evaluate(([c, a]) => window.__TAURI_INTERNALS__.invoke(c, a), [cmd, args]);
 
+// 0. T2.15: a fresh install opens the first-start setup «1 из 4»; step through, skip the folder
+// (chosen later by the library checks), then the tips.
+const setup = page.getByRole("dialog", { name: "Первая настройка" });
+const setupShown = await setup.waitFor({ timeout: 5000 }).then(
+  () => true,
+  () => false,
+);
+const stepLabel = setupShown ? await setup.getByText("1 из 4").count() : 0;
+for (let i = 0; i < 3 && setupShown; i++) {
+  await setup.getByRole("button", { name: "Далее" }).click();
+}
+const lastStep = setupShown ? await setup.getByText("4 из 4").count() : 0;
+if (setupShown) await setup.getByRole("button", { name: "Пропустить" }).click();
+const tipsOk = page.getByRole("button", { name: "Понятно" });
+const tipsShown = await tipsOk.waitFor({ timeout: 3000 }).then(
+  () => true,
+  () => false,
+);
+if (tipsShown) await tipsOk.click();
+// settings.json is written debounced (≤ 1 s): poll a little.
+for (let i = 0; i < 15 && settings().onboarding?.done !== true; i++) await sleep(200);
+check(
+  "first start: setup «1 из 4» → «4 из 4», then the tips; saved as done",
+  setupShown && stepLabel > 0 && lastStep > 0 && tipsShown && settings().onboarding?.done === true,
+  `setup ${setupShown}, tips ${tipsShown}, done ${settings().onboarding?.done}`,
+);
+
 // 1. Command-line file plays — and is audible (process loopback, S-01 tool).
 await sleep(1200);
 const title = await footer.locator(".t-body-strong").first().textContent();
@@ -639,7 +666,14 @@ if (existsSync(corpus)) {
   page.on("console", (m) => {
     if (m.type() === "error") consoleErrors.push(m.text());
   });
-  if (asked) await confirm.click();
+  if (asked) {
+    await confirm.click();
+    // The dialog flies in (150 ms): a click during the animation can miss — once more if so.
+    await page
+      .getByRole("dialog")
+      .waitFor({ state: "detached", timeout: 2000 })
+      .catch(() => confirm.click().catch(() => {}));
+  }
   await sleep(1500);
   const assignToast = (await page.getByRole("status").allTextContents()).join(" | ");
   const unknownAfter = (await invoke("library_status", {})).unknown;

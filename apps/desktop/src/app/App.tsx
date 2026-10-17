@@ -1,3 +1,4 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionScreen } from "@/app/library/CollectionScreen";
@@ -42,6 +43,7 @@ import { Toast } from "@/shared/ui/Toast";
 import { DndRoot } from "./dnd/dnd";
 import type { Open } from "./library/CollectionScreen";
 import type { GoTo } from "./library/TrackList";
+import { Onboarding, Tips } from "./onboarding/Onboarding";
 import { PlaylistScreen } from "./playlists/PlaylistScreen";
 import { nextName, usePlaylists } from "./playlists/usePlaylists";
 import { SearchScreen } from "./search/SearchScreen";
@@ -134,6 +136,7 @@ export function App() {
   const [appearance, setAppearanceState] = useState<Appearance>(DEFAULT);
   const [manualCollapsed, setManualCollapsed] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [onboard, setOnboard] = useState<"setup" | "tips" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => onNotify(setToast), []);
   // «Сиртон обновлён до X» once, on the first start of a new version (D-76).
@@ -206,6 +209,10 @@ export function App() {
         setAppearanceState(fromDoc(b.settings));
         hydrate(b.playback);
         if (b.library) setBootLibrary(b.library);
+        // FR-ONB-001: the first start (never set up, no music folder yet) opens the setup.
+        const ob = (b.settings as { onboarding?: { done?: boolean } }).onboarding;
+        // (Not in the browser preview: it has no library to set up.)
+        if (isTauri() && !ob?.done && !b.library?.root) setOnboard("setup");
       }),
     );
     onSettingsChanged(reload).then((u) => {
@@ -293,6 +300,8 @@ export function App() {
                 onAccent={(accent) => setAppearance((a) => ({ ...a, accent }))}
                 library={lib.status}
                 onChooseLibrary={() => lib.setRootNeeded(true)}
+                onReplaySetup={() => setOnboard("setup")}
+                onReplayTips={() => setOnboard("tips")}
               />
             ) : screen === "wave" && hasMusic ? (
               <WaveScreen snap={snap} onGo={goTo} />
@@ -444,6 +453,18 @@ export function App() {
             onClose={clearError}
           />
         )}
+        {onboard === "setup" && (
+          <Onboarding
+            theme={appearance.theme}
+            accent={appearance.accent}
+            onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
+            onAccent={(accent) => setAppearance((a) => ({ ...a, accent }))}
+            status={lib.status}
+            onRoot={rootChosen}
+            onFinish={() => setOnboard("tips")}
+          />
+        )}
+        {onboard === "tips" && <Tips onClose={() => setOnboard(null)} />}
       </div>
     </DndRoot>
   );
