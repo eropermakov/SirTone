@@ -214,3 +214,44 @@ pub fn soak(args: &[String]) -> ExitCode {
         ExitCode::FAILURE
     }
 }
+
+fn p95(v: &mut [f64]) -> f64 {
+    v.sort_by(f64::total_cmp);
+    v.get(((v.len() as f64 * 0.95).ceil() as usize).saturating_sub(1))
+        .copied()
+        .unwrap_or(f64::NAN)
+}
+
+/// `latency [--runs 10] <file>` — P-02: «play» → first audible sample, cold and warm.
+pub fn latency(args: &[String]) -> ExitCode {
+    let Some(file) = files(args).into_iter().next() else {
+        eprintln!("latency: give an audio file (a tone works best)");
+        return ExitCode::from(2);
+    };
+    let runs = flag(args, "--runs").unwrap_or(10);
+    match sirtone_audio::latency::measure(&file, runs) {
+        Ok(mut l) => {
+            let fmt = |v: &[f64]| {
+                v.iter()
+                    .map(|x| format!("{x:.0}"))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            };
+            println!("cold ms: {}", fmt(&l.cold_ms));
+            println!("warm ms: {}", fmt(&l.warm_ms));
+            let (c, w) = (p95(&mut l.cold_ms), p95(&mut l.warm_ms));
+            let ok = c <= 150.0 && w <= 60.0;
+            println!(
+                "P-02 p95: cold {c:.0} ms (≤ 150), warm {w:.0} ms (≤ 60), {}/{} runs heard → {}",
+                l.cold_ms.len().min(l.warm_ms.len()),
+                runs,
+                if ok { "OK" } else { "OVER TARGET" }
+            );
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("latency: {:?} {}", e.code, e.details.unwrap_or_default());
+            ExitCode::FAILURE
+        }
+    }
+}
