@@ -10,5 +10,6 @@ pub mod gapless;
 pub mod mf;
 pub mod output;
 pub mod probe;
+pub mod render;
 
 pub use engine::{EngineCmd, EngineEvent, EngineHandle, PlayState, Snapshot, start};

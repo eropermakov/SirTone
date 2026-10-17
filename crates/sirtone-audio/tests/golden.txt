@@ -1,0 +1,8 @@
+flac-native-44k d1d69f1992b12ed8 441000
+wav-resampled-48k 790504ee843f68aa 480000
+hires-flac-96k-to-48k eb3299522bd1f03f 480000
+aac-trimmed-44k 446039a028982e22 441000
+opus-48k aacc68a7d47fa788 480000
+gapless-wav-chain 174cb8bfc9581046 352800
+gapless-mixed-rate-48k 665b5c9e1344b57d 384000
+volume-half b1e57ba6eac9ef0e 441000

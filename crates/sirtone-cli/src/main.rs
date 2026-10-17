@@ -4,13 +4,15 @@
 //! ```text
 //! sirtone-cli probe <file>...            format, rate, channels, duration
 //! sirtone-cli play <file> [--volume V]   play to the default device until the end (Ctrl+C stops)
-//! sirtone-cli render <file> --out <wav>  offline render (T1.7, not yet)
+//! sirtone-cli render <file>... --out <wav>  offline render (T1.7)
+//! sirtone-cli soak --minutes N <file>...  soak on the real device (P-13)
 //! sirtone-cli import <library_root> [sources...]  import (recover + resume first), P-10 numbers
 //! sirtone-cli verify <library_root>      database and disk agree
 //! ```
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 mod library;
+mod soak;
 mod wave;
 
 use std::path::PathBuf;
@@ -23,7 +25,7 @@ use sirtone_audio::{EngineCmd, EngineEvent, PlayState};
 
 fn usage() -> ExitCode {
     eprintln!(
-        "sirtone-cli {}\nusage: sirtone-cli probe <file>... | play <file> [--volume 0..1] | render <file> --out <wav> | import <root> [src]... | verify <root> | wave calendar <year> | smtc [toggle <title>]",
+        "sirtone-cli {}\nusage: sirtone-cli probe <file>... | play <file> [--volume 0..1] | render <file>... --out <wav> [--rate N] [--volume V] | soak --minutes N [--volume V] <file>... | import <root> [src]... | verify <root> | wave calendar <year> | smtc [toggle <title>]",
         env!("CARGO_PKG_VERSION")
     );
     ExitCode::from(2)
@@ -166,10 +168,8 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        Some("render") => {
-            eprintln!("render: offline WAV render arrives with T1.7");
-            ExitCode::FAILURE
-        }
+        Some("render") if args.len() > 1 => soak::render(&args[1..]),
+        Some("soak") if args.len() > 1 => soak::soak(&args[1..]),
         _ => usage(),
     }
 }

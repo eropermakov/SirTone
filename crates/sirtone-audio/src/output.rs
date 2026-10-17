@@ -58,8 +58,8 @@ pub struct Output {
 
 /// Ring size: ~200 ms of headroom (docs/04 §1).
 const RING_MS: usize = 200;
-const PAUSE_RAMP_S: f32 = 0.015;
-const VOLUME_SMOOTH_S: f32 = 0.008;
+pub(crate) const PAUSE_RAMP_S: f32 = 0.015;
+pub(crate) const VOLUME_SMOOTH_S: f32 = 0.008;
 
 impl Output {
     /// Opens the default render endpoint at its mix format. Returns the ring producer the engine

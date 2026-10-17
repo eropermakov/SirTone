@@ -110,8 +110,8 @@ const DEVICE_SETTLE: Duration = Duration::from_millis(250);
 const CHUNK: usize = 1024;
 const SNAPSHOT_EVERY: Duration = Duration::from_millis(250);
 
-struct Deck {
-    source: Source,
+pub(crate) struct Deck {
+    pub(crate) source: Source,
     path: PathBuf,
     resampler: Option<Fft<f32>>,
     /// Device-rate output frames still to drop (resampler delay after reset).
@@ -120,7 +120,7 @@ struct Deck {
     pending: Vec<f32>,
     decoded: Vec<f32>,
     out_buf: Vec<f32>,
-    eof: bool,
+    pub(crate) eof: bool,
     /// Input frames fed since the segment start (to bound the resampled tail).
     in_frames: u64,
     /// Zero-padded chunks fed after the decoder ended (flushes the resampler delay).
@@ -136,7 +136,7 @@ struct Deck {
     decoded_in: u64,
     /// Gapless chain (T1.5): the next track with the same rate and channels continues through the
     /// same resampler, so the joint is exactly as continuous as one file would be.
-    chained: Option<(Source, PathBuf)>,
+    pub(crate) chained: Option<(Source, PathBuf)>,
     /// Where chained tracks begin, in deck frames (output and input), oldest first.
     boundaries: VecDeque<Boundary>,
 }
@@ -616,7 +616,7 @@ impl Engine {
 }
 
 /// Decodes, maps channels, resamples and pushes `deck` while the ring has room for a chunk.
-fn fill(
+pub(crate) fn fill(
     deck: &mut Deck,
     fmt: DeviceFormat,
     prod: &mut rtrb::Producer<f32>,
@@ -712,7 +712,7 @@ fn internal(e: impl std::fmt::Display) -> AppError {
     AppError::new(ErrorCode::Internal).with_details(e)
 }
 
-fn new_deck(
+pub(crate) fn new_deck(
     source: Source,
     path: PathBuf,
     fmt: DeviceFormat,
