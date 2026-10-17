@@ -13,8 +13,9 @@ import {
 } from "@/shared/ipc/window";
 import { accelFromEvent } from "@/shared/lib/hotkeys";
 import { cn } from "@/shared/lib/utils";
+import { applyPerformance, profile } from "@/shared/theme/performance";
 import { ACCENT_SLUGS, type AccentSource, isPalette, type ThemePref } from "@/shared/theme/theme";
-import { Button } from "@/shared/ui/Button";
+import { Chip } from "@/shared/ui/Chip";
 import { Switch } from "@/shared/ui/Switch";
 
 type Props = {
@@ -180,6 +181,8 @@ export function SettingsScreen({
           </div>
         </div>
       )}
+
+      <PerformanceSection />
 
       <StartupSection />
 
@@ -352,6 +355,66 @@ function HotkeysSection() {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/** «Производительность» (T2.3, FR-PERF-001/002): five presets + point switches over them. */
+function PerformanceSection() {
+  const { t } = useTranslation("shell");
+  const [level, setLevel] = useState(3);
+  const [overrides, setOverrides] = useState<Record<string, unknown>>({});
+  useEffect(() => {
+    getSettings().then((doc) => {
+      const p = (doc.performance ?? {}) as { level?: number; overrides?: Record<string, unknown> };
+      setLevel(p.level ?? 3);
+      setOverrides(p.overrides ?? {});
+    });
+  }, []);
+  const levels = t("settingsPerf.level", { returnObjects: true }) as unknown as string[];
+  const eff = profile(level, overrides);
+  // Choosing a preset clears the point switches: the preset is what you asked for.
+  const choose = (l: number) => {
+    setLevel(l);
+    setOverrides({});
+    applyPerformance(profile(l, {}));
+    patchSettings({ performance: { level: l, overrides: {} } }).catch(() => {});
+  };
+  const flip = (key: string, on: boolean) => {
+    const next = { ...overrides, [key]: on };
+    setOverrides(next);
+    applyPerformance(profile(level, next));
+    patchSettings({ performance: { overrides: next } }).catch(() => {});
+  };
+  const switches: { key: string; label: string; on: boolean }[] = [
+    { key: "ui_animations", label: t("settingsPerf.uiAnimations"), on: eff.uiAnimations },
+    { key: "list_animations", label: t("settingsPerf.listAnimations"), on: eff.listAnimations },
+    { key: "blur", label: t("settingsPerf.blur"), on: eff.blur },
+  ];
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsPerf.title")}</h2>
+      <p className="t-caption text-text-secondary">{t("settingsPerf.hint")}</p>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <fieldset
+          className="m-0 flex flex-wrap gap-2 border-0 p-0"
+          aria-label={t("settingsPerf.title")}
+        >
+          {levels.map((name, i) => (
+            <Chip key={name} active={level === i} onClick={() => choose(i)}>
+              {name}
+            </Chip>
+          ))}
+        </fieldset>
+        <div className="flex flex-col divide-y divide-border">
+          {switches.map((s) => (
+            <div key={s.key} className="flex items-center gap-4 py-3">
+              <span className="t-body min-w-0 flex-1 text-text-primary">{s.label}</span>
+              <Switch checked={s.on} onChange={(on) => flip(s.key, on)} label={s.label} />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

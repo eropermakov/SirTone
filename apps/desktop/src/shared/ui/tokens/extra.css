@@ -184,6 +184,37 @@
   animation: flyout-in var(--dur-fast) var(--ease-out);
 }
 
+/* Performance presets (T2.3, docs/06 §6): the level scales the DESIGN.md duration tokens;
+   «Очень слабое» (motion 0) turns every animation and transition off. Weak machines also drop
+   blur. Set by `applyPerformance` as one write to <html>. */
+:root[data-motion="0.5"] {
+  --dur-instant: 50ms;
+  --dur-fast: 75ms;
+  --dur-base: 125ms;
+  --dur-theme: 200ms;
+}
+:root[data-motion="1.25"] {
+  --dur-instant: 125ms;
+  --dur-fast: 190ms;
+  --dur-base: 310ms;
+  --dur-theme: 500ms;
+}
+:root[data-motion="1.5"] {
+  --dur-instant: 150ms;
+  --dur-fast: 225ms;
+  --dur-base: 375ms;
+  --dur-theme: 600ms;
+}
+:root[data-motion="0"] *,
+:root[data-motion="0"] *::before,
+:root[data-motion="0"] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+:root[data-blur="off"] * {
+  backdrop-filter: none !important;
+}
+
 /* D-61: reduced motion = short fades only, no movement. */
 @media (prefers-reduced-motion: reduce) {
   *,

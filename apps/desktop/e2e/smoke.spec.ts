@@ -47,3 +47,16 @@ test("owner palettes: orange and black & white (D-74)", async ({ page }) => {
   await expect(html).not.toHaveAttribute("data-palette", /./);
   await expect(page.getByRole("button", { name: "Синий" })).toBeEnabled();
 });
+
+test("performance presets switch motion at once (T2.3)", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки" }).click();
+  const html = page.locator("html");
+  await page.getByRole("button", { name: "Очень слабое" }).click();
+  await expect(html).toHaveAttribute("data-motion", "0");
+  await expect(html).toHaveAttribute("data-blur", "off");
+  await page.getByRole("button", { name: "Супермощное" }).click();
+  await expect(html).toHaveAttribute("data-motion", "1.5");
+  await page.getByRole("switch", { name: "Анимации интерфейса" }).click();
+  await expect(html).toHaveAttribute("data-motion", "0");
+});

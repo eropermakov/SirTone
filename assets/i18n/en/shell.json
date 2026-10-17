@@ -194,5 +194,13 @@
     "auto": "Updates itself automatically",
     "updatedTitle": "SirTone updated to {version}",
     "updatedText": "The new version installed itself"
+  },
+  "settingsPerf": {
+    "title": "Performance",
+    "hint": "The weaker the computer, the fewer animations and effects",
+    "level": ["Very weak", "Weak", "Medium", "Powerful", "Very powerful"],
+    "uiAnimations": "Interface animations",
+    "listAnimations": "List animations",
+    "blur": "Blur and transparency"
   }
 }

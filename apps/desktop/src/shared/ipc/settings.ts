@@ -21,6 +21,7 @@ export type SettingsDoc = {
 export type SettingsPatch = {
   appearance?: { theme?: string; accent?: Record<string, unknown> };
   hotkeys?: Record<string, string | null>;
+  performance?: { level?: number; overrides?: Record<string, unknown> };
 };
 
 const WEB_KEY = "sirtone.web.settings";

@@ -43,6 +43,7 @@ import { PlayerBar } from "./shell/PlayerBar";
 import { QueuePanel } from "./shell/QueuePanel";
 import { SettingsScreen } from "./shell/SettingsScreen";
 import { type Screen, Sidebar } from "./shell/Sidebar";
+import { usePerformance } from "./shell/usePerformance";
 import { usePlayback } from "./shell/usePlayback";
 
 /** One place in the app: a sidebar section, maybe with an album/artist opened. */
@@ -163,6 +164,7 @@ export function App() {
     };
   });
   const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW).matches);
+  usePerformance();
 
   // Load settings once (and move prototype 0.1 choices over), then follow changes from Rust.
   useEffect(() => {
