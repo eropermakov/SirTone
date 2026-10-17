@@ -169,3 +169,7 @@ export const allTrackIds = async (): Promise<number[]> => {
     after = page.next;
   }
 };
+
+/** «Моя волна» (Stage 3): the engine picks and plays; returns how many tracks were queued. */
+export const waveStart = async (): Promise<number> =>
+  isTauri() ? unwrap(await commands.waveStart()) : 0;

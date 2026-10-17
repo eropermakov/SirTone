@@ -9,6 +9,7 @@ import {
   Pencil,
   Shuffle,
   Trash2,
+  Waves,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -23,7 +24,7 @@ import {
   type TrackFeedback,
   trackFeedback,
 } from "@/shared/ipc/feedback";
-import { allTrackIds, playTracks, trackDetails } from "@/shared/ipc/library";
+import { allTrackIds, playTracks, trackDetails, waveStart } from "@/shared/ipc/library";
 import { type PlaybackSnapshot, setShuffle, togglePlay } from "@/shared/ipc/playback";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/Button";
@@ -38,7 +39,8 @@ const NONE: TrackFeedback = { liked: false, neverTrack: false, neverArtist: fals
  * «Моя волна» as the player (T2.5, FR-WAVE-001; `06` §3 layout): background gradient stub, big
  * cover, title and artist, ♡ / «не сейчас» / «⋯» (T2.19, FR-LEARN-003), a big Play. The
  * timeline, transport and volume stay in the PlayerBar below (one set of controls, `06` §12).
- * Wave chips, «Состав» and the familiar↔new slider come with the engine (Stage 3).
+ * «Слушать волну» runs the engine (Stage 3): it picks by taste, statistics and the signals and
+ * adds more as the queue runs out. Chips, «Состав» and the slider UI come next.
  */
 export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo }) {
   const { t } = useTranslation("shell");
@@ -70,10 +72,25 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       <section className="flex h-full flex-col items-center justify-center gap-4 text-center">
         <h1 className="t-page-title text-primary-text">{t("wave.title")}</h1>
         <p className="t-body max-w-md text-text-secondary">{t("wave.idle")}</p>
-        <Button variant="primary" onClick={() => void shuffleAll()}>
-          <Shuffle size={16} strokeWidth={1.5} />
-          {t("wave.shuffleAll")}
-        </Button>
+        <div className="flex flex-wrap justify-center gap-3">
+          <Button
+            variant="primary"
+            onClick={() =>
+              void waveStart()
+                .then((n) => {
+                  if (n === 0) notify(t("wave.empty"));
+                })
+                .catch(() => notify(t("wave.failed")))
+            }
+          >
+            <Waves size={16} strokeWidth={1.5} />
+            {t("wave.start")}
+          </Button>
+          <Button variant="secondary" onClick={() => void shuffleAll()}>
+            <Shuffle size={16} strokeWidth={1.5} />
+            {t("wave.shuffleAll")}
+          </Button>
+        </div>
       </section>
     );
   }

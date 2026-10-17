@@ -844,6 +844,26 @@ if (existsSync(corpus)) {
     neverListed && neverLeft.length === 0,
     `listed ${neverListed}, left ${neverLeft.length}`,
   );
+  // Stage 3: «Слушать волну» — the engine queues 5 tracks and refills as they run out; a track
+  // marked «никогда» does not come.
+  const nowTrack = (await invoke("playback_snapshot", {})).trackId;
+  await invoke("feedback_never", { scope: "track", id: nowTrack, on: true });
+  const started = await invoke("wave_start", {});
+  const q0 = await invoke("queue_get", {});
+  for (let i = 0; i < 4; i++) {
+    await invoke("playback_next", {});
+    await sleep(700);
+  }
+  await sleep(1500);
+  const q1 = await invoke("queue_get", {});
+  const waveIds = [];
+  for (let i = 0; i < q1.items.length; i++) waveIds.push(q1.items[i].trackId ?? null);
+  check(
+    "wave: 5 tracks to start, refilled as they run out, «никогда» excluded",
+    started === 5 && q0.items.length === 5 && q1.items.length > 5 && !waveIds.includes(nowTrack),
+    `start ${started}, queue ${q0.items.length} → ${q1.items.length}`,
+  );
+  await invoke("feedback_never", { scope: "track", id: nowTrack, on: false });
   // T2.14: «Хранилище» shows the service data next to the library.
   const storageInfo = await invoke("storage_info", {});
   check(

@@ -185,6 +185,7 @@ pub struct Catalog {
     liked: Vec<bool>,
     pub never: Vec<bool>,
     center: [f32; D],
+    index: std::collections::HashMap<i64, u32>,
 }
 
 /// Genre tag → group (first hit on the normalised words).
@@ -259,6 +260,7 @@ impl Catalog {
             liked: Vec::with_capacity(n),
             never: Vec::with_capacity(n),
             center: [0.0; D],
+            index: std::collections::HashMap::with_capacity(n),
         };
         for (t, g) in tracks.iter().zip(&groups) {
             let (mut x, conf) = t.features.unwrap_or((mean, 0.0));
@@ -288,6 +290,7 @@ impl Catalog {
                 a = 1.0 + (a - 1.0) * k;
                 b = 1.0 + (b - 1.0) * k;
             }
+            c.index.insert(t.id, c.id.len() as u32);
             c.id.push(t.id);
             c.feat.push(x);
             c.cold
@@ -328,6 +331,10 @@ impl Catalog {
 
     pub fn is_empty(&self) -> bool {
         self.id.is_empty()
+    }
+
+    fn idx(&self, id: i64) -> Option<usize> {
+        self.index.get(&id).map(|&i| i as usize)
     }
 
     fn mean(&self, t: usize) -> f32 {
@@ -440,7 +447,8 @@ struct Session {
     prev_tempo: Option<f32>,
     group_counts: [u32; 3],
     slots: u32,
-    queued: Vec<u32>,
+    /// Track ids chosen in this session (survive a catalog reload).
+    queued: Vec<i64>,
 }
 
 pub struct Engine {
@@ -456,7 +464,35 @@ pub struct Engine {
 impl Engine {
     /// Builds the catalog and replays the statistics into the taste model once (§8.3 (2)).
     pub fn new(cfg: Config, tracks: &[WaveTrack], now_ms: i64, seed: u64) -> Self {
-        let cat = Catalog::build(tracks, &cfg, now_ms);
+        let (cat, taste) = Self::learnt(&cfg, tracks, now_ms);
+        let n = cat.len();
+        let cap = n.min(cfg.engine.top_k * 64).max(1);
+        Self {
+            blocked: vec![false; n],
+            buf: [
+                Vec::with_capacity(cap),
+                Vec::with_capacity(cap),
+                Vec::with_capacity(cap),
+            ],
+            cfg,
+            cat,
+            taste,
+            session: Session::default(),
+            rng: Rng::new(seed),
+        }
+    }
+
+    /// Fresh statistics and signals (after plays, likes, imports), the session kept: spacing,
+    /// what was already queued and the group counts carry on.
+    pub fn reload(&mut self, tracks: &[WaveTrack], now_ms: i64) {
+        let (cat, taste) = Self::learnt(&self.cfg, tracks, now_ms);
+        self.blocked = vec![false; cat.len()];
+        self.cat = cat;
+        self.taste = taste;
+    }
+
+    fn learnt(cfg: &Config, tracks: &[WaveTrack], now_ms: i64) -> (Catalog, Taste) {
+        let cat = Catalog::build(tracks, cfg, now_ms);
         let mut taste = Taste::default();
         let s = &cfg.engine.signals;
         for _ in 0..2 {
@@ -479,21 +515,7 @@ impl Engine {
                 }
             }
         }
-        let n = cat.len();
-        let cap = n.min(cfg.engine.top_k * 64).max(1);
-        Self {
-            blocked: vec![false; n],
-            buf: [
-                Vec::with_capacity(cap),
-                Vec::with_capacity(cap),
-                Vec::with_capacity(cap),
-            ],
-            cfg,
-            cat,
-            taste,
-            session: Session::default(),
-            rng: Rng::new(seed),
-        }
+        (cat, taste)
     }
 
     pub fn catalog(&self) -> &Catalog {
@@ -522,20 +544,20 @@ impl Engine {
 
     /// Familiarity group of a track (0 — loved/familiar, 1 — forgotten, 2 — new/untouched).
     pub fn group_of(&self, id: i64, now_ms: i64) -> Option<usize> {
-        let i = self.cat.id.iter().position(|&x| x == id)?;
+        let i = self.cat.idx(id)?;
         Some(self.cat.group(i, now_ms, &self.cfg.engine.familiarity))
     }
 
     /// A track was heard (now in the repeat window).
     pub fn played(&mut self, id: i64, now_ms: i64) {
-        if let Some(i) = self.cat.id.iter().position(|&x| x == id) {
+        if let Some(i) = self.cat.idx(id) {
             self.cat.last_played[i] = now_ms;
         }
     }
 
     /// Online learning from one signal (§8.1): `y` 1/0 with weight `w`.
     pub fn learn(&mut self, id: i64, y: f32, w: f32) {
-        if let Some(i) = self.cat.id.iter().position(|&x| x == id) {
+        if let Some(i) = self.cat.idx(id) {
             if y > 0.5 {
                 self.cat.alpha[i] += w;
             } else {
@@ -548,7 +570,7 @@ impl Engine {
 
     /// «Никогда» now (the mask, without a catalog reload).
     pub fn never(&mut self, id: i64, artist: bool) {
-        if let Some(i) = self.cat.id.iter().position(|&x| x == id) {
+        if let Some(i) = self.cat.idx(id) {
             if artist {
                 let a = self.cat.artist[i];
                 for (k, v) in self.cat.never.iter_mut().enumerate() {
@@ -580,14 +602,14 @@ impl Engine {
         self.blocked.fill(false);
         // Already queued in this session — never twice (the top K must not fill with them).
         for &q in &self.session.queued {
-            if let Some(b) = self.blocked.get_mut(q as usize) {
-                *b = true;
+            if let Some(i) = self.cat.idx(q) {
+                self.blocked[i] = true;
             }
         }
         for row in not_now {
             if row.expires_ms > now_ms
                 && bucket_matches(&row.ctx_key, ctx)
-                && let Some(i) = self.cat.id.iter().position(|&x| x == row.track_id)
+                && let Some(i) = self.cat.idx(row.track_id)
             {
                 self.blocked[i] = true;
             }
@@ -654,7 +676,8 @@ impl Engine {
                 pool.clear();
                 for c in &self.buf[g] {
                     let t = c.idx as usize;
-                    if ss.queued.contains(&c.idx) || ss.recent_artists.contains(&cat.artist[t]) {
+                    if ss.queued.contains(&cat.id[t]) || ss.recent_artists.contains(&cat.artist[t])
+                    {
                         continue;
                     }
                     let x = &cat.feat[t];
@@ -695,7 +718,7 @@ impl Engine {
                     }
                 }
                 let t = chosen as usize;
-                ss.queued.push(chosen);
+                ss.queued.push(cat.id[t]);
                 ss.recent_artists.push(cat.artist[t]);
                 if ss.recent_artists.len() > seq.artist_spacing.saturating_sub(1) {
                     ss.recent_artists.remove(0);

@@ -102,6 +102,8 @@ export const commands = {
 	storageInfo: () => __TAURI_INVOKE<StorageInfo>("storage_info"),
 	/**  «Удалить старые журналы»: diagnostic logs of earlier days (the app's own files, not music). */
 	storageClearLogs: () => typedError<number, AppError>(__TAURI_INVOKE("storage_clear_logs")),
+	/**  «Моя волна»: the engine picks and plays (returns how many tracks were queued). */
+	waveStart: () => typedError<number, AppError>(__TAURI_INVOKE("wave_start")),
 	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
 	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),
 };
@@ -271,7 +273,7 @@ export type PageCursor = {
 };
 
 /**  The screen a list was played from (`play_event.source`). */
-export type PlayContext = "album" | "artist" | "collection" | "playlist" | "search";
+export type PlayContext = "album" | "artist" | "collection" | "playlist" | "search" | "wave";
 
 /**  A track or device error; the UI shows `errors.<code>` in a toast (DESIGN.md §9). */
 export type PlaybackError = {

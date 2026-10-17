@@ -153,6 +153,7 @@ pub enum PlayContext {
     Collection,
     Playlist,
     Search,
+    Wave,
 }
 
 impl From<PlayContext> for PlaySource {
@@ -163,6 +164,7 @@ impl From<PlayContext> for PlaySource {
             PlayContext::Collection => PlaySource::Collection,
             PlayContext::Playlist => PlaySource::Playlist,
             PlayContext::Search => PlaySource::Search,
+            PlayContext::Wave => PlaySource::Wave,
         }
     }
 }
@@ -272,6 +274,7 @@ impl Playback {
         let app_for_events = app.clone();
         let journal = Arc::new(Journal::start(settings.clone()));
         let sink_journal = journal.clone();
+        let wave_app = app.clone();
         // Media keys, the Windows 11 flyout and widgets (T1.23): buttons go straight to this
         // service, so they work with the window hidden.
         let smtc_app = app.clone();
@@ -318,6 +321,13 @@ impl Playback {
                             source: c.source,
                         }),
                 );
+                // «Моя волна» is endless: with fewer than 2 tracks ahead the engine adds more.
+                if q.current().is_some_and(|c| c.source == PlaySource::Wave)
+                    && q.len().saturating_sub(q.position() + 1) < 2
+                    && let Some(w) = wave_app.try_state::<crate::wave::Wave>()
+                {
+                    w.request_more();
+                }
                 // End of a track with more in the context: the next one (FR-PLAY-005).
                 if s.state == PlayState::Ended
                     && q.current()
@@ -794,7 +804,7 @@ pub fn playback_prev(pb: State<'_, Playback>) {
 }
 
 /// Library tracks as queue items.
-fn items_for(
+pub(crate) fn items_for(
     lib: &crate::library::Library,
     ids: &[u32],
     context: PlayContext,

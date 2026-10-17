@@ -18,6 +18,7 @@ mod settings_store;
 mod storage;
 mod tray;
 mod updates;
+mod wave;
 mod window_chrome;
 
 use std::sync::Arc;
@@ -108,6 +109,7 @@ fn main() {
             autostart::sync(app.handle(), &store);
             updates::start(app.handle());
             app.manage(library::Library::start(app.handle().clone(), store.clone()));
+            app.manage(wave::Wave::start(app.handle().clone()));
             match playback::Playback::start(app.handle().clone(), store) {
                 Ok(pb) => {
                     let args: Vec<String> = std::env::args().collect();
