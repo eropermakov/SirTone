@@ -36,7 +36,7 @@ $env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content $KeyPath -Raw).Trim()
 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ''
 Push-Location (Join-Path $root 'apps\desktop')
 try { pnpm tauri build; Must 'tauri build' } finally { Pop-Location }
-Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY, Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY, Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
 
 $bundle = Join-Path $root 'target\release\bundle\nsis'
 $exe = Join-Path $bundle "SirTone_${version}_x64-setup.exe"
