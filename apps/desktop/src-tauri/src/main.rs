@@ -18,6 +18,7 @@ mod net;
 mod perf;
 mod playback;
 mod playlists;
+mod resolve;
 mod search;
 mod settings_store;
 mod storage;
@@ -78,6 +79,7 @@ fn main() {
         .plugin(updates::plugin())
         .manage(updates::Updates::default())
         .manage(continuation::Continuation::default())
+        .manage(resolve::Resolver::default())
         .manage(hotkeys::Hotkeys::default())
         // Covers without IPC (docs/03 §5.6); work off the main thread.
         .register_asynchronous_uri_scheme_protocol("sirtone-cover", |ctx, request, responder| {
@@ -120,6 +122,7 @@ fn main() {
             let net_state = net::start(app.handle());
             app.manage(net_state);
             analysis::start(app.handle().clone());
+            resolve::start(app.handle().clone());
             match playback::Playback::start(app.handle().clone(), store) {
                 Ok(pb) => {
                     let args: Vec<String> = std::env::args().collect();

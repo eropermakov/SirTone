@@ -18,6 +18,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -35,9 +36,14 @@ const dataDir = mkdtempSync(join(tmpdir(), "sirtone-smoke-"));
 const libDir = join(dataDir, "Music", "SirTone");
 const corpus = join(fixtures, "import500");
 const PORT = Number(process.env.SMOKE_PORT ?? 9335);
+// Recorded MusicBrainz answers (AT-04): the isolated instance never calls the real service.
+const netFixtures = join(dataDir, "net-fixtures");
+mkdirSync(netFixtures, { recursive: true });
+writeFileSync(join(netFixtures, "index.json"), "[]");
 const env = {
   ...process.env,
   SIRTONE_DATA_DIR: dataDir,
+  SIRTONE_NET_FIXTURES: netFixtures,
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`,
 };
 
@@ -1571,6 +1577,108 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
     !back.offline && back.tracks === before,
     `${Date.now() - t0} ms, ${back.tracks}/${before}`,
   );
+  // AT-04 (FR-REC-006, D-87): offline, an untagged «Артист - Название» file waits in
+  // «Неизвестные» and import is not blocked; the network comes back → MusicBrainz (recorded
+  // answers) confirms artist, title and length → the file moves to its place.
+  await invoke("settings_patch", { patch: { network: { offline_mode: true } } });
+  const at04Dir = join(dataDir, "at04-src");
+  mkdirSync(at04Dir, { recursive: true });
+  {
+    // 5 s of a 523 Hz tone, 22.05 kHz mono 16-bit PCM, no tags.
+    const rate = 22050;
+    const n = rate * 5;
+    const buf = Buffer.alloc(44 + n * 2);
+    buf.write("RIFF", 0);
+    buf.writeUInt32LE(36 + n * 2, 4);
+    buf.write("WAVEfmt ", 8);
+    buf.writeUInt32LE(16, 16);
+    buf.writeUInt16LE(1, 20);
+    buf.writeUInt16LE(1, 22);
+    buf.writeUInt32LE(rate, 24);
+    buf.writeUInt32LE(rate * 2, 28);
+    buf.writeUInt16LE(2, 32);
+    buf.writeUInt16LE(16, 34);
+    buf.write("data", 36);
+    buf.writeUInt32LE(n * 2, 40);
+    for (let i = 0; i < n; i++) {
+      buf.writeInt16LE(Math.round(8000 * Math.sin((2 * Math.PI * 523 * i) / rate)), 44 + i * 2);
+    }
+    writeFileSync(join(at04Dir, "Сплин - Романс.wav"), buf);
+  }
+  await invoke("import_paths", { paths: [at04Dir] });
+  const at04Row = () => {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    try {
+      return db
+        .prepare(
+          "SELECT id, rel_path, identity_state, unknown_reason, mbid_recording, duration_ms FROM track WHERE rel_path LIKE '%Романс%'",
+        )
+        .get();
+    } finally {
+      db.close();
+    }
+  };
+  let r04 = at04Row();
+  for (let i = 0; i < 40 && !r04; i++) {
+    await sleep(250);
+    r04 = at04Row();
+  }
+  const offlineState = r04 ? `${r04.identity_state}/${r04.unknown_reason} ${r04.rel_path}` : "none";
+  // The recorded answer: «Сплин — Романс», the file's own length, an official album of 1998.
+  const rg04 = "a1b2c3d4-0000-4000-8000-000000000098";
+  writeFileSync(
+    join(netFixtures, "at04-search.json"),
+    JSON.stringify({
+      count: 1,
+      recordings: [
+        {
+          id: "f00dbabe-0000-4000-8000-000000000004",
+          score: "100",
+          title: "Романс",
+          length: r04?.duration_ms ?? 5000,
+          "artist-credit": [{ name: "Сплин" }],
+          releases: [
+            {
+              title: "Гранатовый альбом",
+              status: "Official",
+              date: "1998-03-01",
+              "release-group": { id: rg04, "primary-type": "Album" },
+              media: [{ track: [{ number: "7" }] }],
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  writeFileSync(
+    join(netFixtures, "at04-rg.json"),
+    JSON.stringify({ id: rg04, "first-release-date": "1998-03-01" }),
+  );
+  writeFileSync(
+    join(netFixtures, "index.json"),
+    JSON.stringify([
+      // «романс», form-encoded.
+      { contains: "%D1%80%D0%BE%D0%BC%D0%B0%D0%BD%D1%81", file: "at04-search.json" },
+      { contains: `release-group/${rg04}`, file: "at04-rg.json" },
+    ]),
+  );
+  await invoke("settings_patch", { patch: { network: { offline_mode: false } } });
+  let r04b = at04Row();
+  for (let i = 0; i < 60 && r04b?.identity_state !== "confirmed"; i++) {
+    await sleep(250);
+    r04b = at04Row();
+  }
+  check(
+    "AT-04: offline → «Неизвестные», import not blocked; network back → confirmed online and moved into place",
+    r04?.identity_state === "unknown" &&
+      r04b?.identity_state === "confirmed" &&
+      r04b.mbid_recording === "f00dbabe-0000-4000-8000-000000000004" &&
+      r04b.rel_path.startsWith("Сплин/") &&
+      r04b.rel_path.includes("Гранатовый альбом") &&
+      existsSync(join(libDir, ...r04b.rel_path.split("/"))),
+    `offline ${offlineState} → ${r04b ? `${r04b.identity_state} ${r04b.rel_path}` : "none"}`,
+  );
+  rmSync(at04Dir, { recursive: true, force: true });
 }
 
 // T1.22: five default hotkeys configured; each either registered or reported as taken (when the

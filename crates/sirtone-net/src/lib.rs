@@ -184,7 +184,14 @@ impl Net {
     /// network within the host's rate; errors never touch the cache.
     pub fn get(&self, host: Host, path: &str) -> Result<Vec<u8>, NetError> {
         let p = host.policy();
-        if path.contains("://") || path.starts_with('/') || path.contains("..") {
+        // The path part must stay under the base; the query (form-encoded by the caller) may
+        // hold any title — «Ну, погоди...» included.
+        let route = path.split_once('?').map_or(path, |(r, _)| r);
+        if path.contains("://")
+            || route.starts_with('/')
+            || route.contains("..")
+            || route.contains('\\')
+        {
             return Err(NetError::NotAllowed(path.into()));
         }
         let url = format!("{}{path}", p.base);
@@ -247,6 +254,64 @@ fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as i64)
+}
+
+/// Form-encoding of one query value (`application/x-www-form-urlencoded`, UTF-8).
+pub fn encode(v: &str) -> String {
+    let mut out = String::with_capacity(v.len() * 3);
+    for b in v.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            b' ' => out.push('+'),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+/// A recorded network for tests and the smoke (`SIRTONE_NET_FIXTURES`): `index.json` in the
+/// folder lists `{ "contains": "<part of the URL>", "file": "<answer>.json" }`; the first entry
+/// whose text the URL contains answers 200 with that file, anything else is 404. Nothing leaves
+/// the machine.
+pub struct Fixtures {
+    dir: std::path::PathBuf,
+}
+
+impl Fixtures {
+    pub fn new(dir: impl Into<std::path::PathBuf>) -> Self {
+        Self { dir: dir.into() }
+    }
+}
+
+impl Transport for Fixtures {
+    fn get(&self, url: &str, _user_agent: &str, max_bytes: usize) -> Result<Response, NetError> {
+        let index: serde_json::Value = std::fs::read(self.dir.join("index.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
+        let hit = index.as_array().into_iter().flatten().find(|e| {
+            e["contains"]
+                .as_str()
+                .is_some_and(|c| !c.is_empty() && url.contains(c))
+        });
+        let Some(file) = hit.and_then(|e| e["file"].as_str()) else {
+            return Ok(Response {
+                status: 404,
+                body: Vec::new(),
+            });
+        };
+        if file.contains("..") || file.contains('/') || file.contains('\\') {
+            return Err(NetError::NotAllowed(file.into()));
+        }
+        let body =
+            std::fs::read(self.dir.join(file)).map_err(|e| NetError::Network(e.to_string()))?;
+        if body.len() > max_bytes {
+            return Err(NetError::TooLarge);
+        }
+        Ok(Response { status: 200, body })
+    }
 }
 
 /// The real transport: reqwest over SChannel (no OpenSSL), system proxy and certificates;
@@ -403,13 +468,24 @@ mod tests {
     #[test]
     fn only_paths_under_the_allowed_base() {
         let (n, calls, _) = net(ok);
-        for bad in ["https://evil.example/x", "/etc", "../x", "x/../../y"] {
+        for bad in [
+            "https://evil.example/x",
+            "/etc",
+            "../x",
+            "x/../../y",
+            "x/..?q=1",
+            "x?q=https://evil",
+        ] {
             assert!(matches!(
                 n.get(Host::AcoustId, bad),
                 Err(NetError::NotAllowed(_))
             ));
         }
         assert_eq!(calls.load(Ordering::Relaxed), 0);
+        // A title with dots in the query is fine.
+        let q = format!("recording?query={}&fmt=json", encode("Ну, погоди..."));
+        assert!(n.get(Host::MusicBrainz, &q).is_ok());
+        assert_eq!(encode("a b&c/д"), "a+b%26c%2F%D0%B4");
         for h in Host::ALL {
             assert!(h.policy().base.starts_with("https://"));
         }

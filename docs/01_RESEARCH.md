@@ -212,6 +212,9 @@
 - **S137** Native Instruments — BPM вдвое меньше/больше: https://support.native-instruments.com/hc/en-us/articles/209550849-The-Track-BPM-Detected-by-TRAKTOR-is-Half-or-Twice-the-Original-BPM-of-the-Track ✔
 - **S138** Algoriddim (djay), диапазон анализа: https://community.algoriddim.com/t/batch-edit-half-or-double-time-bpm/43393 ○
 - **S139** `stratum-dsp` 1.0 (README: точность, API, лицензия): https://docs.rs/crate/stratum-dsp/latest ✔
+- **S140** MusicBrainz Picard — «Lookup» по метаданным файла (`picard/file.py` `lookup_metadata` → `find_tracks`: поля `track, artist, release, tnum, tracks, qdur = длительность/2000, isrc`; экранирование Lucene `escape_lucene_query`; затем `compare_to_track` с весами и `match_min_similarity`): https://github.com/metabrainz/picard/blob/master/picard/file.py · https://github.com/metabrainz/picard/blob/master/picard/webservice/api_helpers/musicbrainz.py ✔
+- **S141** beets — поиск записи без ID (`beetsplug/musicbrainz.py`: критерии `artist, recording, alias`, нижний регистр): https://github.com/beetbox/beets/blob/master/beetsplug/musicbrainz.py ✔
+- **S142** MusicBrainz API — поиск (`/ws/2/recording?query=…&fmt=json&limit=`; поля `recording, artist, release, dur, qdur, tnum, status, primarytype, secondarytype`; ответ: `recordings[].score/title/length/artist-credit/releases[].release-group`): https://musicbrainz.org/doc/MusicBrainz_API/Search ✔
 - **S75** Last.fm Scrobbling 2.0: https://www.last.fm/api/scrobbling
 - **S76** Шафл: https://engineering.atspotify.com/2025/11/shuffle-making-random-feel-more-human · https://discussions.apple.com/thread/2003430
 - **S77** Закрытие в трей: https://community.spotify.com/t5/Desktop-Windows/Close-button-should-minimize-and-Alt-F4/m-p/5960580 · https://support.discord.com/hc/en-us/community/posts/360072275671--Minimize-to-tray-option-is-all-or-nothing-Can-this-be-tweaked

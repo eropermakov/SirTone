@@ -12,7 +12,8 @@
       "!spikes",
       "!**/src-tauri/gen",
       "!DESIGN.md",
-      "!**/shared/ipc/bindings.ts"
+      "!**/shared/ipc/bindings.ts",
+      "!crates/*/tests/data"
     ]
   },
   "formatter": {

@@ -77,7 +77,15 @@ pub fn start(app: &AppHandle) -> NetState {
         "SirTone/{} ( https://github.com/eropermakov/SirTone )",
         env!("CARGO_PKG_VERSION")
     );
-    let net = Net::new(Box::new(Lazy(OnceLock::new())), ua).with_cache(Box::new(DbCache {
+    // Isolated test instances (smoke) may answer from recorded files — nothing leaves the PC.
+    let transport: Box<dyn Transport> = match (
+        std::env::var_os("SIRTONE_NET_FIXTURES"),
+        std::env::var_os("SIRTONE_DATA_DIR"),
+    ) {
+        (Some(dir), Some(_)) => Box::new(sirtone_net::Fixtures::new(PathBuf::from(dir))),
+        _ => Box::new(Lazy(OnceLock::new())),
+    };
+    let net = Net::new(transport, ua).with_cache(Box::new(DbCache {
         app: app.clone(),
         conn: Mutex::new(None),
     }));
@@ -97,6 +105,8 @@ pub fn apply(app: &AppHandle) {
     if let Some(n) = app.try_state::<NetState>() {
         n.0.set_offline(forced(app));
     }
+    // Back online: the «Неизвестные» are looked up (FR-REC-006).
+    crate::resolve::kick(app);
 }
 
 /// Offline now — the switch, or the network down (the updater asks this first).

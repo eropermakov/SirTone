@@ -176,6 +176,8 @@ enum Job {
     Assign {
         track: i64,
         assignment: sirtone_library::relocate::Assignment,
+        /// Confirmed by MusicBrainz (D-87): recording id and confidence, stamped after the move.
+        online: Option<(String, f64)>,
         reply: mpsc::Sender<Result<String, AppError>>,
     },
     /// FR-DATA-001: remove a track (file to the Recycle Bin, or only from the app).
@@ -565,6 +567,28 @@ impl Library {
     }
 
     /// Absolute paths + display data + album cover hash for track ids (in that order).
+    /// The online add-on (D-87): a track confirmed by MusicBrainz moves to its place on the
+    /// import worker, then its identity is stamped «confirmed».
+    pub fn assign_online(
+        &self,
+        track: i64,
+        assignment: sirtone_library::relocate::Assignment,
+        mbid: String,
+        confidence: f64,
+    ) -> Result<String, AppError> {
+        let (tx, rx) = mpsc::channel();
+        self.jobs
+            .send(Job::Assign {
+                track,
+                assignment,
+                online: Some((mbid, confidence)),
+                reply: tx,
+            })
+            .map_err(|_| AppError::new(ErrorCode::Internal))?;
+        rx.recv_timeout(Duration::from_secs(120))
+            .map_err(|_| AppError::new(ErrorCode::Internal).with_details("assignment timed out"))?
+    }
+
     /// Playable tracks by id as list rows, in the given order.
     pub fn track_items(&self, ids: &[u32]) -> Result<Vec<TrackItem>, AppError> {
         let ids: Vec<i64> = ids.iter().map(|&i| i64::from(i)).collect();
@@ -698,13 +722,14 @@ fn import_worker(
                 Job::Assign {
                     track,
                     assignment,
+                    online,
                     reply,
-                } => assigns.push((track, Some(assignment), false, reply)),
+                } => assigns.push((track, Some(assignment), online, false, reply)),
                 Job::Remove {
                     track,
                     with_file,
                     reply,
-                } => assigns.push((track, None, with_file, reply)),
+                } => assigns.push((track, None, None, with_file, reply)),
                 Job::MergeArtists { keep, drop, reply } => {
                     merges.push((Some((keep, drop)), None, Some(reply), None))
                 }
@@ -792,10 +817,16 @@ fn import_worker(
             }
         }
         if !assigns.is_empty() {
-            for (track, assignment, with_file, reply) in assigns {
+            for (track, assignment, online, with_file, reply) in assigns {
                 let r = match assignment {
                     Some(a) => {
                         sirtone_library::relocate::assign(db, &root, track, &a, deps.fs.as_ref())
+                            .and_then(|path| {
+                                if let Some((mbid, conf)) = &online {
+                                    sirtone_library::online::confirm(db, track, mbid, *conf)?;
+                                }
+                                Ok(path)
+                            })
                     }
                     None => sirtone_library::relocate::remove(
                         db,
@@ -886,6 +917,10 @@ fn import_worker(
                     }
                     .emit(&app);
                     tracing::info!(target: "sirtone::import", added = r.added, unknown = r.unknown, "batch done");
+                    // New «Неизвестные» are looked up online when there is a network (D-87).
+                    if r.unknown > 0 {
+                        crate::resolve::kick(&app);
+                    }
                 }
                 Err(e) => tracing::error!(target: "sirtone::import", error = %e, "batch failed"),
             }
@@ -1210,6 +1245,7 @@ pub fn track_assign(
                 track_no: assignment.track_no,
                 year: assignment.year,
             },
+            online: None,
             reply: tx,
         })
         .map_err(|_| AppError::new(ErrorCode::Internal))?;

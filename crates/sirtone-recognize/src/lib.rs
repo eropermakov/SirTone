@@ -3,6 +3,7 @@
 pub mod covers;
 pub mod identify;
 pub mod name;
+pub mod online;
 pub mod tags;
 
 pub use covers::LoftyCovers;

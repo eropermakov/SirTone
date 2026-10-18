@@ -12,6 +12,7 @@ pub mod error;
 pub mod feedback;
 pub mod import;
 pub mod layout;
+pub mod online;
 pub mod playlists;
 pub mod reconcile;
 pub mod relocate;
