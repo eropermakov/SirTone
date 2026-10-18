@@ -844,27 +844,37 @@ if (existsSync(corpus)) {
     neverListed && neverLeft.length === 0,
     `listed ${neverListed}, left ${neverLeft.length}`,
   );
-  // Stage 3: «Слушать волну» — the engine queues 5 tracks and refills as they run out; a track
-  // marked «никогда» does not come.
-  const nowTrack = (await invoke("playback_snapshot", {})).trackId;
-  await invoke("feedback_never", { scope: "track", id: nowTrack, on: true });
-  const started = await invoke("wave_start", {});
+  // Stage 3: with an album playing, «Моя волна» offers «Слушать волну»; the engine queues 5,
+  // refills as they run out; a not-yet-played track marked «никогда» never comes.
+  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  const startBtn = page.getByRole("main").getByRole("button", { name: "Слушать волну" });
+  const offered = await startBtn.waitFor({ timeout: 3000 }).then(
+    () => true,
+    () => false,
+  );
+  if (offered) await startBtn.click();
+  await sleep(1500);
   const q0 = await invoke("queue_get", {});
+  const inWave = (await invoke("playback_snapshot", {})).inWave;
+  const unplayed = q0.items[q0.items.length - 1]?.trackId;
+  await invoke("feedback_never", { scope: "track", id: unplayed, on: true });
+  await invoke("wave_start", {});
+  const fresh = await invoke("queue_get", {});
   for (let i = 0; i < 4; i++) {
     await invoke("playback_next", {});
     await sleep(700);
   }
   await sleep(1500);
   const q1 = await invoke("queue_get", {});
-  const waveIds = [];
-  for (let i = 0; i < q1.items.length; i++) waveIds.push(q1.items[i].trackId ?? null);
+  const ids = [...fresh.items, ...q1.items].map((it) => it.trackId);
   check(
-    "wave: 5 tracks to start, refilled as they run out, «никогда» excluded",
-    started === 5 && q0.items.length === 5 && q1.items.length > 5 && !waveIds.includes(nowTrack),
-    `start ${started}, queue ${q0.items.length} → ${q1.items.length}`,
+    "wave: «Слушать волну» from a playing album, 5 → refilled, «никогда» excluded",
+    offered && inWave && q0.items.length === 5 && q1.items.length > 5 && !ids.includes(unplayed),
+    `offered ${offered}, inWave ${inWave}, queue ${q0.items.length} → ${q1.items.length}`,
   );
-  await invoke("feedback_never", { scope: "track", id: nowTrack, on: false });
+  await invoke("feedback_never", { scope: "track", id: unplayed, on: false });
   // T2.14: «Хранилище» shows the service data next to the library.
+  await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
   const storageInfo = await invoke("storage_info", {});
   check(
     "storage shows the database and the cover cache",

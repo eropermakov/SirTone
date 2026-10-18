@@ -60,13 +60,57 @@ fn novelty(app: &AppHandle) -> f32 {
         .map_or(0.5, |v| (v.min(100) as f32) / 100.0)
 }
 
+/// The wave thread's own connection to the current library: reading the catalog on a refill
+/// must not hold the shared read connection the lists use (≤ 100 ms rule).
+type Conn = Option<(std::path::PathBuf, rusqlite::Connection)>;
+
+fn conn<'a>(app: &AppHandle, slot: &'a mut Conn) -> Result<&'a rusqlite::Connection, AppError> {
+    let root = app
+        .state::<Library>()
+        .root()
+        .ok_or_else(|| AppError::new(ErrorCode::LibraryRootNotSet))?;
+    if slot.as_ref().is_none_or(|(r, _)| *r != root) {
+        let c = sirtone_library::open_existing(
+            &crate::library::db_path(&root),
+            crate::library::medium(&root),
+        )?;
+        *slot = Some((root, c));
+    }
+    slot.as_ref()
+        .map(|(_, c)| c)
+        .ok_or_else(|| AppError::new(ErrorCode::Internal))
+}
+
+type Read = (
+    Vec<sirtone_core::wave::WaveTrack>,
+    Vec<sirtone_core::wave::NotNowRow>,
+);
+
+fn read(app: &AppHandle, slot: &mut Conn, now: i64) -> Result<Read, AppError> {
+    let c = conn(app, slot)?;
+    Ok((
+        sirtone_library::wave::catalog(c)?,
+        sirtone_library::wave::not_now(c, now)?,
+    ))
+}
+
 /// The next `n` library tracks from the engine, built or refreshed from the library.
-fn next_ids(app: &AppHandle, engine: &mut Option<Engine>, n: usize) -> Result<Vec<u32>, AppError> {
-    let lib = app.state::<Library>();
+fn next_ids(
+    app: &AppHandle,
+    slot: &mut Conn,
+    engine: &mut Option<Engine>,
+    n: usize,
+) -> Result<Vec<u32>, AppError> {
     let clock = SystemClock;
     let now = clock.now_utc_ms();
-    let tracks = lib.with_read(sirtone_library::wave::catalog)?;
-    let shelf = lib.with_read(|c| sirtone_library::wave::not_now(c, now))?;
+    let (tracks, shelf) = match read(app, slot, now) {
+        Ok(v) => v,
+        // A stale handle (the stick came back): reopen once.
+        Err(_) => {
+            *slot = None;
+            read(app, slot, now)?
+        }
+    };
     match engine {
         Some(e) => e.reload(&tracks, now),
         None => {
@@ -87,12 +131,13 @@ fn next_ids(app: &AppHandle, engine: &mut Option<Engine>, n: usize) -> Result<Ve
 
 fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
     let mut engine: Option<Engine> = None;
+    let mut slot: Conn = None;
     while let Ok(cmd) = rx.recv() {
         match cmd {
             Cmd::Start(reply) => {
                 // A new wave: a new session (spacing and group counts start over).
                 engine = None;
-                let r = next_ids(app, &mut engine, FIRST).and_then(|ids| {
+                let r = next_ids(app, &mut slot, &mut engine, FIRST).and_then(|ids| {
                     let lib = app.state::<Library>();
                     let items = items_for(&lib, &ids, PlayContext::Wave)?;
                     let n = items.len() as u32;
@@ -105,7 +150,7 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
             }
             Cmd::More => {
                 if engine.is_some() {
-                    match next_ids(app, &mut engine, MORE)
+                    match next_ids(app, &mut slot, &mut engine, MORE)
                         .and_then(|ids| items_for(&app.state::<Library>(), &ids, PlayContext::Wave))
                     {
                         Ok(items) if !items.is_empty() => app.state::<Playback>().append(items),

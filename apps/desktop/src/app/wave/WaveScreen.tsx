@@ -60,6 +60,12 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       .catch(() => {});
   }, [id]);
 
+  const startWave = () =>
+    waveStart()
+      .then((n) => {
+        if (n === 0) notify(t("wave.empty"));
+      })
+      .catch(() => notify(t("wave.failed")));
   const shuffleAll = () =>
     allTrackIds().then((ids) => {
       if (ids.length === 0) return;
@@ -73,16 +79,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
         <h1 className="t-page-title text-primary-text">{t("wave.title")}</h1>
         <p className="t-body max-w-md text-text-secondary">{t("wave.idle")}</p>
         <div className="flex flex-wrap justify-center gap-3">
-          <Button
-            variant="primary"
-            onClick={() =>
-              void waveStart()
-                .then((n) => {
-                  if (n === 0) notify(t("wave.empty"));
-                })
-                .catch(() => notify(t("wave.failed")))
-            }
-          >
+          <Button variant="primary" onClick={() => void startWave()}>
             <Waves size={16} strokeWidth={1.5} />
             {t("wave.start")}
           </Button>
@@ -216,6 +213,12 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
           {snap.artists}
         </button>
       </div>
+      {!snap.inWave && (
+        <Button variant="secondary" onClick={() => void startWave()} className="relative">
+          <Waves size={16} strokeWidth={1.5} />
+          {t("wave.start")}
+        </Button>
+      )}
       <div className="relative flex items-center gap-4">
         <button
           type="button"

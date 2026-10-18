@@ -289,6 +289,8 @@ export type PlaybackSnapshot = {
 	artists: string | null,
 	/**  Library track id when playing from the collection. */
 	trackId: number | null,
+	/**  The current track comes from «Моя волна» (the screen offers to start it otherwise). */
+	inWave: boolean,
 	hasNext: boolean,
 	hasPrev: boolean,
 	/**  Album cover hash of the current track. */

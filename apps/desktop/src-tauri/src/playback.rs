@@ -42,6 +42,8 @@ pub struct PlaybackSnapshot {
     pub artists: Option<String>,
     /// Library track id when playing from the collection.
     pub track_id: Option<u32>,
+    /// The current track comes from «Моя волна» (the screen offers to start it otherwise).
+    pub in_wave: bool,
     pub has_next: bool,
     pub has_prev: bool,
     /// Album cover hash of the current track.
@@ -246,6 +248,7 @@ fn empty_snapshot() -> PlaybackSnapshot {
         title: None,
         artists: None,
         track_id: None,
+        in_wave: false,
         has_next: false,
         has_prev: false,
         cover: None,
@@ -364,6 +367,9 @@ impl Playback {
                     }),
                     artists: current.as_ref().and_then(|c| c.artists.clone()),
                     track_id: current.as_ref().and_then(|c| c.track_id),
+                    in_wave: current
+                        .as_ref()
+                        .is_some_and(|c| c.source == PlaySource::Wave),
                     has_next: current.is_some() && has_next,
                     has_prev: current.is_some() && has_prev,
                     cover: current.as_ref().and_then(|c| c.cover.clone()),
