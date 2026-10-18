@@ -123,7 +123,24 @@ fn play(files: &[String], volume: f32) -> ExitCode {
 /// B1 and the tagger (B2/B3) in one decode — with the time each took. The duration that places
 /// the tagger windows comes from the library row in the app; here from a first plain pass
 /// (not timed).
+/// `--no-model` — without the tagger (B0 + fingerprint + B1 only, for comparison).
 fn analyze(files: &[String]) -> ExitCode {
+    if files.first().is_some_and(|f| f == "--no-model") {
+        for f in &files[1..] {
+            let t = std::time::Instant::now();
+            let r = sirtone_analysis::b0::analyze(
+                &sirtone_audio::pcm::PcmFiles,
+                std::path::Path::new(f),
+                None,
+            );
+            println!(
+                "{f}: {:.0} ms, ok {}",
+                t.elapsed().as_secs_f64() * 1e3,
+                r.is_ok()
+            );
+        }
+        return ExitCode::SUCCESS;
+    }
     let t = std::time::Instant::now();
     let (tagger, rules) = match (
         sirtone_analysis::b2::Tagger::builtin(),
@@ -136,6 +153,16 @@ fn analyze(files: &[String]) -> ExitCode {
         }
     };
     println!("tagger loaded in {:.0} ms", t.elapsed().as_secs_f64() * 1e3);
+    // T3.8 «≤ 1 с/трек»: the tagger alone on two 10 s windows at 44.1 kHz.
+    let clip: Vec<f32> = (0..441_000)
+        .map(|i| (i as f32 * 0.0627).sin() * 0.3)
+        .collect();
+    let t = std::time::Instant::now();
+    let _ = tagger.tag(&[clip.clone(), clip], 44_100);
+    println!(
+        "B2 alone, 2 windows: {:.0} ms",
+        t.elapsed().as_secs_f64() * 1e3
+    );
     let dec = sirtone_audio::pcm::PcmFiles;
     let mut worst = 0f64;
     for f in files {

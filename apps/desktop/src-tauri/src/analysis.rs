@@ -138,6 +138,11 @@ fn step(
     };
     if deep.is_none() {
         *deep = Deep::load();
+        // Without the tagger the tracks would be stamped with this version and never get a
+        // vibe: wait and try again instead.
+        if deep.is_none() {
+            return Duration::from_secs(600);
+        }
     }
     let path = rel.split('/').fold(root, |p, part| p.join(part));
     let t0 = std::time::Instant::now();
