@@ -93,6 +93,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             wave::wave_start,
             wave::wave_reset_learning,
             wave::wave_why,
+            wave::wave_retune,
             analysis::analysis_progress,
             window_chrome::window_set_theme,
         ])

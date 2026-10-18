@@ -532,6 +532,23 @@ impl Playback {
         }
     }
 
+    /// Drops every not-yet-played wave item after the current one (the slider moved).
+    pub fn drop_upcoming_wave(&self) -> usize {
+        let mut q = self.queue();
+        let pos = q.position();
+        let mut n = 0;
+        for at in (pos + 1..q.len()).rev() {
+            if q.items().get(at).is_some_and(|i| i.source == PlaySource::Wave) && q.remove(at) {
+                n += 1;
+            }
+        }
+        drop(q);
+        if n > 0 {
+            self.queue_edited();
+        }
+        n
+    }
+
     pub fn queue_remove(&self, at: usize) {
         if self.queue().remove(at) {
             self.queue_edited();

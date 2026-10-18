@@ -27,6 +27,8 @@ enum Cmd {
     Start(Sender<Result<u32, AppError>>),
     More,
     Why(i64, Sender<Vec<WhyReason>>),
+    /// The slider moved: the upcoming wave tracks are picked again.
+    Retune,
 }
 
 /// One reason of «Почему этот трек» (§17); the UI words it as `wave.why.<kind>`.
@@ -222,6 +224,23 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                 });
                 let _ = reply.send(reasons);
             }
+            Cmd::Retune => {
+                if engine.is_some() {
+                    let pb = app.state::<Playback>();
+                    let dropped = pb.drop_upcoming_wave();
+                    if dropped > 0 {
+                        match next_ids(app, &mut slot, &mut engine, dropped.max(MORE))
+                            .and_then(|ids| items_for(&app.state::<Library>(), &ids, PlayContext::Wave))
+                        {
+                            Ok(items) if !items.is_empty() => pb.append(items),
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::warn!(target: "sirtone::wave", code = ?e.code, "retune failed");
+                            }
+                        }
+                    }
+                }
+            }
             Cmd::More => {
                 if engine.is_some() {
                     match next_ids(app, &mut slot, &mut engine, MORE)
@@ -270,3 +289,11 @@ pub fn wave_why(wave: State<'_, Wave>, track: u32) -> Vec<WhyReason> {
     }
     rx.recv_timeout(Duration::from_secs(5)).unwrap_or_default()
 }
+
+/// «Знакомое ↔ Неожиданное» moved (docs/14 §9): the upcoming wave tracks follow at once.
+#[tauri::command]
+#[specta::specta]
+pub fn wave_retune(wave: State<'_, Wave>) {
+    let _ = wave.tx.send(Cmd::Retune);
+}
+

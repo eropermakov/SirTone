@@ -178,3 +178,8 @@ export const waveStart = async (): Promise<number> =>
 /** «Почему этот трек» for a track of the running wave (empty outside the wave). */
 export const waveWhy = async (track: number): Promise<WhyReason[]> =>
   isTauri() ? commands.waveWhy(track) : [];
+
+/** The slider moved: the upcoming wave tracks are picked again. */
+export const waveRetune = (): void => {
+  if (isTauri()) void commands.waveRetune();
+};

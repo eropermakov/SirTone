@@ -18,6 +18,7 @@ import { TrackCard } from "@/app/library/TrackCard";
 import type { GoTo } from "@/app/library/TrackList";
 import { useAddToPlaylist } from "@/app/playlists/useAddToPlaylist";
 import { useTrackTags } from "@/app/playlists/useTrackTags";
+import { NoveltySlider } from "./NoveltySlider";
 import {
   like,
   never,
@@ -284,6 +285,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
           <MoreHorizontal size={24} strokeWidth={1.5} />
         </button>
       </div>
+      <NoveltySlider />
       {menu && (
         <Menu items={items} at={menu} label={t("trackMenu.label")} onClose={() => setMenu(null)} />
       )}
