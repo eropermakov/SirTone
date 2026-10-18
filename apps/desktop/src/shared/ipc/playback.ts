@@ -21,6 +21,7 @@ export const EMPTY_SNAPSHOT: PlaybackSnapshot = {
   artists: null,
   trackId: null,
   inWave: false,
+  waveProfile: null,
   hasNext: false,
   hasPrev: false,
   cover: null,

@@ -316,6 +316,8 @@ export type PlaybackSnapshot = {
 	trackId: number | null,
 	/**  The current track comes from «Моя волна» (the screen offers to start it otherwise). */
 	inWave: boolean,
+	/**  The running wave's profile (`my_wave`, `seasonal`) while a wave track plays. */
+	waveProfile: string | null,
 	hasNext: boolean,
 	hasPrev: boolean,
 	/**  Album cover hash of the current track. */

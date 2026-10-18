@@ -44,6 +44,8 @@ pub struct PlaybackSnapshot {
     pub track_id: Option<u32>,
     /// The current track comes from «Моя волна» (the screen offers to start it otherwise).
     pub in_wave: bool,
+    /// The running wave's profile (`my_wave`, `seasonal`) while a wave track plays.
+    pub wave_profile: Option<String>,
     pub has_next: bool,
     pub has_prev: bool,
     /// Album cover hash of the current track.
@@ -249,6 +251,7 @@ fn empty_snapshot() -> PlaybackSnapshot {
         artists: None,
         track_id: None,
         in_wave: false,
+        wave_profile: None,
         has_next: false,
         has_prev: false,
         cover: None,
@@ -370,6 +373,11 @@ impl Playback {
                     in_wave: current
                         .as_ref()
                         .is_some_and(|c| c.source == PlaySource::Wave),
+                    wave_profile: current
+                        .as_ref()
+                        .is_some_and(|c| c.source == PlaySource::Wave)
+                        .then(|| sink_journal.wave_profile())
+                        .flatten(),
                     has_next: current.is_some() && has_next,
                     has_prev: current.is_some() && has_prev,
                     cover: current.as_ref().and_then(|c| c.cover.clone()),

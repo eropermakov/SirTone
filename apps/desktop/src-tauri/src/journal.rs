@@ -83,6 +83,14 @@ impl Journal {
         }
     }
 
+    /// The running wave's profile (`my_wave`, `seasonal`), if a wave was started.
+    pub fn wave_profile(&self) -> Option<String> {
+        self.wave_profile
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+    }
+
     /// The wave started with this profile (learning knows where its plays came from, §8.4).
     pub fn set_wave_profile(&self, id: &str) {
         *self.wave_profile.lock().unwrap_or_else(|p| p.into_inner()) = Some(id.to_owned());

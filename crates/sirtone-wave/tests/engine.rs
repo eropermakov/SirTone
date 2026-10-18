@@ -192,6 +192,50 @@ fn seasonal_wave_follows_the_season() {
         "{reasons:?}"
     );
 
+    // Summer: no «Winter» title gets in; an artist named for another season is weak evidence
+    // and stays eligible (the floor cuts only title/album words of another season).
+    let mut summer_ctx = c.clone();
+    summer_ctx.season_w = [0.0, 0.0, 1.0, 0.0];
+    let mut e2 = Engine::new(
+        Config::builtin_profile("seasonal").expect("assets"),
+        &tracks,
+        &synth::history(&tracks, NOW),
+        NOW,
+        9,
+    );
+    let summer_picks = e2.next(&summer_ctx, &[], 0.5, 40, NOW);
+    assert!(
+        summer_picks.iter().all(|id| !winter.contains(id)),
+        "«Winter» title in summer"
+    );
+    // The floor sits between title/album and artist evidence for another season.
+    let floor = Config::builtin_profile("seasonal")
+        .expect("assets")
+        .profile
+        .season_floor
+        .expect("seasonal floor");
+    let s = sirtone_wave::season::Seasonality::builtin().expect("assets");
+    let by_artist = s.affinity(
+        0,
+        &s.words(Some("Песня"), None, Some("Снег")),
+        None,
+        0.0,
+        None,
+    );
+    let by_album = s.affinity(
+        0,
+        &s.words(Some("Песня"), Some("Зима"), None),
+        None,
+        0.0,
+        None,
+    );
+    let by_title = s.affinity(0, &s.words(Some("Зима"), None, None), None, 0.0, None);
+    assert!(
+        by_artist[2] >= floor,
+        "artist «Снег» out of summer: {by_artist:?}"
+    );
+    assert!(by_album[2] < floor && by_title[2] < floor);
+
     // «Моя волна»: season weighs less; summer tracks are not excluded, only lower.
     let cfg = Config::builtin().expect("assets");
     assert_eq!(cfg.profile.season_floor, None);

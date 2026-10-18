@@ -910,16 +910,32 @@ if (existsSync(corpus)) {
     (settings().wave?.novelty ?? 50) <= 10 && upAfter !== upBefore && upAfter !== "",
     `novelty ${settings().wave?.novelty}`,
   );
-  // T3.30: «Сезонная волна» — named by the calendar, starts its own profile.
+  // T3.30: «Сезонная волна» — named by the calendar; started by its button while «Моя волна»
+  // plays, and «Слушать волну» leads back.
   const seasonKey = await invoke("wave_season_card", {});
-  const seasonal = await invoke("wave_start", { profile: "seasonal" });
+  const shellRu = JSON.parse(
+    readFileSync(new URL("../../../assets/i18n/ru/shell.json", import.meta.url), "utf8"),
+  );
+  const seasonLabel = shellRu.wave.season[seasonKey];
+  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  await page.getByRole("main").getByRole("button", { name: seasonLabel }).click();
+  let seasonSnap = await invoke("playback_snapshot", {});
+  for (let i = 0; i < 20 && seasonSnap.waveProfile !== "seasonal"; i++) {
+    await sleep(200);
+    seasonSnap = await invoke("playback_snapshot", {});
+  }
   const sq = await invoke("queue_get", {});
+  const back = await page
+    .getByRole("main")
+    .getByRole("button", { name: "Слушать волну" })
+    .isVisible();
   check(
-    "seasonal wave: named by the calendar and plays",
+    "seasonal wave: named by the calendar, started by its button, «Моя волна» offered back",
     ["autumn", "earlyAutumn", "preWinter", "earlyWinter", "winter"].includes(seasonKey) &&
-      seasonal === 5 &&
-      sq.items.length === 5,
-    `${seasonKey}, ${seasonal} queued`,
+      seasonSnap.waveProfile === "seasonal" &&
+      sq.items.length === 5 &&
+      back,
+    `${seasonKey} «${seasonLabel}», profile ${seasonSnap.waveProfile}, queue ${sq.items.length}, back ${back}`,
   );
   // T3.28: learning off freezes the models (the wave still plays); «Сбросить обучение» works.
   await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();

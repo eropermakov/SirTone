@@ -241,15 +241,18 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
           {snap.artists}
         </button>
       </div>
-      {!snap.inWave && (
-        <div className="relative flex flex-wrap justify-center gap-3">
+      {/* Which wave plays; the other one starts from here (FR-SEAS-003). */}
+      <div className="relative flex flex-wrap justify-center gap-3">
+        {snap.waveProfile !== "my_wave" && (
           <Button variant="secondary" onClick={() => void startWave()} className="relative">
             <Waves size={16} strokeWidth={1.5} />
             {t("wave.start")}
           </Button>
+        )}
+        {snap.waveProfile !== "seasonal" && (
           <SeasonWaveButton onStart={() => void startWave("seasonal")} />
-        </div>
-      )}
+        )}
+      </div>
       <div className="relative flex items-center gap-4">
         <button
           type="button"
