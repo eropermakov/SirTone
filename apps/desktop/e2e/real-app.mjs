@@ -940,9 +940,12 @@ if (existsSync(corpus)) {
   // T3.18: «Настроить волну» — a mood needs deep analysis (not yet): the wave relaxes it and
   // still plays; frequency «любимые» + Russian hold or relax in order; a bad key is refused.
   const moodStart = await invoke("wave_start", { query: { mood: ["happy"] } });
-  const bad = await invoke("wave_start", { query: { mood: ["sunny"] } }).then(
-    () => "accepted",
-    (e) => String(e?.code ?? e),
+  // The rejection is caught in the page: the AppError object does not survive page.evaluate.
+  const bad = await page.evaluate(() =>
+    window.__TAURI_INTERNALS__.invoke("wave_start", { query: { mood: ["sunny"] } }).then(
+      () => "accepted",
+      (e) => String(e?.code ?? JSON.stringify(e)),
+    ),
   );
   const freqStart = await invoke("wave_start", {
     query: { frequency: ["often"], language: ["ru", "foreign"] },
@@ -952,7 +955,7 @@ if (existsSync(corpus)) {
     moodStart.queued === 5 &&
       moodStart.relaxed.includes("mood") &&
       freqStart.queued > 0 &&
-      bad !== "accepted",
+      bad.includes("InvalidArgument"),
     `mood ${JSON.stringify(moodStart)}, often ${JSON.stringify(freqStart)}, bad ${bad}`,
   );
   // T3.28: learning off freezes the models (the wave still plays); «Сбросить обучение» works.

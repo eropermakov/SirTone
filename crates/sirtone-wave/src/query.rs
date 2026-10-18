@@ -493,7 +493,9 @@ impl QueryState {
             .filter_map(|s| Crit::from_key(s))
             .chain(Crit::ALL)
             .collect();
-        loop {
+        // One pass: eligibility and the filters component at these levels; returns how many
+        // tracks are eligible (layer 1 — never relaxed — counted too).
+        let run = |lv: &Levels, st: &mut Self| -> usize {
             let mut eligible = 0usize;
             for t in 0..n {
                 let x = &cat.feat[t];
@@ -593,17 +595,68 @@ impl QueryState {
                     eligible += 1;
                 }
             }
-            if eligible >= min_candidates {
+            eligible
+        };
+        let mut eligible = run(&lv, &mut st);
+        // Relax only what limits (a filter the user chose stays when another one is the
+        // bottleneck): (1) in order, steps that add tracks; (2) stuck — two filters each cut
+        // everything — drop in order; (3) once enough, give back every earlier step that is
+        // not needed.
+        let mut steps: Vec<(Crit, u8)> = Vec::new();
+        let mut tried = [false; 8];
+        while eligible < min_candidates {
+            let Some(c) = order
+                .iter()
+                .copied()
+                .find(|c| active(*c) && lv.on(*c) && !tried[*c as usize])
+            else {
                 break;
+            };
+            let before = lv.0[c as usize];
+            let mut helped = false;
+            while lv.on(c) {
+                lv.0[c as usize] += 1;
+                let e = run(&lv, &mut st);
+                if e > eligible {
+                    eligible = e;
+                    helped = true;
+                    break;
+                }
             }
+            if helped {
+                steps.push((c, before));
+            } else {
+                lv.0[c as usize] = before;
+                tried[c as usize] = true;
+            }
+        }
+        while eligible < min_candidates {
             let Some(c) = order.iter().copied().find(|c| active(*c) && lv.on(*c)) else {
                 break;
             };
-            lv.0[c as usize] += 1;
-            if !st.relaxed.contains(&c.key()) {
+            steps.push((c, lv.0[c as usize]));
+            lv.0[c as usize] = c.max_level();
+            eligible = run(&lv, &mut st);
+        }
+        if eligible >= min_candidates && steps.len() > 1 {
+            for i in (0..steps.len() - 1).rev() {
+                let (c, prev) = steps[i];
+                let now = lv.0[c as usize];
+                if now <= prev {
+                    continue;
+                }
+                lv.0[c as usize] = prev;
+                if run(&lv, &mut st) < min_candidates {
+                    lv.0[c as usize] = now;
+                }
+            }
+        }
+        for (c, _) in &steps {
+            if lv.0[*c as usize] > 0 && !st.relaxed.contains(&c.key()) {
                 st.relaxed.push(c.key());
             }
         }
+        run(&lv, &mut st);
         st.frequency_on = active(Crit::Frequency) && lv.on(Crit::Frequency);
         st
     }

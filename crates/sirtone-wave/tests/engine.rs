@@ -310,6 +310,48 @@ mod query {
         relaxed
     }
 
+    /// «Русский + часто слушаю» where «часто» is the bottleneck: only frequency is relaxed and
+    /// every pick is still Russian.
+    #[test]
+    fn only_the_limiting_filter_is_relaxed() {
+        let mut tracks = synth::library(2_000, NOW, 0.0, 25);
+        for t in &mut tracks {
+            t.plays_weeks = [0; 13];
+            if t.id % 2 == 0 {
+                t.title = Some(format!("Песня {}", t.id));
+                t.artist_name = Some("Артист".into());
+            }
+            if t.id % 200 == 0 {
+                t.last_played_ms = Some(NOW - 2 * DAY);
+                t.plays_weeks[0] = 5;
+            }
+        }
+        let ru: std::collections::HashSet<i64> = tracks
+            .iter()
+            .filter(|t| t.id % 2 == 0)
+            .map(|t| t.id)
+            .collect();
+        let mut e = Engine::new(
+            Config::builtin().expect("assets"),
+            &tracks,
+            &synth::history(&tracks, NOW),
+            NOW,
+            8,
+        );
+        let relaxed = e.set_query(
+            WaveQuery {
+                language: vec![Lang::Ru],
+                frequency: vec![Freq::Often],
+                ..WaveQuery::default()
+            },
+            NOW,
+        );
+        assert_eq!(relaxed, ["frequency"]);
+        let picks = e.next(&ctx(Daypart::Evening), &[], 0.5, 20, NOW + 3 * DAY);
+        assert_eq!(picks.len(), 20);
+        assert!(picks.iter().all(|id| ru.contains(id)));
+    }
+
     #[test]
     fn unanalysed_tracks_never_pass_a_mood_and_the_wave_relaxes() {
         let tracks = synth::library(3_000, NOW, 0.0, 22);
