@@ -47,6 +47,7 @@ tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "sync", "ti
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rust-stemmers = "=1.2.0"
+stratum-dsp = { version = "=1.0.0", default-features = false }
 unicode-normalization = "0.1.25"
 thiserror = "2"
 anyhow = "1"

@@ -43,7 +43,7 @@ pub fn store_b0(
         "UPDATE track SET lufs_i = ?2, true_peak_db = ?3, lra = ?4, peaks = ?5,
                 lead_silence_ms = ?6, tail_silence_ms = ?7, env_head = ?8, env_tail = ?9,
                 analysis_version = ?10, analyzed_at = ?11, fingerprint = ?12, fp_duration_ms = ?13,
-                fp_sketch = ?14
+                fp_sketch = ?14, bpm = ?15, bpm_conf = ?16, key_camelot = ?17, key_conf = ?18
          WHERE id = ?1",
         params![
             track,
@@ -60,6 +60,10 @@ pub fn store_b0(
             b.fingerprint,
             b.fingerprint.as_ref().map(|_| b.fp_duration_ms as i64),
             b.fp_sketch,
+            b.bpm,
+            b.bpm_conf,
+            b.key_camelot,
+            b.key_conf,
         ],
     )?;
     Ok(())

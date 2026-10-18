@@ -373,6 +373,39 @@ mod query {
         assert_eq!(e.next(&ctx(Daypart::Evening), &[], 0.5, 5, NOW).len(), 5);
     }
 
+    /// T3.7: the tempo filter uses the measured BPM (B1) without deep analysis; the tempo feature
+    /// is the measured one.
+    #[test]
+    fn tempo_filter_uses_measured_bpm() {
+        let mut tracks = synth::library(2_000, NOW, 0.0, 26);
+        for t in &mut tracks {
+            t.bpm = Some(70.0 + (t.id % 110) as f32);
+            t.key_camelot = Some(format!("{}B", t.id % 12 + 1));
+        }
+        let bpm: std::collections::HashMap<i64, f32> = tracks
+            .iter()
+            .map(|t| (t.id, t.bpm.unwrap_or(0.0)))
+            .collect();
+        let mut e = Engine::new(
+            Config::builtin().expect("assets"),
+            &tracks,
+            &synth::history(&tracks, NOW),
+            NOW,
+            9,
+        );
+        let relaxed = e.set_query(
+            WaveQuery {
+                tempo: Some((120.0, 130.0)),
+                ..WaveQuery::default()
+            },
+            NOW,
+        );
+        assert!(relaxed.is_empty(), "{relaxed:?}");
+        let picks = e.next(&ctx(Daypart::Evening), &[], 0.5, 20, NOW);
+        assert_eq!(picks.len(), 20);
+        assert!(picks.iter().all(|id| (120.0..=130.0).contains(&bpm[id])));
+    }
+
     #[test]
     fn never_is_not_relaxed() {
         let mut tracks = synth::library(200, NOW, 1.0, 23);

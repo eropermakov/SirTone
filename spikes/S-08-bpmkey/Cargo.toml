@@ -1,0 +1,16 @@
+[package]
+name = "s08-bpmkey"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "S-08: stratum-dsp — темп и тональность на корпусе с известными BPM/ключом (D-11)"
+
+# Самостоятельный проект вне workspace приложения.
+[workspace]
+
+[dependencies]
+stratum-dsp = { version = "=1.0.0", default-features = false }
+
+[profile.release]
+opt-level = 3
+debug = false

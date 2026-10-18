@@ -19,4 +19,10 @@ pub struct B0 {
     pub fp_duration_ms: u64,
     /// Every 8th raw item (`fingerprint::sketch`) for the coarse duplicate check (T3.5).
     pub fp_sketch: Option<Vec<u8>>,
+    /// B1 in the same pass (T3.7): tempo folded into 70–180 BPM and the key in Camelot, with
+    /// the analyser's own confidences (not used as a filter — S-08).
+    pub bpm: Option<f32>,
+    pub bpm_conf: Option<f32>,
+    pub key_camelot: Option<String>,
+    pub key_conf: Option<f32>,
 }

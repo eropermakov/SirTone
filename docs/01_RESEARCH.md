@@ -208,6 +208,10 @@
 - **S133** Apple Music (Mac), колонка «Жанры»: https://support.apple.com/en-gb/guide/music/muscde0b85e0/mac ✔
 - **S134** Spotify, трек на плейлист в левой панели: https://businessinsider.nl/how-to-add-songs-to-spotify-playlist · https://community.spotify.com/t5/Your-Library/adding-to-playlist/m-p/4891911 ○
 - **S135** macOS spring-loading: https://kb.iu.edu/d/aehp · https://eshop.macsales.com/blog/52831-how-to-use-spring-loaded-folders-on-a-mac/ ○
+- **S136** Mixxx 2.3 — KeyFinder: https://mixxx.org/news/2021-04-08-new-in-2-3-keyfinder · https://manual.mixxx.org/2.5/ru/chapters/preferences/key_detection ✔
+- **S137** Native Instruments — BPM вдвое меньше/больше: https://support.native-instruments.com/hc/en-us/articles/209550849-The-Track-BPM-Detected-by-TRAKTOR-is-Half-or-Twice-the-Original-BPM-of-the-Track ✔
+- **S138** Algoriddim (djay), диапазон анализа: https://community.algoriddim.com/t/batch-edit-half-or-double-time-bpm/43393 ○
+- **S139** `stratum-dsp` 1.0 (README: точность, API, лицензия): https://docs.rs/crate/stratum-dsp/latest ✔
 - **S75** Last.fm Scrobbling 2.0: https://www.last.fm/api/scrobbling
 - **S76** Шафл: https://engineering.atspotify.com/2025/11/shuffle-making-random-feel-more-human · https://discussions.apple.com/thread/2003430
 - **S77** Закрытие в трей: https://community.spotify.com/t5/Desktop-Windows/Close-button-should-minimize-and-Alt-F4/m-p/5960580 · https://support.discord.com/hc/en-us/community/posts/360072275671--Minimize-to-tray-option-is-all-or-nothing-Can-this-be-tweaked

@@ -532,7 +532,8 @@ impl QueryState {
                     && lv.on(Crit::Tempo)
                     && let Some((lo, hi)) = tempo
                 {
-                    ok &= analysed && (lo..=hi).contains(&bpm(x));
+                    // Measured by B1 (T3.7), whatever the deep analysis says.
+                    ok &= cat.has_bpm[t] && (lo..=hi).contains(&bpm(x));
                 }
                 let mut f = 1.0f32;
                 let mut soft = false;

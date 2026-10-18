@@ -209,6 +209,9 @@ pub struct WaveTrack {
     pub season_tags: u8,
     /// Weekly play ring (`plays_recent`, bucket `i` = week of the last play − i).
     pub plays_weeks: [u8; 13],
+    /// B1 (T3.7): tempo (70–180 BPM) and key in Camelot («8B»).
+    pub bpm: Option<f32>,
+    pub key_camelot: Option<String>,
 }
 
 /// «Не сейчас» still on the shelf (docs/14 §6, D-77).

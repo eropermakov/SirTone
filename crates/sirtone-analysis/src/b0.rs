@@ -11,8 +11,8 @@ use sirtone_core::error::{AppError, ErrorCode};
 use sirtone_core::ports::PcmDecoder;
 
 /// Bump when the B0 algorithm changes: tracks with an older version are analysed again.
-/// 2 — fingerprints (T3.2).
-pub const VERSION: i64 = 2;
+/// 2 — fingerprints (T3.2); 3 — tempo and key (B1, T3.7).
+pub const VERSION: i64 = 3;
 
 const SILENCE_DB: f32 = -60.0;
 const OVERVIEW: usize = 400;
@@ -93,11 +93,14 @@ impl Acc {
 pub fn analyze(dec: &dyn PcmDecoder, path: &Path) -> Result<B0, AppError> {
     let mut a = Acc::default();
     let mut fp = crate::fingerprint::FpAcc::default();
+    let mut b1 = crate::b1::B1Acc::default();
     dec.decode(path, &mut |frames, channels, rate| {
         fp.feed(frames, channels, rate);
+        b1.feed(frames, channels, rate);
         a.feed(frames, channels, rate)
     })?;
     let fingerprint = fp.finish();
+    let b1 = b1.finish();
     if let Some(e) = a.failed.take() {
         return Err(AppError::new(ErrorCode::Internal).with_details(e));
     }
@@ -148,6 +151,10 @@ pub fn analyze(dec: &dyn PcmDecoder, path: &Path) -> Result<B0, AppError> {
         fp_duration_ms: fingerprint.as_ref().map_or(0, |f| f.2),
         fp_sketch: fingerprint.as_ref().map(|f| f.1.clone()),
         fingerprint: fingerprint.map(|f| f.0),
+        bpm: b1.as_ref().map(|b| b.bpm),
+        bpm_conf: b1.as_ref().map(|b| b.bpm_conf),
+        key_camelot: b1.as_ref().map(|b| b.camelot.clone()),
+        key_conf: b1.as_ref().map(|b| b.key_conf),
     })
 }
 

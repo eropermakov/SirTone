@@ -19,6 +19,9 @@ use crate::season::{NO_SEASON, Seasonality, dominant};
 pub mod f {
     pub const ENERGY: usize = 0;
     pub const TEMPO: usize = 4;
+    pub const KEY_SIN: usize = 5;
+    pub const KEY_COS: usize = 6;
+    pub const MODE: usize = 7;
     pub const DYNAMICS: usize = 11;
     pub const LOUDNESS: usize = 12;
     pub const DURATION: usize = 13;
@@ -259,6 +262,8 @@ pub struct Catalog {
     /// Language by script: 0 unknown, 1 Russian, 2 foreign.
     pub(crate) lang: Vec<u8>,
     pub(crate) weeks: Vec<[u8; 13]>,
+    /// The tempo was measured (B1) — the tempo filter reads this, not the analysis confidence.
+    pub(crate) has_bpm: Vec<bool>,
     /// `0.6·ln(1 + plays) + 0.4·completion − 0.5·skip_ratio` (`05` §10.1 «любимые»).
     pub(crate) fav: Vec<f32>,
     pub last_played: Vec<i64>,
@@ -343,6 +348,7 @@ impl Catalog {
             conf: Vec::with_capacity(n),
             lang: Vec::with_capacity(n),
             weeks: Vec::with_capacity(n),
+            has_bpm: Vec::with_capacity(n),
             fav: Vec::with_capacity(n),
             last_played: Vec::with_capacity(n),
             added: Vec::with_capacity(n),
@@ -370,6 +376,17 @@ impl Catalog {
             if let Some(v) = t.soft_outro {
                 x[f::SOFT_OUT] = v;
             }
+            // B1 (T3.7): tempo 4 = (clamp(bpm, 50, 200) − 50) / 150; key 5–6 on the circle of
+            // fifths (the Camelot number); mode 7 (major 1 / minor 0).
+            if let Some(b) = t.bpm {
+                x[f::TEMPO] = ((b.clamp(50.0, 200.0) - 50.0) / 150.0).clamp(0.0, 1.0);
+            }
+            if let Some((n, major)) = t.key_camelot.as_deref().and_then(camelot_parts) {
+                let a = (n - 1) as f32 * std::f32::consts::TAU / 12.0;
+                x[f::KEY_SIN] = 0.5 + 0.5 * a.sin();
+                x[f::KEY_COS] = 0.5 + 0.5 * a.cos();
+                x[f::MODE] = f32::from(u8::from(major));
+            }
             x[f::YEAR] = t.year.map_or(year_mid, year_feature);
             if t.features.is_none() {
                 match g {
@@ -395,6 +412,7 @@ impl Catalog {
             c.lang
                 .push(script_lang(t.title.as_deref(), t.artist_name.as_deref()));
             c.weeks.push(t.plays_weeks);
+            c.has_bpm.push(t.bpm.is_some());
             let heard = (t.play_count + t.skip_count).max(1) as f32;
             c.fav.push(
                 0.6 * (1.0 + t.play_count as f32).ln() + 0.4 * t.completion
@@ -490,6 +508,13 @@ impl Catalog {
             2 // нетронутое
         }
     }
+}
+
+/// «8B» → (8, major); «8A» → (8, minor).
+fn camelot_parts(s: &str) -> Option<(u32, bool)> {
+    let major = s.ends_with('B');
+    let n: u32 = s.trim_end_matches(['A', 'B']).parse().ok()?;
+    ((1..=12).contains(&n) && (major || s.ends_with('A'))).then_some((n, major))
 }
 
 fn duration_feature(ms: u64) -> f32 {

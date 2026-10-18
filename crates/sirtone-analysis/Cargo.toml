@@ -15,3 +15,4 @@ workspace = true
 sirtone-core.workspace = true
 ebur128.workspace = true
 rusty-chromaprint.workspace = true
+stratum-dsp.workspace = true

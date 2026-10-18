@@ -1202,6 +1202,18 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
     dupCount = await invoke("duplicates_count", {});
   }
   const dupMap = dupIds();
+  // T3.7: the same analysis pass measured tempo and key (B1) of these 25 s melodies.
+  const b1db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+  const b1 = b1db
+    .prepare("SELECT bpm, key_camelot FROM track WHERE rel_path LIKE 'Дубли/%' AND bpm IS NOT NULL")
+    .all();
+  b1db.close();
+  check(
+    "B1: tempo (70–180) and Camelot key stored by the analysis",
+    b1.length >= 2 &&
+      b1.every((r) => r.bpm >= 70 && r.bpm <= 180 && /^\d{1,2}[AB]$/.test(r.key_camelot)),
+    JSON.stringify(b1),
+  );
   const roadPl = (await invoke("playlists_list", {})).find((p) => p.name === "Дорога");
   const oldId = dupMap["Утро.flac"];
   const newId = dupMap["Рассвет.mp3"];

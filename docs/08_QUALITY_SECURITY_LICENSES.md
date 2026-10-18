@@ -136,7 +136,7 @@
 | Громкость | `ebur128` 0.1.10 | MIT | ✅ | последний релиз 2024-10 — стабильный порт libebur128 |
 | Time-stretch | `signalsmith-stretch` 0.1.3 | MIT | ✅ 🧪 S-08 | C++ через `cc` (нужен MSVC — есть) |
 | FFT | `rustfft` 6.4.1 · `realfft` 3.5.0 | MIT OR Apache-2.0 / MIT | ✅ | |
-| BPM/ключ | `stratum-dsp` 1.0.0 | MIT OR Apache-2.0 (GitHub: NOASSERTION — проверить LICENSE) | 🧪 S-08 | запасной вариант — собственная реализация |
+| BPM/ключ | `stratum-dsp` =1.0.0 (без `ml`) | MIT OR Apache-2.0 (в пакете LICENSE-MIT и LICENSE-APACHE, © HLLMR) | ✅ S-08, T3.7 | `rayon` объявлен, но не используется; тянет вторую `symphonia` 0.5 (размер бинарника) |
 | Теги | `lofty` 0.25.4 | MIT OR Apache-2.0 | ✅ | ASF/WMA не поддерживает |
 | Отпечаток | `rusty-chromaprint` =0.3.0 | MIT | ✅ S-06, T3.2 | последний релиз 2024-10; паритет сжатого формата с Chromaprint (ffmpeg) — тест `fingerprint.rs`; в репозитории нет LICENSE → текст MIT в `assets/licenses/rusty-chromaprint.txt`; тянет второй `rubato` 0.16 (предупреждение `cargo deny` о дубликате) |
 | Кодировки | `encoding_rs` 0.8.42 · `chardetng` 1.0.0 | (Apache-2.0 OR MIT) AND BSD-3-Clause / Apache-2.0 OR MIT | ✅ | |
