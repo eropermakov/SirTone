@@ -1,4 +1,4 @@
--- 0004_dup: duplicates by sound (T3.5, docs/05 §6). Forward-only; frozen once shipped (D-66).
+-- 0004_dup: duplicates by sound (T3.5, docs/05 §6) and the search vocabulary (T3.15). Forward-only; frozen once shipped (D-66).
 -- Exact copies never enter the library (import_item.state = 'duplicate'); here — pairs found by
 -- fingerprints after the background analysis: «тот же звук» and «похожий (другая версия)».
 
@@ -17,3 +17,6 @@ CREATE TABLE duplicate_pair (
   CHECK (a < b)
 ) WITHOUT ROWID;
 CREATE INDEX ix_dup_b ON duplicate_pair(b);
+
+-- Search II (T3.15): the words of the search index, for spelling correction (D-82).
+CREATE VIRTUAL TABLE search_vocab USING fts5vocab(search_fts, row);

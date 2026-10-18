@@ -275,7 +275,7 @@ mod frozen {
         (
             "0004_dup.sql",
             include_str!("../migrations/0004_dup.sql"),
-            "120fc98886849970f435601c4ffe3448c435af0c32a540af8806bc4beed49f79",
+            "943945b1b17d646cf5493b91764c1374089049f9dba80a5f276929ba1895c762",
         ),
     ];
 

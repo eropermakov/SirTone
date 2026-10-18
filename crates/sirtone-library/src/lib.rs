@@ -15,6 +15,7 @@ pub mod reconcile;
 pub mod relocate;
 pub mod repo;
 pub mod search;
+pub mod search_text;
 pub mod smart;
 pub mod stats;
 pub mod watch;

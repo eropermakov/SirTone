@@ -1193,7 +1193,14 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
     .click();
   const dupDialog = page.getByRole("dialog", { name: "Дубли" });
   await dupDialog.waitFor({ timeout: 5000 });
-  const sameHeader = await dupDialog.getByText(/Тот же звук/).count();
+  // The list loads after the dialog opens.
+  const sameHeader = await dupDialog
+    .getByText(/Тот же звук/)
+    .waitFor({ timeout: 5000 })
+    .then(
+      () => 1,
+      () => 0,
+    );
   const dupListed = await invoke("duplicates_list", {});
   await dupDialog
     .getByRole("listitem")
@@ -1223,7 +1230,7 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
       oldRow === 0 &&
       !existsSync(join(dupDir, "Утро.flac")) &&
       eveningPairs === 0,
-    `pairs ${dupCount} (${dupListed.pairs.map((p) => `${p.class} ${p.a.track.title}↔${p.b.track.title}`).join("; ")}), ♡ ${liked}, playlist ${inRoad}, old row ${oldRow}, file ${existsSync(join(dupDir, "Утро.flac"))}, «Вечер» pairs ${eveningPairs}`,
+    `header ${sameHeader}, pairs ${dupCount} (${dupListed.pairs.map((p) => `${p.class} ${p.a.track.title}↔${p.b.track.title}`).join("; ")}), ♡ ${liked}, playlist ${inRoad}, old row ${oldRow}, file ${existsSync(join(dupDir, "Утро.flac"))}, «Вечер» pairs ${eveningPairs}`,
   );
   // The rest of the fixtures leave (the later checks count tracks).
   rmSync(dupDir, { recursive: true, force: true });
