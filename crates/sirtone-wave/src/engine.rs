@@ -18,6 +18,14 @@ use crate::season::{NO_SEASON, Seasonality, dominant};
 /// Feature indices (docs/14 §4.1).
 pub mod f {
     pub const ENERGY: usize = 0;
+    pub const VALENCE: usize = 1;
+    pub const AROUSAL: usize = 2;
+    pub const DANCE: usize = 3;
+    pub const ACOUSTIC: usize = 8;
+    pub const VOCAL: usize = 9;
+    pub const BRIGHTNESS: usize = 10;
+    pub const AGGRESSION: usize = 15;
+    pub const MOOD: usize = 18;
     pub const TEMPO: usize = 4;
     pub const KEY_SIN: usize = 5;
     pub const KEY_COS: usize = 6;
@@ -33,6 +41,32 @@ pub mod f {
 }
 
 const DAY_MS: i64 = 24 * 3600 * 1000;
+
+/// §4.1 №4: (clamp(bpm, 50, 200) − 50) / 150.
+fn tempo_feature(bpm: f32) -> f32 {
+    ((bpm.clamp(50.0, 200.0) - 50.0) / 150.0).clamp(0.0, 1.0)
+}
+
+/// The stored vector of a deeply analysed track (§4.1, `track_features.vec`): the B3 features
+/// and the tempo; key, B0 and metadata features are filled from columns when the catalog is
+/// built, so they stay current without re-analysis.
+pub fn deep_features(v: &sirtone_core::analysis::Vibe, bpm: Option<f32>) -> [f32; D] {
+    let mut x = [0.5f32; D];
+    x[f::ENERGY] = v.energy;
+    x[f::VALENCE] = v.valence;
+    x[f::AROUSAL] = v.arousal;
+    x[f::DANCE] = v.danceability;
+    x[f::ACOUSTIC] = v.acousticness;
+    x[f::VOCAL] = v.vocal;
+    x[f::BRIGHTNESS] = v.brightness;
+    x[f::AGGRESSION] = v.aggression;
+    x[f::MOOD..f::MOOD + 8].copy_from_slice(&v.moods);
+    x[f::GENRE..f::GENRE + f::GENRES].copy_from_slice(&v.genres);
+    if let Some(b) = bpm {
+        x[f::TEMPO] = tempo_feature(b);
+    }
+    x
+}
 
 // ---------- configuration (assets/wave) ----------
 
@@ -379,7 +413,7 @@ impl Catalog {
             // B1 (T3.7): tempo 4 = (clamp(bpm, 50, 200) − 50) / 150; key 5–6 on the circle of
             // fifths (the Camelot number); mode 7 (major 1 / minor 0).
             if let Some(b) = t.bpm {
-                x[f::TEMPO] = ((b.clamp(50.0, 200.0) - 50.0) / 150.0).clamp(0.0, 1.0);
+                x[f::TEMPO] = tempo_feature(b);
             }
             if let Some((n, major)) = t.key_camelot.as_deref().and_then(camelot_parts) {
                 let a = (n - 1) as f32 * std::f32::consts::TAU / 12.0;
@@ -388,15 +422,17 @@ impl Catalog {
                 x[f::MODE] = f32::from(u8::from(major));
             }
             x[f::YEAR] = t.year.map_or(year_mid, year_feature);
-            if t.features.is_none() {
-                match g {
-                    Some(g) => {
-                        for k in 0..f::GENRES {
-                            x[f::GENRE + k] = f32::from(u8::from(k == *g));
-                        }
+            // Genre: tags first, then the model (B3), then the library's shares (§4.1).
+            match g {
+                Some(g) => {
+                    for k in 0..f::GENRES {
+                        x[f::GENRE + k] = f32::from(u8::from(k == *g));
                     }
-                    None => x[f::GENRE..f::GENRE + f::GENRES].copy_from_slice(&shares),
                 }
+                None if t.features.is_none() => {
+                    x[f::GENRE..f::GENRE + f::GENRES].copy_from_slice(&shares);
+                }
+                None => {}
             }
             c.index.insert(t.id, c.id.len() as u32);
             c.id.push(t.id);

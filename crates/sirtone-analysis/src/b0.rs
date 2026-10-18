@@ -2,7 +2,8 @@
 //! EBU R128 integrated loudness, true peak and LRA (`ebur128`), silence at the start and end
 //! (−60 dBFS, like Mixxx Skip Silence), a 400-point peak overview for the timeline, and the
 //! 10 Hz envelopes of the first/last 30 s (crossfades, soft intro/outro of the sleep wave) —
-//! and, in the same decode, the fingerprint of the first 120 s (T3.2, `fingerprint.rs`).
+//! and, in the same decode, the fingerprint of the first 120 s (T3.2, `fingerprint.rs`), tempo
+//! and key (B1, `b1.rs`) and the two windows for the built-in tagger (B2/B3, `b2.rs`, `b3.rs`).
 
 use std::path::Path;
 
@@ -11,8 +12,8 @@ use sirtone_core::error::{AppError, ErrorCode};
 use sirtone_core::ports::PcmDecoder;
 
 /// Bump when the B0 algorithm changes: tracks with an older version are analysed again.
-/// 2 — fingerprints (T3.2); 3 — tempo and key (B1, T3.7).
-pub const VERSION: i64 = 3;
+/// 2 — fingerprints (T3.2); 3 — tempo and key (B1, T3.7); 4 — tagger and vibe (B2/B3).
+pub const VERSION: i64 = 4;
 
 const SILENCE_DB: f32 = -60.0;
 const OVERVIEW: usize = 400;
@@ -90,17 +91,37 @@ impl Acc {
     }
 }
 
-pub fn analyze(dec: &dyn PcmDecoder, path: &Path) -> Result<B0, AppError> {
+/// The deep part (B2/B3): the tagger and rules (loaded once per thread) and the duration from
+/// the library row, which places the windows.
+pub struct Deep<'a> {
+    pub tagger: &'a crate::b2::Tagger,
+    pub rules: &'a crate::b3::Rules,
+    pub duration_ms: u64,
+}
+
+pub fn analyze(dec: &dyn PcmDecoder, path: &Path, deep: Option<Deep<'_>>) -> Result<B0, AppError> {
     let mut a = Acc::default();
     let mut fp = crate::fingerprint::FpAcc::default();
     let mut b1 = crate::b1::B1Acc::default();
+    let mut clips = deep
+        .as_ref()
+        .map(|d| crate::b2::ClipAcc::new(d.duration_ms));
     dec.decode(path, &mut |frames, channels, rate| {
         fp.feed(frames, channels, rate);
         b1.feed(frames, channels, rate);
+        if let Some(c) = clips.as_mut() {
+            c.feed(frames, channels, rate);
+        }
         a.feed(frames, channels, rate)
     })?;
     let fingerprint = fp.finish();
     let b1 = b1.finish();
+    // A tagger failure leaves the vibe empty; B0 and B1 are still stored.
+    let tagged = deep.zip(clips).and_then(|(d, c)| {
+        let (clips, rate) = c.finish();
+        let b2 = d.tagger.tag(&clips, rate).ok()?;
+        Some((d.rules.vibe(&b2, clips.len()), b2.embedding_blob()))
+    });
     if let Some(e) = a.failed.take() {
         return Err(AppError::new(ErrorCode::Internal).with_details(e));
     }
@@ -155,6 +176,8 @@ pub fn analyze(dec: &dyn PcmDecoder, path: &Path) -> Result<B0, AppError> {
         bpm_conf: b1.as_ref().map(|b| b.bpm_conf),
         key_camelot: b1.as_ref().map(|b| b.camelot.clone()),
         key_conf: b1.as_ref().map(|b| b.key_conf),
+        embedding: tagged.as_ref().map(|t| t.1.clone()),
+        vibe: tagged.map(|t| t.0),
     })
 }
 
@@ -211,7 +234,7 @@ mod tests {
             lead: 1.0,
             tail: 2.0,
         };
-        let b = analyze(&dec, Path::new("x")).expect("analysed");
+        let b = analyze(&dec, Path::new("x"), None).expect("analysed");
         assert_eq!(b.duration_ms, 23_000);
         // BS.1770: a full-scale 1 kHz sine is −3.01 LUFS per channel; two channels +3 dB, −6 dB
         // of amplitude → about −6 LUFS.

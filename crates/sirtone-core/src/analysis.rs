@@ -25,4 +25,31 @@ pub struct B0 {
     pub bpm_conf: Option<f32>,
     pub key_camelot: Option<String>,
     pub key_conf: Option<f32>,
+    /// B2/B3 (T3.8/T3.9): the vibe from the built-in tagger; `None` without it or on failure.
+    pub vibe: Option<Vibe>,
+    /// The tagger's embedding, `[scale f32 LE][64 × i8]` (`track.embedding`).
+    pub embedding: Option<Vec<u8>>,
+}
+
+/// The vibe of a track (B3, docs/04 §10.2, docs/14 §4.1), all in [0, 1].
+#[derive(Debug, Clone, PartialEq)]
+pub struct Vibe {
+    pub energy: f32,
+    pub valence: f32,
+    pub arousal: f32,
+    pub danceability: f32,
+    pub acousticness: f32,
+    pub vocal: f32,
+    pub aggression: f32,
+    /// Spectral centroid, normalised (§4.1 №10).
+    pub brightness: f32,
+    /// весёлое, бодрое, спокойное, грустное, агрессивное, нежное, мрачное, праздничное.
+    pub moods: [f32; 8],
+    /// Genre group shares (sum 1): поп/танц. · рок/метал · электроника · хип-хоп/R&B ·
+    /// классика/джаз/эмбиент · фолк/прочее.
+    pub genres: [f32; 6],
+    /// No singing to speak of (`lang = 'none'`).
+    pub instrumental: bool,
+    /// How complete the analysis is (two windows 1, one window less).
+    pub conf: f32,
 }

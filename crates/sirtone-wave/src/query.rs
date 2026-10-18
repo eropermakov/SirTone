@@ -370,6 +370,30 @@ impl Vibe {
             .fold(1.0, f32::min)
     }
 
+    /// Bits of `track.mood_bits` in the order of `Mood` (= `smart::MOODS`): membership ≥ 0.5 —
+    /// the same functions as the wave's mood filter, so a smart playlist and the wave agree.
+    pub fn mood_bits(&self, x: &[f32; D]) -> u8 {
+        [
+            Mood::Happy,
+            Mood::Upbeat,
+            Mood::Calm,
+            Mood::Sad,
+            Mood::Positive,
+            Mood::Negative,
+        ]
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| self.mood(x, **m, 1.0) >= 0.5)
+        .fold(0, |b, (i, _)| b | 1 << i)
+    }
+
+    /// Activity memberships in the order of `Activity` (`track.activity_json`).
+    pub fn activities(&self, x: &[f32; D]) -> [f32; 6] {
+        self.activity
+            .each_ref()
+            .map(|rs| self.ranges(x, rs, self.act_soft, self.soft_bpm))
+    }
+
     /// The workout tempo range in BPM by name.
     pub fn workout_tempo(&self, name: &str) -> Option<(f32, f32)> {
         self.workout.get(name).copied()

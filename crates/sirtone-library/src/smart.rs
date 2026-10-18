@@ -794,9 +794,9 @@ impl Compiled {
                     .iter()
                     .position(|m| Some(*m) == v.as_str())
                     .unwrap_or(0);
-                // An unanalysed track (mood_bits 0) is neither the mood nor «not» it.
+                // A track without the vibe (B3) is neither the mood nor «not» it.
                 self.sql.push_str(if op == "isNot" {
-                    "(t.analysis_version > 0 AND (t.mood_bits & ?) = 0)"
+                    "(t.valence IS NOT NULL AND (t.mood_bits & ?) = 0)"
                 } else {
                     "((t.mood_bits & ?) <> 0)"
                 });

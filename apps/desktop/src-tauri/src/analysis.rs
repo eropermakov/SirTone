@@ -2,6 +2,8 @@
 //! time on a below-normal, EcoQoS thread with its own connection; newest tracks first; paused
 //! on battery and while a full-screen game runs; on «Очень слабое» only while nobody is at the
 //! computer. Files are only read. The wave picks the results up on its next refill.
+//! B2/B3 (T3.8/T3.9): the built-in tagger runs in the same pass; it is loaded when there is work
+//! and dropped when the queue is empty (≈ 20 MB of weights).
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -39,16 +41,74 @@ pub fn start(app: AppHandle) {
             // Let the start settle (library open, first screen) before reading files.
             std::thread::sleep(Duration::from_secs(20));
             let mut conn: Option<(PathBuf, Connection)> = None;
+            let mut deep: Option<Deep> = None;
             loop {
-                let pause = step(&app, &mut conn);
+                let pause = step(&app, &mut conn, &mut deep);
                 std::thread::sleep(pause);
             }
         })
         .ok();
 }
 
+/// The tagger, the B3 rules and the vibe membership functions (mood bits, activities).
+struct Deep {
+    tagger: sirtone_analysis::b2::Tagger,
+    rules: sirtone_analysis::b3::Rules,
+    vibe: sirtone_wave::query::Vibe,
+}
+
+impl Deep {
+    fn load() -> Option<Self> {
+        let loaded = (|| {
+            Ok::<_, String>(Self {
+                tagger: sirtone_analysis::b2::Tagger::builtin()?,
+                rules: sirtone_analysis::b3::Rules::builtin().map_err(|e| e.to_string())?,
+                vibe: sirtone_wave::query::Vibe::builtin().map_err(|e| e.to_string())?,
+            })
+        })();
+        loaded
+            .map_err(|e| tracing::error!(target: "sirtone::analysis", error = %e, "tagger"))
+            .ok()
+    }
+
+    /// The wave vector and the SQL filter columns of a track with a vibe.
+    fn store(
+        &self,
+        c: &Connection,
+        track: i64,
+        b: &sirtone_core::analysis::B0,
+    ) -> Result<(), sirtone_library::LibraryError> {
+        let Some(v) = &b.vibe else {
+            return Ok(());
+        };
+        let x = sirtone_wave::engine::deep_features(v, b.bpm);
+        let acts = self.vibe.activities(&x);
+        let json = serde_json::to_string(
+            &sirtone_library::smart::ACTIVITIES
+                .iter()
+                .zip(acts)
+                .map(|(k, v)| (*k, (v * 100.0).round() / 100.0))
+                .collect::<std::collections::BTreeMap<_, _>>(),
+        )
+        .unwrap_or_default();
+        sirtone_library::analysis::store_features(
+            c,
+            track,
+            &x,
+            sirtone_core::wave::FEATURES_SCHEMA,
+            v.conf,
+            self.vibe.mood_bits(&x),
+            &json,
+        )
+    }
+}
+
 /// One unit of work; returns how long to wait before the next.
-fn step(app: &AppHandle, slot: &mut Option<(PathBuf, Connection)>) -> Duration {
+fn step(
+    app: &AppHandle,
+    slot: &mut Option<(PathBuf, Connection)>,
+    deep: &mut Option<Deep>,
+) -> Duration {
     if blocked(app) {
         return Duration::from_secs(30);
     }
@@ -71,14 +131,26 @@ fn step(app: &AppHandle, slot: &mut Option<(PathBuf, Connection)>) -> Duration {
             return Duration::from_secs(60);
         }
     };
-    let Some((track, rel)) = next else {
-        // Everything analysed: look again in a while (imports add tracks).
+    let Some((track, rel, duration_ms)) = next else {
+        // Everything analysed: free the tagger, look again in a while (imports add tracks).
+        *deep = None;
         return Duration::from_secs(120);
     };
+    if deep.is_none() {
+        *deep = Deep::load();
+    }
     let path = rel.split('/').fold(root, |p, part| p.join(part));
     let t0 = std::time::Instant::now();
-    let stored = match sirtone_analysis::b0::analyze(&sirtone_audio::pcm::PcmFiles, &path) {
+    let d = deep.as_ref().map(|d| sirtone_analysis::b0::Deep {
+        tagger: &d.tagger,
+        rules: &d.rules,
+        duration_ms,
+    });
+    let stored = match sirtone_analysis::b0::analyze(&sirtone_audio::pcm::PcmFiles, &path, d) {
         Ok(b) => sirtone_library::analysis::store_b0(c, track, &b, VERSION).and_then(|()| {
+            if let Some(d) = deep.as_ref() {
+                d.store(c, track, &b)?;
+            }
             // T3.5: a fresh fingerprint is compared with the library (duplicates by sound).
             if b.fingerprint.is_some() && sirtone_library::duplicates::detect(c, track)? > 0 {
                 crate::duplicates::found(app, sirtone_library::duplicates::pending_count(c)?);

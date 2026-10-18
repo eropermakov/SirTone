@@ -174,6 +174,8 @@ pub fn soft_outro(env_tail: &[u8]) -> Option<f32> {
 
 /// Number of track features (docs/14 §4.1).
 pub const FEATURES: usize = 32;
+/// `track_features.version`: the layout of the vector (docs/14 §4.1).
+pub const FEATURES_SCHEMA: i64 = 1;
 
 /// One playable track as the wave engine sees it (docs/14 §4, §8): metadata for the feature
 /// vector, statistics and the user's signals. Built by storage, consumed by `sirtone-wave`.

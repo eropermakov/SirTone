@@ -1231,7 +1231,31 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
   const b1 = b1db
     .prepare("SELECT bpm, key_camelot FROM track WHERE rel_path LIKE 'Дубли/%' AND bpm IS NOT NULL")
     .all();
+  // T3.8/T3.9: the built-in tagger in the same pass — vibe columns, embedding, wave vector.
+  const deep = b1db
+    .prepare(
+      `SELECT t.energy, t.vocal, length(t.embedding) AS emb, length(tf.vec) AS vec, tf.conf,
+              t.activity_json AS acts
+       FROM track t JOIN track_features tf ON tf.track_id = t.id
+       WHERE t.rel_path LIKE 'Дубли/%'`,
+    )
+    .all();
   b1db.close();
+  check(
+    "B2/B3: offline tagger stored the vibe, the embedding and the wave vector",
+    deep.length >= 2 &&
+      deep.every(
+        (r) =>
+          r.energy >= 0 &&
+          r.energy <= 1 &&
+          r.vocal >= 0 &&
+          r.emb === 68 &&
+          r.vec === 128 &&
+          r.conf > 0 &&
+          JSON.parse(r.acts).party !== undefined,
+      ),
+    JSON.stringify(deep),
+  );
   check(
     "B1: tempo (70–180) and Camelot key stored by the analysis",
     b1.length >= 2 &&

@@ -119,14 +119,36 @@ fn play(files: &[String], volume: f32) -> ExitCode {
     code
 }
 
-/// P-11 (`08` §1, «анализ трека ≤ 2 с»): the background pass on files — B0, the fingerprint
-/// and B1 in one decode — with the time each took.
+/// P-11 (`08` §1, «анализ трека ≤ 2 с»): the background pass on files — B0, the fingerprint,
+/// B1 and the tagger (B2/B3) in one decode — with the time each took. The duration that places
+/// the tagger windows comes from the library row in the app; here from a first plain pass
+/// (not timed).
 fn analyze(files: &[String]) -> ExitCode {
+    let t = std::time::Instant::now();
+    let (tagger, rules) = match (
+        sirtone_analysis::b2::Tagger::builtin(),
+        sirtone_analysis::b3::Rules::builtin(),
+    ) {
+        (Ok(t), Ok(r)) => (t, r),
+        (t, r) => {
+            println!("tagger: {:?} {:?}", t.err(), r.err().map(|e| e.to_string()));
+            return ExitCode::FAILURE;
+        }
+    };
+    println!("tagger loaded in {:.0} ms", t.elapsed().as_secs_f64() * 1e3);
+    let dec = sirtone_audio::pcm::PcmFiles;
     let mut worst = 0f64;
     for f in files {
+        let path = std::path::Path::new(f);
+        let duration_ms =
+            sirtone_analysis::b0::analyze(&dec, path, None).map_or(0, |b| b.duration_ms);
+        let deep = sirtone_analysis::b0::Deep {
+            tagger: &tagger,
+            rules: &rules,
+            duration_ms,
+        };
         let t = std::time::Instant::now();
-        match sirtone_analysis::b0::analyze(&sirtone_audio::pcm::PcmFiles, std::path::Path::new(f))
-        {
+        match sirtone_analysis::b0::analyze(&dec, path, Some(deep)) {
             Ok(b) => {
                 let ms = t.elapsed().as_secs_f64() * 1e3;
                 worst = worst.max(ms);
@@ -138,6 +160,15 @@ fn analyze(files: &[String]) -> ExitCode {
                     b.key_camelot,
                     b.fingerprint.as_ref().map_or(0, Vec::len)
                 );
+                if let Some(v) = b.vibe {
+                    println!(
+                        "    energy {:.2} valence {:.2} arousal {:.2} dance {:.2} acoustic {:.2} vocal {:.2} aggr {:.2} bright {:.2}
+    moods {:.2?}
+    genres {:.2?}",
+                        v.energy, v.valence, v.arousal, v.danceability, v.acousticness, v.vocal,
+                        v.aggression, v.brightness, v.moods, v.genres
+                    );
+                }
             }
             Err(e) => println!("{f}: {:?}", e.code),
         }

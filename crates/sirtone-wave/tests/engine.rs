@@ -456,3 +456,54 @@ mod query {
         assert!(picks.iter().all(|id| e.group_of(*id, NOW) == Some(0)));
     }
 }
+
+/// B3 (T3.9): the stored vector carries the vibe; a genre from the tags beats the model's, the
+/// model's beats the library shares; mood bits come from the wave's own membership functions.
+#[test]
+fn deep_features_and_genre_precedence() {
+    use sirtone_core::analysis::Vibe as Deep;
+    use sirtone_wave::engine::{Catalog, deep_features, f};
+    use sirtone_wave::query::Vibe;
+    let v = Deep {
+        energy: 0.9,
+        valence: 0.85,
+        arousal: 0.75,
+        danceability: 0.8,
+        acousticness: 0.1,
+        vocal: 0.7,
+        aggression: 0.1,
+        brightness: 0.6,
+        moods: [1.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2],
+        genres: [0.1, 0.0, 0.9, 0.0, 0.0, 0.0],
+        instrumental: false,
+        conf: 1.0,
+    };
+    let x = deep_features(&v, Some(125.0));
+    assert_eq!(x[f::ENERGY], 0.9);
+    assert_eq!(x[f::TEMPO], 0.5);
+    assert_eq!(x[f::GENRE + 2], 0.9);
+    assert_eq!(x[f::MOOD + 7], 0.2);
+    let vibe = Vibe::builtin().expect("vibe");
+    // valence 0.85 / arousal 0.75 — «весёлое» and «позитивное», not «грустное».
+    let bits = vibe.mood_bits(&x);
+    assert_eq!(bits & 0b1, 0b1);
+    assert_eq!(bits & 0b1000, 0);
+    assert_eq!(bits & 0b10000, 0b10000);
+    // Party: danceability 0.8, energy 0.9.
+    assert!(vibe.activities(&x)[5] >= 0.99);
+
+    let mut tracks = synth::library(3, NOW, 0.0, 3);
+    tracks[0].genre = Some("rock".into());
+    tracks[0].features = Some((x, 1.0));
+    tracks[1].genre = None;
+    tracks[1].features = Some((x, 1.0));
+    tracks[2].genre = None;
+    tracks[2].features = None;
+    let cfg = Config::builtin().expect("assets");
+    let cat = Catalog::build(&tracks, &cfg);
+    let genres = |i: usize| &cat.feat[i][f::GENRE..f::GENRE + f::GENRES];
+    assert_eq!(genres(0), &[0.0, 1.0, 0.0, 0.0, 0.0, 0.0]);
+    assert_eq!(genres(1), &v.genres);
+    // Shares of the library: the one known genre is rock.
+    assert_eq!(genres(2), &[0.0, 1.0, 0.0, 0.0, 0.0, 0.0]);
+}

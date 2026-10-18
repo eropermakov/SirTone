@@ -1,0 +1,17 @@
+[package]
+name = "s07-model"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "S-07: EfficientAT mn10_as (ONNX) в tract + свой лог-мел фронтенд; паритет с PyTorch, скорость (D-12)"
+
+# Самостоятельный проект вне workspace приложения.
+[workspace]
+
+[dependencies]
+tract-onnx = "0.21"
+rustfft = "6"
+
+[profile.release]
+opt-level = 3
+debug = false
