@@ -889,6 +889,27 @@ if (existsSync(corpus)) {
     reasons.length >= 1 && reasons.length <= 2 && tags.includes("sleep"),
     `${reasons.map((r) => r.kind).join(", ")}; tags ${tags.join(",")}`,
   );
+  // T3.31: «Знакомое ↔ Неожиданное» — the upcoming wave tracks are picked again at once.
+  const qBefore = await invoke("queue_get", {});
+  const upBefore = qBefore.items
+    .slice(qBefore.position + 1)
+    .map((i) => i.trackId)
+    .join(",");
+  const slider = page.getByRole("slider", { name: "Знакомое или неожиданное" });
+  const box = await slider.boundingBox();
+  await page.mouse.click(box.x + 2, box.y + box.height / 2);
+  for (let i = 0; i < 15 && (settings().wave?.novelty ?? 50) > 10; i++) await sleep(200);
+  await sleep(1500);
+  const qAfter = await invoke("queue_get", {});
+  const upAfter = qAfter.items
+    .slice(qAfter.position + 1)
+    .map((i) => i.trackId)
+    .join(",");
+  check(
+    "slider: saved and the upcoming wave tracks re-picked",
+    (settings().wave?.novelty ?? 50) <= 10 && upAfter !== upBefore && upAfter !== "",
+    `novelty ${settings().wave?.novelty}`,
+  );
   // T3.28: learning off freezes the models (the wave still plays); «Сбросить обучение» works.
   await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
   await page.getByRole("switch", { name: "Учиться на прослушиваниях" }).click();

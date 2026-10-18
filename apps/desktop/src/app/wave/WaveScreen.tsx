@@ -18,7 +18,6 @@ import { TrackCard } from "@/app/library/TrackCard";
 import type { GoTo } from "@/app/library/TrackList";
 import { useAddToPlaylist } from "@/app/playlists/useAddToPlaylist";
 import { useTrackTags } from "@/app/playlists/useTrackTags";
-import { NoveltySlider } from "./NoveltySlider";
 import {
   like,
   never,
@@ -35,6 +34,7 @@ import { Cover } from "@/shared/ui/Cover";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
 import { PauseIcon, PlayIcon } from "@/shared/ui/TransportIcons";
+import { NoveltySlider } from "./NoveltySlider";
 
 const NONE: TrackFeedback = { liked: false, neverTrack: false, neverArtist: false };
 

@@ -229,9 +229,9 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                     let pb = app.state::<Playback>();
                     let dropped = pb.drop_upcoming_wave();
                     if dropped > 0 {
-                        match next_ids(app, &mut slot, &mut engine, dropped.max(MORE))
-                            .and_then(|ids| items_for(&app.state::<Library>(), &ids, PlayContext::Wave))
-                        {
+                        match next_ids(app, &mut slot, &mut engine, dropped.max(MORE)).and_then(
+                            |ids| items_for(&app.state::<Library>(), &ids, PlayContext::Wave),
+                        ) {
                             Ok(items) if !items.is_empty() => pb.append(items),
                             Ok(_) => {}
                             Err(e) => {
@@ -296,4 +296,3 @@ pub fn wave_why(wave: State<'_, Wave>, track: u32) -> Vec<WhyReason> {
 pub fn wave_retune(wave: State<'_, Wave>) {
     let _ = wave.tx.send(Cmd::Retune);
 }
-

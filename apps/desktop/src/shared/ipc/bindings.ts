@@ -111,6 +111,8 @@ export const commands = {
 	waveResetLearning: () => typedError<null, AppError>(__TAURI_INVOKE("wave_reset_learning")),
 	/**  «Почему этот трек» for a track of the running wave (empty outside the wave). */
 	waveWhy: (track: number) => __TAURI_INVOKE<WhyReason[]>("wave_why", { track }),
+	/**  «Знакомое ↔ Неожиданное» moved (docs/14 §9): the upcoming wave tracks follow at once. */
+	waveRetune: () => __TAURI_INVOKE<void>("wave_retune"),
 	analysisProgress: () => typedError<AnalysisProgress, AppError>(__TAURI_INVOKE("analysis_progress")),
 	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
 	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),

@@ -538,7 +538,11 @@ impl Playback {
         let pos = q.position();
         let mut n = 0;
         for at in (pos + 1..q.len()).rev() {
-            if q.items().get(at).is_some_and(|i| i.source == PlaySource::Wave) && q.remove(at) {
+            if q.items()
+                .get(at)
+                .is_some_and(|i| i.source == PlaySource::Wave)
+                && q.remove(at)
+            {
                 n += 1;
             }
         }
