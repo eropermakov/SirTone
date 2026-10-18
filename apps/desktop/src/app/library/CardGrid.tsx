@@ -1,6 +1,6 @@
 import { useDroppable } from "@dnd-kit/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ListEnd, ListStart, MoreHorizontal, Play, Trash2 } from "lucide-react";
+import { Combine, ListEnd, ListStart, MoreHorizontal, Play, Trash2 } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { dropId } from "@/app/dnd/dnd";
@@ -32,6 +32,8 @@ type Props = {
   onAppend: (c: Card) => void;
   /** Artists only: «Удалить исполнителя» (FR-DATA-002). */
   onRemove?: ((c: Card) => void) | undefined;
+  /** «Объединить с…» (artists, T3.12). */
+  onMerge?: ((c: Card) => void) | undefined;
 };
 
 /** Initials for an artist without a photo (DESIGN.md §9 ArtistCard). */
@@ -56,6 +58,7 @@ export function CardGrid({
   onPlayNext,
   onAppend,
   onRemove,
+  onMerge,
 }: Props) {
   const { t } = useTranslation("shell");
   const scroller = useRef<HTMLDivElement>(null);
@@ -84,6 +87,12 @@ export function CardGrid({
     { id: "play", label: t("collection.play"), icon: Play, onSelect: () => onPlay(c) },
     { id: "next", label: t("trackMenu.playNext"), icon: ListStart, onSelect: () => onPlayNext(c) },
     { id: "end", label: t("trackMenu.addToQueue"), icon: ListEnd, onSelect: () => onAppend(c) },
+    ...(onMerge
+      ? ([
+          { separator: true },
+          { id: "merge", label: t("artistMerge.menu"), icon: Combine, onSelect: () => onMerge(c) },
+        ] as MenuItem[])
+      : []),
     ...(onRemove
       ? ([
           { separator: true },

@@ -23,6 +23,7 @@ const MIGRATIONS: &[M<'static>] = &[
     M::up(include_str!("../migrations/0002_wave.sql")),
     M::up(include_str!("../migrations/0003_fs.sql")),
     M::up(include_str!("../migrations/0004_dup.sql")),
+    M::up(include_str!("../migrations/0005_artists.sql")),
 ];
 
 /// Current schema version (`PRAGMA user_version` and `meta.schema_version`).
@@ -276,6 +277,11 @@ mod frozen {
             "0004_dup.sql",
             include_str!("../migrations/0004_dup.sql"),
             "943945b1b17d646cf5493b91764c1374089049f9dba80a5f276929ba1895c762",
+        ),
+        (
+            "0005_artists.sql",
+            include_str!("../migrations/0005_artists.sql"),
+            "cee5e34208836b5575793946fceec61e904c628bca71962cf7ae79275a8e0128",
         ),
     ];
 

@@ -158,6 +158,13 @@ export const commands = {
 	 */
 	waveSeasonCard: () => __TAURI_INVOKE<string>("wave_season_card"),
 	analysisProgress: () => typedError<AnalysisProgress, AppError>(__TAURI_INVOKE("analysis_progress")),
+	artistSuggestions: () => typedError<ArtistSuggestion[], AppError>(__TAURI_INVOKE("artist_suggestions")),
+	/**  «Не предлагать». */
+	artistSuggestionDismiss: (a: number, b: number) => typedError<null, AppError>(__TAURI_INVOKE("artist_suggestion_dismiss", { a, b })),
+	/**  `drop` joins `keep`: its tracks, albums, ♡ / «никогда»; its name becomes an alias. */
+	artistsMerge: (keep: number, drop: number) => typedError<MergeDone, AppError>(__TAURI_INVOKE("artists_merge", { keep, drop })),
+	/**  «Отменить» a merge of this session. */
+	artistsMergeUndo: (token: number) => typedError<number, AppError>(__TAURI_INVOKE("artists_merge_undo", { token })),
 	duplicatesList: () => typedError<DuplicatesView, AppError>(__TAURI_INVOKE("duplicates_list")),
 	duplicatesCount: () => typedError<number, AppError>(__TAURI_INVOKE("duplicates_count")),
 	/**  «Оставить оба». */
@@ -233,6 +240,18 @@ export type ArtistItem = {
 export type ArtistPage = {
 	rows: ArtistItem[],
 	next: PageCursor | null,
+};
+
+export type ArtistRef = {
+	id: number,
+	name: string,
+	tracks: number,
+};
+
+export type ArtistSuggestion = {
+	/**  More tracks — kept by default. */
+	keep: ArtistRef,
+	drop: ArtistRef,
 };
 
 export type BestMatch = { kind: "track"; item: TrackItem } | { kind: "artist"; item: ArtistItem } | { kind: "album"; item: AlbumItem };
@@ -362,6 +381,13 @@ export type LibraryStatus = {
 	offline: boolean,
 	/**  Many files vanished at once: how many, waiting for the user (FR-FS-003). */
 	goneQuestion: number | null,
+};
+
+export type MergeDone = {
+	/**  For `artists_merge_undo`. */
+	token: number,
+	/**  Files that could not move now (locked or playing) — they stay valid where they are. */
+	failed: number,
 };
 
 /**  A «Никогда в волне» row in Settings. */

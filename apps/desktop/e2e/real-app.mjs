@@ -1235,6 +1235,78 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
   // The rest of the fixtures leave (the later checks count tracks).
   rmSync(dupDir, { recursive: true, force: true });
   await waitTracks(before + 1, 8000);
+  // T3.12 / AT-06: one artist in two scripts comes in through Explorer → the suggestion banner
+  // → «Объединить» moves the files under the kept artist → «Отменить» brings them back → after
+  // merging again, a new file under the old spelling lands with the kept artist (the alias).
+  const mergeDir = join(libDir, "Слияние");
+  mkdirSync(mergeDir, { recursive: true });
+  const mergeSrc = join(root, "fixtures", "generated", "merge");
+  copyFileSync(join(mergeSrc, "bi2-cyr.mp3"), join(mergeDir, "bi2-cyr.mp3"));
+  copyFileSync(join(mergeSrc, "bi2-lat.mp3"), join(mergeDir, "bi2-lat.mp3"));
+  await waitTracks(before + 3, 8000);
+  const mergeRows = (sql, ...args) => {
+    const mdb = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    const rows = mdb.prepare(sql).all(...args);
+    mdb.close();
+    return rows;
+  };
+  const pathOf = (title) =>
+    mergeRows("SELECT rel_path FROM track WHERE title = ?", title)[0]?.rel_path ?? "";
+  const mergedInto = (id) =>
+    mergeRows("SELECT merged_into FROM artist WHERE id = ?", id)[0]?.merged_into ?? null;
+  const pair = (await invoke("artist_suggestions", {})).find((s) =>
+    [s.keep.name, s.drop.name].includes("Bi-2"),
+  );
+  await page.getByRole("navigation").getByRole("button", { name: "Исполнители" }).click();
+  const banner = page.getByRole("status").filter({ hasText: "Похоже, это один исполнитель" });
+  const bannerShown = await banner.waitFor({ timeout: 8000 }).then(
+    () => true,
+    () => false,
+  );
+  if (bannerShown) await banner.getByRole("button", { name: "Объединить" }).click();
+  for (let i = 0; i < 50 && pair && mergedInto(pair.drop.id) === null; i++) await sleep(200);
+  const merged = pair ? mergedInto(pair.drop.id) === pair.keep.id : false;
+  const dropTitle = pair?.drop.name === "Bi-2" ? "Molitva" : "Серебро";
+  // The files move after the database merge, track by track.
+  let movedTo = pathOf(dropTitle);
+  for (let i = 0; i < 50 && pair && !movedTo.startsWith(`${pair.keep.name}/`); i++) {
+    await sleep(200);
+    movedTo = pathOf(dropTitle);
+  }
+  await page.getByRole("button", { name: "Отменить" }).click();
+  for (let i = 0; i < 50 && pair && mergedInto(pair.drop.id) !== null; i++) await sleep(200);
+  const undone = pair ? mergedInto(pair.drop.id) === null : false;
+  let backTo = pathOf(dropTitle);
+  for (let i = 0; i < 50 && backTo === movedTo; i++) {
+    await sleep(200);
+    backTo = pathOf(dropTitle);
+  }
+  // Merge again, then a file under the dropped spelling arrives.
+  if (pair) await invoke("artists_merge", { keep: pair.keep.id, drop: pair.drop.id });
+  copyFileSync(join(mergeSrc, "bi2-lat2.mp3"), join(mergeDir, "bi2-lat2.mp3"));
+  await waitTracks(before + 4, 8000);
+  const lateArtist = mergeRows(
+    `SELECT ta.artist_id AS a FROM track t JOIN track_artist ta ON ta.track_id = t.id
+     WHERE t.title = 'Varvara' AND ta.role = 'primary'`,
+  )[0]?.a;
+  check(
+    "AT-06: two spellings suggested, merged by the banner (files move), undone, alias remembered",
+    !!pair &&
+      bannerShown &&
+      merged &&
+      movedTo.startsWith(`${pair.keep.name}/`) &&
+      undone &&
+      backTo !== movedTo &&
+      lateArtist === pair.keep.id,
+    `pair ${pair?.keep.name}←${pair?.drop.name}, banner ${bannerShown}, merged ${merged} → ${movedTo}, undone ${undone} → ${backTo}, late → ${lateArtist}`,
+  );
+  // The fixtures leave (later checks count tracks).
+  for (const title of ["Серебро", "Molitva", "Varvara"]) {
+    const rel = pathOf(title);
+    if (rel) rmSync(join(libDir, ...rel.split("/")), { force: true });
+  }
+  rmSync(mergeDir, { recursive: true, force: true });
+  await waitTracks(before + 1, 8000);
   rmSync(added);
   const [n2, ms2] = await waitTracks(before, 5000);
   check("deleted file leaves the lists", n2 === before, `${ms2} ms`);

@@ -108,6 +108,12 @@ FF @('-f', 'lavfi', '-i', (& $melody 5 7), '-c:a', 'flac', '-metadata', 'artist=
 FF @('-f', 'lavfi', '-i', (& $melody 5 7), '-c:a', 'libmp3lame', '-b:a', '192k', '-metadata', 'artist=Неизвестный', '-metadata', 'title=Рассвет (копия)', "$out\dups\Рассвет.mp3")
 FF @('-f', 'lavfi', '-i', (& $melody 11 3), '-c:a', 'flac', '-metadata', 'artist=Мелодия', '-metadata', 'title=Вечер', "$out\dups\Вечер.flac")
 
+# --- merge (T3.12, AT-06): one artist in two scripts; a later file under the Latin spelling.
+New-Item -ItemType Directory -Force -Path "$out\merge" | Out-Null
+FF @('-f', 'lavfi', '-i', 'sine=frequency=330:duration=6', '-c:a', 'libmp3lame', '-b:a', '128k', '-metadata', 'artist=Би-2', '-metadata', 'title=Серебро', "$out\merge\bi2-cyr.mp3")
+FF @('-f', 'lavfi', '-i', 'sine=frequency=370:duration=6', '-c:a', 'libmp3lame', '-b:a', '128k', '-metadata', 'artist=Bi-2', '-metadata', 'title=Molitva', "$out\merge\bi2-lat.mp3")
+FF @('-f', 'lavfi', '-i', 'sine=frequency=415:duration=6', '-c:a', 'libmp3lame', '-b:a', '128k', '-metadata', 'artist=Bi-2', '-metadata', 'title=Varvara', "$out\merge\bi2-lat2.mp3")
+
 # --- long: 3-hour mix (FR-IMP-007) — cheap low-bitrate silence+tone ---
 if (-not $SkipLong) {
     FF @('-f', 'lavfi', '-i', 'sine=frequency=220:duration=10800:sample_rate=22050', '-af', 'volume=-30dB', '-c:a', 'libmp3lame', '-b:a', '32k', '-ac', '1', "$out\long\mix-3h.mp3")

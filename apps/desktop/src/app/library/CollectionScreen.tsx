@@ -17,8 +17,10 @@ import { Button } from "@/shared/ui/Button";
 import { Cover } from "@/shared/ui/Cover";
 import { Menu } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
+import { ArtistMerge } from "./ArtistMerge";
 import { ArtistRemove } from "./ArtistRemove";
 import { type Card, CardGrid } from "./CardGrid";
+import { MergeSuggestion } from "./MergeSuggestion";
 import {
   ALBUM_SORTS,
   type AlbumSort,
@@ -98,6 +100,8 @@ export function CollectionScreen({
   const [tracks, setTracks] = useState<TrackItem[]>([]);
   const [removing, setRemoving] = useState<Card | null>(null);
   const closeRemove = useCallback(() => setRemoving(null), []);
+  const [merging, setMerging] = useState<Card | null>(null);
+  const closeMerge = useCallback(() => setMerging(null), []);
   const go: GoTo = (k, id, title) => onOpen({ kind: k, id, title, subtitle: "", cover: null });
 
   // Lists: all pages (keyset, 200 per call); refetch when the library changes.
@@ -251,6 +255,11 @@ export function CollectionScreen({
           }))}
         />
       )}
+      {kind === "artists" && (
+        <div className="mt-4">
+          <MergeSuggestion version={version} />
+        </div>
+      )}
       <div className="mt-4 flex min-h-0 flex-1 flex-col">
         <CardGrid
           kind={kind}
@@ -294,9 +303,11 @@ export function CollectionScreen({
             })
           }
           onRemove={kind === "artists" ? setRemoving : undefined}
+          onMerge={kind === "artists" ? setMerging : undefined}
         />
       </div>
       {removing && <ArtistRemove artist={removing} onClose={closeRemove} />}
+      {merging && <ArtistMerge artist={merging} artists={artists} onClose={closeMerge} />}
     </section>
   );
 }

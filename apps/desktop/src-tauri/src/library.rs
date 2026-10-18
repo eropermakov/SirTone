@@ -174,6 +174,17 @@ enum Job {
         with_file: bool,
         reply: mpsc::Sender<Result<String, AppError>>,
     },
+    /// T3.12: merge two artists (database), then put the files in place track by track.
+    MergeArtists {
+        keep: i64,
+        drop: i64,
+        reply: mpsc::Sender<Result<(sirtone_library::artists::MergeRecord, u32), AppError>>,
+    },
+    /// T3.12: undo a merge of this session, then put the files back.
+    UndoMerge {
+        record: Box<sirtone_library::artists::MergeRecord>,
+        reply: mpsc::Sender<Result<u32, AppError>>,
+    },
 }
 
 /// A library track ready to play: absolute path, title, artists, album cover hash.
@@ -650,6 +661,7 @@ fn import_worker(
         let mut reconcile_pass: Option<bool> = None;
         let mut imports: Vec<PathBuf> = Vec::new();
         let mut assigns = Vec::new();
+        let mut merges = Vec::new();
         for j in jobs {
             match j {
                 Job::Import(p) => imports.extend(p),
@@ -663,6 +675,12 @@ fn import_worker(
                     with_file,
                     reply,
                 } => assigns.push((track, None, with_file, reply)),
+                Job::MergeArtists { keep, drop, reply } => {
+                    merges.push((Some((keep, drop)), None, Some(reply), None))
+                }
+                Job::UndoMerge { record, reply } => {
+                    merges.push((None, Some(record), None, Some(reply)))
+                }
                 Job::Reconcile { confirmed } => {
                     reconcile_pass = Some(reconcile_pass.unwrap_or(false) || confirmed);
                 }
@@ -687,6 +705,38 @@ fn import_worker(
         let Some((_, db)) = conn.as_mut() else {
             continue;
         };
+        // Artist merges: the database first, then each track's file on its own (a locked or
+        // playing file stays where it is and moves on the next merge or «навести порядок»).
+        if !merges.is_empty() {
+            for (pair, record, merge_reply, undo_reply) in merges {
+                let relayout = |db: &mut rusqlite::Connection, tracks: &[i64]| -> u32 {
+                    let mut failed = 0;
+                    for &t in tracks {
+                        if sirtone_library::relocate::relayout(db, &root, t, deps.fs.as_ref())
+                            .is_err()
+                        {
+                            failed += 1;
+                        }
+                    }
+                    failed
+                };
+                if let (Some((keep, drop)), Some(reply)) = (pair, merge_reply) {
+                    let r = sirtone_library::artists::merge(db, keep, drop)
+                        .map_err(AppError::from)
+                        .map(|rec| {
+                            let failed = relayout(db, &rec.tracks);
+                            (rec, failed)
+                        });
+                    let _ = reply.send(r);
+                } else if let (Some(rec), Some(reply)) = (record, undo_reply) {
+                    let r = sirtone_library::artists::undo(db, &rec)
+                        .map_err(AppError::from)
+                        .map(|tracks| relayout(db, &tracks));
+                    let _ = reply.send(r);
+                }
+            }
+            emit_changed(&app, &shared);
+        }
         if !assigns.is_empty() {
             for (track, assignment, with_file, reply) in assigns {
                 let r = match assignment {
@@ -1139,6 +1189,40 @@ pub fn track_details(lib: State<'_, Library>, track: u32) -> Result<TrackDetails
 }
 
 impl Library {
+    /// Artist merge on the import worker (T3.12): the record (for undo) and how many files did
+    /// not move.
+    pub(crate) fn merge_artists(
+        &self,
+        keep: i64,
+        drop: i64,
+    ) -> Result<(sirtone_library::artists::MergeRecord, u32), AppError> {
+        let (tx, rx) = mpsc::channel();
+        self.jobs
+            .send(Job::MergeArtists {
+                keep,
+                drop,
+                reply: tx,
+            })
+            .map_err(|_| AppError::new(ErrorCode::Internal))?;
+        rx.recv_timeout(Duration::from_secs(300))
+            .map_err(|_| AppError::new(ErrorCode::Internal).with_details("merge timed out"))?
+    }
+
+    pub(crate) fn undo_merge(
+        &self,
+        record: sirtone_library::artists::MergeRecord,
+    ) -> Result<u32, AppError> {
+        let (tx, rx) = mpsc::channel();
+        self.jobs
+            .send(Job::UndoMerge {
+                record: Box::new(record),
+                reply: tx,
+            })
+            .map_err(|_| AppError::new(ErrorCode::Internal))?;
+        rx.recv_timeout(Duration::from_secs(300))
+            .map_err(|_| AppError::new(ErrorCode::Internal).with_details("undo timed out"))?
+    }
+
     /// A track leaves the library through the import worker (journalled): with its file to the
     /// Recycle Bin or only from the app (FR-DATA-001).
     pub(crate) fn remove_track(&self, track: i64, with_file: bool) -> Result<(), AppError> {

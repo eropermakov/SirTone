@@ -40,7 +40,7 @@ import {
   resolveTheme,
   type ThemePref,
 } from "@/shared/theme/theme";
-import { notify, onNotify } from "@/shared/ui/notify";
+import { type Notice, notify, onNotify } from "@/shared/ui/notify";
 import { Toast } from "@/shared/ui/Toast";
 import { DndRoot } from "./dnd/dnd";
 import type { Open } from "./library/CollectionScreen";
@@ -146,7 +146,7 @@ export function App() {
   const [queueOpen, setQueueOpen] = useState(false);
   const [onboard, setOnboard] = useState<"setup" | "tips" | null>(null);
   const [coverSlug, setCoverSlug] = useState<AccentSlug>("sirkov");
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<Notice | null>(null);
   // «Дубли» (T3.5): found in the background after the analysis — a toast at most every
   // 10 minutes (the first pass over a big library finds many), the dialog on «Показать».
   const [dupsFound, setDupsFound] = useState<number | null>(null);
@@ -459,10 +459,21 @@ export function App() {
         {toast && !error && !report && (
           <Toast
             tone="info"
-            heading={toast}
+            heading={toast.text}
             message=""
             closeLabel={tc("errors.close")}
-            timeoutMs={3000}
+            timeoutMs={toast.action ? 8000 : 3000}
+            action={
+              toast.action
+                ? {
+                    label: toast.action.label,
+                    onClick: () => {
+                      toast.action?.onClick();
+                      setToast(null);
+                    },
+                  }
+                : undefined
+            }
             onClose={() => setToast(null)}
           />
         )}
