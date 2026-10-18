@@ -21,6 +21,7 @@ const DEBOUNCE: Duration = Duration::from_secs(1);
 pub struct SettingsStore {
     doc: Mutex<Value>,
     writer: Sender<Value>,
+    path: PathBuf,
 }
 
 impl SettingsStore {
@@ -51,11 +52,25 @@ impl SettingsStore {
         Arc::new(Self {
             doc: Mutex::new(doc),
             writer: tx,
+            path,
         })
     }
 
     pub fn get(&self) -> Value {
         self.doc.lock().map(|d| d.clone()).unwrap_or(Value::Null)
+    }
+
+    /// Like [`Self::patch`], but the file is on disk when it returns — for settings that must
+    /// survive a crash right after the change (the library folder: losing it orphans an import).
+    pub fn patch_durable(
+        &self,
+        patch: &Value,
+    ) -> Result<(Value, Vec<String>), settings::SettingsError> {
+        let (doc, changed) = self.patch(patch)?;
+        if let Err(e) = write_atomic(&self.path, &doc) {
+            tracing::warn!(target: "sirtone::settings", error = %e, "durable settings write failed");
+        }
+        Ok((doc, changed))
     }
 
     pub fn patch(&self, patch: &Value) -> Result<(Value, Vec<String>), settings::SettingsError> {
@@ -107,7 +122,7 @@ pub fn settings_get(store: State<'_, Arc<SettingsStore>>) -> Json {
     Json(store.get())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn settings_patch(
     app: AppHandle,
@@ -117,6 +132,9 @@ pub fn settings_patch(
     let (doc, changed) = store
         .patch(&patch.0)
         .map_err(|e| AppError::new(ErrorCode::InvalidArgument).with_details(e))?;
+    if changed.iter().any(|k| k == "hotkeys") {
+        crate::hotkeys::apply(&app); // FR-WIN-001: applied without a restart
+    }
     let _ = app.emit("settings://changed", &changed);
     Ok(Json(doc))
 }

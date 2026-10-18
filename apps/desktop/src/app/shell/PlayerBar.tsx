@@ -1,18 +1,21 @@
-import {
-  ListMusic,
-  Music2,
-  Pause,
-  Play,
-  Repeat,
-  Shuffle,
-  SkipBack,
-  SkipForward,
-  Volume2,
-} from "lucide-react";
+import { ListMusic, Repeat, Repeat1, Shuffle, Volume, Volume2 } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { type PlaybackSnapshot, seek, setVolume, togglePlay } from "@/shared/ipc/playback";
+import {
+  next,
+  type PlaybackSnapshot,
+  prev,
+  type RepeatMode,
+  seek,
+  setRepeat,
+  setShuffle,
+  setVolume,
+  togglePlay,
+} from "@/shared/ipc/playback";
+import { cn } from "@/shared/lib/utils";
+import { Cover } from "@/shared/ui/Cover";
 import { Slider } from "@/shared/ui/Slider";
+import { ForwardIcon, PauseIcon, PlayIcon, RewindIcon } from "@/shared/ui/TransportIcons";
 
 /** m:ss / h:mm:ss timecode (format, not text). */
 export function timecode(ms: number): string {
@@ -23,16 +26,27 @@ export function timecode(ms: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
+/** Time left, with a true minus sign: «−3:43». */
+export const remaining = (positionMs: number, durationMs: number): string =>
+  `−${timecode(Math.max(0, durationMs - positionMs))}`;
+
+const NEXT_REPEAT: Record<RepeatMode, RepeatMode> = { off: "all", all: "one", one: "off" };
+
 /**
- * PlayerBar per DESIGN.md §9, prototype 0.2: play/pause, seek, volume work; shuffle, prev/next,
- * repeat and the queue need the queue (T1.8) and stay disabled — honest state, not fake buttons.
+ * PlayerBar per DESIGN.md §9: transport, seek, volume; shuffle and repeat (FR-PLAY-007) — when on,
+ * the icon is `accent-text` with a 4 px dot; repeat cycles off → all → one. The queue button opens
+ * the queue panel.
  */
 export function PlayerBar({
   snap,
   receivedAt,
+  queueOpen,
+  onQueue,
 }: {
   snap: PlaybackSnapshot;
   receivedAt: RefObject<number>;
+  queueOpen: boolean;
+  onQueue: () => void;
 }) {
   const { t } = useTranslation("shell");
   const loaded = snap.state !== "empty";
@@ -58,49 +72,98 @@ export function PlayerBar({
     return () => cancelAnimationFrame(raf);
   }, [playing, duration, snap.positionMs, receivedAt]);
 
-  const icon = (Icon: typeof Shuffle, label: string) => (
+  const toggle = (
+    Icon: typeof Shuffle,
+    label: string,
+    on: boolean,
+    onClick: () => void,
+    disabled = false,
+  ) => (
     <button
       type="button"
-      disabled
       aria-label={label}
-      className="flex size-9 items-center justify-center rounded-full text-icon disabled:opacity-40"
+      aria-pressed={on}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "relative flex size-9 items-center justify-center rounded-full hover:bg-bg-hover disabled:opacity-40",
+        on ? "text-accent-text" : "text-icon",
+      )}
     >
       <Icon size={20} strokeWidth={1.5} />
+      {on && (
+        <span aria-hidden className="absolute bottom-0.5 size-1 rounded-full bg-accent-text" />
+      )}
     </button>
   );
-  const PlayIcon = playing ? Pause : Play;
+  const repeatLabel =
+    snap.repeat === "one"
+      ? t("player.repeatOne")
+      : snap.repeat === "all"
+        ? t("player.repeatAll")
+        : t("player.repeat");
+  const PlayPauseIcon = playing ? PauseIcon : PlayIcon;
 
   return (
     <footer className="flex h-(--player-height) shrink-0 items-center gap-4 border-t border-separator bg-bg-base px-4">
       <div className="flex w-72 min-w-0 items-center gap-3">
-        <div className="flex size-14 shrink-0 items-center justify-center rounded-(--radius-sm) bg-artwork-placeholder text-text-tertiary">
-          <Music2 size={20} strokeWidth={1.5} />
-        </div>
+        <Cover hash={snap.cover} px={56} />
         <div className="min-w-0">
           <div className="t-body-strong truncate text-text-primary" title={snap.title ?? undefined}>
             {snap.title ?? t("player.nothing")}
           </div>
           <div className="t-caption truncate text-text-secondary">
-            {snap.state === "ended" ? t("player.ended") : loaded ? "" : t("player.hint")}
+            {snap.state === "ended"
+              ? t("player.ended")
+              : loaded
+                ? (snap.artists ?? "")
+                : t("player.hint")}
           </div>
         </div>
       </div>
 
       <div className="flex flex-1 flex-col items-center gap-1">
         <div className="flex items-center gap-2">
-          {icon(Shuffle, t("player.shuffle"))}
-          {icon(SkipBack, t("player.prev"))}
+          {toggle(
+            Shuffle,
+            t("player.shuffle"),
+            snap.shuffle,
+            () => setShuffle(!snap.shuffle),
+            !loaded,
+          )}
+          <button
+            type="button"
+            disabled={!loaded}
+            onClick={prev}
+            aria-label={t("player.prev")}
+            className="flex size-10 items-center justify-center rounded-full text-text-primary transition-transform active:scale-90 disabled:opacity-40"
+          >
+            <RewindIcon size={28} />
+          </button>
           <button
             type="button"
             disabled={!loaded}
             onClick={togglePlay}
             aria-label={playing ? t("player.pause") : t("player.play")}
-            className="flex size-(--play-size) items-center justify-center rounded-full bg-accent-fill text-accent-on disabled:opacity-40"
+            className="flex size-(--play-size) items-center justify-center rounded-full text-text-primary transition-transform active:scale-90 disabled:opacity-40"
           >
-            <PlayIcon size={20} fill="currentColor" strokeWidth={1.5} />
+            <PlayPauseIcon size={32} />
           </button>
-          {icon(SkipForward, t("player.next"))}
-          {icon(Repeat, t("player.repeat"))}
+          <button
+            type="button"
+            disabled={!snap.hasNext}
+            onClick={next}
+            aria-label={t("player.next")}
+            className="flex size-10 items-center justify-center rounded-full text-text-primary transition-transform active:scale-90 disabled:opacity-40"
+          >
+            <ForwardIcon size={28} />
+          </button>
+          {toggle(
+            snap.repeat === "one" ? Repeat1 : Repeat,
+            repeatLabel,
+            snap.repeat !== "off",
+            () => setRepeat(NEXT_REPEAT[snap.repeat]),
+          )}
         </div>
         <div className="flex w-full max-w-xl items-center gap-2">
           <span className="t-timecode w-12 text-right text-text-tertiary">
@@ -116,13 +179,15 @@ export function PlayerBar({
             disabled={!loaded || duration <= 0}
             onCommit={(v) => seek(v * duration)}
           />
-          <span className="t-timecode w-12 text-text-tertiary">{timecode(duration)}</span>
+          <span className="t-timecode w-12 text-text-tertiary">
+            {remaining(snap.positionMs, duration)}
+          </span>
         </div>
       </div>
 
       <div className="flex w-72 items-center justify-end gap-2">
-        {icon(ListMusic, t("player.queue"))}
-        <Volume2 size={20} strokeWidth={1.5} aria-hidden className="text-icon" />
+        {toggle(ListMusic, t("player.queue"), queueOpen, onQueue)}
+        <Volume size={20} strokeWidth={1.5} fill="currentColor" aria-hidden className="text-icon" />
         <Slider
           className="w-24"
           label={t("player.volume")}
@@ -136,6 +201,13 @@ export function PlayerBar({
             setVolumeLocal(v);
             setVolume(v);
           }}
+        />
+        <Volume2
+          size={20}
+          strokeWidth={1.5}
+          fill="currentColor"
+          aria-hidden
+          className="text-icon"
         />
       </div>
     </footer>

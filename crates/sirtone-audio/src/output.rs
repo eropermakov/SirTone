@@ -50,20 +50,26 @@ pub struct DeviceFormat {
 
 pub struct Output {
     pub format: DeviceFormat,
+    /// Endpoint id of the device this output plays to (for loss detection, T1.6).
+    pub device_id: String,
     thread: Option<JoinHandle<()>>,
     shared: Arc<Shared>,
 }
 
 /// Ring size: ~200 ms of headroom (docs/04 §1).
 const RING_MS: usize = 200;
-const PAUSE_RAMP_S: f32 = 0.015;
-const VOLUME_SMOOTH_S: f32 = 0.008;
+pub(crate) const PAUSE_RAMP_S: f32 = 0.015;
+pub(crate) const VOLUME_SMOOTH_S: f32 = 0.008;
+
+/// Test hook: called on the render thread right before its real-time loop starts, so a test
+/// allocator can assert that the loop never allocates (T1.3, `assert_no_alloc` style).
+pub static RT_ENTER: std::sync::OnceLock<fn()> = std::sync::OnceLock::new();
 
 impl Output {
     /// Opens the default render endpoint at its mix format. Returns the ring producer the engine
     /// fills. COM objects are thread-bound, so the device is opened on the render thread.
     pub fn open(shared: Arc<Shared>) -> Result<(Self, rtrb::Producer<f32>), AppError> {
-        let (tx_fmt, rx_fmt) = mpsc::channel::<Result<DeviceFormat, AppError>>();
+        let (tx_fmt, rx_fmt) = mpsc::channel::<Result<(DeviceFormat, String), AppError>>();
         let (tx_ring, rx_ring) = mpsc::channel::<rtrb::Consumer<f32>>();
         shared.stop.store(false, Ordering::Relaxed);
         shared.failed.store(false, Ordering::Relaxed);
@@ -73,12 +79,12 @@ impl Output {
             .spawn(move || {
                 let _ = wasapi::initialize_mta().ok();
                 match open_default() {
-                    Ok((client, fmt)) => {
+                    Ok((client, fmt, id)) => {
                         let format = DeviceFormat {
                             rate: fmt.get_samplespersec(),
                             channels: usize::from(fmt.get_nchannels()),
                         };
-                        let _ = tx_fmt.send(Ok(format));
+                        let _ = tx_fmt.send(Ok((format, id)));
                         let Ok(ring) = rx_ring.recv() else { return };
                         if render_loop(client, fmt, ring, &rt_shared).is_err() {
                             rt_shared.failed.store(true, Ordering::Release);
@@ -90,7 +96,7 @@ impl Output {
                 }
             })
             .map_err(|e| AppError::new(ErrorCode::Internal).with_details(e))?;
-        let format = rx_fmt
+        let (format, device_id) = rx_fmt
             .recv()
             .map_err(|e| AppError::new(ErrorCode::DeviceUnavailable).with_details(e))??;
         let (prod, cons) =
@@ -102,6 +108,7 @@ impl Output {
         Ok((
             Self {
                 format,
+                device_id,
                 thread: Some(thread),
                 shared,
             },
@@ -125,11 +132,12 @@ fn device_err(e: impl std::fmt::Display) -> AppError {
         .with_details(e)
 }
 
-fn open_default() -> Result<(AudioClient, WaveFormat), AppError> {
+fn open_default() -> Result<(AudioClient, WaveFormat, String), AppError> {
     let enumerator = DeviceEnumerator::new().map_err(device_err)?;
     let device = enumerator
         .get_default_device(&Direction::Render)
         .map_err(device_err)?;
+    let id = device.get_id().unwrap_or_default();
     let mut client = device.get_iaudioclient().map_err(device_err)?;
     let mix = client.get_mixformat().map_err(device_err)?;
     let (def_period, _min) = client.get_device_period().map_err(device_err)?;
@@ -151,7 +159,7 @@ fn open_default() -> Result<(AudioClient, WaveFormat), AppError> {
             },
         )
         .map_err(device_err)?;
-    Ok((client, fmt))
+    Ok((client, fmt, id))
 }
 
 fn register_mmcss() {
@@ -240,6 +248,10 @@ fn render_loop(
 
     let free = client.get_available_space_in_frames().map_err(device_err)? as usize;
     fill(free, &mut ring)?;
+    // Everything below is the real-time loop: no allocation, lock, log or I/O (CLAUDE.md).
+    if let Some(enter) = RT_ENTER.get() {
+        enter();
+    }
     client.start_stream().map_err(device_err)?;
     while !shared.stop.load(Ordering::Relaxed) {
         // 1 s without a device event = the endpoint is gone (unplugged/invalidated).

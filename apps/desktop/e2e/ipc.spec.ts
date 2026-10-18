@@ -11,9 +11,11 @@ async function mockTauri(page: Page) {
     const listeners = new Map<string, number[]>();
     let nextId = 1;
     const calls: Array<{ cmd: string; args: unknown }> = [];
+    const unknown: string[] = [];
     const settings = {
       appearance: { theme: "dark", accent: { source: "preset", preset: "blue", custom: null } },
       playback: { volume: 0.5 },
+      onboarding: { done: true, tips_seen: true },
     };
     const w = window as unknown as Record<string, unknown>;
     w.isTauri = true;
@@ -60,12 +62,34 @@ async function mockTauri(page: Page) {
             Object.assign(settings.appearance, patch.appearance ?? {});
             return settings;
           }
-          default:
+          case "hotkeys_status":
+          case "playlists_list":
+          case "never_list":
+            return [];
+          case "autostart_available":
+            return false;
+          case "update_status":
+            return { current: "0.1.2", justUpdated: null, notes: null };
+          case "playback_toggle":
+          case "playback_seek":
+          case "playback_set_volume":
+          case "playback_next":
+          case "playback_prev":
+          case "window_set_theme":
+          case "import_cancel":
+          case "library_confirm_missing":
+          case "library_dismiss_question":
             return null;
+          default:
+            // An unmocked command fails loudly with its name (a silent `undefined` once cost
+            // a 30 s timeout far from the cause).
+            unknown.push(cmd);
+            throw new Error(`mock: unknown command ${cmd}`);
         }
       },
     };
     w.__mock = {
+      unknown,
       calls,
       emit: (event: string, payload: unknown) => {
         for (const id of listeners.get(event) ?? []) callbacks.get(id)?.({ event, id: 0, payload });
@@ -92,18 +116,25 @@ const emit = (page: Page, event: string, payload: unknown) =>
     [event, payload] as const,
   );
 
+test.afterEach(async ({ page }) => {
+  const unknown = await page.evaluate(
+    () => (window as unknown as { __mock?: { unknown: string[] } }).__mock?.unknown ?? [],
+  );
+  expect(unknown, "commands the mock does not know").toEqual([]);
+});
+
 test("bootstrap hydrates settings and the player in one call", async ({ page }) => {
   await mockTauri(page);
   await page.goto("/");
   const footer = page.locator("footer");
   await expect(footer.getByText("Mock track")).toBeVisible();
   await expect(footer.locator(".t-timecode").first()).toHaveText("1:01");
-  await expect(footer.locator(".t-timecode").last()).toHaveText("3:20");
+  await expect(footer.locator(".t-timecode").last()).toHaveText("−2:19");
   await expect(footer.getByRole("button", { name: "Пауза" })).toBeEnabled();
   await expect(page.locator("html")).toHaveAttribute("data-accent", "blue");
   expect(await calls(page, "app_bootstrap")).toHaveLength(1);
   const theme = await calls(page, "window_set_theme");
-  expect(theme.at(-1)?.args).toEqual({ dark: true });
+  expect(theme.at(-1)?.args).toEqual({ dark: true, palette: null });
 });
 
 test("commands go out, events come back, errors become a toast", async ({ page }) => {
@@ -127,7 +158,7 @@ test("commands go out, events come back, errors become a toast", async ({ page }
     error: { code: "DecodeFailed", retryable: false, details: null },
     file: "broken.flac",
   });
-  await expect(page.getByRole("status")).toContainText(
+  await expect(page.getByRole("status").filter({ hasText: "broken.flac" })).toContainText(
     "Файл повреждён или не читается · broken.flac",
   );
 
@@ -135,7 +166,7 @@ test("commands go out, events come back, errors become a toast", async ({ page }
   await page.getByRole("button", { name: "Светлая" }).click();
   await expect
     .poll(async () => (await calls(page, "window_set_theme")).at(-1)?.args)
-    .toEqual({ dark: false });
+    .toEqual({ dark: false, palette: null });
   const patch = (await calls(page, "settings_patch")).at(-1)?.args as {
     patch: { appearance: { theme: string } };
   };

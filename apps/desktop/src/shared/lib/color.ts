@@ -19,7 +19,7 @@ export interface AccentSet {
 
 /** Neutral backgrounds the accent must work on (DESIGN.md §3). */
 export const BACKGROUNDS: Record<Theme, { base: string; layer: string; flyout: string }> = {
-  dark: { base: "#161111", layer: "#1c1616", flyout: "#2b2323" },
+  dark: { base: "#333333", layer: "#3a3a3a", flyout: "#424242" },
   light: { base: "#f2eee6", layer: "#f9f6f0", flyout: "#fdfcf9" },
 };
 export const INK_DARK = "#1c1616";

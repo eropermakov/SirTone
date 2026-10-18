@@ -17,6 +17,12 @@ ignore = [
     # `paste` is unmaintained (no vulnerability); compile-time macro pulled by specta/tauri-specta
     # for IPC codegen (D-09). Revisit when specta 2.0 final drops it. docs/08 §3, D-09.
     { id = "RUSTSEC-2024-0436", reason = "unmaintained proc-macro, build-time only, via specta (D-09)" },
+    # `zip` 4.x via tauri-plugin-updater: SUID/SGID bits and symlinks during `extract()` — Unix
+    # behaviour. On Windows the updater downloads the signed NSIS installer, verifies the minisign
+    # signature first and runs it; no ZIP is extracted. Revisit when the plugin moves to zip >= 9.
+    { id = "RUSTSEC-2026-0367", reason = "unix SUID/SGID on zip extract; windows NSIS path never extracts zips (updater)" },
+    { id = "RUSTSEC-2026-0368", reason = "zip extract symlinks; not used on windows, artifacts are signature-checked (updater)" },
+    { id = "RUSTSEC-2026-0369", reason = "zip unix permissions via symlinks; not used on windows (updater)" },
 ]
 
 [sources]

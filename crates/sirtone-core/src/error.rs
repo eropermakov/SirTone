@@ -20,6 +20,8 @@ pub enum ErrorCode {
     Cancelled,
     InvalidArgument,
     LibraryOffline,
+    /// No library folder chosen yet (docs/03 §8.2): the UI asks for one.
+    LibraryRootNotSet,
     NotSupported,
     InvalidConfig,
     Internal,

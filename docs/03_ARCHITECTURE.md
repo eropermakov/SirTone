@@ -379,6 +379,7 @@ CREATE TABLE album (
   folder_name TEXT, created_at INTEGER NOT NULL
 );
 CREATE INDEX ix_album_artist ON album(album_artist_id, title_norm);
+CREATE INDEX ix_album_title  ON album(title_norm, id);           -- keyset «альбомы по названию» (S-15)
 
 CREATE TABLE track (
   id INTEGER PRIMARY KEY, uid TEXT NOT NULL UNIQUE,
@@ -463,6 +464,18 @@ CREATE TABLE import_batch (
   stats_json TEXT, report_json TEXT                   -- отчёт о дублях и итогах (ТЗ §7.6)
 );
 
+CREATE TABLE import_item (                              -- D-66: одна строка на исходный файл пакета
+  id INTEGER PRIMARY KEY,
+  batch_id INTEGER NOT NULL REFERENCES import_batch(id) ON DELETE CASCADE,
+  src_path TEXT NOT NULL,                             -- абсолютный путь источника (только чтение)
+  size_bytes INTEGER,
+  state TEXT NOT NULL CHECK (state IN ('discovered','copied','placed','rejected','duplicate','cancelled')),
+  content_hash TEXT,                                  -- BLAKE3, совпал по записанной копии
+  track_id INTEGER REFERENCES track(id) ON DELETE SET NULL,
+  reason TEXT,                                        -- причина «Не добавлено» / класс дубля
+  UNIQUE (batch_id, src_path)
+);
+CREATE INDEX ix_import_item_state ON import_item(batch_id, state);
 CREATE TABLE job (
   id INTEGER PRIMARY KEY, kind TEXT NOT NULL, payload_json TEXT NOT NULL,
   track_id INTEGER, priority INTEGER NOT NULL DEFAULT 50,      -- меньше = важнее
@@ -483,8 +496,8 @@ CREATE TABLE http_cache (key TEXT PRIMARY KEY, body BLOB NOT NULL, fetched_at IN
 
 -- Поиск (05 §11): две контентless-таблицы, обновляются из кода импорта/правок
 CREATE VIRTUAL TABLE search_fts USING fts5(title, artists, album, genre, aliases,
-  content='', tokenize='unicode61 remove_diacritics 2');
-CREATE VIRTUAL TABLE search_tri USING fts5(text, content='', tokenize='trigram');
+  content='', contentless_delete=1, tokenize='unicode61 remove_diacritics 2');  -- D-65
+CREATE VIRTUAL TABLE search_tri USING fts5(text, content='', contentless_delete=1, tokenize='trigram');
 ```
 
 ### 7.1. Данные движка волны (миграция `0002_wave.sql`, Этап 1)

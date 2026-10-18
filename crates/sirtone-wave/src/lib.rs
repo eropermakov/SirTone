@@ -1,1 +1,6 @@
 //! sirtone-wave — Wave engine: clock, calendar, context, profiles, scoring, sequencer, learning (docs/14).
+
+pub mod calendar;
+pub mod clock;
+pub mod config;
+pub mod context;

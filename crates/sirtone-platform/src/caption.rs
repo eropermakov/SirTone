@@ -18,8 +18,17 @@ pub struct CaptionColors {
 }
 
 pub const DARK: CaptionColors = CaptionColors {
-    background: 0x161111,
-    text: 0xf9f6f0,
+    background: 0x333333,
+    text: 0xf5f5f5,
+};
+/// Owner palettes (D-74): «Оранжевая» and «Чёрно-белая».
+pub const EMBER: CaptionColors = CaptionColors {
+    background: 0x333333,
+    text: 0xf5f5f5,
+};
+pub const MONO: CaptionColors = CaptionColors {
+    background: 0x333333,
+    text: 0xf5f5f5,
 };
 pub const LIGHT: CaptionColors = CaptionColors {
     background: 0xf2eee6,
@@ -47,8 +56,12 @@ fn set<T>(hwnd: HWND, attr: DWMWINDOWATTRIBUTE, value: &T) -> bool {
 /// Applies dark/light caption to a top-level window. `hwnd` is the raw window handle.
 /// Returns whether the colour attributes were accepted (false on Windows 10).
 pub fn apply(hwnd: isize, dark: bool) -> bool {
+    apply_colors(hwnd, dark, if dark { DARK } else { LIGHT })
+}
+
+/// Caption in the given colours (`dark` selects the dark caption buttons).
+pub fn apply_colors(hwnd: isize, dark: bool, c: CaptionColors) -> bool {
     let hwnd = HWND(hwnd as *mut c_void);
-    let c = if dark { DARK } else { LIGHT };
     let _ = set(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &i32::from(dark));
     let bg = COLORREF(colorref(c.background));
     let caption = set(hwnd, DWMWA_CAPTION_COLOR, &bg);

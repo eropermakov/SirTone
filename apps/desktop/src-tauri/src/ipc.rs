@@ -4,7 +4,10 @@
 
 use tauri_specta::{Builder, collect_commands, collect_events};
 
-use crate::{bootstrap, playback, settings_store, window_chrome};
+use crate::{
+    autostart, bootstrap, feedback, hotkeys, library, perf, playback, playlists, search,
+    settings_store, storage, updates, window_chrome,
+};
 
 /// Free-form JSON across IPC, exported as TS `unknown`. specta inlines `serde_json::Value`
 /// recursively and overflows; the UI owns the typed view of these documents.
@@ -29,11 +32,74 @@ pub fn builder() -> Builder<tauri::Wry> {
             playback::playback_toggle,
             playback::playback_seek,
             playback::playback_set_volume,
+            playback::playback_next,
+            playback::playback_prev,
+            playback::play_tracks,
+            playback::queue_play_next,
+            playback::queue_append,
+            playback::queue_get,
+            playback::queue_remove,
+            playback::queue_move,
+            playback::queue_jump,
+            playback::playback_set_repeat,
+            playback::playback_set_shuffle,
+            autostart::autostart_available,
+            hotkeys::hotkeys_status,
+            updates::update_status,
+            autostart::autostart_set,
+            library::library_status,
+            library::library_pick_folder,
+            library::library_set_root,
+            library::import_paths,
+            library::import_cancel,
+            library::library_confirm_missing,
+            library::library_dismiss_question,
+            library::collection_tracks,
+            library::collection_albums,
+            library::collection_artists,
+            library::album_tracks,
+            library::unknown_tracks,
+            library::unknown_list,
+            library::track_assign,
+            library::track_details,
+            library::track_remove,
+            library::track_reveal,
+            library::artist_removal_info,
+            library::artist_remove,
+            library::artist_tracks,
+            library::collection_genres,
+            library::genre_tracks,
+            playlists::playlists_list,
+            playlists::playlist_create,
+            playlists::playlist_rename,
+            playlists::playlist_delete,
+            playlists::playlist_tracks,
+            playlists::playlist_already_in,
+            playlists::playlist_add,
+            playlists::playlist_remove,
+            playlists::playlist_move,
+            search::library_search,
+            perf::perf_hardware,
+            feedback::track_feedback,
+            feedback::feedback_like,
+            feedback::feedback_not_now,
+            feedback::feedback_never,
+            feedback::track_primary_artist,
+            feedback::never_list,
+            storage::storage_info,
+            storage::storage_clear_logs,
             window_chrome::window_set_theme,
         ])
         .events(collect_events![
             playback::PlaybackSnapshot,
-            playback::PlaybackError
+            playback::PlaybackError,
+            library::ImportProgress,
+            library::ImportFinished,
+            library::LibraryChanged,
+            library::LibraryRootNeeded,
+            hotkeys::HotkeyConflict,
+            playback::QueueChanged,
+            playlists::PlaylistsChanged
         ])
 }
 

@@ -18,8 +18,10 @@ type Props = {
 };
 
 /**
- * DESIGN.md §9 progress/volume: 4 px `inactive` track, `accent-text` fill and a 12 px thumb shown
- * on hover/focus, 16 px hit zone. The fill moves by `transform: scaleX` only (docs/06 §1).
+ * Progress/volume in the owner's reference shape (D-75, replaces the 4 px bar of DESIGN.md §9): a
+ * 6 px fully rounded translucent track, `accent-text` fill, no resting thumb (a 12 px one shows
+ * while dragging or keyboard-focused), 16 px hit zone; the bar thickens on hover with scaleY. The
+ * fill moves by `transform: scaleX` only (docs/06 §1).
  */
 export function Slider({
   value,
@@ -92,7 +94,10 @@ export function Slider({
         className,
       )}
     >
-      <div ref={track} className="relative h-1 w-full overflow-hidden rounded-full bg-inactive">
+      <div
+        ref={track}
+        className="relative h-1.5 w-full origin-center overflow-hidden rounded-full bg-text-primary/25 transition-transform group-hover:scale-y-125 group-aria-disabled:scale-y-100"
+      >
         <div
           ref={fillRef}
           className="absolute inset-0 origin-left bg-accent-text"
@@ -101,7 +106,10 @@ export function Slider({
       </div>
       {!disabled && (
         <div
-          className="pointer-events-none absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent-text opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+          className={cn(
+            "pointer-events-none absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent-text opacity-0 transition-opacity group-focus-visible:opacity-100",
+            drag !== null && "opacity-100",
+          )}
           style={{ left: `${shown * 100}%` }}
         />
       )}

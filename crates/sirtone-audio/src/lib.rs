@@ -4,7 +4,13 @@
 //! [`output`] (WASAPI shared, event-driven, MMCSS) and the [`engine`] thread.
 
 pub mod decode;
+pub mod devices;
 pub mod engine;
+pub mod gapless;
+pub mod latency;
+pub mod mf;
 pub mod output;
+pub mod probe;
+pub mod render;
 
 pub use engine::{EngineCmd, EngineEvent, EngineHandle, PlayState, Snapshot, start};

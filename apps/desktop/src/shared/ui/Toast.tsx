@@ -1,4 +1,4 @@
-import { CircleAlert, X } from "lucide-react";
+import { CircleAlert, CircleCheck, X } from "lucide-react";
 import { useEffect } from "react";
 
 type Props = {
@@ -9,13 +9,23 @@ type Props = {
   onClose: () => void;
   /** Auto-hide after this many ms (0 = stay). */
   timeoutMs?: number;
+  /** `error` (default, DESIGN.md §9) or `info` for a finished task report. */
+  tone?: "error" | "info";
 };
 
 /**
  * Error toast per DESIGN.md §9: bottom right, `bg-flyout`, `danger` icon, optional «Повторить».
  * Modal error dialogs are forbidden. Announced politely to screen readers.
  */
-export function Toast({ heading, message, closeLabel, action, onClose, timeoutMs = 6000 }: Props) {
+export function Toast({
+  heading,
+  message,
+  closeLabel,
+  action,
+  onClose,
+  timeoutMs = 6000,
+  tone = "error",
+}: Props) {
   useEffect(() => {
     if (!timeoutMs) return;
     const id = window.setTimeout(onClose, timeoutMs);
@@ -28,7 +38,11 @@ export function Toast({ heading, message, closeLabel, action, onClose, timeoutMs
       aria-live="polite"
       className="fixed right-4 bottom-[calc(var(--player-height)+1rem)] z-50 flex w-80 items-start gap-3 rounded-(--radius-md) border border-border bg-bg-flyout p-4 shadow-(--shadow-flyout)"
     >
-      <CircleAlert size={20} strokeWidth={1.5} className="shrink-0 text-danger" />
+      {tone === "error" ? (
+        <CircleAlert size={20} strokeWidth={1.5} className="shrink-0 text-danger" />
+      ) : (
+        <CircleCheck size={20} strokeWidth={1.5} className="shrink-0 text-accent-text" />
+      )}
       <div className="min-w-0 flex-1">
         <div className="t-body-strong text-text-primary">{heading}</div>
         <div className="t-caption break-words text-text-secondary">{message}</div>

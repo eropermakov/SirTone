@@ -8,6 +8,116 @@
   --skeleton-pulse: 1.6s;
 }
 
+/* Dark neutrals on #333333 (owner, 2026-10-17, D-75): one neutral-gray ladder for every dark theme
+   (the default dark and both owner palettes) instead of the warm brown-black of DESIGN.md §3.
+   Selector weight 0,2,0 beats the verbatim copy in sirtone.css. Light theme untouched. */
+:root:not([data-theme="light"]) {
+  --bg-base: #333333;
+  --bg-layer: #3a3a3a;
+  --bg-raised: #3e3e3e;
+  --bg-flyout: #424242;
+  --bg-hover: rgba(255, 255, 255, 0.07);
+  --bg-selected: rgba(255, 255, 255, 0.11);
+  --inactive: #666666;
+  --border: rgba(255, 255, 255, 0.12);
+  --separator: rgba(255, 255, 255, 0.1);
+  --text-primary: #f5f5f5;
+  --text-secondary: #dcdcdc;
+  --text-tertiary: #c4c4c4;
+  --icon: #dcdcdc;
+  --focus-ring: #f5f5f5;
+  --artwork-placeholder: #424242;
+  --danger: #ff9494;
+}
+
+/* Accent tokens lifted (same hue, OKLCH lightness) where the #333333 ladder breaks the
+   DESIGN.md §4 guarantees: text and primary-text >= 4.5:1, fill >= 3:1 on every dark surface.
+   sirtone.css stays verbatim; color.test.ts reads this layer on top of it. */
+:root[data-theme="dark"][data-accent="sirkov"] {
+  --primary-text: #f49494;
+} /* Sir.kov */
+:root[data-theme="dark"][data-accent="lilac"] {
+  --accent-text: #c79ffa;
+  --primary-text: #bca1ed;
+} /* Лиловый */
+:root[data-theme="dark"][data-accent="coral"] {
+  --accent-text: #fc927d;
+  --primary-text: #ef9786;
+} /* Коралловый */
+:root[data-theme="dark"][data-accent="blue"] {
+  --accent-text: #85aefc;
+  --primary-text: #89aef4;
+} /* Синий */
+:root[data-theme="dark"][data-accent="gray"] {
+  --accent-text: #afafaf;
+} /* Серый */
+:root[data-theme="dark"][data-accent="red"] {
+  --accent-text: #fd908a;
+  --primary-text: #ef968b;
+} /* Красный */
+:root[data-theme="dark"][data-accent="brick"] {
+  --accent-text: #fc9578;
+  --primary-text: #eb9983;
+} /* Кирпичный */
+:root[data-theme="dark"][data-accent="violet"] {
+  --accent-text: #b4a4fb;
+  --primary-text: #aba7f4;
+} /* Фиолетовый */
+:root[data-theme="dark"][data-accent="lavender"] {
+  --primary-text: #c89ee4;
+} /* Сиреневый */
+:root[data-theme="dark"][data-accent="orange"] {
+  --primary-text: #daa484;
+} /* Оранжевый */
+:root[data-theme="dark"][data-accent="yellow"] {
+  --primary-text: #c1ac82;
+} /* Жёлтый */
+:root[data-theme="dark"][data-accent="ginger"] {
+  --accent-text: #fe9752;
+  --primary-text: #e19f84;
+} /* Рыжий */
+:root[data-theme="dark"][data-accent="darkred"] {
+  --accent-fill: #ef5e59;
+  --accent-text: #fc9188;
+  --accent-on: #1c1616;
+  --primary-text: #f39891;
+} /* Тёмно-красный */
+:root[data-theme="dark"][data-accent="lightred"] {
+  --accent-text: #fc9291;
+  --primary-text: #f39892;
+} /* Светло-красный */
+:root[data-theme="dark"][data-accent="burgundy"] {
+  --accent-fill: #dc668a;
+  --accent-text: #fc8ead;
+  --accent-on: #1c1616;
+  --primary-text: #ef96ae;
+} /* Бургунди */
+:root[data-theme="dark"][data-accent="bordeaux"] {
+  --accent-fill: #d57069;
+  --accent-text: #fb928a;
+  --accent-on: #1c1616;
+  --primary-text: #f39890;
+} /* Бордовый */
+
+/* Owner palettes «Оранжевая» and «Чёрно-белая» (2026-10-17, D-74): a fixed accent on the shared
+   dark neutrals above (D-75). Declared after the accent overrides: same weight, the palette wins. */
+:root[data-theme="dark"][data-palette="ember"] {
+  --accent-fill: #fb5b3b;
+  --accent-text: #fd9075;
+  --accent-on: #141414;
+  --primary: #3f241b;
+  --primary-text: #fa9575;
+  --on-primary: #f2f0ee;
+}
+:root[data-theme="dark"][data-palette="mono"] {
+  --accent-fill: #f5f5f5;
+  --accent-text: #fafafa;
+  --accent-on: #0a0a0a;
+  --primary: #2a2a2a;
+  --primary-text: #d4d4d4;
+  --on-primary: #fafafa;
+}
+
 /* Smooth theme/colour change: registered colour properties animate (docs/06 §4.4). */
 @property --accent-fill {
   syntax: "<color>";
@@ -42,6 +152,67 @@
     --accent-on var(--dur-theme) var(--ease-out),
     --primary var(--dur-theme) var(--ease-out),
     --primary-text var(--dur-theme) var(--ease-out);
+}
+
+/* Skeletons pulse softly instead of spinners (DESIGN.md §9 «Пустые состояния и загрузка»). */
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+.skeleton {
+  background: var(--artwork-placeholder);
+  animation: skeleton-pulse var(--skeleton-pulse) ease-in-out infinite;
+}
+
+/* MenuFlyout appears in 150 ms: fade + 4 px shift (DESIGN.md §9). */
+@keyframes flyout-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.flyout-in {
+  animation: flyout-in var(--dur-fast) var(--ease-out);
+}
+
+/* Performance presets (T2.3, docs/06 §6): the level scales the DESIGN.md duration tokens;
+   «Очень слабое» (motion 0) turns every animation and transition off. Weak machines also drop
+   blur. Set by `applyPerformance` as one write to <html>. */
+:root[data-motion="0.5"] {
+  --dur-instant: 50ms;
+  --dur-fast: 75ms;
+  --dur-base: 125ms;
+  --dur-theme: 200ms;
+}
+:root[data-motion="1.25"] {
+  --dur-instant: 125ms;
+  --dur-fast: 190ms;
+  --dur-base: 310ms;
+  --dur-theme: 500ms;
+}
+:root[data-motion="1.5"] {
+  --dur-instant: 150ms;
+  --dur-fast: 225ms;
+  --dur-base: 375ms;
+  --dur-theme: 600ms;
+}
+:root[data-motion="0"] *,
+:root[data-motion="0"] *::before,
+:root[data-motion="0"] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+:root[data-blur="off"] * {
+  backdrop-filter: none !important;
 }
 
 /* D-61: reduced motion = short fades only, no movement. */

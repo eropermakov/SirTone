@@ -14,6 +14,8 @@ export default [
         {
           mode: "jsx-only",
           "jsx-attributes": { include: ["title", "aria-label", "alt", "placeholder"] },
+          // `t` plus namespaced aliases (`tc` = common, `ts` = shell) count as translation calls.
+          callees: { exclude: ["i18n(ext)?", "t", "tc", "ts", "require"] },
         },
       ],
     },

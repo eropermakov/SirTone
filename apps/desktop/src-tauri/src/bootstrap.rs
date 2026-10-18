@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
 use crate::ipc::Json;
+use crate::library::{Library, LibraryStatus};
 use crate::playback::{Playback, PlaybackSnapshot};
 use crate::settings_store::SettingsStore;
 
@@ -16,9 +17,10 @@ pub struct Bootstrap {
     pub version: String,
     pub settings: Json,
     pub playback: Option<PlaybackSnapshot>,
+    pub library: Option<LibraryStatus>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[specta::specta]
 pub fn app_bootstrap(app: AppHandle, settings: State<'_, Arc<SettingsStore>>) -> Bootstrap {
     // The engine may have failed to start (no audio stack): the window still opens.
@@ -27,5 +29,6 @@ pub fn app_bootstrap(app: AppHandle, settings: State<'_, Arc<SettingsStore>>) ->
         version: env!("CARGO_PKG_VERSION").to_owned(),
         settings: Json(settings.get()),
         playback: playback.map(|p| p.snapshot()),
+        library: app.try_state::<Library>().map(|l| l.status()),
     }
 }

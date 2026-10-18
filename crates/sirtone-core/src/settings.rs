@@ -23,11 +23,13 @@ pub struct Settings {
     pub sleep: Sleep,
     pub focus: Focus,
     pub sfx: Sfx,
+    pub hotkeys: Hotkeys,
     pub window: WindowPrefs,
     pub library: LibraryPrefs,
     pub network: Network,
     pub context: ContextPrefs,
     pub updates: Updates,
+    pub onboarding: Onboarding,
 }
 
 impl Default for Settings {
@@ -45,13 +47,24 @@ impl Default for Settings {
             sleep: Sleep::default(),
             focus: Focus::default(),
             sfx: Sfx::default(),
+            hotkeys: Hotkeys::default(),
             window: WindowPrefs::default(),
             library: LibraryPrefs::default(),
             network: Network::default(),
             context: ContextPrefs::default(),
             updates: Updates::default(),
+            onboarding: Onboarding::default(),
         }
     }
+}
+
+/// First start (T2.15, FR-ONB-001/002): the 4-step setup and the tips, each once (both can be
+/// replayed from Settings).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Onboarding {
+    pub done: bool,
+    pub tips_seen: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -60,6 +73,9 @@ pub enum ThemePref {
     System,
     Dark,
     Light,
+    /// Owner palettes (D-74): dark with an orange accent / black & white.
+    Ember,
+    Mono,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -392,6 +408,31 @@ impl Default for Sfx {
     }
 }
 
+/// Global hotkeys (FR-WIN-001, docs/07 §2): accelerator per action, `null` = none.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Hotkeys {
+    pub play_pause: Option<String>,
+    pub next: Option<String>,
+    pub prev: Option<String>,
+    pub volume_up: Option<String>,
+    pub volume_down: Option<String>,
+    pub mute: Option<String>,
+}
+
+impl Default for Hotkeys {
+    fn default() -> Self {
+        Self {
+            play_pause: Some("Ctrl+Alt+Space".into()),
+            next: Some("Ctrl+Alt+Right".into()),
+            prev: Some("Ctrl+Alt+Left".into()),
+            volume_up: Some("Ctrl+Alt+Up".into()),
+            volume_down: Some("Ctrl+Alt+Down".into()),
+            mute: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WindowPrefs {
@@ -477,11 +518,19 @@ impl Default for ContextPrefs {
 #[serde(default)]
 pub struct Updates {
     pub auto_check: bool,
+    /// The version that ran last time: a newer running version = «Сиртон обновлён» (D-76).
+    pub last_version: Option<String>,
+    /// Release notes of the downloaded update, shown after it is installed.
+    pub notes: Option<String>,
 }
 
 impl Default for Updates {
     fn default() -> Self {
-        Self { auto_check: true }
+        Self {
+            auto_check: true,
+            last_version: None,
+            notes: None,
+        }
     }
 }
 
@@ -609,6 +658,8 @@ mod tests {
         assert_eq!(s.appearance.accent.preset, "sirkov");
         assert!((s.playback.normalization.target_lufs + 14.0).abs() < f32::EPSILON);
         assert_eq!(s.wave.repeat_window_h, 24);
+        assert_eq!(s.hotkeys.play_pause.as_deref(), Some("Ctrl+Alt+Space"));
+        assert_eq!(s.hotkeys.mute, None);
     }
 
     #[test]

@@ -13,3 +13,8 @@ workspace = true
 
 [dependencies]
 sirtone-core.workspace = true
+lofty.workspace = true
+encoding_rs.workspace = true
+strsim.workspace = true
+
+[dev-dependencies]

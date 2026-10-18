@@ -15,16 +15,128 @@ export const commands = {
 	playbackToggle: () => __TAURI_INVOKE<void>("playback_toggle"),
 	playbackSeek: (positionMs: number) => __TAURI_INVOKE<void>("playback_seek", { positionMs }),
 	playbackSetVolume: (volume: number | null) => __TAURI_INVOKE<void>("playback_set_volume", { volume }),
-	windowSetTheme: (dark: boolean) => __TAURI_INVOKE<void>("window_set_theme", { dark }),
+	playbackNext: () => __TAURI_INVOKE<void>("playback_next"),
+	playbackPrev: () => __TAURI_INVOKE<void>("playback_prev"),
+	/**  Plays library tracks `ids` as one context starting at `start` (double-click in a list). */
+	playTracks: (ids: number[], start: number, context: PlayContext) => typedError<null, AppError>(__TAURI_INVOKE("play_tracks", { ids, start, context })),
+	/**  «Воспроизвести далее» (FR-PLAY-006). */
+	queuePlayNext: (ids: number[], context: PlayContext) => typedError<null, AppError>(__TAURI_INVOKE("queue_play_next", { ids, context })),
+	/**  «В конец очереди». */
+	queueAppend: (ids: number[], context: PlayContext) => typedError<null, AppError>(__TAURI_INVOKE("queue_append", { ids, context })),
+	queueGet: () => __TAURI_INVOKE<QueueView>("queue_get"),
+	queueRemove: (index: number) => __TAURI_INVOKE<void>("queue_remove", { index }),
+	queueMove: (from: number, to: number) => __TAURI_INVOKE<void>("queue_move", { from, to }),
+	queueJump: (index: number) => __TAURI_INVOKE<void>("queue_jump", { index }),
+	playbackSetRepeat: (mode: RepeatMode) => __TAURI_INVOKE<void>("playback_set_repeat", { mode }),
+	playbackSetShuffle: (on: boolean) => __TAURI_INVOKE<void>("playback_set_shuffle", { on }),
+	autostartAvailable: () => __TAURI_INVOKE<boolean>("autostart_available"),
+	/**  Settings → «Горячие клавиши»: what is configured and what Windows refused. */
+	hotkeysStatus: () => __TAURI_INVOKE<HotkeyStatus[]>("hotkeys_status"),
+	/**  Version and, the first time after an update, «Сиртон обновлён до X» (taken once). */
+	updateStatus: () => __TAURI_INVOKE<UpdateStatus>("update_status"),
+	/**  Turns «Запускать вместе с Windows» on/off and saves the setting; returns the real state. */
+	autostartSet: (on: boolean) => typedError<boolean, AppError>(__TAURI_INVOKE("autostart_set", { on })),
+	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
+	/**  Folder picker (native dialog); `None` when the user cancels. */
+	libraryPickFolder: () => __TAURI_INVOKE<string | null>("library_pick_folder"),
+	librarySetRoot: (path: string) => typedError<LibraryStatus, AppError>(__TAURI_INVOKE("library_set_root", { path })),
+	importPaths: (paths: string[]) => __TAURI_INVOKE<ImportStart>("import_paths", { paths }),
+	importCancel: () => __TAURI_INVOKE<void>("import_cancel"),
+	libraryConfirmMissing: () => __TAURI_INVOKE<void>("library_confirm_missing"),
+	libraryDismissQuestion: () => __TAURI_INVOKE<void>("library_dismiss_question"),
+	collectionTracks: (after: {
+	key: string,
+	id: number,
+} | null, limit: number) => typedError<TrackPage, AppError>(__TAURI_INVOKE("collection_tracks", { after, limit })),
+	collectionAlbums: (after: {
+	key: string,
+	id: number,
+} | null, limit: number) => typedError<AlbumPage, AppError>(__TAURI_INVOKE("collection_albums", { after, limit })),
+	collectionArtists: (after: {
+	key: string,
+	id: number,
+} | null, limit: number) => typedError<ArtistPage, AppError>(__TAURI_INVOKE("collection_artists", { after, limit })),
+	albumTracks: (album: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("album_tracks", { album })),
+	unknownTracks: () => typedError<TrackItem[], AppError>(__TAURI_INVOKE("unknown_tracks")),
+	unknownList: () => typedError<UnknownItem[], AppError>(__TAURI_INVOKE("unknown_list")),
+	/**
+	 *  «Назначить»: the track leaves «Неизвестные» and its file moves to the canonical place
+	 *  (through the journal, on the import worker; the audio file itself is not changed).
+	 */
+	trackAssign: (track: number, assignment: TrackAssignment) => typedError<null, AppError>(__TAURI_INVOKE("track_assign", { track, assignment })),
+	trackDetails: (track: number) => typedError<TrackDetails, AppError>(__TAURI_INVOKE("track_details", { track })),
+	/**  FR-DATA-001: «удалить файл с диска» (to the Recycle Bin) or «только убрать из приложения». */
+	trackRemove: (track: number, withFile: boolean) => typedError<null, AppError>(__TAURI_INVOKE("track_remove", { track, withFile })),
+	/**  «Показать в проводнике» (Q-23): Explorer opens the folder with the file selected. */
+	trackReveal: (track: number) => typedError<null, AppError>(__TAURI_INVOKE("track_reveal", { track })),
+	artistRemovalInfo: (artist: number) => typedError<RemovalInfo, AppError>(__TAURI_INVOKE("artist_removal_info", { artist })),
+	/**
+	 *  FR-DATA-002: every track on the artist's page goes (files to the Recycle Bin, or only from
+	 *  the app); one worker job per track, so each is journalled on its own.
+	 */
+	artistRemove: (artist: number, withFile: boolean) => typedError<null, AppError>(__TAURI_INVOKE("artist_remove", { artist, withFile })),
+	artistTracks: (artist: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("artist_tracks", { artist })),
+	collectionGenres: () => typedError<GenreItem[], AppError>(__TAURI_INVOKE("collection_genres")),
+	genreTracks: (key: string) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("genre_tracks", { key })),
+	playlistsList: () => typedError<PlaylistItem[], AppError>(__TAURI_INVOKE("playlists_list")),
+	playlistCreate: (name: string) => typedError<number, AppError>(__TAURI_INVOKE("playlist_create", { name })),
+	playlistRename: (id: number, name: string) => typedError<null, AppError>(__TAURI_INVOKE("playlist_rename", { id, name })),
+	playlistDelete: (id: number) => typedError<null, AppError>(__TAURI_INVOKE("playlist_delete", { id })),
+	playlistTracks: (id: number) => typedError<PlaylistEntry[], AppError>(__TAURI_INVOKE("playlist_tracks", { id })),
+	/**  Which of `tracks` the playlist already has («Уже в плейлисте», `01b` F-13). */
+	playlistAlreadyIn: (id: number, tracks: number[]) => typedError<number[], AppError>(__TAURI_INVOKE("playlist_already_in", { id, tracks })),
+	playlistAdd: (id: number, tracks: number[]) => typedError<number, AppError>(__TAURI_INVOKE("playlist_add", { id, tracks })),
+	/**  «Убрать из плейлиста»: the items go, the tracks stay (FR-PLS-004). */
+	playlistRemove: (id: number, positions: number[]) => typedError<null, AppError>(__TAURI_INVOKE("playlist_remove", { id, positions })),
+	playlistMove: (id: number, from: number, to: number) => typedError<null, AppError>(__TAURI_INVOKE("playlist_move", { id, from, to })),
+	librarySearch: (query: string) => typedError<SearchResults, AppError>(__TAURI_INVOKE("library_search", { query })),
+	perfHardware: () => __TAURI_INVOKE<HardwareInfo>("perf_hardware"),
+	trackFeedback: (track: number) => typedError<TrackFeedback, AppError>(__TAURI_INVOKE("track_feedback", { track })),
+	feedbackLike: (track: number, on: boolean) => typedError<null, AppError>(__TAURI_INVOKE("feedback_like", { track, on })),
+	/**  «Не сейчас»: a minus in this context bucket only (D-77), and on to the next track. */
+	feedbackNotNow: (track: number) => typedError<null, AppError>(__TAURI_INVOKE("feedback_not_now", { track })),
+	feedbackNever: (scope: NeverScope, id: number, on: boolean) => typedError<null, AppError>(__TAURI_INVOKE("feedback_never", { scope, id, on })),
+	/**  The primary artist of a track («Никогда в волне» → исполнитель). */
+	trackPrimaryArtist: (track: number) => typedError<number, AppError>(__TAURI_INVOKE("track_primary_artist", { track })),
+	neverList: () => typedError<NeverEntry[], AppError>(__TAURI_INVOKE("never_list")),
+	storageInfo: () => __TAURI_INVOKE<StorageInfo>("storage_info"),
+	/**  «Удалить старые журналы»: diagnostic logs of earlier days (the app's own files, not music). */
+	storageClearLogs: () => typedError<number, AppError>(__TAURI_INVOKE("storage_clear_logs")),
+	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
+	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),
 };
 
 /** Events */
 export const events = {
+	hotkeyConflict: makeEvent<HotkeyConflict>("hotkey-conflict"),
+	importFinished: makeEvent<ImportFinished>("import-finished"),
+	importProgress: makeEvent<ImportProgress>("import-progress"),
+	libraryChanged: makeEvent<LibraryChanged>("library-changed"),
+	libraryRootNeeded: makeEvent<LibraryRootNeeded>("library-root-needed"),
 	playbackError: makeEvent<PlaybackError>("playback-error"),
 	playbackSnapshot: makeEvent<PlaybackSnapshot>("playback-snapshot"),
+	playlistsChanged: makeEvent<PlaylistsChanged>("playlists-changed"),
+	queueChanged: makeEvent<QueueChanged>("queue-changed"),
 };
 
 /* Types */
+export type AlbumItem = {
+	id: number,
+	title: string,
+	artist: string,
+	year: number | null,
+	tracks: number,
+	/**  Cover hash: `http://sirtone-cover.localhost/<hash>/<size>`. */
+	cover: string | null,
+	/**  Newest track, ms (sort «Недавно добавленные»). */
+	addedAt: number | null,
+};
+
+export type AlbumPage = {
+	rows: AlbumItem[],
+	next: PageCursor | null,
+};
+
 export type AppError = {
 	code: ErrorCode,
 	retryable: boolean,
@@ -32,13 +144,134 @@ export type AppError = {
 	details: string | null,
 };
 
+export type ArtistItem = {
+	id: number,
+	name: string,
+	tracks: number,
+	/**  Newest track, ms (sort «Недавно добавленные»). */
+	addedAt: number | null,
+};
+
+export type ArtistPage = {
+	rows: ArtistItem[],
+	next: PageCursor | null,
+};
+
+export type BestMatch = { kind: "track"; item: TrackItem } | { kind: "artist"; item: ArtistItem } | { kind: "album"; item: AlbumItem };
+
 export type Bootstrap = {
 	version: string,
 	settings: unknown,
 	playback: PlaybackSnapshot | null,
+	library: LibraryStatus | null,
 };
 
-export type ErrorCode = "FileNotFound" | "UnsupportedFormat" | "DecodeFailed" | "PathTooLong" | "DiskFull" | "PermissionDenied" | "DeviceUnavailable" | "DeviceBusy" | "NetworkOffline" | "RateLimited" | "RemoteError" | "DbBusy" | "DbCorrupt" | "Cancelled" | "InvalidArgument" | "LibraryOffline" | "NotSupported" | "InvalidConfig" | "Internal";
+export type ErrorCode = "FileNotFound" | "UnsupportedFormat" | "DecodeFailed" | "PathTooLong" | "DiskFull" | "PermissionDenied" | "DeviceUnavailable" | "DeviceBusy" | "NetworkOffline" | "RateLimited" | "RemoteError" | "DbBusy" | "DbCorrupt" | "Cancelled" | "InvalidArgument" | "LibraryOffline" | 
+/**  No library folder chosen yet (docs/03 §8.2): the UI asks for one. */
+"LibraryRootNotSet" | "NotSupported" | "InvalidConfig" | "Internal";
+
+/**  A genre card (FR-LIB-002; `01b` F-34). */
+export type GenreItem = {
+	/**  The page address (normalised name). */
+	key: string,
+	name: string,
+	tracks: number,
+};
+
+export type HardwareInfo = {
+	cores: number,
+	ramMb: number,
+	gpuName: string | null,
+	vramMb: number,
+	discreteGpu: boolean,
+};
+
+export type HotkeyAction = "playPause" | "next" | "prev" | "volumeUp" | "volumeDown" | "mute";
+
+/**  A hotkey could not be registered (FR-WIN-001 «обнаружение конфликтов»). */
+export type HotkeyConflict = {
+	action: HotkeyAction,
+	accel: string,
+};
+
+/**  One configured hotkey and whether Windows gave it to us. */
+export type HotkeyStatus = {
+	action: HotkeyAction,
+	accel: string,
+	/**  `false` = taken by another program (or not a valid combination). */
+	registered: boolean,
+};
+
+/**  Batch report (docs/05 §3.2): «Добавлено · Неизвестные · Дубли · Не добавлено». */
+export type ImportFinished = {
+	added: number,
+	unknown: number,
+	duplicates: number,
+	rejected: number,
+	rejectedReasons: string[],
+	cancelled: number,
+	canEject: boolean,
+};
+
+/**  Import progress for the sidebar line (DESIGN.md §9 Sidebar, Зейгарник). ~5 per second. */
+export type ImportProgress = {
+	done: number,
+	total: number,
+	/**  All source files copied and verified: the medium can be removed (docs/05 §3.2). */
+	sourcesReleased: boolean,
+};
+
+export type ImportStart = "started" | "rootNeeded";
+
+/**  The collection changed (tracks added/removed): lists and counters refresh. Throttled. */
+export type LibraryChanged = {
+	tracks: number,
+};
+
+/**  Files were dropped before a library folder was chosen: the UI asks for one. */
+export type LibraryRootNeeded = {
+	pending: number,
+};
+
+export type LibraryStatus = {
+	/**  `None` until the user chose a folder (docs/03 §8.2). */
+	root: string | null,
+	defaultRoot: string,
+	tracks: number,
+	artists: number,
+	albums: number,
+	unknown: number,
+	durationSec: number,
+	/**  Bytes as f64 (u64 is not representable in JS numbers). */
+	bytes: number | null,
+	importing: boolean,
+	/**
+	 *  The folder is set but cannot be reached (stick pulled, renamed, another library there):
+	 *  nothing is created, marked or deleted until it is back (FR-FS-004).
+	 */
+	offline: boolean,
+	/**  Many files vanished at once: how many, waiting for the user (FR-FS-003). */
+	goneQuestion: number | null,
+};
+
+/**  A «Никогда в волне» row in Settings. */
+export type NeverEntry = {
+	scope: NeverScope,
+	id: number,
+	title: string,
+	/**  Artists of a track; empty for an artist. */
+	subtitle: string,
+};
+
+export type NeverScope = "track" | "artist";
+
+export type PageCursor = {
+	key: string,
+	id: number,
+};
+
+/**  The screen a list was played from (`play_event.source`). */
+export type PlayContext = "album" | "artist" | "collection" | "playlist" | "search";
 
 /**  A track or device error; the UI shows `errors.<code>` in a toast (DESIGN.md §9). */
 export type PlaybackError = {
@@ -49,8 +282,19 @@ export type PlaybackError = {
 /**  Engine state for the player bar. Emitted on every change and every 250 ms while playing. */
 export type PlaybackSnapshot = {
 	state: PlaybackState,
-	/**  File name without extension until tags arrive (T1.15). */
+	/**  Track title from the library, or the file name for a file opened directly. */
 	title: string | null,
+	artists: string | null,
+	/**  Library track id when playing from the collection. */
+	trackId: number | null,
+	hasNext: boolean,
+	hasPrev: boolean,
+	/**  Album cover hash of the current track. */
+	cover: string | null,
+	repeat: RepeatMode,
+	shuffle: boolean,
+	/**  Output underruns since start (diagnostics, P-13). */
+	underruns: number,
 	positionMs: number,
 	durationMs: number | null,
 	/**  Slider value 0…1. */
@@ -58,6 +302,154 @@ export type PlaybackSnapshot = {
 };
 
 export type PlaybackState = "empty" | "playing" | "paused" | "ended";
+
+/**  A playlist page row: the position addresses remove / move (a track may repeat). */
+export type PlaylistEntry = {
+	position: number,
+	track: TrackItem,
+};
+
+export type PlaylistHit = {
+	id: number,
+	name: string,
+};
+
+/**  A sidebar row. */
+export type PlaylistItem = {
+	id: number,
+	name: string,
+	tracks: number,
+	durationMs: number | null,
+	bytes: number | null,
+	/**  Four hashes → a 2×2 mosaic, one → a single cover, none → placeholder. */
+	covers: string[],
+};
+
+/**  Playlists were created, renamed, deleted or edited. */
+export type PlaylistsChanged = {
+	/**  The edited playlist (0 when several or a deletion). */
+	id: number,
+};
+
+/**  The queue changed (order, contents, modes): the panel refetches. */
+export type QueueChanged = {
+	len: number,
+};
+
+/**  One row of the queue panel. */
+export type QueueEntry = {
+	title: string,
+	artists: string | null,
+	trackId: number | null,
+	cover: string | null,
+};
+
+/**  The queue panel (FR-PLAY-006): everything, the playing position and the modes. */
+export type QueueView = {
+	items: QueueEntry[],
+	position: number,
+	repeat: RepeatMode,
+	shuffle: boolean,
+};
+
+/**  FR-DATA-002: what deleting an artist takes away — for the confirmation. */
+export type RemovalInfo = {
+	tracks: number,
+	/**  Bytes as f64 (u64 is not a JS number). */
+	bytes: number | null,
+};
+
+/**  FR-PLAY-007 repeat mode over IPC. */
+export type RepeatMode = "off" | "one" | "all";
+
+export type SearchResults = {
+	best: BestMatch | null,
+	tracks: TrackItem[],
+	artists: ArtistItem[],
+	albums: AlbumItem[],
+	playlists: PlaylistHit[],
+};
+
+export type StorageInfo = {
+	/**  `library.db` with its WAL. */
+	databaseBytes: number | null,
+	coversBytes: number | null,
+	coversFiles: number,
+	logsBytes: number | null,
+	/**  Log files older than today (what «Удалить старые журналы» removes). */
+	oldLogs: number,
+};
+
+/**  What the user typed for a track (ручное назначение). */
+export type TrackAssignment = {
+	title: string,
+	/**  Several artists separated by commas. */
+	artists: string,
+	album: string | null,
+	trackNo: number | null,
+	year: number | null,
+};
+
+/**  Everything the track card shows (FR-LIB-006). */
+export type TrackDetails = {
+	id: number,
+	title: string,
+	artists: string,
+	album: string | null,
+	trackNo: number | null,
+	year: number | null,
+	genre: string | null,
+	codec: string,
+	container: string,
+	lossless: boolean,
+	sampleRate: number | null,
+	channels: number | null,
+	durationMs: number,
+	/**  Bytes as f64 (u64 is not a JS number). */
+	sizeBytes: number | null,
+	/**  Absolute path of the file. */
+	path: string,
+	addedAt: number | null,
+	identity: string,
+	/**  «К альбому» from the player. */
+	albumId: number | null,
+};
+
+export type TrackFeedback = {
+	liked: boolean,
+	neverTrack: boolean,
+	neverArtist: boolean,
+};
+
+export type TrackItem = {
+	id: number,
+	title: string,
+	artists: string,
+	album: string | null,
+	durationMs: number,
+	albumId: number | null,
+	artistId: number | null,
+};
+
+export type TrackPage = {
+	rows: TrackItem[],
+	next: PageCursor | null,
+};
+
+/**  A track in «Неизвестные» with its reason (docs/05 §4.7). */
+export type UnknownItem = {
+	track: TrackItem,
+	/**  no_metadata | conflict | low_confidence | offline_pending | possible_non_track | needs_review */
+	reason: string | null,
+};
+
+/**  What the UI needs: the running version and, once, «just updated». */
+export type UpdateStatus = {
+	current: string,
+	/**  Set on the first start after an update (shown once as a toast). */
+	justUpdated: string | null,
+	notes: string | null,
+};
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

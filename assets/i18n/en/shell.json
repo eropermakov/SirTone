@@ -44,7 +44,11 @@
     "volume": "",
     "pause": "",
     "seek": "",
-    "ended": ""
+    "ended": "",
+    "repeatOff": "Repeat off",
+    "repeatAll": "Repeat all",
+    "repeatOne": "Repeat track",
+    "shuffleOn": "Shuffled"
   },
   "settings": {
     "title": "",
@@ -59,7 +63,10 @@
     "previewButton": "",
     "about": "",
     "version": "",
-    "badge": ""
+    "badge": "",
+    "themeEmber": "Orange",
+    "themeMono": "Black & white",
+    "accentByTheme": "The colour comes with this theme — choose Dark, Light or System to change it"
   },
   "accent": {
     "sirkov": "",
@@ -84,6 +91,140 @@
     "open": "",
     "playPause": "",
     "quit": "",
-    "tooltip": ""
+    "tooltip": "",
+    "nowPlaying": "Playing: {title}",
+    "nothing": "Nothing is playing",
+    "play": "Play",
+    "pause": "Pause",
+    "prev": "Previous",
+    "next": "Next"
+  },
+  "collection": {
+    "summary": "",
+    "sizeGb": "",
+    "sizeMb": "",
+    "play": "",
+    "back": "",
+    "tracks": "",
+    "trackList": "",
+    "noArtist": ""
+  },
+  "root": {
+    "title": "",
+    "text": "",
+    "change": "",
+    "continue": "",
+    "error": ""
+  },
+  "import": {
+    "progress": "",
+    "eject": "",
+    "cancel": "",
+    "doneTitle": "",
+    "report": "",
+    "reasons": "",
+    "reason": {
+      "not_audio": "",
+      "corrupt": "",
+      "unsupported": "",
+      "playlist": "",
+      "no_space": "",
+      "path_too_long": "",
+      "read_error": ""
+    }
+  },
+  "settingsStorage": {
+    "title": "",
+    "folder": "",
+    "notChosen": "",
+    "change": ""
+  },
+  "library": {
+    "offline": "Library folder unavailable — connect the drive",
+    "goneTitle": "Files vanished from the folder",
+    "gone": "{count, plural, one {# file is} other {# files are}} gone. The library is unchanged for now.",
+    "goneConfirm": "They are deleted"
+  },
+  "settingsStartup": {
+    "title": "Startup",
+    "autostart": "Start with Windows",
+    "autostartHint": "SirTone opens minimized to the tray",
+    "autostartUnavailable": "Available in the installed version"
+  },
+  "settingsHotkeys": {
+    "title": "Hotkeys",
+    "hint": "Work system-wide, even when the window is minimized",
+    "taken": "Taken by another program",
+    "action": {
+      "playPause": "Play / pause",
+      "next": "Next track",
+      "prev": "Previous track",
+      "volumeUp": "Louder",
+      "volumeDown": "Quieter",
+      "mute": "Mute"
+    },
+    "record": "Press a combination… (Esc cancels)",
+    "change": "Change the combination: {action}",
+    "duplicate": "Already used: {action}",
+    "needModifier": "Ctrl, Alt or Win is required"
+  },
+  "queue": {
+    "title": "Queue",
+    "empty": "The queue is empty — play a track or an album",
+    "now": "Now playing",
+    "next": "Next up",
+    "remove": "Remove from queue",
+    "close": "Close queue"
+  },
+  "trackMenu": {
+    "label": "Track actions",
+    "more": "More",
+    "playNext": "Play next",
+    "addToQueue": "Add to queue",
+    "addToPlaylist": "Add to playlist",
+    "toAlbum": "Go to album",
+    "toArtist": "Go to artist",
+    "share": "Copy title",
+    "remove": "Remove from library",
+    "copied": "Copied: {text}",
+    "queuedNext": "Plays next: {title}",
+    "queued": "Added to queue: {title}"
+  },
+  "updates": {
+    "auto": "Updates itself automatically",
+    "updatedTitle": "SirTone updated to {version}",
+    "updatedText": "The new version installed itself"
+  },
+  "settingsPerf": {
+    "title": "Performance",
+    "hint": "The weaker the computer, the fewer animations and effects",
+    "level": ["Very weak", "Weak", "Medium", "Powerful", "Very powerful"],
+    "uiAnimations": "Interface animations",
+    "listAnimations": "List animations",
+    "blur": "Blur and transparency"
+  },
+  "unknownScreen": {
+    "all": "All",
+    "hint": "Pick a track and say who it is — the file moves to the artist. The file itself is not changed.",
+    "assignTitle": "Assign",
+    "title": "Title",
+    "artists": "Artist",
+    "artistsHint": "Several — separated by commas",
+    "album": "Album",
+    "trackNo": "No.",
+    "year": "Year",
+    "assign": "Assign",
+    "assigned": "Moved: {title}",
+    "failed": "Could not move it — check the fields",
+    "pick": "Pick a track on the left",
+    "reason": {
+      "no_metadata": "No data",
+      "conflict": "Tags vs name",
+      "low_confidence": "Not sure",
+      "offline_pending": "Waits for network",
+      "possible_non_track": "Maybe not a track",
+      "needs_review": "Needs review",
+      "none": "No reason"
+    }
   }
 }
