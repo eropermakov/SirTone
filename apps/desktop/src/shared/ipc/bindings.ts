@@ -164,6 +164,7 @@ export const commands = {
 	 *  moved.
 	 */
 	libraryOrganize: (all: boolean) => typedError<number, AppError>(__TAURI_INVOKE("library_organize", { all })),
+	importReport: (batch: number) => typedError<ImportReport, AppError>(__TAURI_INVOKE("import_report", { batch })),
 	artistSuggestions: () => typedError<ArtistSuggestion[], AppError>(__TAURI_INVOKE("artist_suggestions")),
 	/**  «Не предлагать». */
 	artistSuggestionDismiss: (a: number, b: number) => typedError<null, AppError>(__TAURI_INVOKE("artist_suggestion_dismiss", { a, b })),
@@ -340,6 +341,8 @@ export type HotkeyStatus = {
 
 /**  Batch report (docs/05 §3.2): «Добавлено · Неизвестные · Дубли · Не добавлено». */
 export type ImportFinished = {
+	/**  For `import_report` (T3.21). */
+	batch: number,
 	added: number,
 	unknown: number,
 	duplicates: number,
@@ -355,6 +358,17 @@ export type ImportProgress = {
 	total: number,
 	/**  All source files copied and verified: the medium can be removed (docs/05 §3.2). */
 	sourcesReleased: boolean,
+};
+
+/**
+ *  The import report in full (T3.21, FR-IMP-006): added · «Неизвестные» · exact copies · not
+ *  added. Sound duplicates come later, after the analysis («Дубли», D-81).
+ */
+export type ImportReport = {
+	added: TrackItem[],
+	unknown: TrackItem[],
+	duplicates: string[],
+	rejected: RejectedItem[],
 };
 
 export type ImportStart = "started" | "rootNeeded";
@@ -507,6 +521,12 @@ export type QueueView = {
 	position: number,
 	repeat: RepeatMode,
 	shuffle: boolean,
+};
+
+export type RejectedItem = {
+	path: string,
+	/**  The reason code (`import.reason.*`). */
+	reason: string,
 };
 
 /**  FR-DATA-002: what deleting an artist takes away — for the confirmation. */

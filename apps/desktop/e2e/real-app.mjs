@@ -323,6 +323,19 @@ if (existsSync(corpus)) {
     /Добавлено 438/.test(text) && /Дубли 10/.test(text) && /Не добавлено 52/.test(text),
     text,
   );
+  // T3.21: «Подробнее» — the report in four sections.
+  await report.getByRole("button", { name: "Подробнее" }).click();
+  const full = page.getByRole("dialog", { name: "Итоги импорта" });
+  await full.getByText(/Добавлено — 4\d\d/).waitFor({ timeout: 5000 });
+  const fullText = (await full.textContent()) ?? "";
+  check(
+    "import report in full: added · «Неизвестные» · already there · not added",
+    /Добавлено — \d+/.test(fullText) &&
+      /Уже есть в медиатеке — 10/.test(fullText) &&
+      /Не добавлено — 52/.test(fullText),
+    fullText.slice(0, 160),
+  );
+  await page.keyboard.press("Escape");
   const st = await invoke("library_status", {});
   check(
     "library counters",

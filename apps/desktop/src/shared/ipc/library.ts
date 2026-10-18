@@ -7,6 +7,7 @@ import {
   type GenreItem,
   type ImportFinished,
   type ImportProgress,
+  type ImportReport,
   type LibraryStatus,
   type PageCursor,
   type PlayContext,
@@ -32,6 +33,7 @@ export type {
   ArtistPage,
   ImportFinished,
   ImportProgress,
+  ImportReport,
   LibraryStatus,
   PageCursor,
   PlayContext,
@@ -120,6 +122,12 @@ export const onRootNeeded = (cb: () => void) => listen(events.libraryRootNeeded,
 /** T3.19: files added in Explorer lie elsewhere than the layout rules say. */
 export const onOrganizeSuggested = (cb: (tracks: number) => void) =>
   listen(events.organizeSuggested, (e) => cb(e.tracks));
+
+/** The import report in full (T3.21). */
+export const importReport = async (batch: number): Promise<ImportReport> =>
+  isTauri()
+    ? unwrap(await commands.importReport(batch))
+    : { added: [], unknown: [], duplicates: [], rejected: [] };
 
 /** «Навести порядок»: the waiting files, or the whole library; returns how many moved. */
 export const organizeLibrary = async (all: boolean): Promise<number> =>

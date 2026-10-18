@@ -123,6 +123,8 @@ pub struct ImportProgress {
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Event)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportFinished {
+    /// For `import_report` (T3.21).
+    pub batch: u32,
     pub added: u32,
     pub unknown: u32,
     pub duplicates: u32,
@@ -862,6 +864,7 @@ fn import_worker(
                     reasons.sort();
                     reasons.dedup();
                     let _ = ImportFinished {
+                        batch: r.batch_id as u32,
                         added: r.added as u32,
                         unknown: r.unknown as u32,
                         duplicates: r.duplicates.len() as u32,
@@ -1330,6 +1333,43 @@ impl Library {
             .map_err(|_| AppError::new(ErrorCode::Internal).with_details("removal timed out"))?
             .map(|_| ())
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RejectedItem {
+    pub path: String,
+    /// The reason code (`import.reason.*`).
+    pub reason: String,
+}
+
+/// The import report in full (T3.21, FR-IMP-006): added · «Неизвестные» · exact copies · not
+/// added. Sound duplicates come later, after the analysis («Дубли», D-81).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportReport {
+    pub added: Vec<TrackItem>,
+    pub unknown: Vec<TrackItem>,
+    pub duplicates: Vec<String>,
+    pub rejected: Vec<RejectedItem>,
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+pub fn import_report(lib: State<'_, Library>, batch: u32) -> Result<ImportReport, AppError> {
+    lib.with_read(|c| {
+        let d = sirtone_library::import::batch_details(c, i64::from(batch))?;
+        Ok(ImportReport {
+            added: d.added.into_iter().map(track_item).collect(),
+            unknown: d.unknown.into_iter().map(track_item).collect(),
+            duplicates: d.duplicates,
+            rejected: d
+                .rejected
+                .into_iter()
+                .map(|(path, reason)| RejectedItem { path, reason })
+                .collect(),
+        })
+    })
 }
 
 /// «Навести порядок» (T3.19, FR-FS-005): the adopted files waiting for it (`all` = false) or

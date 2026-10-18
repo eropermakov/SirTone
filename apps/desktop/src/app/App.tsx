@@ -47,6 +47,7 @@ import { Toast } from "@/shared/ui/Toast";
 import { DndRoot } from "./dnd/dnd";
 import type { Open } from "./library/CollectionScreen";
 import { DuplicatesDialog } from "./library/DuplicatesDialog";
+import { ImportReportDialog } from "./library/ImportReportDialog";
 import type { GoTo } from "./library/TrackList";
 import { Onboarding, Tips } from "./onboarding/Onboarding";
 import { PlaylistScreen } from "./playlists/PlaylistScreen";
@@ -153,6 +154,7 @@ export function App() {
   // 10 minutes (the first pass over a big library finds many), the dialog on «Показать».
   const [dupsFound, setDupsFound] = useState<number | null>(null);
   const [dupsOpen, setDupsOpen] = useState(false);
+  const [reportBatch, setReportBatch] = useState<number | null>(null);
   // «Навести порядок» (T3.19): files added in Explorer, not where the rules say.
   const [organize, setOrganize] = useState<number | null>(null);
   useEffect(() => {
@@ -529,6 +531,13 @@ export function App() {
               .join(" · ")}
             closeLabel={tc("errors.close")}
             timeoutMs={10000}
+            action={{
+              label: t("importReport.more"),
+              onClick: () => {
+                setReportBatch(report.batch);
+                lib.clearReport();
+              },
+            }}
             onClose={lib.clearReport}
           />
         )}
@@ -569,6 +578,20 @@ export function App() {
         )}
         {onboard === "tips" && <Tips onClose={() => setOnboard(null)} />}
         {dupsOpen && <DuplicatesDialog onClose={() => setDupsOpen(false)} />}
+        {reportBatch !== null && (
+          <ImportReportDialog
+            batch={reportBatch}
+            onClose={() => setReportBatch(null)}
+            onUnknown={() => {
+              setReportBatch(null);
+              setScreen("unknown");
+            }}
+            onDuplicates={() => {
+              setReportBatch(null);
+              setDupsOpen(true);
+            }}
+          />
+        )}
         {smartName !== null && (
           <SmartEditor
             initial={blankDraft()}

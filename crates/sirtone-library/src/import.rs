@@ -926,3 +926,48 @@ pub fn recover(
     }
     Ok(fixed)
 }
+
+/// One import batch in detail (T3.21, FR-IMP-006 / FR-DUP-002): the four sections of the report.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct BatchDetails {
+    pub added: Vec<crate::repo::TrackRow>,
+    /// Added, but to «Неизвестные» (the identity is unsure).
+    pub unknown: Vec<crate::repo::TrackRow>,
+    /// Exact copies of what the library has: source paths.
+    pub duplicates: Vec<String>,
+    /// Not added: (source path, reason code).
+    pub rejected: Vec<(String, String)>,
+}
+
+pub fn batch_details(conn: &Connection, batch: i64) -> Result<BatchDetails, LibraryError> {
+    let mut d = BatchDetails::default();
+    let mut st = conn.prepare(&format!(
+        "SELECT {}, t.identity_state FROM import_item i JOIN track t ON t.id = i.track_id
+         LEFT JOIN album al ON al.id = t.album_id
+         WHERE i.batch_id = ?1 AND i.state = 'placed' AND t.state = 'ok' ORDER BY i.id LIMIT 1000",
+        crate::collection::TRACK_COLS
+    ))?;
+    let mut q = st.query([batch])?;
+    while let Some(r) = q.next()? {
+        let row = crate::collection::track_row(r)?;
+        if r.get::<_, String>(8)? == "unknown" {
+            d.unknown.push(row);
+        } else {
+            d.added.push(row);
+        }
+    }
+    let mut st = conn.prepare(
+        "SELECT src_path, state, coalesce(reason, '') FROM import_item
+         WHERE batch_id = ?1 AND state IN ('duplicate', 'rejected') ORDER BY id LIMIT 1000",
+    )?;
+    let mut q = st.query([batch])?;
+    while let Some(r) = q.next()? {
+        let path: String = r.get(0)?;
+        if r.get::<_, String>(1)? == "duplicate" {
+            d.duplicates.push(path);
+        } else {
+            d.rejected.push((path, r.get(2)?));
+        }
+    }
+    Ok(d)
+}

@@ -103,6 +103,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             wave::wave_season_card,
             analysis::analysis_progress,
             library::library_organize,
+            library::import_report,
             artists::artist_suggestions,
             artists::artist_suggestion_dismiss,
             artists::artists_merge,
