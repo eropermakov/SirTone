@@ -5,7 +5,7 @@
 use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::{
-    analysis, artists, autostart, bootstrap, duplicates, feedback, hotkeys, library, perf,
+    analysis, artists, autostart, bootstrap, duplicates, feedback, hotkeys, library, net, perf,
     playback, playlists, search, settings_store, storage, updates, wave, window_chrome,
 };
 
@@ -103,6 +103,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             wave::wave_season_card,
             analysis::analysis_progress,
             library::library_organize,
+            net::net_status,
             library::import_report,
             artists::artist_suggestions,
             artists::artist_suggestion_dismiss,

@@ -1329,6 +1329,25 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
   }
   rmSync(mergeDir, { recursive: true, force: true });
   await waitTracks(before + 1, 8000);
+  // T3.1: «Работать полностью офлайн» — the switch reaches the network layer at once.
+  await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
+  await page.getByRole("switch", { name: "Работать полностью офлайн" }).click();
+  let netOn = await invoke("net_status", {});
+  for (let i = 0; i < 15 && !netOn.forced; i++) {
+    await sleep(200);
+    netOn = await invoke("net_status", {});
+  }
+  await page.getByRole("switch", { name: "Работать полностью офлайн" }).click();
+  let netOff = await invoke("net_status", {});
+  for (let i = 0; i < 15 && netOff.forced; i++) {
+    await sleep(200);
+    netOff = await invoke("net_status", {});
+  }
+  check(
+    "offline switch: every request blocked while on, back when off",
+    netOn.forced && netOn.offline && !netOff.forced && settings().network?.offline_mode === false,
+    `on ${JSON.stringify(netOn)}, off ${JSON.stringify(netOff)}`,
+  );
   // T3.19: «Навести порядок во всей медиатеке» puts the Explorer file where the rules say.
   await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
   await page.getByRole("button", { name: "Навести порядок во всей медиатеке" }).click();

@@ -169,3 +169,10 @@ pub trait PcmDecoder: Send + Sync {
         sink: &mut dyn FnMut(&[f32], usize, u32) -> bool,
     ) -> Result<(), crate::error::AppError>;
 }
+
+/// Cached HTTP responses (T3.1, `03` §11): `sirtone-net` reads and writes, the library keeps
+/// them (`http_cache`). Keys are full URLs; stale entries are not returned.
+pub trait HttpCache: Send + Sync {
+    fn get(&self, key: &str, now_ms: i64) -> Option<Vec<u8>>;
+    fn put(&self, key: &str, body: &[u8], now_ms: i64, ttl_s: i64);
+}

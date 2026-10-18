@@ -13,6 +13,7 @@ mod hotkeys;
 mod ipc;
 mod journal;
 mod library;
+mod net;
 mod perf;
 mod playback;
 mod playlists;
@@ -114,6 +115,8 @@ fn main() {
             app.manage(library::Library::start(app.handle().clone(), store.clone()));
             app.manage(wave::Wave::start(app.handle().clone()));
             app.manage(artists::Merges::default());
+            let net_state = net::start(app.handle());
+            app.manage(net_state);
             analysis::start(app.handle().clone());
             match playback::Playback::start(app.handle().clone(), store) {
                 Ok(pb) => {

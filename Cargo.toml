@@ -21,6 +21,7 @@ sirtone-library = { path = "crates/sirtone-library" }
 sirtone-recognize = { path = "crates/sirtone-recognize" }
 sirtone-playback = { path = "crates/sirtone-playback" }
 sirtone-wave = { path = "crates/sirtone-wave" }
+sirtone-net = { path = "crates/sirtone-net" }
 tauri = { version = "2.12", features = [] }
 tauri-build = "2.7"
 tauri-plugin-single-instance = "2.5"
@@ -67,7 +68,7 @@ crossbeam-channel = "0.5"
 parking_lot = "0.12"
 arc-swap = "1.9"
 rayon = "1.12"
-reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "gzip"] }
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "gzip", "blocking"] }
 proptest = "1.12"
 insta = "1.49"
 criterion = "0.8"

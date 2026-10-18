@@ -13,3 +13,5 @@ workspace = true
 
 [dependencies]
 sirtone-core.workspace = true
+reqwest.workspace = true
+thiserror.workspace = true

@@ -134,6 +134,8 @@ export function SettingsScreen({
         </div>
       )}
 
+      <NetworkSection />
+
       <PerformanceSection />
 
       <StartupSection />
@@ -811,6 +813,41 @@ function OrganizeLine() {
       >
         {t("organize.all")}
       </button>
+    </div>
+  );
+}
+
+/**
+ * «Сеть» (T3.1, `03` §11): «Работать полностью офлайн» — no request leaves the computer
+ * (recognition, weather, updates); the music, the wave and the search work as before.
+ */
+function NetworkSection() {
+  const { t } = useTranslation("shell");
+  const [off, setOff] = useState(false);
+  useEffect(() => {
+    getSettings()
+      .then((s) =>
+        setOff(Boolean((s.network as { offline_mode?: boolean } | undefined)?.offline_mode)),
+      )
+      .catch(() => {});
+  }, []);
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsNet.title")}</h2>
+      <div className="flex items-center gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="t-body text-text-primary">{t("settingsNet.offline")}</span>
+          <span className="t-caption text-text-secondary">{t("settingsNet.offlineHint")}</span>
+        </div>
+        <Switch
+          checked={off}
+          label={t("settingsNet.offline")}
+          onChange={(on) => {
+            setOff(on);
+            patchSettings({ network: { offline_mode: on } }).catch(() => setOff(!on));
+          }}
+        />
+      </div>
     </div>
   );
 }

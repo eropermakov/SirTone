@@ -90,7 +90,11 @@ pub fn start(app: &AppHandle) {
                 let auto = app
                     .try_state::<std::sync::Arc<SettingsStore>>()
                     .is_none_or(|s| s.get()["updates"]["auto_check"].as_bool().unwrap_or(true));
-                if auto && last_check.is_none_or(|t| t.elapsed() >= CHECK_EVERY) {
+                // «Работать полностью офлайн» (T3.1): no request goes out, the updater's either.
+                if auto
+                    && !crate::net::offline(&app)
+                    && last_check.is_none_or(|t| t.elapsed() >= CHECK_EVERY)
+                {
                     last_check = Some(Instant::now());
                     if let Err(e) = tauri::async_runtime::block_on(check_and_download(&app)) {
                         tracing::info!(target: "sirtone::update", code = ?e.code, "update check skipped");

@@ -164,6 +164,7 @@ export const commands = {
 	 *  moved.
 	 */
 	libraryOrganize: (all: boolean) => typedError<number, AppError>(__TAURI_INVOKE("library_organize", { all })),
+	netStatus: () => __TAURI_INVOKE<NetStatus>("net_status"),
 	importReport: (batch: number) => typedError<ImportReport, AppError>(__TAURI_INVOKE("import_report", { batch })),
 	artistSuggestions: () => typedError<ArtistSuggestion[], AppError>(__TAURI_INVOKE("artist_suggestions")),
 	/**  «Не предлагать». */
@@ -409,6 +410,13 @@ export type MergeDone = {
 	token: number,
 	/**  Files that could not move now (locked or playing) — they stay valid where they are. */
 	failed: number,
+};
+
+export type NetStatus = {
+	/**  No request goes out now. */
+	offline: boolean,
+	/**  Because of the «Работать полностью офлайн» switch. */
+	forced: boolean,
 };
 
 /**  A «Никогда в волне» row in Settings. */
