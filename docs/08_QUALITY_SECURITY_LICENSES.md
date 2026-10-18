@@ -138,7 +138,7 @@
 | FFT | `rustfft` 6.4.1 · `realfft` 3.5.0 | MIT OR Apache-2.0 / MIT | ✅ | |
 | BPM/ключ | `stratum-dsp` 1.0.0 | MIT OR Apache-2.0 (GitHub: NOASSERTION — проверить LICENSE) | 🧪 S-08 | запасной вариант — собственная реализация |
 | Теги | `lofty` 0.25.4 | MIT OR Apache-2.0 | ✅ | ASF/WMA не поддерживает |
-| Отпечаток | `rusty-chromaprint` 0.3.0 | MIT | 🧪 S-06 | последний релиз 2024-10; сверять с `fpcalc` |
+| Отпечаток | `rusty-chromaprint` =0.3.0 | MIT | ✅ S-06, T3.2 | последний релиз 2024-10; паритет сжатого формата с Chromaprint (ffmpeg) — тест `fingerprint.rs`; в репозитории нет LICENSE → текст MIT в `assets/licenses/rusty-chromaprint.txt`; тянет второй `rubato` 0.16 (предупреждение `cargo deny` о дубликате) |
 | Кодировки | `encoding_rs` 0.8.42 · `chardetng` 1.0.0 | (Apache-2.0 OR MIT) AND BSD-3-Clause / Apache-2.0 OR MIT | ✅ | |
 | Строки/поиск | `strsim` 0.11.1 · `unicode-normalization` 0.1.25 · `deunicode` 1.6.2 · `rust-stemmers` 1.2.0 | MIT / MIT OR Apache / BSD-3 / MIT+BSD-3 | ✅ | `tantivy`, `symspell`, `fst` — не нужны (FTS5 хватает) |
 | БД | `rusqlite` 0.40.2 (bundled, FTS5) · `rusqlite_migration` 2.6.0 | MIT / Apache-2.0 | ✅ | `sqlx` — не берём |

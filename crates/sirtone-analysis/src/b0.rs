@@ -1,7 +1,8 @@
 //! Analysis B0 (T3.6, docs/04 §10): the fast pass over the whole file at its native rate —
 //! EBU R128 integrated loudness, true peak and LRA (`ebur128`), silence at the start and end
 //! (−60 dBFS, like Mixxx Skip Silence), a 400-point peak overview for the timeline, and the
-//! 10 Hz envelopes of the first/last 30 s (crossfades, soft intro/outro of the sleep wave).
+//! 10 Hz envelopes of the first/last 30 s (crossfades, soft intro/outro of the sleep wave) —
+//! and, in the same decode, the fingerprint of the first 120 s (T3.2, `fingerprint.rs`).
 
 use std::path::Path;
 
@@ -10,7 +11,8 @@ use sirtone_core::error::{AppError, ErrorCode};
 use sirtone_core::ports::PcmDecoder;
 
 /// Bump when the B0 algorithm changes: tracks with an older version are analysed again.
-pub const VERSION: i64 = 1;
+/// 2 — fingerprints (T3.2).
+pub const VERSION: i64 = 2;
 
 const SILENCE_DB: f32 = -60.0;
 const OVERVIEW: usize = 400;
@@ -90,9 +92,12 @@ impl Acc {
 
 pub fn analyze(dec: &dyn PcmDecoder, path: &Path) -> Result<B0, AppError> {
     let mut a = Acc::default();
+    let mut fp = crate::fingerprint::FpAcc::default();
     dec.decode(path, &mut |frames, channels, rate| {
+        fp.feed(frames, channels, rate);
         a.feed(frames, channels, rate)
     })?;
+    let fingerprint = fp.finish();
     if let Some(e) = a.failed.take() {
         return Err(AppError::new(ErrorCode::Internal).with_details(e));
     }
@@ -140,6 +145,8 @@ pub fn analyze(dec: &dyn PcmDecoder, path: &Path) -> Result<B0, AppError> {
         tail_silence_ms: tail as u64 * 100,
         env_head,
         env_tail,
+        fp_duration_ms: fingerprint.as_ref().map_or(0, |f| f.1),
+        fingerprint: fingerprint.map(|f| f.0),
     })
 }
 
@@ -210,5 +217,9 @@ mod tests {
         // After the 1 s of silence: the 3 s fade-in reads as a soft intro.
         let soft = sirtone_core::wave::soft_intro(&b.env_head[10..]).expect("long enough");
         assert!(soft > 0.3, "{soft}");
+        // The fingerprint comes from the same decode, over the whole 23 s (< 120 s).
+        let fp = b.fingerprint.as_deref().expect("fingerprinted");
+        assert_eq!(b.fp_duration_ms, 23_000);
+        assert!(crate::fingerprint::decompress(fp).is_some_and(|v| v.len() > 100));
     }
 }

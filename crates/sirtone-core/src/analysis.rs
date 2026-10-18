@@ -14,4 +14,7 @@ pub struct B0 {
     /// dB + 100 (−100…0 → 0…100), 10 Hz, first/last 30 s.
     pub env_head: Vec<u8>,
     pub env_tail: Vec<u8>,
+    /// Chromaprint of the first 120 s, compressed (T3.2); `None` when it could not be made.
+    pub fingerprint: Option<Vec<u8>>,
+    pub fp_duration_ms: u64,
 }

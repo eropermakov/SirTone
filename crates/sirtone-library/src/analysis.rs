@@ -42,7 +42,7 @@ pub fn store_b0(
     conn.execute(
         "UPDATE track SET lufs_i = ?2, true_peak_db = ?3, lra = ?4, peaks = ?5,
                 lead_silence_ms = ?6, tail_silence_ms = ?7, env_head = ?8, env_tail = ?9,
-                analysis_version = ?10, analyzed_at = ?11
+                analysis_version = ?10, analyzed_at = ?11, fingerprint = ?12, fp_duration_ms = ?13
          WHERE id = ?1",
         params![
             track,
@@ -55,7 +55,9 @@ pub fn store_b0(
             b.env_head,
             b.env_tail,
             version,
-            now_ms()
+            now_ms(),
+            b.fingerprint,
+            b.fingerprint.as_ref().map(|_| b.fp_duration_ms as i64),
         ],
     )?;
     Ok(())

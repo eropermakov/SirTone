@@ -1064,6 +1064,15 @@ if (existsSync(corpus)) {
     await sleep(1000);
     prog = await invoke("analysis_progress", {});
   }
+  // T3.2: the same pass stores fingerprints (Chromaprint, compressed).
+  let fps = 0;
+  for (let i = 0; i < 30 && fps === 0; i++) {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    fps = db.prepare("SELECT count(*) AS n FROM track WHERE fingerprint IS NOT NULL").get().n;
+    db.close();
+    if (fps === 0) await sleep(1000);
+  }
+  check("fingerprints are stored by the analysis", fps > 0, `${fps} tracks`);
   check(
     "background analysis B0 is running",
     prog.done > 0 && prog.total > 0,

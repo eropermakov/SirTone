@@ -14,3 +14,4 @@ workspace = true
 [dependencies]
 sirtone-core.workspace = true
 ebur128.workspace = true
+rusty-chromaprint.workspace = true
