@@ -22,6 +22,9 @@ const EMB: usize = 64;
 const POOL: usize = 400;
 /// Picks the MMR redundancy looks back at.
 const MMR_WINDOW: usize = 5;
+/// Seeds the stop threshold compares pairwise (evenly spread): θ stays cheap for a playlist of
+/// thousands or a whole collection played with ∞.
+const THETA_SAMPLE: usize = 64;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SimError {
@@ -350,10 +353,17 @@ impl Similar {
     /// The stop threshold θ = clamp(μ − k·σ, lo, hi) over the pairwise closeness inside the
     /// playlist (docs/04 §11); a single comparable pair or none — the lower bound.
     pub fn theta(&self, seeds: &[i64]) -> f32 {
-        let idx: Vec<usize> = seeds
+        let all: Vec<usize> = seeds
             .iter()
             .filter_map(|id| self.index.get(id).copied())
             .collect();
+        let idx: Vec<usize> = if all.len() <= THETA_SAMPLE {
+            all
+        } else {
+            (0..THETA_SAMPLE)
+                .map(|k| all[k * all.len() / THETA_SAMPLE])
+                .collect()
+        };
         let mut v = Vec::new();
         for (a, &i) in idx.iter().enumerate() {
             let p = self.point(i);
@@ -534,6 +544,21 @@ mod tests {
         let after = s.continuation(&[11, 12, 13], &minus, &[], 50);
         assert!(after.iter().all(|p| p.id != page[0].id));
         assert_eq!(after.len(), page.len() - 1);
+    }
+
+    /// A whole collection played with ∞: thousands of seeds stay fast (θ on a sample).
+    #[test]
+    fn many_seeds_stay_fast() {
+        let lib: Vec<SimTrack> = (0..6_000)
+            .map(|i| track(i + 1, i % 50, (i % 3) as usize, i as u64))
+            .collect();
+        let s = Similar::build(&lib, SimConfig::builtin().expect("config"));
+        let seeds: Vec<i64> = (1..=5_000).collect();
+        let t = std::time::Instant::now();
+        let picks = s.continuation(&seeds, &HashSet::new(), &[], 2);
+        let ms = t.elapsed().as_millis();
+        assert!(ms < 2_000, "{ms} ms");
+        assert!(picks.iter().all(|p| p.id > 5_000));
     }
 
     #[test]

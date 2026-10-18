@@ -93,7 +93,7 @@ export function QueuePanel({ onClose, trackKey }: { onClose: () => void; trackKe
                     {t("continuation.title")}
                   </div>
                 )}
-                {(current || i === q.position + 1) && !firstRecommended && (
+                {(current || i === q.position + 1) && (
                   <div className="t-group-label px-3 pt-2 pb-1 text-text-secondary">
                     {current ? t("queue.now") : t("queue.next")}
                   </div>

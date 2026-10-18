@@ -75,13 +75,21 @@ impl Continuation {
 
     /// A new context starts playing (replaces the session).
     pub fn start(&self, app: &AppHandle, origin: Origin, seeds: Vec<i64>) {
-        // A playlist continues from what it holds (not from a list the page passed).
-        let seeds = match origin {
-            Origin::Playlist(id) => app
-                .state::<Library>()
-                .with_read(|c| store::seeds(c, id))
-                .unwrap_or(seeds),
-            _ => seeds,
+        // A playlist continues from what it holds (not from a list the page passed); a smart
+        // playlist has no ∞ (D-86).
+        let (origin, seeds) = match origin {
+            Origin::Playlist(id) => {
+                let lib = app.state::<Library>();
+                if lib.with_read(|c| store::manual(c, id)).unwrap_or(false) {
+                    (
+                        origin,
+                        lib.with_read(|c| store::seeds(c, id)).unwrap_or(seeds),
+                    )
+                } else {
+                    (Origin::None, Vec::new())
+                }
+            }
+            _ => (origin, seeds),
         };
         {
             let mut s = lock(&self.session);
@@ -262,11 +270,11 @@ impl Continuation {
             lock(&self.session).exhausted = false;
             self.refresh(app);
             if !on {
-                // Apple Music ∞ off: the queued recommendations go too.
-                app.state::<Playback>()
-                    .drop_upcoming(|i| i.source == PlaySource::Hybrid);
-                let mut s = lock(&self.session);
-                s.picked.clear();
+                // Apple Music ∞ off: the queued recommendations go too; the one playing stays
+                // a pick (not offered again when ∞ comes back on).
+                let pb = app.state::<Playback>();
+                pb.drop_upcoming(|i| i.source == PlaySource::Hybrid);
+                lock(&self.session).picked = pb.played_hybrid();
             }
             app.state::<Playback>().changed();
         }

@@ -64,6 +64,17 @@ pub fn blocked(
     Ok(ids)
 }
 
+/// A manual playlist (only those have ∞; a smart one is its rules).
+pub fn manual(conn: &Connection, playlist: PlaylistId) -> Result<bool, LibraryError> {
+    Ok(conn
+        .query_row(
+            "SELECT kind = 'manual' FROM playlist WHERE id = ?1",
+            [playlist],
+            |r| r.get(0),
+        )
+        .unwrap_or(false))
+}
+
 /// ∞ of a playlist: manual playlists only (a smart one is its rules).
 pub fn hybrid(conn: &Connection, playlist: PlaylistId) -> Result<bool, LibraryError> {
     Ok(conn
