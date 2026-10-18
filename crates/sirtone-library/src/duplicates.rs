@@ -342,8 +342,15 @@ pub fn merge(conn: &mut Connection, keep: TrackId, drop: TrackId) -> Result<(), 
         ],
     )?;
     for sql in [
+        // The dropped row keeps nothing to add again: a retry after a failed file removal
+        // cannot count twice (the pair stays listed until the row is really gone — cascade).
+        "UPDATE track SET play_count = 0, skip_count = 0, last_played_at = NULL,
+                completion_ema = 0, plays_recent = NULL WHERE id = ?2 AND ?1 <> ?2",
         "UPDATE play_event SET track_id = ?1 WHERE track_id = ?2",
         "UPDATE feedback SET track_id = ?1 WHERE track_id = ?2",
+        // A playlist that had both keeps one place (the kept track's).
+        "DELETE FROM playlist_item WHERE track_id = ?2
+           AND playlist_id IN (SELECT playlist_id FROM playlist_item WHERE track_id = ?1)",
         "UPDATE playlist_item SET track_id = ?1 WHERE track_id = ?2",
         "INSERT OR IGNORE INTO track_tag(track_id, tag, value, created_at)
          SELECT ?1, tag, value, created_at FROM track_tag WHERE track_id = ?2",
@@ -353,7 +360,8 @@ pub fn merge(conn: &mut Connection, keep: TrackId, drop: TrackId) -> Result<(), 
          ON CONFLICT(track_id, year, season, daypart) DO UPDATE SET
            plays = plays + excluded.plays, skips = skips + excluded.skips,
            played_ms = played_ms + excluded.played_ms",
-        "DELETE FROM duplicate_pair WHERE a IN (?1, ?2) AND b IN (?1, ?2)",
+        "DELETE FROM play_event_rollup WHERE track_id = ?2",
+        "DELETE FROM track_tag WHERE track_id = ?2",
     ] {
         tx.execute(sql, params![keep, drop])?;
     }
@@ -375,10 +383,13 @@ pub fn merge(conn: &mut Connection, keep: TrackId, drop: TrackId) -> Result<(), 
     Ok(())
 }
 
-/// Exact copies the imports skipped (the third class of the report, `05` §6): source paths.
+/// Exact copies the latest import skipped (the third class of the report, `05` §6): source
+/// paths.
 pub fn exact_copies(conn: &Connection, limit: u32) -> Result<Vec<String>, LibraryError> {
     let mut st = conn.prepare(
-        "SELECT src_path FROM import_item WHERE state = 'duplicate' ORDER BY id DESC LIMIT ?1",
+        "SELECT src_path FROM import_item WHERE state = 'duplicate'
+           AND batch_id = (SELECT max(id) FROM import_batch)
+         ORDER BY id DESC LIMIT ?1",
     )?;
     let rows = st
         .query_map([limit], |r| r.get(0))?
@@ -558,7 +569,7 @@ mod tests {
         )
         .unwrap();
         let pl = crate::playlists::create(&c, "Мой").unwrap();
-        crate::playlists::add(&mut c, pl, &[old]).unwrap();
+        crate::playlists::add(&mut c, pl, &[old, new]).unwrap();
         c.execute(
             "INSERT INTO play_event(ts, track_id, played_ms, duration_ms, end_reason, source,
                local_minute, weekday, daypart, season_w)
@@ -595,10 +606,21 @@ mod tests {
             )
             .unwrap();
         assert_eq!(journal, 1);
-        assert_eq!(pending_count(&c).unwrap(), 0);
-        // The dropped row loses nothing more when it is removed.
+        // The file removal failed (say): the pair is still listed, and a retry does not count
+        // the plays twice.
+        assert_eq!(pending_count(&c).unwrap(), 1);
+        merge(&mut c, new, old).unwrap();
+        let plays: i64 = c
+            .query_row("SELECT play_count FROM track WHERE id = ?1", [new], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(plays, 5, "no double count on retry");
+        assert_eq!(crate::playlists::tracks(&c, pl).unwrap().len(), 1);
+        // The dropped row loses nothing more when it is removed; the pair goes with it.
         crate::repo::track_remove(&mut c, old).unwrap();
         assert!(crate::feedback::track_state(&c, new).unwrap().liked);
+        assert_eq!(pending_count(&c).unwrap(), 0);
     }
 
     /// `cargo test --release -p sirtone-library dup_crowded -- --ignored --nocapture`: one detection
