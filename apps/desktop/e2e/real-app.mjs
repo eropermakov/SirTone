@@ -873,6 +873,19 @@ if (existsSync(corpus)) {
     `offered ${offered}, inWave ${inWave}, queue ${q0.items.length} → ${q1.items.length}`,
   );
   await invoke("feedback_never", { scope: "track", id: unplayed, on: false });
+  // T3.28: learning off freezes the models (the wave still plays); «Сбросить обучение» works.
+  await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
+  await page.getByRole("switch", { name: "Учиться на прослушиваниях" }).click();
+  for (let i = 0; i < 15 && settings().wave?.learning !== false; i++) await sleep(200);
+  const frozenStart = await invoke("wave_start", {});
+  await invoke("wave_reset_learning", {});
+  await page.getByRole("switch", { name: "Учиться на прослушиваниях" }).click();
+  for (let i = 0; i < 15 && settings().wave?.learning !== true; i++) await sleep(200);
+  check(
+    "learning off: the wave still plays; reset works; the switch is saved",
+    frozenStart === 5 && settings().wave?.learning === true,
+    `start ${frozenStart}, learning ${settings().wave?.learning}`,
+  );
   // T2.14: «Хранилище» shows the service data next to the library.
   await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
   const storageInfo = await invoke("storage_info", {});

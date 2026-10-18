@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionSummary } from "@/app/library/CollectionScreen";
 import { mb } from "@/app/library/TrackCard";
-import { type NeverEntry, never, neverList } from "@/shared/ipc/feedback";
+import { type NeverEntry, never, neverList, resetLearning } from "@/shared/ipc/feedback";
 import type { LibraryStatus } from "@/shared/ipc/library";
 import { perfHardware } from "@/shared/ipc/perf";
 import { getSettings, patchSettings } from "@/shared/ipc/settings";
@@ -22,6 +22,7 @@ import { applyPerformance, profile } from "@/shared/theme/performance";
 import { ACCENT_SLUGS, type AccentSource, isPalette, type ThemePref } from "@/shared/theme/theme";
 import { Button } from "@/shared/ui/Button";
 import { Chip } from "@/shared/ui/Chip";
+import { Dialog } from "@/shared/ui/Dialog";
 import { notify } from "@/shared/ui/notify";
 import { Switch } from "@/shared/ui/Switch";
 
@@ -125,6 +126,8 @@ export function SettingsScreen({
       <StartupSection />
 
       <HotkeysSection />
+
+      <WaveLearningSection />
 
       <NeverSection />
 
@@ -623,6 +626,70 @@ export function SeasonSwitch() {
           patchSettings({ appearance: { seasonal_theme: v } }).catch(() => setOn(!v));
         }}
       />
+    </div>
+  );
+}
+
+/** «Моя волна» (FR-LEARN, docs/14 §8.4): learning on/off and «Сбросить обучение». */
+function WaveLearningSection() {
+  const { t } = useTranslation("shell");
+  const { t: tc } = useTranslation("common");
+  const [on, setOn] = useState(true);
+  const [asking, setAsking] = useState(false);
+  useEffect(() => {
+    getSettings().then((s) => {
+      const w = s.wave as { learning?: boolean } | undefined;
+      setOn(w?.learning ?? true);
+    });
+  }, []);
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsWave.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsWave.learning")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsWave.learningHint")}</div>
+          </div>
+          <Switch
+            checked={on}
+            label={t("settingsWave.learning")}
+            onChange={(v) => {
+              setOn(v);
+              patchSettings({ wave: { learning: v } }).catch(() => setOn(!v));
+            }}
+          />
+        </div>
+        <Button variant="ghost" className="self-start text-danger" onClick={() => setAsking(true)}>
+          {t("settingsWave.reset")}
+        </Button>
+      </div>
+      {asking && (
+        <Dialog
+          title={t("settingsWave.reset")}
+          closeLabel={tc("errors.close")}
+          onClose={() => setAsking(false)}
+        >
+          <p className="t-body text-text-primary">{t("settingsWave.resetQuestion")}</p>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="secondary"
+              className="text-danger"
+              onClick={() => {
+                setAsking(false);
+                resetLearning()
+                  .then(() => notify(t("settingsWave.resetDone")))
+                  .catch(() => notify(t("wave.failed")));
+              }}
+            >
+              {t("settingsWave.reset")}
+            </Button>
+            <Button variant="ghost" onClick={() => setAsking(false)}>
+              {t("trackCard.cancel")}
+            </Button>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }

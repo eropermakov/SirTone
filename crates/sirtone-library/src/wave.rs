@@ -5,11 +5,11 @@
 use std::path::Path;
 use std::sync::Mutex;
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use sirtone_core::error::{AppError, ErrorCode};
 use sirtone_core::wave::{
-    ContextSnapshot, Daypart, EndReason, FEATURES, NotNowRow, PlayEvent, PlaySource, WaveRepo,
-    WaveTrack, WeatherClass, season_w_bytes,
+    ContextSnapshot, Daypart, EndReason, FEATURES, FeedbackRow, NotNowRow, PlayEvent, PlaySource,
+    WaveRepo, WaveTrack, WeatherClass, season_w_bytes,
 };
 
 use crate::db::{self, Medium};
@@ -213,6 +213,44 @@ pub fn catalog(conn: &Connection) -> Result<Vec<WaveTrack>, LibraryError> {
     Ok(rows)
 }
 
+pub fn feedback_since(conn: &Connection, since_ms: i64) -> Result<Vec<FeedbackRow>, LibraryError> {
+    let mut st = conn.prepare(
+        "SELECT ts, track_id, artist_id, kind, ctx_key FROM feedback WHERE ts >= ?1 ORDER BY id",
+    )?;
+    let rows = st
+        .query_map([since_ms], |r| {
+            Ok(FeedbackRow {
+                ts: r.get(0)?,
+                track_id: r.get(1)?,
+                artist_id: r.get(2)?,
+                kind: r.get(3)?,
+                ctx_key: r.get(4)?,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+pub fn state(conn: &Connection, key: &str) -> Result<Option<String>, LibraryError> {
+    Ok(conn
+        .query_row("SELECT value FROM wave_state WHERE key = ?1", [key], |r| {
+            r.get(0)
+        })
+        .optional()?)
+}
+
+pub fn set_state(conn: &Connection, key: &str, value: Option<&str>) -> Result<(), LibraryError> {
+    match value {
+        Some(v) => conn.execute(
+            "INSERT INTO wave_state(key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, v],
+        )?,
+        None => conn.execute("DELETE FROM wave_state WHERE key = ?1", [key])?,
+    };
+    Ok(())
+}
+
 pub fn not_now(conn: &Connection, now_ms: i64) -> Result<Vec<NotNowRow>, LibraryError> {
     let mut st = conn.prepare(
         "SELECT track_id, ctx_key, expires_at FROM feedback
@@ -261,6 +299,30 @@ impl WaveRepo for SqliteWaveRepo {
             .lock()
             .map_err(|_| AppError::new(ErrorCode::Internal))?;
         not_now(&conn, now_ms).map_err(app_err)
+    }
+
+    fn feedback_since(&self, since_ms: i64) -> Result<Vec<FeedbackRow>, AppError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| AppError::new(ErrorCode::Internal))?;
+        feedback_since(&conn, since_ms).map_err(app_err)
+    }
+
+    fn state(&self, key: &str) -> Result<Option<String>, AppError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| AppError::new(ErrorCode::Internal))?;
+        state(&conn, key).map_err(app_err)
+    }
+
+    fn set_state(&self, key: &str, value: Option<&str>) -> Result<(), AppError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| AppError::new(ErrorCode::Internal))?;
+        set_state(&conn, key, value).map_err(app_err)
     }
 }
 

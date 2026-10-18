@@ -24,7 +24,7 @@ fn never_spacing_and_repeat_hold_over_many_rebuilds() {
     let tracks = synth::library(5_000, NOW, 0.5, 7);
     let cfg = Config::builtin().expect("assets");
     let spacing = cfg.profile.sequencing.artist_spacing;
-    let mut e = Engine::new(cfg, &tracks, NOW, 1);
+    let mut e = Engine::new(cfg, &tracks, &synth::history(&tracks, NOW), NOW, 1);
     let never: std::collections::HashSet<i64> =
         tracks.iter().filter(|t| t.never).map(|t| t.id).collect();
     let artist: std::collections::HashMap<i64, i64> =
@@ -58,7 +58,7 @@ fn slider_quotas_are_kept() {
         (1.0, [0.15, 0.15, 0.70]),
     ] {
         let cfg = Config::builtin().expect("assets");
-        let mut e = Engine::new(cfg, &tracks, NOW, 3);
+        let mut e = Engine::new(cfg, &tracks, &synth::history(&tracks, NOW), NOW, 3);
         let picks: Vec<i64> = (0..40)
             .flat_map(|_| e.next(&ctx(Daypart::Day), &[], novelty, 5, NOW))
             .collect();
@@ -93,12 +93,24 @@ fn not_now_blocks_only_in_its_bucket() {
         })
         .collect();
     let allowed: Vec<i64> = tracks.iter().take(10).map(|t| t.id).collect();
-    let mut e = Engine::new(Config::builtin().expect("assets"), &tracks, NOW, 9);
+    let mut e = Engine::new(
+        Config::builtin().expect("assets"),
+        &tracks,
+        &synth::history(&tracks, NOW),
+        NOW,
+        9,
+    );
     for id in e.next(&evening, &shelf, 0.5, 5, NOW) {
         assert!(allowed.contains(&id), "{id} was shelved for the evening");
     }
     // In the morning the shelf does not apply.
-    let mut e = Engine::new(Config::builtin().expect("assets"), &tracks, NOW, 9);
+    let mut e = Engine::new(
+        Config::builtin().expect("assets"),
+        &tracks,
+        &synth::history(&tracks, NOW),
+        NOW,
+        9,
+    );
     let morning = e.next(&ctx(Daypart::Morning), &shelf, 0.5, 5, NOW);
     assert!(morning.iter().any(|id| !allowed.contains(id)));
 }

@@ -179,6 +179,16 @@ pub struct NotNowRow {
     pub expires_ms: i64,
 }
 
+/// One stored user signal (`feedback`, docs/14 §8.1): like/unlike, never/unnever, not_now.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FeedbackRow {
+    pub ts: i64,
+    pub track_id: Option<i64>,
+    pub artist_id: Option<i64>,
+    pub kind: String,
+    pub ctx_key: Option<String>,
+}
+
 /// What the wave engine needs from storage (docs/14 §2.1). Grows with the stages that use it.
 pub trait WaveRepo: Send + Sync {
     /// Appends one event in its own transaction: a crash loses at most the event in flight.
@@ -189,6 +199,11 @@ pub trait WaveRepo: Send + Sync {
     fn catalog(&self) -> Result<Vec<WaveTrack>, AppError>;
     /// «Не сейчас» rows that have not expired at `now_ms`.
     fn not_now(&self, now_ms: i64) -> Result<Vec<NotNowRow>, AppError>;
+    /// Signals with `ts >= since_ms`, oldest first.
+    fn feedback_since(&self, since_ms: i64) -> Result<Vec<FeedbackRow>, AppError>;
+    /// Small engine state (`wave_state`): reset and freeze marks of learning.
+    fn state(&self, key: &str) -> Result<Option<String>, AppError>;
+    fn set_state(&self, key: &str, value: Option<&str>) -> Result<(), AppError>;
 }
 
 #[cfg(test)]

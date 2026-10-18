@@ -25,7 +25,8 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     };
     let t0 = Instant::now();
-    let mut e = Engine::new(cfg, &tracks, now, 1);
+    let history = synth::history(&tracks, now);
+    let mut e = Engine::new(cfg, &tracks, &history, now, 1);
     let build_ms = t0.elapsed().as_secs_f64() * 1e3;
     let ctx = ContextSnapshot {
         now_utc_ms: now,

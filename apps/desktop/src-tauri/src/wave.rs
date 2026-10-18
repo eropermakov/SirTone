@@ -12,6 +12,7 @@ use sirtone_core::wave::Clock;
 use sirtone_platform::clock::SystemClock;
 use sirtone_wave::context::ContextBuilder;
 use sirtone_wave::engine::{Config, Engine};
+use sirtone_wave::learn::History;
 use tauri::{AppHandle, Manager, State};
 
 use crate::library::Library;
@@ -84,14 +85,52 @@ fn conn<'a>(app: &AppHandle, slot: &'a mut Conn) -> Result<&'a rusqlite::Connect
 type Read = (
     Vec<sirtone_core::wave::WaveTrack>,
     Vec<sirtone_core::wave::NotNowRow>,
+    History,
 );
 
+/// `wave_state` marks of learning (T3.28, docs/14 §8.4): «learn from» (reset) and «frozen at»
+/// (learning switched off — the facts keep being written, the models stop).
+const RESET_AT: &str = "learn_reset_at";
+const FROZEN_AT: &str = "learn_frozen_at";
+
+fn learning(app: &AppHandle) -> bool {
+    app.try_state::<std::sync::Arc<SettingsStore>>()
+        .and_then(|s| s.get()["wave"]["learning"].as_bool())
+        .unwrap_or(true)
+}
+
 fn read(app: &AppHandle, slot: &mut Conn, now: i64) -> Result<Read, AppError> {
+    use sirtone_library::wave as w;
+    let learn = learning(app);
     let c = conn(app, slot)?;
-    Ok((
-        sirtone_library::wave::catalog(c)?,
-        sirtone_library::wave::not_now(c, now)?,
-    ))
+    let mark = |k: &str| -> Result<Option<i64>, AppError> {
+        Ok(w::state(c, k)?.and_then(|v| v.parse().ok()))
+    };
+    let from = mark(RESET_AT)?.unwrap_or(0);
+    let frozen = match (learn, mark(FROZEN_AT)?) {
+        (true, Some(_)) => {
+            w::set_state(c, FROZEN_AT, None)?;
+            None
+        }
+        (true, None) => None,
+        (false, Some(t)) => Some(t),
+        (false, None) => {
+            w::set_state(c, FROZEN_AT, Some(&now.to_string()))?;
+            Some(now)
+        }
+    };
+    let until = frozen.unwrap_or(i64::MAX);
+    let history = History {
+        events: w::plays_since(c, from)?
+            .into_iter()
+            .filter(|e| e.ts < until)
+            .collect(),
+        feedback: w::feedback_since(c, from)?
+            .into_iter()
+            .filter(|f| f.ts < until)
+            .collect(),
+    };
+    Ok((w::catalog(c)?, w::not_now(c, now)?, history))
 }
 
 /// The next `n` library tracks from the engine, built or refreshed from the library.
@@ -103,7 +142,7 @@ fn next_ids(
 ) -> Result<Vec<u32>, AppError> {
     let clock = SystemClock;
     let now = clock.now_utc_ms();
-    let (tracks, shelf) = match read(app, slot, now) {
+    let (tracks, shelf, history) = match read(app, slot, now) {
         Ok(v) => v,
         // A stale handle (the stick came back): reopen once.
         Err(_) => {
@@ -112,11 +151,11 @@ fn next_ids(
         }
     };
     match engine {
-        Some(e) => e.reload(&tracks, now),
+        Some(e) => e.reload(&tracks, &history, now),
         None => {
             let cfg = Config::builtin()
                 .map_err(|e| AppError::new(ErrorCode::Internal).with_details(e.to_string()))?;
-            *engine = Some(Engine::new(cfg, &tracks, now, now as u64 | 1));
+            *engine = Some(Engine::new(cfg, &tracks, &history, now, now as u64 | 1));
         }
     }
     let Some(e) = engine.as_mut() else {
@@ -176,4 +215,12 @@ pub fn wave_start(wave: State<'_, Wave>) -> Result<u32, AppError> {
         .map_err(|_| AppError::new(ErrorCode::Internal))?;
     rx.recv_timeout(Duration::from_secs(20))
         .map_err(|_| AppError::new(ErrorCode::Internal).with_details("wave start timed out"))?
+}
+
+/// «Сбросить обучение» (docs/14 §8.4): the models start over from now; the journal stays.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn wave_reset_learning(lib: State<'_, Library>) -> Result<(), AppError> {
+    let now = SystemClock.now_utc_ms();
+    lib.with_write(|c| sirtone_library::wave::set_state(c, RESET_AT, Some(&now.to_string())))
 }

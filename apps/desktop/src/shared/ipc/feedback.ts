@@ -34,3 +34,8 @@ export const primaryArtist = async (track: number): Promise<number> => {
 
 export const neverList = async (): Promise<NeverEntry[]> =>
   isTauri() ? unwrap(await commands.neverList()) : [];
+
+/** «Сбросить обучение» (docs/14 §8.4): the wave learns again from now; the journal stays. */
+export const resetLearning = async (): Promise<void> => {
+  if (isTauri()) unwrap(await commands.waveResetLearning());
+};

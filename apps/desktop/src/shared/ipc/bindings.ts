@@ -104,6 +104,8 @@ export const commands = {
 	storageClearLogs: () => typedError<number, AppError>(__TAURI_INVOKE("storage_clear_logs")),
 	/**  «Моя волна»: the engine picks and plays (returns how many tracks were queued). */
 	waveStart: () => typedError<number, AppError>(__TAURI_INVOKE("wave_start")),
+	/**  «Сбросить обучение» (docs/14 §8.4): the models start over from now; the journal stays. */
+	waveResetLearning: () => typedError<null, AppError>(__TAURI_INVOKE("wave_reset_learning")),
 	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
 	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),
 };

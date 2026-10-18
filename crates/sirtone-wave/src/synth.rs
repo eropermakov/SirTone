@@ -2,8 +2,12 @@
 //! feature correlations (energy ↔ tempo/danceability, valence ↔ major), a skewed artist
 //! distribution, history (≈ 40 % untouched), likes and «никогда» (0.2 %). Deterministic by seed.
 
-use sirtone_core::wave::{FEATURES as D, WaveTrack};
+use sirtone_core::wave::{
+    ContextSnapshot, Daypart, EndReason, FEATURES as D, FeedbackRow, PlayEvent, PlaySource,
+    WaveTrack,
+};
 
+use crate::learn::History;
 use crate::rng::Rng;
 
 const DAY_MS: i64 = 24 * 3600 * 1000;
@@ -59,4 +63,67 @@ pub fn library(n: usize, now_ms: i64, analysed: f32, seed: u64) -> Vec<WaveTrack
             }
         })
         .collect()
+}
+
+/// A journal consistent with the library: plays per `play_count` (finished), skips per
+/// `skip_count`, likes and «никогда» as signals.
+pub fn history(tracks: &[WaveTrack], now_ms: i64) -> History {
+    let mut h = History::default();
+    for t in tracks {
+        let ctx = |ts: i64| ContextSnapshot {
+            now_utc_ms: ts,
+            local_minute: 20 * 60,
+            weekday: 2,
+            daypart: Daypart::Evening,
+            season_w: [0.0, 0.0, 0.0, 1.0],
+            weather: None,
+        };
+        let last = t.last_played_ms.unwrap_or(now_ms - 400 * DAY_MS);
+        for k in 0..t.play_count {
+            let ts = last - i64::from(k) * 3 * DAY_MS;
+            h.events.push(PlayEvent {
+                ts,
+                track_id: t.id,
+                played_ms: t.duration_ms,
+                duration_ms: t.duration_ms,
+                end_reason: EndReason::Finished,
+                source: PlaySource::Wave,
+                profile: None,
+                context: ctx(ts),
+                event_id: None,
+                novelty: None,
+                category: None,
+            });
+        }
+        for k in 0..t.skip_count {
+            let ts = last - i64::from(k) * 5 * DAY_MS - 1000;
+            h.events.push(PlayEvent {
+                ts,
+                track_id: t.id,
+                played_ms: 10_000,
+                duration_ms: t.duration_ms,
+                end_reason: EndReason::Skip,
+                source: PlaySource::Wave,
+                profile: None,
+                context: ctx(ts),
+                event_id: None,
+                novelty: None,
+                category: None,
+            });
+        }
+        for (on, kind) in [(t.liked, "like"), (t.never, "never")] {
+            if on {
+                h.feedback.push(FeedbackRow {
+                    ts: last,
+                    track_id: Some(t.id),
+                    artist_id: None,
+                    kind: kind.into(),
+                    ctx_key: None,
+                });
+            }
+        }
+    }
+    h.events.sort_by_key(|e| e.ts);
+    h.feedback.sort_by_key(|f| f.ts);
+    h
 }

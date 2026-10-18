@@ -5,5 +5,6 @@ pub mod clock;
 pub mod config;
 pub mod context;
 pub mod engine;
+pub mod learn;
 pub mod rng;
 pub mod synth;

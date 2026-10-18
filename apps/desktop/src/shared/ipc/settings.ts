@@ -23,6 +23,7 @@ export type SettingsPatch = {
   hotkeys?: Record<string, string | null>;
   performance?: { level?: number; overrides?: Record<string, unknown> };
   onboarding?: { done?: boolean; tips_seen?: boolean };
+  wave?: { learning?: boolean; novelty?: number };
 };
 
 const WEB_KEY = "sirtone.web.settings";

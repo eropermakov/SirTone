@@ -89,6 +89,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             storage::storage_info,
             storage::storage_clear_logs,
             wave::wave_start,
+            wave::wave_reset_learning,
             window_chrome::window_set_theme,
         ])
         .events(collect_events![

@@ -10,6 +10,7 @@ use sirtone_core::text::norm;
 use sirtone_core::wave::{ContextSnapshot, FEATURES as D, NotNowRow, WaveTrack};
 
 use crate::context::bucket_matches;
+use crate::learn::{History, Models, ctx_levels, replay};
 use crate::rng::Rng;
 
 /// Feature indices (docs/14 §4.1).
@@ -76,7 +77,20 @@ pub struct Signals {
     pub like: f32,
     pub never: f32,
     pub skip_early: f32,
+    pub skip_mid: f32,
+    pub skip_late: f32,
+    pub manual: f32,
+    pub not_now: f32,
     pub finished: f32,
+    pub finished_new: f32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SessionCfg {
+    pub half_life_min: f32,
+    pub window_min: f32,
+    pub skip_step: f32,
+    pub like_step: f32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -94,6 +108,9 @@ pub struct EngineParams {
     pub repeat_soft_days: u32,
     pub signals: Signals,
     pub beta_half_life_days: f32,
+    /// λ = n/(n + this) for the context levels (§8.2).
+    pub context_prior_n: f32,
+    pub session: SessionCfg,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -177,8 +194,8 @@ pub struct Catalog {
     /// Multiplier for tracks without deep analysis (`floor + (1 − floor)·conf`).
     cold: Vec<f32>,
     pub artist: Vec<i64>,
-    alpha: Vec<f32>,
-    beta: Vec<f32>,
+    pub(crate) alpha: Vec<f32>,
+    pub(crate) beta: Vec<f32>,
     plays: Vec<u32>,
     pub last_played: Vec<i64>,
     added: Vec<i64>,
@@ -197,7 +214,7 @@ fn genre_group(genre: &str, groups: &[Vec<String>]) -> Option<usize> {
 }
 
 impl Catalog {
-    pub fn build(tracks: &[WaveTrack], cfg: &Config, now_ms: i64) -> Self {
+    pub fn build(tracks: &[WaveTrack], cfg: &Config) -> Self {
         let n = tracks.len();
         let e = &cfg.engine;
         // Means of the analysed features (or 0.5) stand in until a track is analysed (§4.1).
@@ -277,27 +294,15 @@ impl Catalog {
                     None => x[f::GENRE..f::GENRE + f::GENRES].copy_from_slice(&shares),
                 }
             }
-            // Beta of «отношение к треку» from the aggregates (§8.1 strengths), decaying to the
-            // prior with a 90-day half-life (§8.2). The full replay of the journal — T3.28.
-            let s = &e.signals;
-            let mut a = 1.0
-                + s.finished * t.play_count as f32 * t.completion.max(0.5)
-                + if t.liked { s.like * 3.0 } else { 0.0 };
-            let mut b = 1.0 + s.skip_early * t.skip_count as f32;
-            if let Some(last) = t.last_played_ms {
-                let days = ((now_ms - last).max(0) / DAY_MS) as f32;
-                let k = 2f32.powf(-days / e.beta_half_life_days);
-                a = 1.0 + (a - 1.0) * k;
-                b = 1.0 + (b - 1.0) * k;
-            }
             c.index.insert(t.id, c.id.len() as u32);
             c.id.push(t.id);
             c.feat.push(x);
             c.cold
                 .push(e.cold_conf_floor + (1.0 - e.cold_conf_floor) * conf);
             c.artist.push(t.artist_id);
-            c.alpha.push(a);
-            c.beta.push(b);
+            // Filled by the replay of the journal (learn.rs).
+            c.alpha.push(1.0);
+            c.beta.push(1.0);
             c.plays.push(t.play_count);
             c.last_played.push(t.last_played_ms.unwrap_or(i64::MIN / 2));
             c.added.push(t.added_ms);
@@ -333,7 +338,11 @@ impl Catalog {
         self.id.is_empty()
     }
 
-    fn idx(&self, id: i64) -> Option<usize> {
+    pub(crate) fn center(&self) -> [f32; D] {
+        self.center
+    }
+
+    pub(crate) fn idx(&self, id: i64) -> Option<usize> {
         self.index.get(&id).map(|&i| i as usize)
     }
 
@@ -418,6 +427,10 @@ impl Taste {
         self.b += 0.05 * g;
     }
 
+    pub fn mean(&self) -> &[f32; D] {
+        &self.m
+    }
+
     fn sample(&self, rng: &mut Rng, sigma: f32) -> [f32; D] {
         std::array::from_fn(|i| self.m[i] + sigma * rng.normal() / self.q[i].sqrt())
     }
@@ -455,6 +468,8 @@ pub struct Engine {
     cfg: Config,
     cat: Catalog,
     taste: Taste,
+    context: std::collections::HashMap<String, (Taste, u32)>,
+    session_vec: [f32; D],
     buf: [Vec<Scored>; 3],
     blocked: Vec<bool>,
     session: Session,
@@ -463,8 +478,14 @@ pub struct Engine {
 
 impl Engine {
     /// Builds the catalog and replays the statistics into the taste model once (§8.3 (2)).
-    pub fn new(cfg: Config, tracks: &[WaveTrack], now_ms: i64, seed: u64) -> Self {
-        let (cat, taste) = Self::learnt(&cfg, tracks, now_ms);
+    pub fn new(
+        cfg: Config,
+        tracks: &[WaveTrack],
+        history: &History,
+        now_ms: i64,
+        seed: u64,
+    ) -> Self {
+        let (cat, models) = Self::learnt(&cfg, tracks, history, now_ms);
         let n = cat.len();
         let cap = n.min(cfg.engine.top_k * 64).max(1);
         Self {
@@ -476,7 +497,9 @@ impl Engine {
             ],
             cfg,
             cat,
-            taste,
+            taste: models.taste,
+            context: models.context,
+            session_vec: models.session,
             session: Session::default(),
             rng: Rng::new(seed),
         }
@@ -484,38 +507,26 @@ impl Engine {
 
     /// Fresh statistics and signals (after plays, likes, imports), the session kept: spacing,
     /// what was already queued and the group counts carry on.
-    pub fn reload(&mut self, tracks: &[WaveTrack], now_ms: i64) {
-        let (cat, taste) = Self::learnt(&self.cfg, tracks, now_ms);
+    pub fn reload(&mut self, tracks: &[WaveTrack], history: &History, now_ms: i64) {
+        let (cat, models) = Self::learnt(&self.cfg, tracks, history, now_ms);
         self.blocked = vec![false; cat.len()];
         self.cat = cat;
-        self.taste = taste;
+        self.taste = models.taste;
+        self.context = models.context;
+        self.session_vec = models.session;
     }
 
-    fn learnt(cfg: &Config, tracks: &[WaveTrack], now_ms: i64) -> (Catalog, Taste) {
-        let cat = Catalog::build(tracks, cfg, now_ms);
-        let mut taste = Taste::default();
-        let s = &cfg.engine.signals;
-        for _ in 0..2 {
-            for (i, t) in tracks.iter().enumerate() {
-                if t.liked {
-                    taste.update(&cat.feat[i], 1.0, s.like);
-                }
-                if t.play_count > 0 {
-                    taste.update(
-                        &cat.feat[i],
-                        1.0,
-                        (s.finished * t.play_count as f32).min(1.0),
-                    );
-                }
-                if t.skip_count > t.play_count {
-                    taste.update(&cat.feat[i], 0.0, s.skip_early * 0.5);
-                }
-                if t.never {
-                    taste.update(&cat.feat[i], 0.0, s.never);
-                }
-            }
-        }
-        (cat, taste)
+    fn learnt(
+        cfg: &Config,
+        tracks: &[WaveTrack],
+        history: &History,
+        now_ms: i64,
+    ) -> (Catalog, Models) {
+        let mut cat = Catalog::build(tracks, cfg);
+        let models = replay(cfg, &cat, history, now_ms);
+        cat.alpha.clone_from(&models.alpha);
+        cat.beta.clone_from(&models.beta);
+        (cat, models)
     }
 
     pub fn catalog(&self) -> &Catalog {
@@ -591,8 +602,11 @@ impl Engine {
         let w = &cfg.profile.weights;
         // The event weight goes to taste outside an event window (§5.2); no event yet.
         let w_taste = w.taste + w.event;
-        // Components without data yet are neutral: context/session/season/filters = 0.5.
-        let neutral = 0.5 * (w.session + w.context + w.season + w.filters);
+        // Season and filters are neutral until track seasonality and «Настроить волну» (T3.30,
+        // T3.18); context and session come from the replayed journal (§8.2, §8.5).
+        let neutral = 0.5 * (w.season + w.filters);
+        let w_ctx = context_weights(&self.context, ctx, e.context_prior_n);
+        let w_sess = self.session_vec;
         let sigma = e.taste_sigma * (0.5 + novelty);
         let wt = self.taste.sample(&mut self.rng, sigma);
         let bias = self.taste.b;
@@ -630,7 +644,9 @@ impl Engine {
             }
             let x = &cat.feat[t];
             let taste = 0.6 * sigmoid(dot(&wt, x) + bias) + 0.4 * cat.mean(t);
-            let mut s = w_taste * taste + neutral;
+            let context = sigmoid(dot(&w_ctx, x));
+            let session = 0.5 + 0.5 * dot(&w_sess, x).tanh();
+            let mut s = w_taste * taste + w.context * context + w.session * session + neutral;
             let g = cat.group(t, now_ms, fam);
             if g == 2 && novelty > 0.0 {
                 let mut d2 = 0.0;
@@ -732,4 +748,22 @@ impl Engine {
         }
         None
     }
+}
+
+/// Effective context weights for a moment: Σ λₗ·mₗ over its levels, λ = n/(n + prior) (§8.2).
+fn context_weights(
+    models: &std::collections::HashMap<String, (Taste, u32)>,
+    ctx: &ContextSnapshot,
+    prior_n: f32,
+) -> [f32; D] {
+    let mut w = [0f32; D];
+    for key in ctx_levels(ctx) {
+        if let Some((m, n)) = models.get(&key) {
+            let lambda = *n as f32 / (*n as f32 + prior_n);
+            for (wi, mi) in w.iter_mut().zip(m.mean().iter()) {
+                *wi += lambda * mi;
+            }
+        }
+    }
+    w
 }
