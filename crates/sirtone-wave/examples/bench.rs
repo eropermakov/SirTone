@@ -36,6 +36,10 @@ fn main() -> ExitCode {
         season_w: [0.0, 0.0, 0.0, 1.0],
         weather: None,
     };
+    // A refill reloads the catalog; season words are cached by then (T3.30).
+    let t1 = Instant::now();
+    e.reload(&tracks, &history, now);
+    let reload_ms = t1.elapsed().as_secs_f64() * 1e3;
     let mut ms: Vec<f64> = (0..320)
         .map(|i| {
             let t = Instant::now();
@@ -48,7 +52,7 @@ fn main() -> ExitCode {
     ms.sort_by(f64::total_cmp);
     let p = |q: f64| ms[((ms.len() as f64 * q) as usize).min(ms.len() - 1)];
     println!(
-        "wave rebuild, {n} tracks: build {build_ms:.0} ms; p50 {:.2} ms, p95 {:.2} ms, max {:.2} ms (budget {BUDGET_MS} ms)",
+        "wave rebuild, {n} tracks: build {build_ms:.0} ms, reload {reload_ms:.0} ms; p50 {:.2} ms, p95 {:.2} ms, max {:.2} ms (budget {BUDGET_MS} ms)",
         p(0.5),
         p(0.95),
         p(1.0)

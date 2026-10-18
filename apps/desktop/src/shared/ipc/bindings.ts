@@ -105,14 +105,22 @@ export const commands = {
 	storageInfo: () => __TAURI_INVOKE<StorageInfo>("storage_info"),
 	/**  «Удалить старые журналы»: diagnostic logs of earlier days (the app's own files, not music). */
 	storageClearLogs: () => typedError<number, AppError>(__TAURI_INVOKE("storage_clear_logs")),
-	/**  «Моя волна»: the engine picks and plays (returns how many tracks were queued). */
-	waveStart: () => typedError<number, AppError>(__TAURI_INVOKE("wave_start")),
+	/**
+	 *  «Моя волна» or another built-in profile (`seasonal` — «Сезонная волна», FR-SEAS-003): the
+	 *  engine picks and plays (returns how many tracks were queued).
+	 */
+	waveStart: (profile: string | null) => typedError<number, AppError>(__TAURI_INVOKE("wave_start", { profile })),
 	/**  «Сбросить обучение» (docs/14 §8.4): the models start over from now; the journal stays. */
 	waveResetLearning: () => typedError<null, AppError>(__TAURI_INVOKE("wave_reset_learning")),
 	/**  «Почему этот трек» for a track of the running wave (empty outside the wave). */
 	waveWhy: (track: number) => __TAURI_INVOKE<WhyReason[]>("wave_why", { track }),
 	/**  «Знакомое ↔ Неожиданное» moved (docs/14 §9): the upcoming wave tracks follow at once. */
 	waveRetune: () => __TAURI_INVOKE<void>("wave_retune"),
+	/**
+	 *  The seasonal card's name (FR-SEAS-004, docs/14 §10.3) as an i18n key under `wave.season`:
+	 *  the season or, in a transition window, the mix («Предзимье»).
+	 */
+	waveSeasonCard: () => __TAURI_INVOKE<string>("wave_season_card"),
 	analysisProgress: () => typedError<AnalysisProgress, AppError>(__TAURI_INVOKE("analysis_progress")),
 	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
 	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),
@@ -474,9 +482,9 @@ export type UpdateStatus = {
 
 /**  One reason of «Почему этот трек» (§17); the UI words it as `wave.why.<kind>`. */
 export type WhyReason = {
-	/**  liked · genre · taste · context · session · new · forgotten */
+	/**  liked · genre · taste · context · session · new · forgotten · season */
 	kind: string,
-	/**  Genre group (0…5) or daypart code. */
+	/**  Genre group (0…5), daypart code or season (0 winter … 3 autumn). */
 	arg: number | null,
 };
 

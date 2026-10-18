@@ -12,6 +12,7 @@ use sirtone_core::wave::{ContextSnapshot, FEATURES as D, NotNowRow, WaveTrack};
 use crate::context::bucket_matches;
 use crate::learn::{History, Models, ctx_levels, replay};
 use crate::rng::Rng;
+use crate::season::{NO_SEASON, Seasonality, dominant};
 
 /// Feature indices (docs/14 §4.1).
 pub mod f {
@@ -57,6 +58,10 @@ pub struct Profile {
     pub id: String,
     pub weights: Weights,
     pub sequencing: Sequencing,
+    /// The seasonal wave (§10): tracks «убрать из сезонной» and those clearly of another
+    /// season (season score below this) are left out.
+    #[serde(default)]
+    pub season_floor: Option<f32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -127,25 +132,46 @@ pub struct Config {
     pub profile: Profile,
     pub engine: EngineParams,
     pub genres: Genres,
+    pub seasons: Seasonality,
 }
 
 #[derive(Debug, thiserror::Error)]
 #[error("wave config {file}: {source}")]
 pub struct ConfigError {
     file: &'static str,
-    source: serde_json::Error,
+    source: Box<dyn std::error::Error + Send + Sync>,
 }
+
+/// Built-in profiles (docs/14 §5): id → file.
+const PROFILES: [(&str, &str, &str); 2] = [
+    (
+        "my_wave",
+        "profiles/my_wave.json",
+        include_str!("../../../assets/wave/profiles/my_wave.json"),
+    ),
+    (
+        "seasonal",
+        "profiles/seasonal.json",
+        include_str!("../../../assets/wave/profiles/seasonal.json"),
+    ),
+];
 
 impl Config {
     /// The built-in «Моя волна» with the bundled assets.
     pub fn builtin() -> Result<Self, ConfigError> {
+        Self::builtin_profile("my_wave")
+    }
+
+    /// A built-in profile by id (`my_wave`, `seasonal`); an unknown id is «Моя волна».
+    pub fn builtin_profile(id: &str) -> Result<Self, ConfigError> {
         let parse = |file: &'static str, text: &str| -> Result<serde_json::Value, ConfigError> {
-            serde_json::from_str(text).map_err(|source| ConfigError { file, source })
+            serde_json::from_str(text).map_err(|e| ConfigError {
+                file,
+                source: Box::new(e),
+            })
         };
-        let p = parse(
-            "profiles/my_wave.json",
-            include_str!("../../../assets/wave/profiles/my_wave.json"),
-        )?;
+        let (_, file, text) = PROFILES.iter().find(|p| p.0 == id).unwrap_or(&PROFILES[0]);
+        let p = parse(file, text)?;
         let e = parse(
             "engine.json",
             include_str!("../../../assets/wave/engine.json"),
@@ -154,18 +180,19 @@ impl Config {
             "genres.json",
             include_str!("../../../assets/wave/genres.json"),
         )?;
+        let err = |file: &'static str| {
+            move |e: serde_json::Error| ConfigError {
+                file,
+                source: Box::new(e),
+            }
+        };
         Ok(Self {
-            profile: serde_json::from_value(p).map_err(|source| ConfigError {
-                file: "profiles/my_wave.json",
-                source,
-            })?,
-            engine: serde_json::from_value(e).map_err(|source| ConfigError {
-                file: "engine.json",
-                source,
-            })?,
-            genres: serde_json::from_value(g).map_err(|source| ConfigError {
-                file: "genres.json",
-                source,
+            profile: serde_json::from_value(p).map_err(err(file))?,
+            engine: serde_json::from_value(e).map_err(err("engine.json"))?,
+            genres: serde_json::from_value(g).map_err(err("genres.json"))?,
+            seasons: Seasonality::builtin().map_err(|e| ConfigError {
+                file: "seasons.json",
+                source: Box::new(e),
             })?,
         })
     }
@@ -205,6 +232,10 @@ pub struct Catalog {
     added: Vec<i64>,
     pub(crate) liked: Vec<bool>,
     pub never: Vec<bool>,
+    /// Season affinity [winter, spring, summer, autumn] (§10.2), 0.5 = says nothing.
+    pub season: Vec<[f32; 4]>,
+    /// «Убрать из сезонной» — out of the seasonal wave only.
+    pub no_season: Vec<bool>,
     center: [f32; D],
     index: std::collections::HashMap<i64, u32>,
 }
@@ -280,6 +311,8 @@ impl Catalog {
             added: Vec::with_capacity(n),
             liked: Vec::with_capacity(n),
             never: Vec::with_capacity(n),
+            season: Vec::with_capacity(n),
+            no_season: Vec::with_capacity(n),
             center: [0.0; D],
             index: std::collections::HashMap::with_capacity(n),
         };
@@ -325,6 +358,8 @@ impl Catalog {
             c.added.push(t.added_ms);
             c.liked.push(t.liked);
             c.never.push(t.never);
+            c.season.push([0.5; 4]);
+            c.no_season.push(t.season_tags & NO_SEASON != 0);
         }
         // Cold-start centre of taste: weight ∝ ln(1 + tracks of the artist) (§8.3).
         let mut per_artist = std::collections::HashMap::<i64, u32>::new();
@@ -345,6 +380,30 @@ impl Catalog {
             }
         }
         c
+    }
+
+    /// Season affinity of every track from its tags, words (cached by id — matched once per
+    /// track), the journal and the sound (§10.2). `tracks` are the ones the catalog was built from.
+    fn seasons(
+        &mut self,
+        tracks: &[WaveTrack],
+        events: &[sirtone_core::wave::PlayEvent],
+        s: &Seasonality,
+        words: &mut std::collections::HashMap<i64, [f32; 4]>,
+        now_ms: i64,
+    ) {
+        let (hist, days) = s.history(events, |id| self.idx(id), self.len(), now_ms);
+        for (i, t) in tracks.iter().enumerate() {
+            let w = *words.entry(t.id).or_insert_with(|| {
+                s.words(
+                    t.title.as_deref(),
+                    t.album.as_deref(),
+                    t.artist_name.as_deref(),
+                )
+            });
+            let feat = t.features.map(|(_, conf)| (&self.feat[i], conf));
+            self.season[i] = s.affinity(t.season_tags, &w, hist[i], days, feat);
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -493,6 +552,8 @@ pub struct Engine {
     blocked: Vec<bool>,
     session: Session,
     rng: Rng,
+    /// Season words per track id, matched once (titles rarely change; a refill reuses them).
+    words: std::collections::HashMap<i64, [f32; 4]>,
 }
 
 impl Engine {
@@ -504,7 +565,8 @@ impl Engine {
         now_ms: i64,
         seed: u64,
     ) -> Self {
-        let (cat, models) = Self::learnt(&cfg, tracks, history, now_ms);
+        let mut words = std::collections::HashMap::with_capacity(tracks.len());
+        let (cat, models) = Self::learnt(&cfg, tracks, history, &mut words, now_ms);
         let n = cat.len();
         let cap = n.min(cfg.engine.top_k * 64).max(1);
         Self {
@@ -522,13 +584,19 @@ impl Engine {
             last: Explained::default(),
             session: Session::default(),
             rng: Rng::new(seed),
+            words,
         }
+    }
+
+    /// The profile this engine plays (`my_wave`, `seasonal`).
+    pub fn profile_id(&self) -> &str {
+        &self.cfg.profile.id
     }
 
     /// Fresh statistics and signals (after plays, likes, imports), the session kept: spacing,
     /// what was already queued and the group counts carry on.
     pub fn reload(&mut self, tracks: &[WaveTrack], history: &History, now_ms: i64) {
-        let (cat, models) = Self::learnt(&self.cfg, tracks, history, now_ms);
+        let (cat, models) = Self::learnt(&self.cfg, tracks, history, &mut self.words, now_ms);
         self.blocked = vec![false; cat.len()];
         self.cat = cat;
         self.taste = models.taste;
@@ -540,9 +608,11 @@ impl Engine {
         cfg: &Config,
         tracks: &[WaveTrack],
         history: &History,
+        words: &mut std::collections::HashMap<i64, [f32; 4]>,
         now_ms: i64,
     ) -> (Catalog, Models) {
         let mut cat = Catalog::build(tracks, cfg);
+        cat.seasons(tracks, &history.events, &cfg.seasons, words, now_ms);
         let models = replay(cfg, &cat, history, now_ms);
         cat.alpha.clone_from(&models.alpha);
         cat.beta.clone_from(&models.beta);
@@ -622,9 +692,11 @@ impl Engine {
         let w = &cfg.profile.weights;
         // The event weight goes to taste outside an event window (§5.2); no event yet.
         let w_taste = w.taste + w.event;
-        // Season and filters are neutral until track seasonality and «Настроить волну» (T3.30,
-        // T3.18); context and session come from the replayed journal (§8.2, §8.5).
-        let neutral = 0.5 * (w.season + w.filters);
+        // Filters are neutral until «Настроить волну» (T3.18); context and session come from
+        // the replayed journal (§8.2, §8.5); season — Σₛ w(s)·aff(t, s) (§10).
+        let neutral = 0.5 * w.filters;
+        let sw = ctx.season_w;
+        let season_floor = cfg.profile.season_floor;
         let w_ctx = context_weights(&self.context, ctx, e.context_prior_n);
         let w_sess = self.session_vec;
         let sigma = e.taste_sigma * (0.5 + novelty);
@@ -651,7 +723,7 @@ impl Engine {
         for g in &mut self.buf {
             g.clear();
         }
-        let mut sums = [0f32; 3];
+        let mut sums = [0f32; 4];
         let mut counted = 0u32;
         let cat = &self.cat;
         let fam = &e.familiarity;
@@ -664,14 +736,26 @@ impl Engine {
             {
                 continue;
             }
+            let a = &cat.season[t];
+            let season = sw[0] * a[0] + sw[1] * a[1] + sw[2] * a[2] + sw[3] * a[3];
+            if let Some(floor) = season_floor
+                && (cat.no_season[t] || season < floor)
+            {
+                continue;
+            }
             let x = &cat.feat[t];
             let taste = 0.6 * sigmoid(dot(&wt, x) + bias) + 0.4 * cat.mean(t);
             let context = sigmoid(dot(&w_ctx, x));
             let session = 0.5 + 0.5 * dot(&w_sess, x).tanh();
-            let mut s = w_taste * taste + w.context * context + w.session * session + neutral;
+            let mut s = w_taste * taste
+                + w.context * context
+                + w.session * session
+                + w.season * season
+                + neutral;
             sums[0] += w_taste * taste;
             sums[1] += w.context * context;
             sums[2] += w.session * session;
+            sums[3] += w.season * season;
             counted += 1;
             let g = cat.group(t, now_ms, fam);
             if g == 2 && novelty > 0.0 {
@@ -701,8 +785,9 @@ impl Engine {
             bias,
             w_ctx,
             w_sess,
-            w: [w_taste, w.context, w.session],
+            w: [w_taste, w.context, w.session, w.season],
             mean: sums.map(|v| v / k),
+            season_w: sw,
             daypart: ctx.daypart as u8,
             now_ms,
         };
@@ -719,10 +804,13 @@ impl Engine {
         let taste = 0.6 * sigmoid(dot(&l.wt, x) + l.bias) + 0.4 * self.cat.mean(t);
         let context = sigmoid(dot(&l.w_ctx, x));
         let session = 0.5 + 0.5 * dot(&l.w_sess, x).tanh();
+        let a = &self.cat.season[t];
+        let season: f32 = (0..4).map(|s| l.season_w[s] * a[s]).sum();
         let mut parts = [
             (l.w[0] * taste - l.mean[0], 0usize),
             (l.w[1] * context - l.mean[1], 1),
             (l.w[2] * session - l.mean[2], 2),
+            (l.w[3] * season - l.mean[3], 3),
         ];
         parts.sort_by(|a, b| b.0.total_cmp(&a.0));
         let mut out = Vec::with_capacity(3);
@@ -731,9 +819,14 @@ impl Engine {
             1 => out.push(Why::Forgotten),
             _ => {}
         }
+        // «Подходит к сезону» only for a track that leans to the season (not a neutral 0.5).
+        let leans = a[dominant(&l.season_w)] > 0.55;
         for (delta, c) in parts {
             if out.len() >= 2 || delta <= 0.0 {
                 break;
+            }
+            if c == 3 && !leans {
+                continue;
             }
             out.push(match c {
                 0 if self.cat.liked[t] => Why::Liked,
@@ -744,7 +837,8 @@ impl Engine {
                     g.map_or(Why::Taste, |g| Why::Genre(g as u8))
                 }
                 1 => Why::Context(l.daypart),
-                _ => Why::Session,
+                2 => Why::Session,
+                _ => Why::Season(dominant(&l.season_w) as u8),
             });
         }
         if out.is_empty() {
@@ -862,6 +956,8 @@ pub enum Why {
     Session,
     NewForYou,
     Forgotten,
+    /// Fits the season (0 winter … 3 autumn).
+    Season(u8),
 }
 
 #[derive(Default)]
@@ -870,8 +966,9 @@ struct Explained {
     bias: f32,
     w_ctx: [f32; D],
     w_sess: [f32; D],
-    w: [f32; 3],
-    mean: [f32; 3],
+    w: [f32; 4],
+    mean: [f32; 4],
+    season_w: [f32; 4],
     daypart: u8,
     now_ms: i64,
 }

@@ -24,7 +24,8 @@ const FIRST: usize = 5;
 const MORE: usize = 3;
 
 enum Cmd {
-    Start(Sender<Result<u32, AppError>>),
+    /// A new wave with a profile (`my_wave`, `seasonal`).
+    Start(String, Sender<Result<u32, AppError>>),
     More,
     Why(i64, Sender<Vec<WhyReason>>),
     /// The slider moved: the upcoming wave tracks are picked again.
@@ -35,9 +36,9 @@ enum Cmd {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct WhyReason {
-    /// liked · genre · taste · context · session · new · forgotten
+    /// liked · genre · taste · context · session · new · forgotten · season
     pub kind: String,
-    /// Genre group (0…5) or daypart code.
+    /// Genre group (0…5), daypart code or season (0 winter … 3 autumn).
     pub arg: Option<u8>,
 }
 
@@ -151,6 +152,7 @@ fn next_ids(
     app: &AppHandle,
     slot: &mut Conn,
     engine: &mut Option<Engine>,
+    profile: &str,
     n: usize,
 ) -> Result<Vec<u32>, AppError> {
     let clock = SystemClock;
@@ -166,7 +168,7 @@ fn next_ids(
     match engine {
         Some(e) => e.reload(&tracks, &history, now),
         None => {
-            let cfg = Config::builtin()
+            let cfg = Config::builtin_profile(profile)
                 .map_err(|e| AppError::new(ErrorCode::Internal).with_details(e.to_string()))?;
             *engine = Some(Engine::new(cfg, &tracks, &history, now, now as u64 | 1));
         }
@@ -184,12 +186,15 @@ fn next_ids(
 fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
     let mut engine: Option<Engine> = None;
     let mut slot: Conn = None;
+    let mut profile = String::from("my_wave");
     while let Ok(cmd) = rx.recv() {
         match cmd {
-            Cmd::Start(reply) => {
+            Cmd::Start(p, reply) => {
                 // A new wave: a new session (spacing and group counts start over).
                 engine = None;
-                let r = next_ids(app, &mut slot, &mut engine, FIRST).and_then(|ids| {
+                profile = p;
+                app.state::<Playback>().set_wave_profile(&profile);
+                let r = next_ids(app, &mut slot, &mut engine, &profile, FIRST).and_then(|ids| {
                     let lib = app.state::<Library>();
                     let items = items_for(&lib, &ids, PlayContext::Wave)?;
                     let n = items.len() as u32;
@@ -214,6 +219,7 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                                 Why::Session => ("session", None),
                                 Why::NewForYou => ("new", None),
                                 Why::Forgotten => ("forgotten", None),
+                                Why::Season(s) => ("season", Some(s)),
                             };
                             WhyReason {
                                 kind: kind.into(),
@@ -229,9 +235,10 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                     let pb = app.state::<Playback>();
                     let dropped = pb.drop_upcoming_wave();
                     if dropped > 0 {
-                        match next_ids(app, &mut slot, &mut engine, dropped.max(MORE)).and_then(
-                            |ids| items_for(&app.state::<Library>(), &ids, PlayContext::Wave),
-                        ) {
+                        match next_ids(app, &mut slot, &mut engine, &profile, dropped.max(MORE))
+                            .and_then(|ids| {
+                                items_for(&app.state::<Library>(), &ids, PlayContext::Wave)
+                            }) {
                             Ok(items) if !items.is_empty() => pb.append(items),
                             Ok(_) => {}
                             Err(e) => {
@@ -243,7 +250,7 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
             }
             Cmd::More => {
                 if engine.is_some() {
-                    match next_ids(app, &mut slot, &mut engine, MORE)
+                    match next_ids(app, &mut slot, &mut engine, &profile, MORE)
                         .and_then(|ids| items_for(&app.state::<Library>(), &ids, PlayContext::Wave))
                     {
                         Ok(items) if !items.is_empty() => app.state::<Playback>().append(items),
@@ -259,13 +266,18 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
     }
 }
 
-/// «Моя волна»: the engine picks and plays (returns how many tracks were queued).
+/// «Моя волна» or another built-in profile (`seasonal` — «Сезонная волна», FR-SEAS-003): the
+/// engine picks and plays (returns how many tracks were queued).
 #[tauri::command(async)]
 #[specta::specta]
-pub fn wave_start(wave: State<'_, Wave>) -> Result<u32, AppError> {
+pub fn wave_start(wave: State<'_, Wave>, profile: Option<String>) -> Result<u32, AppError> {
+    let profile = match profile.as_deref() {
+        Some("seasonal") => "seasonal",
+        _ => "my_wave",
+    };
     let (tx, rx) = mpsc::channel();
     wave.tx
-        .send(Cmd::Start(tx))
+        .send(Cmd::Start(profile.into(), tx))
         .map_err(|_| AppError::new(ErrorCode::Internal))?;
     rx.recv_timeout(Duration::from_secs(20))
         .map_err(|_| AppError::new(ErrorCode::Internal).with_details("wave start timed out"))?
@@ -295,4 +307,13 @@ pub fn wave_why(wave: State<'_, Wave>, track: u32) -> Vec<WhyReason> {
 #[specta::specta]
 pub fn wave_retune(wave: State<'_, Wave>) {
     let _ = wave.tx.send(Cmd::Retune);
+}
+
+/// The seasonal card's name (FR-SEAS-004, docs/14 §10.3) as an i18n key under `wave.season`:
+/// the season or, in a transition window, the mix («Предзимье»).
+#[tauri::command]
+#[specta::specta]
+pub fn wave_season_card() -> String {
+    let ctx = ContextBuilder::default().snapshot(&SystemClock);
+    sirtone_wave::season::card_key(&ctx.season_w).to_owned()
 }

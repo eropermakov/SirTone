@@ -64,6 +64,14 @@ pub fn library(n: usize, now_ms: i64, analysed: f32, seed: u64) -> Vec<WaveTrack
                 lra: None,
                 soft_intro: None,
                 soft_outro: None,
+                title: Some(if i % 40 == 0 {
+                    format!("Winter Song {i}")
+                } else {
+                    format!("Track number {i}")
+                }),
+                album: Some(format!("Album {}", i / 12)),
+                artist_name: Some(format!("Artist {artist}")),
+                season_tags: 0,
             }
         })
         .collect()

@@ -910,6 +910,17 @@ if (existsSync(corpus)) {
     (settings().wave?.novelty ?? 50) <= 10 && upAfter !== upBefore && upAfter !== "",
     `novelty ${settings().wave?.novelty}`,
   );
+  // T3.30: «Сезонная волна» — named by the calendar, starts its own profile.
+  const seasonKey = await invoke("wave_season_card", {});
+  const seasonal = await invoke("wave_start", { profile: "seasonal" });
+  const sq = await invoke("queue_get", {});
+  check(
+    "seasonal wave: named by the calendar and plays",
+    ["autumn", "earlyAutumn", "preWinter", "earlyWinter", "winter"].includes(seasonKey) &&
+      seasonal === 5 &&
+      sq.items.length === 5,
+    `${seasonKey}, ${seasonal} queued`,
+  );
   // T3.28: learning off freezes the models (the wave still plays); «Сбросить обучение» works.
   await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
   await page.getByRole("switch", { name: "Учиться на прослушиваниях" }).click();

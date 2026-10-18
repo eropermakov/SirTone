@@ -140,3 +140,63 @@ fn why_explains_the_pick() {
     assert!(!liked.is_empty() && liked.len() <= 2);
     assert!(liked.contains(&Why::Liked), "{liked:?}");
 }
+
+#[test]
+fn seasonal_wave_follows_the_season() {
+    // Synthetic titles: every 40th is «Winter Song N». Retitle a set as summer and tag a few.
+    let mut tracks = synth::library(4_000, NOW, 0.0, 5);
+    for t in tracks.iter_mut().filter(|t| t.id % 40 == 20) {
+        t.title = Some(format!("Summer Days {}", t.id));
+    }
+    let winter: std::collections::HashSet<i64> = tracks
+        .iter()
+        .filter(|t| t.title.as_deref().is_some_and(|s| s.starts_with("Winter")))
+        .map(|t| t.id)
+        .collect();
+    let summer: std::collections::HashSet<i64> = tracks
+        .iter()
+        .filter(|t| t.title.as_deref().is_some_and(|s| s.starts_with("Summer")))
+        .map(|t| t.id)
+        .collect();
+    // «Убрать из сезонной» on some winter tracks.
+    let untagged: std::collections::HashSet<i64> =
+        winter.iter().copied().filter(|id| id % 80 == 0).collect();
+    for t in tracks.iter_mut().filter(|t| untagged.contains(&t.id)) {
+        t.season_tags = sirtone_wave::season::NO_SEASON;
+    }
+    let mut c = ctx(Daypart::Evening);
+    c.season_w = [1.0, 0.0, 0.0, 0.0];
+    let cfg = Config::builtin_profile("seasonal").expect("assets");
+    assert_eq!(cfg.profile.id, "seasonal");
+    let mut e = Engine::new(cfg, &tracks, &synth::history(&tracks, NOW), NOW, 3);
+    let picks = e.next(&c, &[], 0.5, 40, NOW);
+    let hits = picks.iter().filter(|id| winter.contains(id)).count();
+    assert!(
+        picks.iter().all(|id| !summer.contains(id)),
+        "summer in a winter wave"
+    );
+    assert!(
+        picks.iter().all(|id| !untagged.contains(id)),
+        "«убрать из сезонной» picked"
+    );
+    // 2.5 % of the library is winter; the seasonal wave leans on it heavily.
+    assert!(hits >= 10, "{hits} winter tracks of {}", picks.len());
+    let reasons = e.why(
+        *picks
+            .iter()
+            .find(|id| winter.contains(id))
+            .expect("a winter pick"),
+    );
+    assert!(
+        reasons.contains(&sirtone_wave::engine::Why::Season(0)),
+        "{reasons:?}"
+    );
+
+    // «Моя волна»: season weighs less; summer tracks are not excluded, only lower.
+    let cfg = Config::builtin().expect("assets");
+    assert_eq!(cfg.profile.season_floor, None);
+    let mut e = Engine::new(cfg, &tracks, &synth::history(&tracks, NOW), NOW, 3);
+    let mine = e.next(&c, &[], 0.5, 40, NOW);
+    let mine_hits = mine.iter().filter(|id| winter.contains(id)).count();
+    assert!(mine_hits < hits, "my wave {mine_hits} vs seasonal {hits}");
+}

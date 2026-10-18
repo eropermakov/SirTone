@@ -174,7 +174,14 @@ pub fn catalog(conn: &Connection) -> Result<Vec<WaveTrack>, LibraryError> {
                 t.wave_never OR coalesce((SELECT a.wave_never FROM track_artist ta
                           JOIN artist a ON a.id = ta.artist_id WHERE ta.track_id = t.id
                           ORDER BY ta.position LIMIT 1), 0),
-                tf.vec, tf.conf, t.lufs_i, t.lra, t.env_head, t.env_tail
+                tf.vec, tf.conf, t.lufs_i, t.lra, t.env_head, t.env_tail,
+                t.title, al.title,
+                (SELECT a.name FROM track_artist ta JOIN artist a ON a.id = ta.artist_id
+                 WHERE ta.track_id = t.id ORDER BY ta.position LIMIT 1),
+                coalesce((SELECT sum(CASE tg.tag WHEN 'season_winter' THEN 1 WHEN 'season_spring' THEN 2
+                          WHEN 'season_summer' THEN 4 WHEN 'season_autumn' THEN 8
+                          WHEN 'no_season' THEN 16 ELSE 0 END)
+                          FROM track_tag tg WHERE tg.track_id = t.id), 0)
          FROM track t LEFT JOIN album al ON al.id = t.album_id
          LEFT JOIN track_features tf ON tf.track_id = t.id
          WHERE t.state = 'ok'",
@@ -215,6 +222,10 @@ pub fn catalog(conn: &Connection) -> Result<Vec<WaveTrack>, LibraryError> {
                 soft_outro: r
                     .get::<_, Option<Vec<u8>>>(17)?
                     .and_then(|e| sirtone_core::wave::soft_outro(&e)),
+                title: r.get(18)?,
+                album: r.get(19)?,
+                artist_name: r.get(20)?,
+                season_tags: r.get::<_, i64>(21)?.clamp(0, 31) as u8,
             })
         })?
         .collect::<Result<_, _>>()?;

@@ -201,6 +201,12 @@ pub struct WaveTrack {
     pub lra: Option<f32>,
     pub soft_intro: Option<f32>,
     pub soft_outro: Option<f32>,
+    /// Title, album and primary artist — season words (T3.30, docs/14 §10.2).
+    pub title: Option<String>,
+    pub album: Option<String>,
+    pub artist_name: Option<String>,
+    /// Manual season tags: bit `1 << season` for `season_*`, bit 4 for `no_season`.
+    pub season_tags: u8,
 }
 
 /// «Не сейчас» still on the shelf (docs/14 §6, D-77).

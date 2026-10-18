@@ -68,6 +68,8 @@ async function mockTauri(page: Page) {
             return [];
           case "autostart_available":
             return false;
+          case "wave_season_card":
+            return "preWinter";
           case "analysis_progress":
             return { done: 0, total: 0, paused: false };
           case "update_status":

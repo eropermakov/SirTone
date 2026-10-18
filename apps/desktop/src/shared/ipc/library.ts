@@ -172,8 +172,12 @@ export const allTrackIds = async (): Promise<number[]> => {
 };
 
 /** «Моя волна» (Stage 3): the engine picks and plays; returns how many tracks were queued. */
-export const waveStart = async (): Promise<number> =>
-  isTauri() ? unwrap(await commands.waveStart()) : 0;
+export const waveStart = async (profile?: "seasonal"): Promise<number> =>
+  isTauri() ? unwrap(await commands.waveStart(profile ?? null)) : 0;
+
+/** The seasonal card's name key under `wave.season` (FR-SEAS-004). */
+export const waveSeasonCard = async (): Promise<string | null> =>
+  isTauri() ? commands.waveSeasonCard() : null;
 
 /** «Почему этот трек» for a track of the running wave (empty outside the wave). */
 export const waveWhy = async (track: number): Promise<WhyReason[]> =>

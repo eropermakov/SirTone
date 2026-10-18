@@ -35,6 +35,7 @@ import { Menu, type MenuItem } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
 import { PauseIcon, PlayIcon } from "@/shared/ui/TransportIcons";
 import { NoveltySlider } from "./NoveltySlider";
+import { SeasonWaveButton } from "./SeasonWaveButton";
 
 const NONE: TrackFeedback = { liked: false, neverTrack: false, neverArtist: false };
 
@@ -64,8 +65,8 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       .catch(() => {});
   }, [id]);
 
-  const startWave = () =>
-    waveStart()
+  const startWave = (profile?: "seasonal") =>
+    waveStart(profile)
       .then((n) => {
         if (n === 0) notify(t("wave.empty"));
       })
@@ -87,6 +88,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
             <Waves size={16} strokeWidth={1.5} />
             {t("wave.start")}
           </Button>
+          <SeasonWaveButton onStart={() => void startWave("seasonal")} />
           <Button variant="secondary" onClick={() => void shuffleAll()}>
             <Shuffle size={16} strokeWidth={1.5} />
             {t("wave.shuffleAll")}
@@ -125,11 +127,13 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       .then((rs) => {
         const days = t("wave.daypart", { returnObjects: true }) as unknown as string[];
         const genres = t("wave.genres", { returnObjects: true }) as unknown as string[];
+        const seasons = t("wave.seasonName", { returnObjects: true }) as unknown as string[];
         const text = rs
           .map((r) =>
             t(`wave.why.${r.kind}`, {
               daypart: days[r.arg ?? 0] ?? "",
               genre: genres[r.arg ?? 0] ?? "",
+              season: seasons[r.arg ?? 0] ?? "",
             }),
           )
           .join(" · ");
@@ -238,10 +242,13 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
         </button>
       </div>
       {!snap.inWave && (
-        <Button variant="secondary" onClick={() => void startWave()} className="relative">
-          <Waves size={16} strokeWidth={1.5} />
-          {t("wave.start")}
-        </Button>
+        <div className="relative flex flex-wrap justify-center gap-3">
+          <Button variant="secondary" onClick={() => void startWave()} className="relative">
+            <Waves size={16} strokeWidth={1.5} />
+            {t("wave.start")}
+          </Button>
+          <SeasonWaveButton onStart={() => void startWave("seasonal")} />
+        </div>
       )}
       <div className="relative flex items-center gap-4">
         <button

@@ -532,6 +532,11 @@ impl Playback {
         }
     }
 
+    /// The wave started with this profile (stamped on its plays in the journal).
+    pub fn set_wave_profile(&self, id: &str) {
+        self.journal.set_wave_profile(id);
+    }
+
     /// Drops every not-yet-played wave item after the current one (the slider moved).
     pub fn drop_upcoming_wave(&self) -> usize {
         let mut q = self.queue();
