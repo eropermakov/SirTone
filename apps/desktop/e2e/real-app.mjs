@@ -1091,6 +1091,30 @@ if (existsSync(corpus)) {
     prog.done > 0 && prog.total > 0,
     `${prog.done} of ${prog.total}, paused ${prog.paused}`,
   );
+  // T3.10 acceptance: analysis (B0 + fingerprint + B1) in the background causes no underrun and
+  // no UI stall — 20 s of playback while tracks are still being analysed.
+  await invoke("wave_start", {});
+  await sleep(1000);
+  const under0 = (await invoke("playback_snapshot", {})).underruns;
+  const progA = await invoke("analysis_progress", {});
+  let worstIpc = 0;
+  for (let i = 0; i < 20; i++) {
+    const t0 = performance.now();
+    await invoke("library_status", {});
+    worstIpc = Math.max(worstIpc, performance.now() - t0);
+    await sleep(1000);
+  }
+  const snapA = await invoke("playback_snapshot", {});
+  const progB = await invoke("analysis_progress", {});
+  check(
+    "analysis in the background: no underrun, IPC ≤ 100 ms while playing (T3.10)",
+    snapA.state === "playing" &&
+      snapA.underruns === under0 &&
+      worstIpc <= 100 &&
+      progB.done > progA.done,
+    `underruns ${under0} → ${snapA.underruns}, worst IPC ${worstIpc.toFixed(1)} ms, analysed ${progA.done} → ${progB.done}`,
+  );
+  await invoke("playback_toggle", {});
   // T2.4: auto-detect — hardware + WebGL benchmark → a level, saved like a manual choice.
   await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
   await page.getByRole("button", { name: "Определить автоматически" }).click();

@@ -119,6 +119,37 @@ fn play(files: &[String], volume: f32) -> ExitCode {
     code
 }
 
+/// P-11 (`08` §1, «анализ трека ≤ 2 с»): the background pass on files — B0, the fingerprint
+/// and B1 in one decode — with the time each took.
+fn analyze(files: &[String]) -> ExitCode {
+    let mut worst = 0f64;
+    for f in files {
+        let t = std::time::Instant::now();
+        match sirtone_analysis::b0::analyze(&sirtone_audio::pcm::PcmFiles, std::path::Path::new(f))
+        {
+            Ok(b) => {
+                let ms = t.elapsed().as_secs_f64() * 1e3;
+                worst = worst.max(ms);
+                println!(
+                    "{f}: {ms:.0} ms — {:.1} s, LUFS {:?}, BPM {:?}, key {:?}, fingerprint {} B",
+                    b.duration_ms as f64 / 1000.0,
+                    b.lufs_i,
+                    b.bpm,
+                    b.key_camelot,
+                    b.fingerprint.as_ref().map_or(0, Vec::len)
+                );
+            }
+            Err(e) => println!("{f}: {:?}", e.code),
+        }
+    }
+    println!("worst {worst:.0} ms (P-11: target 2000, limit 4000)");
+    if worst <= 4000.0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
@@ -172,6 +203,7 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Some("analyze") if args.len() > 1 => analyze(&args[1..]),
         Some("render") if args.len() > 1 => soak::render(&args[1..]),
         Some("soak") if args.len() > 1 => soak::soak(&args[1..]),
         Some("latency") if args.len() > 1 => soak::latency(&args[1..]),
