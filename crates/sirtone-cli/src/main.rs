@@ -208,6 +208,80 @@ fn analyze(files: &[String]) -> ExitCode {
     }
 }
 
+/// T3.14 calibration: the closeness matrix of files (same vectors as the continuation) and
+/// the stop threshold θ of the first three as a playlist.
+fn similar(files: &[String]) -> ExitCode {
+    let (Ok(tagger), Ok(rules)) = (
+        sirtone_analysis::b2::Tagger::builtin(),
+        sirtone_analysis::b3::Rules::builtin(),
+    ) else {
+        return ExitCode::FAILURE;
+    };
+    let dec = sirtone_audio::pcm::PcmFiles;
+    let mut tracks = Vec::new();
+    for (i, f) in files.iter().enumerate() {
+        let path = std::path::Path::new(f);
+        let duration_ms =
+            sirtone_analysis::b0::analyze(&dec, path, None).map_or(0, |b| b.duration_ms);
+        let deep = sirtone_analysis::b0::Deep {
+            tagger: &tagger,
+            rules: &rules,
+            duration_ms,
+        };
+        let Ok(b) = sirtone_analysis::b0::analyze(&dec, path, Some(deep)) else {
+            println!("{f}: not analysed");
+            continue;
+        };
+        tracks.push(sirtone_core::wave::SimTrack {
+            id: i as i64 + 1,
+            artist_id: i as i64 + 1,
+            play_count: 0,
+            bpm: b.bpm,
+            key_camelot: b.key_camelot,
+            vae: b.vibe.as_ref().map(|v| [v.valence, v.arousal, v.energy]),
+            embedding: b.embedding,
+        });
+        println!("{:>2} {f}", i + 1);
+    }
+    let Ok(cfg) = sirtone_wave::similar::SimConfig::builtin() else {
+        return ExitCode::FAILURE;
+    };
+    let s = sirtone_wave::similar::Similar::build(&tracks, cfg);
+    print!("   ");
+    for t in &tracks {
+        print!("{:>6}", t.id);
+    }
+    println!();
+    for a in &tracks {
+        print!("{:>2} ", a.id);
+        for b in &tracks {
+            match s.pair(a.id, b.id) {
+                Some(c) => print!("{c:>6.2}"),
+                None => print!("{:>6}", "—"),
+            }
+        }
+        println!();
+    }
+    // Playlists: SIRTONE_SEEDS="1,2,3/5,6,7" (default — the first three files).
+    let groups = std::env::var("SIRTONE_SEEDS").unwrap_or_else(|_| "1,2,3".into());
+    for g in groups.split('/') {
+        let seeds: Vec<i64> = g.split(',').filter_map(|v| v.trim().parse().ok()).collect();
+        println!("playlist {seeds:?}: θ {:.2}", s.theta(&seeds));
+        let mut close: Vec<(i64, f32)> = tracks
+            .iter()
+            .filter(|t| !seeds.contains(&t.id))
+            .filter_map(|t| s.closeness(&seeds, t.id).map(|c| (t.id, c)))
+            .collect();
+        close.sort_by(|a, b| b.1.total_cmp(&a.1));
+        let close: Vec<String> = close.iter().map(|(id, c)| format!("{id}:{c:.2}")).collect();
+        println!("  to the centre: {close:?}");
+        let picks = s.continuation(&seeds, &Default::default(), &[], 50);
+        let ids: Vec<i64> = picks.iter().map(|p| p.id).collect();
+        println!("  continuation: {ids:?}");
+    }
+    ExitCode::SUCCESS
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
@@ -262,6 +336,7 @@ fn main() -> ExitCode {
             }
         },
         Some("analyze") if args.len() > 1 => analyze(&args[1..]),
+        Some("similar") if args.len() > 1 => similar(&args[1..]),
         Some("render") if args.len() > 1 => soak::render(&args[1..]),
         Some("soak") if args.len() > 1 => soak::soak(&args[1..]),
         Some("latency") if args.len() > 1 => soak::latency(&args[1..]),

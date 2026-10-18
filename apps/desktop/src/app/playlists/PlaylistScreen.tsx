@@ -21,6 +21,7 @@ import { Dialog } from "@/shared/ui/Dialog";
 import { Menu } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
 import { Mosaic } from "./Mosaic";
+import { Recommended } from "./Recommended";
 import { jsonToDraft, type SmartDraft, SmartEditor } from "./SmartEditor";
 import { usePlaylists } from "./usePlaylists";
 
@@ -171,7 +172,7 @@ export function PlaylistScreen({
         <button
           type="button"
           disabled={ids.length === 0}
-          onClick={() => playTracks(ids, 0, "playlist")}
+          onClick={() => playTracks(ids, 0, "playlist", id)}
           className="t-body-strong flex h-(--button-height) shrink-0 items-center gap-2 rounded-full bg-accent-fill px-5 text-accent-on disabled:opacity-40"
         >
           <Play size={20} fill="currentColor" strokeWidth={1.5} />
@@ -185,7 +186,7 @@ export function PlaylistScreen({
           tracks={tracks}
           playingId={playingId}
           label={t("collection.trackList")}
-          onPlay={(i) => playTracks(ids, i, "playlist")}
+          onPlay={(i) => playTracks(ids, i, "playlist", id)}
           context="playlist"
           onGo={onGo}
           {...(smart
@@ -193,6 +194,7 @@ export function PlaylistScreen({
             : {
                 onRemoveFromList: unlist,
                 playlist: { id, positions: entries.map((e) => e.position) },
+                footer: <Recommended playlist={id} on={meta?.hybrid ?? false} version={version} />,
               })}
         />
       )}

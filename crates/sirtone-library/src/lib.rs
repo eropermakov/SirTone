@@ -4,6 +4,7 @@
 pub mod analysis;
 pub mod artists;
 pub mod collection;
+pub mod continuation;
 pub mod covers;
 pub mod db;
 pub mod duplicates;

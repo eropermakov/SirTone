@@ -31,6 +31,8 @@ pub struct PlaylistRow {
     pub covers: Vec<String>,
     /// A smart playlist (rules, read-only).
     pub smart: bool,
+    /// ∞: continues with similar tracks from the library after its own end (FR-PLS-003/005).
+    pub hybrid: bool,
 }
 
 /// An item of a playlist page: its position (the address for remove / move) and the track.
@@ -207,8 +209,8 @@ pub fn create(conn: &Connection, name: &str) -> Result<PlaylistId, LibraryError>
     let name = clean_name(name)?;
     let now = now_ms();
     conn.execute(
-        "INSERT INTO playlist(uid, name, kind, sort_order, created_at, updated_at)
-         VALUES (?1, ?2, 'manual', (SELECT coalesce(max(sort_order), 0) + 1 FROM playlist), ?3, ?3)",
+        "INSERT INTO playlist(uid, name, kind, hybrid, sort_order, created_at, updated_at)
+         VALUES (?1, ?2, 'manual', 1, (SELECT coalesce(max(sort_order), 0) + 1 FROM playlist), ?3, ?3)",
         params![uuid::Uuid::now_v7().to_string(), name, now],
     )?;
     Ok(conn.last_insert_rowid())
@@ -243,7 +245,8 @@ pub fn list(conn: &Connection) -> Result<Vec<PlaylistRow>, LibraryError> {
                 (SELECT coalesce(sum(t.duration_ms), 0) FROM playlist_item i JOIN track t ON t.id = i.track_id
                  WHERE i.playlist_id = p.id AND t.state = 'ok'),
                 (SELECT coalesce(sum(t.size_bytes), 0) FROM playlist_item i JOIN track t ON t.id = i.track_id
-                 WHERE i.playlist_id = p.id AND t.state = 'ok')
+                 WHERE i.playlist_id = p.id AND t.state = 'ok'),
+                p.hybrid = 1 AND p.kind = 'manual'
          FROM playlist p ORDER BY p.sort_order, p.id",
     )?;
     let mut rows: Vec<PlaylistRow> = st
@@ -256,6 +259,7 @@ pub fn list(conn: &Connection) -> Result<Vec<PlaylistRow>, LibraryError> {
                 bytes: r.get::<_, i64>(4)? as u64,
                 covers: Vec::new(),
                 smart: false,
+                hybrid: r.get(5)?,
             })
         })?
         .collect::<Result<_, _>>()?;

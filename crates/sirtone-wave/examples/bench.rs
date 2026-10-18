@@ -77,5 +77,59 @@ fn main() -> ExitCode {
         eprintln!("NFR-PERF-004 failed");
         return ExitCode::FAILURE;
     }
+    continuation(100_000)
+}
+
+/// T3.14: the playlist continuation on 100 000 tracks — preparing the library (once per library
+/// change) and the 20 picks of the playlist page, which opens within the UX budget (400 ms).
+fn continuation(n: usize) -> ExitCode {
+    use sirtone_core::wave::SimTrack;
+    use sirtone_wave::similar::{SimConfig, Similar};
+    const PREVIEW_BUDGET_MS: f64 = 150.0;
+    let mut s = 0x2545_f491_4f6c_dd1du64;
+    let mut next = || {
+        s ^= s << 13;
+        s ^= s >> 7;
+        s ^= s << 17;
+        s
+    };
+    let tracks: Vec<SimTrack> = (0..n)
+        .map(|i| {
+            let mut blob = (0.02f32).to_le_bytes().to_vec();
+            blob.extend((0..64).map(|_| (next() % 200) as u8));
+            SimTrack {
+                id: i as i64 + 1,
+                artist_id: (next() % 5_000) as i64,
+                play_count: (next() % 20) as u32,
+                bpm: Some(70.0 + (next() % 110) as f32),
+                key_camelot: Some(format!(
+                    "{}{}",
+                    1 + next() % 12,
+                    if next() % 2 == 0 { "A" } else { "B" }
+                )),
+                vae: Some([0.5, 0.4, 0.6]),
+                embedding: (i % 4 != 0).then_some(blob),
+            }
+        })
+        .collect();
+    let Ok(cfg) = SimConfig::builtin() else {
+        eprintln!("continuation config does not parse");
+        return ExitCode::FAILURE;
+    };
+    let t = Instant::now();
+    let sim = Similar::build(&tracks, cfg);
+    let build_ms = t.elapsed().as_secs_f64() * 1e3;
+    let seeds: Vec<i64> = (1..=25).collect();
+    let t = Instant::now();
+    let picks = sim.continuation(&seeds, &Default::default(), &[], 20);
+    let preview_ms = t.elapsed().as_secs_f64() * 1e3;
+    println!(
+        "continuation, {n} tracks: prepare {build_ms:.0} ms, 20 picks {preview_ms:.1} ms ({} found; budget {PREVIEW_BUDGET_MS} ms)",
+        picks.len()
+    );
+    if preview_ms > PREVIEW_BUDGET_MS {
+        eprintln!("continuation preview over budget");
+        return ExitCode::FAILURE;
+    }
     ExitCode::SUCCESS
 }

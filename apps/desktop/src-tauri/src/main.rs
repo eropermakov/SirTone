@@ -6,6 +6,7 @@ mod analysis;
 mod artists;
 mod autostart;
 mod bootstrap;
+mod continuation;
 mod diagnostics;
 mod duplicates;
 mod feedback;
@@ -76,6 +77,7 @@ fn main() {
         .plugin(hotkeys::plugin())
         .plugin(updates::plugin())
         .manage(updates::Updates::default())
+        .manage(continuation::Continuation::default())
         .manage(hotkeys::Hotkeys::default())
         // Covers without IPC (docs/03 §5.6); work off the main thread.
         .register_asynchronous_uri_scheme_protocol("sirtone-cover", |ctx, request, responder| {

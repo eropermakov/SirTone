@@ -50,6 +50,7 @@ export function TrackList({
   onSelect,
   onRemoveFromList,
   playlist,
+  footer,
 }: {
   tracks: TrackItem[];
   playingId: number | null;
@@ -63,6 +64,8 @@ export function TrackList({
   onRemoveFromList?: ((index: number) => void) | undefined;
   /** A playlist page: rows reorder by dragging (positions as stored). */
   playlist?: { id: number; positions: number[] } | undefined;
+  /** Below the rows, in the same scroll (the playlist's recommendations, T3.14). */
+  footer?: ReactNode;
 }) {
   const { t } = useTranslation("shell");
   const scroller = useRef<HTMLDivElement>(null);
@@ -281,6 +284,7 @@ export function TrackList({
           );
         })}
       </ul>
+      {footer}
       {menu && menuTrack && (
         <Menu
           items={items(menuTrack, menu.index)}

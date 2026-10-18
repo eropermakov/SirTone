@@ -565,6 +565,17 @@ impl Library {
     }
 
     /// Absolute paths + display data + album cover hash for track ids (in that order).
+    /// Playable tracks by id as list rows, in the given order.
+    pub fn track_items(&self, ids: &[u32]) -> Result<Vec<TrackItem>, AppError> {
+        let ids: Vec<i64> = ids.iter().map(|&i| i64::from(i)).collect();
+        self.with_read(|c| {
+            Ok(collection::tracks_by_ids(c, &ids)?
+                .into_iter()
+                .map(track_item)
+                .collect())
+        })
+    }
+
     pub fn resolve(&self, ids: &[u32]) -> Result<Vec<Resolved>, AppError> {
         let root = lock(&self.shared)
             .root

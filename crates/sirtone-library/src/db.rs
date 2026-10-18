@@ -24,6 +24,7 @@ const MIGRATIONS: &[M<'static>] = &[
     M::up(include_str!("../migrations/0003_fs.sql")),
     M::up(include_str!("../migrations/0004_dup.sql")),
     M::up(include_str!("../migrations/0005_artists.sql")),
+    M::up(include_str!("../migrations/0006_continuation.sql")),
 ];
 
 /// Current schema version (`PRAGMA user_version` and `meta.schema_version`).

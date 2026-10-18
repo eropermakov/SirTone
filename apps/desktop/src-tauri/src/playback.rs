@@ -120,6 +120,8 @@ pub struct QueueEntry {
     pub artists: Option<String>,
     pub track_id: Option<u32>,
     pub cover: Option<String>,
+    /// Added by ∞ (shown under «Рекомендовано из вашей медиатеки» with «+»/«−»).
+    pub recommended: bool,
 }
 
 /// The queue panel (FR-PLAY-006): everything, the playing position and the modes.
@@ -130,6 +132,10 @@ pub struct QueueView {
     pub position: u32,
     pub repeat: RepeatMode,
     pub shuffle: bool,
+    /// ∞ of the playing context (FR-PLS-005); `None` — not applicable (the wave, files).
+    pub autoplay: Option<bool>,
+    /// The playlist that is playing («+» adds there, ∞ is its own).
+    pub playlist: Option<u32>,
 }
 
 /// The queue changed (order, contents, modes): the panel refetches.
@@ -333,6 +339,15 @@ impl Playback {
                     && let Some(w) = wave_app.try_state::<crate::wave::Wave>()
                 {
                     w.request_more();
+                }
+                // ∞ (T3.14): a playlist or list near its end goes on with similar tracks.
+                if q.current().is_some_and(|c| c.source != PlaySource::Wave)
+                    && q.repeat() == Repeat::Off
+                    && q.len().saturating_sub(q.position() + 1) < 2
+                    && let Some(c) = wave_app.try_state::<crate::continuation::Continuation>()
+                    && c.active()
+                {
+                    c.request_more(&wave_app);
                 }
                 // End of a track with more in the context: the next one (FR-PLAY-005).
                 if s.state == PlayState::Ended
@@ -547,15 +562,16 @@ impl Playback {
 
     /// Drops every not-yet-played wave item after the current one (the slider moved).
     pub fn drop_upcoming_wave(&self) -> usize {
+        self.drop_upcoming(|i| i.source == PlaySource::Wave)
+    }
+
+    /// Drops the not-yet-played items after the current one that match.
+    pub fn drop_upcoming(&self, pred: impl Fn(&QueueItem) -> bool) -> usize {
         let mut q = self.queue();
         let pos = q.position();
         let mut n = 0;
         for at in (pos + 1..q.len()).rev() {
-            if q.items()
-                .get(at)
-                .is_some_and(|i| i.source == PlaySource::Wave)
-                && q.remove(at)
-            {
+            if q.items().get(at).is_some_and(&pred) && q.remove(at) {
                 n += 1;
             }
         }
@@ -564,6 +580,40 @@ impl Playback {
             self.queue_edited();
         }
         n
+    }
+
+    /// Recommendations up to and including the current item (the continuation goes on from
+    /// them).
+    pub fn played_hybrid(&self) -> Vec<i64> {
+        let q = self.queue();
+        q.items()
+            .iter()
+            .take(q.position() + 1)
+            .filter(|i| i.source == PlaySource::Hybrid)
+            .filter_map(|i| i.track_id.map(i64::from))
+            .collect()
+    }
+
+    /// «+»: queued recommendations of these tracks now belong to the playlist.
+    pub fn promote(&self, ids: &[u32]) {
+        let mut q = self.queue();
+        let n = q.update(|i| {
+            if i.source == PlaySource::Hybrid && i.track_id.is_some_and(|t| ids.contains(&t)) {
+                i.source = PlaySource::Playlist;
+                true
+            } else {
+                false
+            }
+        });
+        drop(q);
+        if n > 0 {
+            self.queue_edited();
+        }
+    }
+
+    /// The queue panel refetches (∞ switched).
+    pub fn changed(&self) {
+        self.queue_edited();
     }
 
     pub fn queue_remove(&self, at: usize) {
@@ -634,16 +684,27 @@ impl Playback {
                     artists: i.artists.clone(),
                     track_id: i.track_id,
                     cover: i.cover.clone(),
+                    recommended: i.source == PlaySource::Hybrid,
                 })
                 .collect(),
             position: q.position() as u32,
             repeat: q.repeat().into(),
             shuffle: q.shuffled(),
+            autoplay: None,
+            playlist: None,
         }
     }
 
-    /// Plays `items` as the new context from `start` (FR-PLAY-006: replaces the queue).
+    /// Plays `items` as the new context from `start` (FR-PLAY-006: replaces the queue). The
+    /// continuation of the previous context ends; `play_tracks` starts a new one.
     pub fn play_queue(&self, items: Vec<QueueItem>, start: usize) {
+        if let Some(c) = self
+            .app
+            .get()
+            .and_then(|a| a.try_state::<crate::continuation::Continuation>())
+        {
+            c.reset();
+        }
         self.journal.close(EndReason::Skip);
         if let Step::Play(item) = self.queue().replace(items, start) {
             self.engine.send(EngineCmd::Load {
@@ -849,6 +910,15 @@ pub(crate) fn items_for(
     ids: &[u32],
     context: PlayContext,
 ) -> Result<Vec<QueueItem>, AppError> {
+    items_with_source(lib, ids, context.into())
+}
+
+/// Library tracks as queue items stamped with their source (`play_event.source`).
+pub(crate) fn items_with_source(
+    lib: &crate::library::Library,
+    ids: &[u32],
+    source: PlaySource,
+) -> Result<Vec<QueueItem>, AppError> {
     Ok(lib
         .resolve(ids)?
         .into_iter()
@@ -858,7 +928,7 @@ pub(crate) fn items_for(
             artists: (!r.artists.is_empty()).then_some(r.artists),
             track_id: Some(r.id),
             cover: r.cover,
-            source: context.into(),
+            source,
             album_key: r.album_id.map_or(0, |v| v as u64),
             artist_key: r.artist_id.map_or(0, |v| v as u64),
         })
@@ -869,13 +939,27 @@ pub(crate) fn items_for(
 #[tauri::command(async)]
 #[specta::specta]
 pub fn play_tracks(
+    app: AppHandle,
     pb: State<'_, Playback>,
     lib: State<'_, crate::library::Library>,
     ids: Vec<u32>,
     start: u32,
     context: PlayContext,
+    playlist: Option<u32>,
 ) -> Result<(), AppError> {
+    use crate::continuation::Origin;
     pb.play_queue(items_for(&lib, &ids, context)?, start as usize);
+    // ∞ (T3.14): what the queue continues from.
+    let origin = match (context, playlist) {
+        (PlayContext::Wave, _) => Origin::None,
+        (PlayContext::Playlist, Some(id)) => Origin::Playlist(i64::from(id)),
+        (PlayContext::Playlist, None) => Origin::None,
+        _ => Origin::List,
+    };
+    if origin != Origin::None {
+        let cont = app.state::<crate::continuation::Continuation>();
+        cont.start(&app, origin, ids.iter().map(|&i| i64::from(i)).collect());
+    }
     Ok(())
 }
 
@@ -907,8 +991,17 @@ pub fn queue_append(
 
 #[tauri::command]
 #[specta::specta]
-pub fn queue_get(pb: State<'_, Playback>) -> QueueView {
-    pb.queue_view()
+pub fn queue_get(
+    app: AppHandle,
+    pb: State<'_, Playback>,
+    cont: State<'_, crate::continuation::Continuation>,
+) -> QueueView {
+    let mut v = pb.queue_view();
+    v.autoplay = cont.enabled(&app);
+    if let crate::continuation::Origin::Playlist(id) = cont.origin() {
+        v.playlist = u32::try_from(id).ok();
+    }
+    v
 }
 
 #[tauri::command]

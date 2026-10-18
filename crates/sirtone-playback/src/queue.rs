@@ -179,6 +179,20 @@ impl<T: Clone> Queue<T> {
         &self.items
     }
 
+    /// Edits items in place (also the saved unshuffled order); returns how many changed.
+    pub fn update(&mut self, mut f: impl FnMut(&mut T) -> bool) -> usize {
+        let mut n = 0;
+        for i in &mut self.items {
+            n += usize::from(f(i));
+        }
+        if let Some(u) = self.unshuffled.as_mut() {
+            for i in u {
+                f(i);
+            }
+        }
+        n
+    }
+
     pub fn shuffled(&self) -> bool {
         self.unshuffled.is_some()
     }

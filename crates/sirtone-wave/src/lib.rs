@@ -9,4 +9,5 @@ pub mod learn;
 pub mod query;
 pub mod rng;
 pub mod season;
+pub mod similar;
 pub mod synth;

@@ -101,9 +101,17 @@ export const dismissQuestion = (): void => {
   if (isTauri()) void commands.libraryDismissQuestion();
 };
 
-/** Plays `ids` as one context from `start` (FR-PLAY-006); `context` goes to the journal. */
-export const playTracks = (ids: number[], start: number, context: PlayContext): void => {
-  if (isTauri()) void commands.playTracks(ids, start, context);
+/**
+ * Plays `ids` as one context from `start` (FR-PLAY-006); `context` goes to the journal.
+ * `playlist` — the playlist being played: its ∞ continues it (T3.14).
+ */
+export const playTracks = (
+  ids: number[],
+  start: number,
+  context: PlayContext,
+  playlist: number | null = null,
+): void => {
+  if (isTauri()) void commands.playTracks(ids, start, context, playlist);
 };
 
 type Off = () => void;

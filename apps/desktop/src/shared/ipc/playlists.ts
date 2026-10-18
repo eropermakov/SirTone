@@ -1,5 +1,11 @@
 import { isTauri } from "@tauri-apps/api/core";
-import { commands, events, type PlaylistEntry, type PlaylistItem } from "./bindings";
+import {
+  commands,
+  events,
+  type PlaylistEntry,
+  type PlaylistItem,
+  type TrackItem,
+} from "./bindings";
 
 export type { PlaylistEntry, PlaylistItem };
 
@@ -71,6 +77,24 @@ export const smartRefresh = async (id: number): Promise<void> => {
 export const smartSaveAsManual = async (id: number, name: string): Promise<number> => {
   if (!isTauri()) throw new Error("no library outside Tauri");
   return unwrap(await commands.smartSaveAsManual(id, name));
+};
+
+/**
+ * Playlist continuation ∞ (T3.14, FR-PLS-003/005): the recommended tracks under a playlist,
+ * the switch (a playlist's own, or `null` — albums and other lists) and «−».
+ */
+export const continuationPreview = async (playlist: number): Promise<TrackItem[]> =>
+  isTauri() ? unwrap(await commands.continuationPreview(playlist)) : [];
+
+export const continuationSet = async (playlist: number | null, on: boolean): Promise<void> => {
+  if (isTauri()) unwrap(await commands.continuationSet(playlist, on));
+};
+
+export const continuationExclude = async (
+  playlist: number | null,
+  track: number,
+): Promise<void> => {
+  if (isTauri()) unwrap(await commands.continuationExclude(playlist, track));
 };
 
 export const onPlaylistsChanged = async (cb: (id: number) => void): Promise<() => void> =>

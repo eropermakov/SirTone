@@ -18,12 +18,18 @@ export const commands = {
 	playbackNext: () => __TAURI_INVOKE<void>("playback_next"),
 	playbackPrev: () => __TAURI_INVOKE<void>("playback_prev"),
 	/**  Plays library tracks `ids` as one context starting at `start` (double-click in a list). */
-	playTracks: (ids: number[], start: number, context: PlayContext) => typedError<null, AppError>(__TAURI_INVOKE("play_tracks", { ids, start, context })),
+	playTracks: (ids: number[], start: number, context: PlayContext, playlist: number | null) => typedError<null, AppError>(__TAURI_INVOKE("play_tracks", { ids, start, context, playlist })),
 	/**  «Воспроизвести далее» (FR-PLAY-006). */
 	queuePlayNext: (ids: number[], context: PlayContext) => typedError<null, AppError>(__TAURI_INVOKE("queue_play_next", { ids, context })),
 	/**  «В конец очереди». */
 	queueAppend: (ids: number[], context: PlayContext) => typedError<null, AppError>(__TAURI_INVOKE("queue_append", { ids, context })),
 	queueGet: () => __TAURI_INVOKE<QueueView>("queue_get"),
+	/**  The recommendations under a playlist (FR-PLS-003): empty with ∞ off or nothing close. */
+	continuationPreview: (playlist: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("continuation_preview", { playlist })),
+	/**  ∞ on/off: a playlist's own, or (no playlist) the one for albums and other lists. */
+	continuationSet: (playlist: number | null, on: boolean) => typedError<null, AppError>(__TAURI_INVOKE("continuation_set", { playlist, on })),
+	/**  «−» on a recommended track. */
+	continuationExclude: (playlist: number | null, track: number) => typedError<null, AppError>(__TAURI_INVOKE("continuation_exclude", { playlist, track })),
 	queueRemove: (index: number) => __TAURI_INVOKE<void>("queue_remove", { index }),
 	queueMove: (from: number, to: number) => __TAURI_INVOKE<void>("queue_move", { from, to }),
 	queueJump: (index: number) => __TAURI_INVOKE<void>("queue_jump", { index }),
@@ -502,6 +508,8 @@ export type PlaylistItem = {
 	covers: string[],
 	/**  A smart playlist: rules, read-only (no add / remove / move). */
 	smart: boolean,
+	/**  ∞: continues with similar tracks from the library (FR-PLS-003/005). */
+	hybrid: boolean,
 };
 
 /**  Playlists were created, renamed, deleted or edited. */
@@ -521,6 +529,8 @@ export type QueueEntry = {
 	artists: string | null,
 	trackId: number | null,
 	cover: string | null,
+	/**  Added by ∞ (shown under «Рекомендовано из вашей медиатеки» with «+»/«−»). */
+	recommended: boolean,
 };
 
 /**  The queue panel (FR-PLAY-006): everything, the playing position and the modes. */
@@ -529,6 +539,10 @@ export type QueueView = {
 	position: number,
 	repeat: RepeatMode,
 	shuffle: boolean,
+	/**  ∞ of the playing context (FR-PLS-005); `None` — not applicable (the wave, files). */
+	autoplay: boolean | null,
+	/**  The playlist that is playing («+» adds there, ∞ is its own). */
+	playlist: number | null,
 };
 
 export type RejectedItem = {

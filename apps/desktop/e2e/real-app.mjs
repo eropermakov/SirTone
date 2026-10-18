@@ -1389,6 +1389,122 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
   }
   rmSync(mergeDir, { recursive: true, force: true });
   await waitTracks(before + 1, 8000);
+  // AT-07 (T3.14): a playlist of three analysed tracks → similar ones under the divider, «−»
+  // never comes back, «+» moves a track into the playlist, ∞ continues the queue with
+  // recommendations (journal source «hybrid»), ∞ off ends it. The stop when nothing is close
+  // enough is proven on constructed vectors (`sirtone-wave` similar::tests).
+  const analysed = async () => {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    try {
+      return db
+        .prepare("SELECT id FROM track WHERE state = 'ok' AND embedding IS NOT NULL ORDER BY id")
+        .all()
+        .map((r) => r.id);
+    } finally {
+      db.close();
+    }
+  };
+  let withEmb = await analysed();
+  for (let i = 0; i < 120 && withEmb.length < 8; i++) {
+    await sleep(1000);
+    withEmb = await analysed();
+  }
+  const at07 = await invoke("playlist_create", { name: "AT-07" });
+  const seeds07 = withEmb.slice(0, 3);
+  await invoke("playlist_add", { id: at07, tracks: seeds07 });
+  const pre1 = await invoke("continuation_preview", { playlist: at07 });
+  const recIds = pre1.map((x) => x.id);
+  const minusId = recIds[0];
+  const plusId = recIds[1];
+  if (minusId !== undefined) {
+    await invoke("continuation_exclude", { playlist: at07, track: minusId });
+  }
+  if (plusId !== undefined) await invoke("playlist_add", { id: at07, tracks: [plusId] });
+  const pre2 = (await invoke("continuation_preview", { playlist: at07 })).map((x) => x.id);
+  const inList = (await invoke("playlist_tracks", { id: at07 })).map((e) => e.track.id);
+  check(
+    "AT-07: similar tracks under the divider; «−» never returns; «+» moves into the playlist",
+    recIds.length >= 2 &&
+      recIds.every((x) => !seeds07.includes(x)) &&
+      !pre2.includes(minusId) &&
+      !pre2.includes(plusId) &&
+      inList.includes(plusId),
+    `analysed ${withEmb.length}, preview ${JSON.stringify(recIds)} → ${JSON.stringify(pre2)}, playlist ${JSON.stringify(inList)}`,
+  );
+  // The page: the divider with ∞ and the rows with «+»/«−» in the same scroll.
+  await page.getByRole("navigation").getByRole("button", { name: "AT-07" }).click();
+  const recSection = page.getByRole("region", { name: "Рекомендовано из вашей медиатеки" });
+  await recSection.waitFor({ timeout: 5000 }).catch(() => {});
+  const recRows = recSection.locator("[data-recommended]");
+  for (let i = 0; i < 20 && (await recRows.count()) === 0; i++) await sleep(250);
+  const rowsBefore = await recRows.count();
+  const infPressed = await recSection
+    .getByRole("button", { name: "Продолжать похожими (∞)" })
+    .getAttribute("aria-pressed");
+  if (process.env.SMOKE_SHOTS) {
+    await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "at07-playlist.png") });
+  }
+  const firstRec = await recRows.first().getAttribute("data-recommended");
+  await recRows.first().hover();
+  await recRows.first().getByRole("button", { name: "Не предлагать" }).click();
+  let rowsAfter = await recRows.count();
+  for (let i = 0; i < 10 && rowsAfter === rowsBefore; i++) {
+    await sleep(200);
+    rowsAfter = await recRows.count();
+  }
+  const preUi = (await invoke("continuation_preview", { playlist: at07 })).map((x) => x.id);
+  check(
+    "AT-07 UI: «Рекомендовано из вашей медиатеки» with ∞ on; «−» on a row removes it for good",
+    rowsBefore >= 2 &&
+      infPressed === "true" &&
+      rowsAfter === rowsBefore - 1 &&
+      !preUi.includes(Number(firstRec)),
+    `rows ${rowsBefore} → ${rowsAfter}, ∞ ${infPressed}, removed ${firstRec}`,
+  );
+  // Play the playlist from its last track: ∞ appends recommendations behind it.
+  await invoke("play_tracks", {
+    ids: inList,
+    start: inList.length - 1,
+    context: "playlist",
+    playlist: at07,
+  });
+  let q07 = await invoke("queue_get", {});
+  for (let i = 0; i < 40 && !q07.items.some((x) => x.recommended); i++) {
+    await sleep(250);
+    q07 = await invoke("queue_get", {});
+  }
+  const recQueued = q07.items.filter((x) => x.recommended).map((x) => x.trackId);
+  check(
+    "AT-07: ∞ continues the playlist with recommendations (not «−», not the playlist's own)",
+    q07.autoplay === true &&
+      q07.playlist === at07 &&
+      recQueued.length >= 1 &&
+      q07.items.findIndex((x) => x.recommended) === inList.length &&
+      recQueued.every((x) => x !== minusId && !inList.includes(x)),
+    `autoplay ${q07.autoplay}, queue ${JSON.stringify(q07.items.map((x) => [x.trackId, x.recommended]))}`,
+  );
+  // Into the first recommendation and on: its play is journalled as «hybrid».
+  await invoke("playback_next", {});
+  await sleep(1500);
+  await invoke("playback_next", {});
+  let hybridPlays = [];
+  for (let i = 0; i < 20 && hybridPlays.length === 0; i++) {
+    await sleep(250);
+    hybridPlays = readJournal().filter((r) => r.source === "hybrid");
+  }
+  // ∞ off: the queued recommendations go, the queue ends after the playlist.
+  await invoke("continuation_set", { playlist: at07, on: false });
+  const qOff = await invoke("queue_get", {});
+  const pos = qOff.position;
+  check(
+    "AT-07: a recommendation plays as «hybrid»; ∞ off drops the upcoming ones",
+    hybridPlays.length >= 1 &&
+      qOff.autoplay === false &&
+      !qOff.items.slice(pos + 1).some((x) => x.recommended),
+    `hybrid plays ${hybridPlays.length}, after off ${JSON.stringify(qOff.items.slice(pos).map((x) => x.recommended))}`,
+  );
+  const snap07 = await invoke("playback_snapshot", {});
+  if (snap07.state === "playing") await invoke("playback_toggle", {});
   // T3.1: «Работать полностью офлайн» — the switch reaches the network layer at once.
   await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
   await page.getByRole("switch", { name: "Работать полностью офлайн" }).click();

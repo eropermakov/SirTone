@@ -164,6 +164,9 @@ pub struct Playback {
     pub eq: Eq,
     pub output: Output,
     pub duck: Duck,
+    /// ∞ after an album, artist, collection or search list (FR-PLS-005: off by default;
+    /// playlists keep their own ∞).
+    pub autoplay_albums: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -565,6 +568,7 @@ impl Default for Playback {
             eq: Eq::default(),
             output: Output::default(),
             duck: Duck::default(),
+            autoplay_albums: false,
         }
     }
 }

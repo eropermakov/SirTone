@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use sirtone_core::error::AppError;
 use sirtone_library::playlists;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
 
 use crate::library::{Library, TrackItem, track_item};
@@ -23,6 +23,8 @@ pub struct PlaylistItem {
     pub covers: Vec<String>,
     /// A smart playlist: rules, read-only (no add / remove / move).
     pub smart: bool,
+    /// ∞: continues with similar tracks from the library (FR-PLS-003/005).
+    pub hybrid: bool,
 }
 
 /// A playlist page row: the position addresses remove / move (a track may repeat).
@@ -41,7 +43,7 @@ pub struct PlaylistsChanged {
     pub id: u32,
 }
 
-fn changed(app: &AppHandle, id: u32) {
+pub(crate) fn changed(app: &AppHandle, id: u32) {
     let _ = PlaylistsChanged { id }.emit(app);
 }
 
@@ -63,6 +65,7 @@ pub fn playlists_list(lib: State<'_, Library>) -> Result<Vec<PlaylistItem>, AppE
                 bytes: p.bytes as f64,
                 covers: p.covers,
                 smart: p.smart,
+                hybrid: p.hybrid,
             })
             .collect())
     })
@@ -214,6 +217,10 @@ pub fn playlist_add(
     tracks: Vec<u32>,
 ) -> Result<u32, AppError> {
     let n = lib.with_write(|c| playlists::add(c, i64::from(id), &ids(&tracks)))?;
+    // «+» on a recommendation: the playing playlist grows (T3.14).
+    if let Some(c) = app.try_state::<crate::continuation::Continuation>() {
+        c.playlist_changed(&app, i64::from(id), &tracks);
+    }
     changed(&app, id);
     Ok(n)
 }

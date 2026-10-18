@@ -1,6 +1,7 @@
 //! Collection read API (T1.25, FR-LIB-001/002/005): keyset pages of 100 and counters for the
 //! Collection screens. Budget P-08: a page ≤ 10 ms on 100 000 tracks (S-15: 0.9 ms).
 
+use rusqlite::OptionalExtension;
 use rusqlite::{Connection, params};
 use sirtone_core::text::norm;
 
@@ -144,6 +145,21 @@ pub(crate) fn track_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<TrackRow> {
         album_id: r.get(6)?,
         artist_id: r.get(7)?,
     })
+}
+
+/// Playable tracks by id, in the order given (recommendations, T3.14).
+pub fn tracks_by_ids(conn: &Connection, ids: &[i64]) -> Result<Vec<TrackRow>, LibraryError> {
+    let mut st = conn.prepare_cached(&format!(
+        "SELECT {TRACK_COLS} FROM track t LEFT JOIN album al ON al.id = t.album_id
+         WHERE t.id = ?1 AND t.state = 'ok'"
+    ))?;
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        if let Some(r) = st.query_row([id], track_row).optional()? {
+            out.push(r);
+        }
+    }
+    Ok(out)
 }
 
 /// Album tracks in disc/track order (ix_track_album).

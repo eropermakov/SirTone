@@ -75,7 +75,14 @@ export function setShuffle(on: boolean): void {
   if (isTauri()) void commands.playbackSetShuffle(on);
 }
 
-export const EMPTY_QUEUE: QueueView = { items: [], position: 0, repeat: "off", shuffle: false };
+export const EMPTY_QUEUE: QueueView = {
+  items: [],
+  position: 0,
+  repeat: "off",
+  shuffle: false,
+  autoplay: null,
+  playlist: null,
+};
 
 export async function getQueue(): Promise<QueueView> {
   return isTauri() ? commands.queueGet() : EMPTY_QUEUE;

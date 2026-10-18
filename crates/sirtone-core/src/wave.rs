@@ -286,3 +286,21 @@ mod tests {
         assert_eq!(season_w_bytes(&[0.76, 0.0, 0.0, 0.24]), [194, 0, 0, 61]);
     }
 }
+
+/// A track as the playlist continuation sees it (T3.14, docs/04 §11): what its sound vector is
+/// built from, and what spreads and orders the picks. Built by storage, consumed by
+/// `sirtone-wave::similar`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SimTrack {
+    pub id: i64,
+    /// Primary artist (no two picks of one artist in a row).
+    pub artist_id: i64,
+    pub play_count: u32,
+    /// B1: tempo and Camelot key.
+    pub bpm: Option<f32>,
+    pub key_camelot: Option<String>,
+    /// B3: valence, arousal, energy.
+    pub vae: Option<[f32; 3]>,
+    /// B2: `track.embedding` — `[scale f32 LE][64 × i8]`.
+    pub embedding: Option<Vec<u8>>,
+}

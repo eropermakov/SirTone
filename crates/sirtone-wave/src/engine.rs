@@ -547,7 +547,7 @@ impl Catalog {
 }
 
 /// «8B» → (8, major); «8A» → (8, minor).
-fn camelot_parts(s: &str) -> Option<(u32, bool)> {
+pub(crate) fn camelot_parts(s: &str) -> Option<(u32, bool)> {
     let major = s.ends_with('B');
     let n: u32 = s.trim_end_matches(['A', 'B']).parse().ok()?;
     ((1..=12).contains(&n) && (major || s.ends_with('A'))).then_some((n, major))
