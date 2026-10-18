@@ -582,6 +582,15 @@ impl Playback {
         n
     }
 
+    /// Library tracks in the queue (the online lookup leaves them where they are).
+    pub fn queued_track_ids(&self) -> std::collections::HashSet<u32> {
+        self.queue()
+            .items()
+            .iter()
+            .filter_map(|i| i.track_id)
+            .collect()
+    }
+
     /// Recommendations up to and including the current item (the continuation goes on from
     /// them).
     pub fn played_hybrid(&self) -> Vec<i64> {

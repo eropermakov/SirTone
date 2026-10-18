@@ -15,6 +15,8 @@ pub struct Resolvable {
     pub title: String,
     /// Primary artist, if the library has one for it.
     pub artist: Option<String>,
+    /// All its artists as the track card shows them (", "-joined).
+    pub artists_joined: String,
     pub album: Option<String>,
     pub duration_ms: u64,
     pub reason: Option<String>,
@@ -31,7 +33,10 @@ pub fn resolvable(
         "SELECT t.id, t.rel_path, t.title,
                 (SELECT a.name FROM track_artist ta JOIN artist a ON a.id = ta.artist_id
                  WHERE ta.track_id = t.id ORDER BY ta.position LIMIT 1),
-                al.title, t.duration_ms, t.unknown_reason
+                al.title, t.duration_ms, t.unknown_reason,
+                coalesce((SELECT group_concat(name, ', ') FROM
+                  (SELECT a.name FROM track_artist ta JOIN artist a ON a.id = ta.artist_id
+                   WHERE ta.track_id = t.id ORDER BY ta.position)), '')
          FROM track t LEFT JOIN album al ON al.id = t.album_id
          WHERE t.state = 'ok' AND t.identity_state = 'unknown' AND t.id > ?1
            AND coalesce(t.unknown_reason, '') <> 'possible_non_track' AND t.user_normal = 0
@@ -47,6 +52,7 @@ pub fn resolvable(
                 album: r.get(4)?,
                 duration_ms: r.get::<_, i64>(5)?.max(0) as u64,
                 reason: r.get(6)?,
+                artists_joined: r.get(7)?,
             })
         })?
         .collect::<Result<_, _>>()?;
@@ -68,14 +74,15 @@ pub fn confirm(
     Ok(())
 }
 
-/// Hints for «Неизвестные» (`None` clears them).
+/// Hints for «Неизвестные» (`None` clears them); an unchanged value is not written again.
 pub fn set_candidates(
     conn: &Connection,
     track: TrackId,
     json: Option<&str>,
 ) -> Result<(), LibraryError> {
     conn.execute(
-        "UPDATE track SET candidates_json = ?2 WHERE id = ?1 AND identity_state = 'unknown'",
+        "UPDATE track SET candidates_json = ?2
+         WHERE id = ?1 AND identity_state = 'unknown' AND candidates_json IS NOT ?2",
         params![track, json],
     )?;
     Ok(())

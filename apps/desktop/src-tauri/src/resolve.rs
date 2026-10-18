@@ -29,6 +29,9 @@ const FIRST: Duration = Duration::from_secs(90);
 pub struct Resolver {
     running: AtomicBool,
     not_before: AtomicI64,
+    /// Where the last run stopped: the next one goes on from there (round robin), so a long
+    /// «Неизвестные» is worked through, not its first 200 again and again.
+    cursor: AtomicI64,
 }
 
 fn now_ms() -> i64 {
@@ -147,9 +150,16 @@ fn resolve(app: &AppHandle, me: &Resolver, r: &Resolvable) -> Result<bool, Stop>
             Some(p) => fetch(app, me, &p).ok().and_then(|b| release_group_year(&b)),
             None => None,
         };
+        // `assign` splits artists at commas: a credit with a comma of its own («Earth, Wind &
+        // Fire») keeps the artists the library already links.
+        let artists = if m.artists.iter().any(|a| a.contains(',')) {
+            r.artists_joined.clone()
+        } else {
+            m.artists.join(", ")
+        };
         let assignment = sirtone_library::relocate::Assignment {
             title: m.title.clone(),
-            artists: m.artists.join(", "),
+            artists,
             album: m.album.clone(),
             track_no: m.album.as_ref().and(m.track_no),
             year,
@@ -194,28 +204,142 @@ fn resolve(app: &AppHandle, me: &Resolver, r: &Resolvable) -> Result<bool, Stop>
     Ok(false)
 }
 
-fn run(app: &AppHandle, me: &Resolver) -> (usize, usize) {
-    let (mut looked, mut moved, mut after) = (0, 0, 0);
-    while looked < RUN_CAP {
-        let Some(lib) = app.try_state::<Library>() else {
-            break;
-        };
-        let rows = match lib.with_read(|c| online::resolvable(c, after, 50)) {
-            Ok(r) if !r.is_empty() => r,
-            _ => break,
-        };
-        for r in &rows {
-            after = r.id;
-            if looked >= RUN_CAP {
-                break;
+/// What a visit says about the run.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Visit {
+    /// Looked up (counts toward the cap).
+    Looked,
+    /// Left for another time (queued under the player).
+    Skipped,
+    /// Offline or the service is busy: this one is first next time.
+    Stop,
+}
+
+/// One round-robin pass over the unknowns (ids ascending), starting after `start`, wrapping to
+/// the beginning once and ending where it started; at most `cap` lookups. Returns where the
+/// next run goes on from.
+fn walk(
+    start: i64,
+    cap: usize,
+    mut rows_after: impl FnMut(i64) -> Vec<i64>,
+    mut visit: impl FnMut(i64) -> Visit,
+) -> i64 {
+    let mut after = start;
+    let mut wrapped = start == 0;
+    let mut looked = 0;
+    loop {
+        let rows = rows_after(after);
+        if rows.is_empty() {
+            if wrapped {
+                return 0;
             }
-            looked += 1;
-            match resolve(app, me, r) {
-                Ok(true) => moved += 1,
-                Ok(false) | Err(Stop::Track) => {}
-                Err(Stop::Run) => return (looked, moved),
+            wrapped = true;
+            after = 0;
+            continue;
+        }
+        for id in rows {
+            if (wrapped && start > 0 && id > start) || looked >= cap {
+                return after;
             }
+            match visit(id) {
+                Visit::Looked => looked += 1,
+                Visit::Skipped => {}
+                Visit::Stop => return id - 1,
+            }
+            after = id;
         }
     }
+}
+
+fn run(app: &AppHandle, me: &Resolver) -> (usize, usize) {
+    let (mut looked, mut moved) = (0, 0);
+    // Queued tracks are not moved under the player (their queue items keep the path).
+    let queued = app
+        .try_state::<crate::playback::Playback>()
+        .map(|p| p.queued_track_ids())
+        .unwrap_or_default();
+    let batch: std::cell::RefCell<Vec<Resolvable>> = std::cell::RefCell::default();
+    let cursor = walk(
+        me.cursor.load(Ordering::Relaxed),
+        RUN_CAP,
+        |after| {
+            let rows: Vec<Resolvable> = app
+                .try_state::<Library>()
+                .and_then(|lib| lib.with_read(|c| online::resolvable(c, after, 50)).ok())
+                .unwrap_or_default();
+            let ids = rows.iter().map(|r| r.id).collect();
+            *batch.borrow_mut() = rows;
+            ids
+        },
+        |id| {
+            let Some(r) = batch.borrow().iter().find(|r| r.id == id).cloned() else {
+                return Visit::Skipped;
+            };
+            if u32::try_from(id).is_ok_and(|t| queued.contains(&t)) {
+                return Visit::Skipped;
+            }
+            looked += 1;
+            match resolve(app, me, &r) {
+                Ok(true) => {
+                    moved += 1;
+                    Visit::Looked
+                }
+                Ok(false) | Err(Stop::Track) => Visit::Looked,
+                Err(Stop::Run) => Visit::Stop,
+            }
+        },
+    );
+    me.cursor.store(cursor, Ordering::Relaxed);
     (looked, moved)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rows(all: &[i64]) -> impl FnMut(i64) -> Vec<i64> + '_ {
+        |after| {
+            all.iter()
+                .copied()
+                .filter(|&i| i > after)
+                .take(50)
+                .collect()
+        }
+    }
+
+    /// 250 unknowns, 200 per run: the second run reaches the last ones, then wraps around.
+    #[test]
+    fn runs_go_round_the_whole_list() {
+        let all: Vec<i64> = (1..=250).collect();
+        let mut seen = Vec::new();
+        let c1 = walk(0, 200, rows(&all), |id| {
+            seen.push(id);
+            Visit::Looked
+        });
+        assert_eq!((seen.len(), c1), (200, 200));
+        seen.clear();
+        let c2 = walk(c1, 200, rows(&all), |id| {
+            seen.push(id);
+            Visit::Looked
+        });
+        assert_eq!(seen[..50], (201..=250).collect::<Vec<_>>()[..]);
+        assert_eq!(seen[50], 1);
+        assert_eq!(seen.len(), 200);
+        assert_eq!(c2, 150);
+        // A busy service: that track is first next time; skipped ones do not count.
+        let c3 = walk(0, 200, rows(&all), |id| match id {
+            1..=9 => Visit::Skipped,
+            10..=11 => Visit::Looked,
+            _ => Visit::Stop,
+        });
+        assert_eq!(c3, 11);
+        // A short list ends where it started.
+        let few: Vec<i64> = vec![3, 7, 9];
+        let mut v = Vec::new();
+        let c4 = walk(7, 200, rows(&few), |id| {
+            v.push(id);
+            Visit::Looked
+        });
+        assert_eq!((v, c4), (vec![9, 3, 7], 7));
+    }
 }
