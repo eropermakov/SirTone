@@ -17,7 +17,7 @@ import {
   pickFolder,
 } from "@/shared/ipc/library";
 import { next as nextTrack, prev as prevTrack, togglePlay } from "@/shared/ipc/playback";
-import { createPlaylist } from "@/shared/ipc/playlists";
+import { createPlaylist, smartCreate } from "@/shared/ipc/playlists";
 import {
   getSettings,
   migrateLegacyAppearance,
@@ -46,6 +46,7 @@ import type { Open } from "./library/CollectionScreen";
 import type { GoTo } from "./library/TrackList";
 import { Onboarding, Tips } from "./onboarding/Onboarding";
 import { PlaylistScreen } from "./playlists/PlaylistScreen";
+import { blankDraft, SmartEditor } from "./playlists/SmartEditor";
 import { nextName, usePlaylists } from "./playlists/usePlaylists";
 import { SearchScreen } from "./search/SearchScreen";
 import { EmptyScreen } from "./shell/EmptyScreen";
@@ -161,6 +162,9 @@ export function App() {
       .then((id) => openPlaylist(id, true))
       .catch(() => notify(t("playlists.failed")));
   };
+  // «Новый умный плейлист» (T3.13): the rules first, then the playlist (Apple).
+  const [smartName, setSmartName] = useState<string | null>(null);
+  const newSmart = () => setSmartName(nextName(playlists, (n) => t("smart.defaultName", { n })));
   const goTo: GoTo = (kind, id, title) =>
     push({ screen: kind, open: { kind, id, title, subtitle: "", cover: null } });
 
@@ -309,6 +313,7 @@ export function App() {
             playingPlaylist={null}
             onOpenPlaylist={(id) => openPlaylist(id)}
             onNewPlaylist={lib.status.tracks > 0 ? newPlaylist : undefined}
+            onNewSmart={lib.status.tracks > 0 ? newSmart : undefined}
           />
           <main className="flex min-w-0 flex-1 flex-col overflow-auto rounded-tl-(--radius-xl) bg-bg-layer p-6">
             {lib.rootNeeded && <RootPanel status={lib.status} onDone={rootChosen} />}
@@ -349,6 +354,7 @@ export function App() {
                 playingId={snap.trackId}
                 editName={here.fresh ?? false}
                 onGo={goTo}
+                onOpen={(id) => openPlaylist(id)}
                 onDeleted={() =>
                   setStack((st) => {
                     const left = st.filter((e) => e.playlist !== here.playlist);
@@ -485,6 +491,21 @@ export function App() {
           />
         )}
         {onboard === "tips" && <Tips onClose={() => setOnboard(null)} />}
+        {smartName !== null && (
+          <SmartEditor
+            initial={blankDraft()}
+            name={smartName}
+            onName={setSmartName}
+            onClose={() => setSmartName(null)}
+            onSave={(json) => {
+              const name = smartName.trim() || t("smart.defaultName", { n: 1 });
+              setSmartName(null);
+              smartCreate(name, json)
+                .then((id) => openPlaylist(id))
+                .catch(() => notify(t("smart.invalid")));
+            }}
+          />
+        )}
       </div>
     </DndRoot>
   );

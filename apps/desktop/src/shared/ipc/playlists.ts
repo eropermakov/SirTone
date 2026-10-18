@@ -47,5 +47,31 @@ export const movePlaylistItem = async (id: number, from: number, to: number): Pr
   if (isTauri()) unwrap(await commands.playlistMove(id, from, to));
 };
 
+/** Smart playlists (T3.13): rules are the `05` §8.1 JSON; Rust validates them. */
+export const smartCreate = async (name: string, rules: string): Promise<number> => {
+  if (!isTauri()) throw new Error("no library outside Tauri");
+  return unwrap(await commands.smartCreate(name, rules));
+};
+
+export const smartSetRules = async (id: number, rules: string): Promise<void> => {
+  if (isTauri()) unwrap(await commands.smartSetRules(id, rules));
+};
+
+export const smartRules = async (id: number): Promise<string | null> =>
+  isTauri() ? unwrap(await commands.smartRules(id)) : null;
+
+/** «Подходит N треков»; rejects bad rules. */
+export const smartPreview = async (rules: string): Promise<number> =>
+  isTauri() ? unwrap(await commands.smartPreview(rules)) : 0;
+
+export const smartRefresh = async (id: number): Promise<void> => {
+  if (isTauri()) unwrap(await commands.smartRefresh(id));
+};
+
+export const smartSaveAsManual = async (id: number, name: string): Promise<number> => {
+  if (!isTauri()) throw new Error("no library outside Tauri");
+  return unwrap(await commands.smartSaveAsManual(id, name));
+};
+
 export const onPlaylistsChanged = async (cb: (id: number) => void): Promise<() => void> =>
   isTauri() ? events.playlistsChanged.listen((e) => cb(e.payload.id)) : () => {};

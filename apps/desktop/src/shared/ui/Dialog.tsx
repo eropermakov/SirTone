@@ -11,17 +11,20 @@ export function Dialog({
   title,
   closeLabel,
   onClose,
+  wide,
   children,
 }: {
   title: string;
   closeLabel: string;
   onClose: () => void;
+  /** A larger panel (the smart playlist editor). */
+  wide?: boolean;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const back = document.activeElement as HTMLElement | null;
-    ref.current?.querySelector<HTMLElement>("input, button")?.focus();
+    ref.current?.querySelector<HTMLElement>("input, select, button")?.focus();
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
@@ -30,7 +33,7 @@ export function Dialog({
         // Focus stays inside the dialog (WAI-ARIA modal dialog, T2.16).
         const items = [
           ...ref.current.querySelectorAll<HTMLElement>(
-            "button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex='-1'])",
+            "button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])",
           ),
         ];
         const first = items[0];
@@ -58,7 +61,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="flyout-in flex max-h-[90vh] w-[520px] max-w-[92vw] flex-col gap-4 overflow-auto rounded-(--radius-xl) border border-border bg-bg-raised p-6 shadow-(--shadow-flyout)"
+        className={`flyout-in flex max-h-[90vh] ${wide ? "w-[760px]" : "w-[520px]"} max-w-[92vw] flex-col gap-4 overflow-auto rounded-(--radius-xl) border border-border bg-bg-raised p-6 shadow-(--shadow-flyout)`}
       >
         <div className="flex items-start justify-between gap-4">
           <h2 className="t-card-title min-w-0 text-text-primary">{title}</h2>

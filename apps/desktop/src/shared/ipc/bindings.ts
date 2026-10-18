@@ -89,6 +89,18 @@ export const commands = {
 	/**  «Убрать из плейлиста»: the items go, the tracks stay (FR-PLS-004). */
 	playlistRemove: (id: number, positions: number[]) => typedError<null, AppError>(__TAURI_INVOKE("playlist_remove", { id, positions })),
 	playlistMove: (id: number, from: number, to: number) => typedError<null, AppError>(__TAURI_INVOKE("playlist_move", { id, from, to })),
+	/**  A new smart playlist from rules (`05` §8.1 JSON; validated, stored canonical). */
+	smartCreate: (name: string, rules: string) => typedError<number, AppError>(__TAURI_INVOKE("smart_create", { name, rules })),
+	/**  New rules for a smart playlist. */
+	smartSetRules: (id: number, rules: string) => typedError<null, AppError>(__TAURI_INVOKE("smart_set_rules", { id, rules })),
+	/**  The rules of a smart playlist (canonical JSON), `None` for a manual one. */
+	smartRules: (id: number) => typedError<string | null, AppError>(__TAURI_INVOKE("smart_rules", { id })),
+	/**  «Подходит N треков» for rules being edited (before the limit); bad rules → InvalidArgument. */
+	smartPreview: (rules: string) => typedError<number, AppError>(__TAURI_INVOKE("smart_preview", { rules })),
+	/**  «Обновить»: a smart playlist with a delay or manual refresh is evaluated again. */
+	smartRefresh: (id: number) => typedError<null, AppError>(__TAURI_INVOKE("smart_refresh", { id })),
+	/**  «Сохранить как обычный»: a manual playlist with the smart playlist's current tracks. */
+	smartSaveAsManual: (id: number, name: string) => typedError<number, AppError>(__TAURI_INVOKE("smart_save_as_manual", { id, name })),
 	librarySearch: (query: string) => typedError<SearchResults, AppError>(__TAURI_INVOKE("library_search", { query })),
 	perfHardware: () => __TAURI_INVOKE<HardwareInfo>("perf_hardware"),
 	trackFeedback: (track: number) => typedError<TrackFeedback, AppError>(__TAURI_INVOKE("track_feedback", { track })),
@@ -378,6 +390,8 @@ export type PlaylistItem = {
 	bytes: number | null,
 	/**  Four hashes → a 2×2 mosaic, one → a single cover, none → placeholder. */
 	covers: string[],
+	/**  A smart playlist: rules, read-only (no add / remove / move). */
+	smart: boolean,
 };
 
 /**  Playlists were created, renamed, deleted or edited. */

@@ -697,6 +697,63 @@ if (existsSync(corpus)) {
     opened && asked && unknownAfter === unknownBefore - 1,
     `${dragged}: opened ${opened}, asked ${asked}, unknown ${unknownBefore} → ${unknownAfter}; ${assignToast}; ${assignQuestion}; ${consoleErrors.join(" ")}`,
   );
+  // T3.13: smart playlist from the sidebar — rules in the editor («Название содержит …»), the
+  // live count, the page lists the matches; read-only; «Сохранить как обычный»; a hostile value
+  // is plain text.
+  const smartWord = (plListed ?? "").split(/\s+/).find((w) => w.length >= 3) ?? plListed ?? "";
+  await page.getByRole("button", { name: "Новый умный плейлист" }).click();
+  const smartDialog = page.getByRole("dialog", { name: "Правила умного плейлиста" });
+  await smartDialog.waitFor({ timeout: 5000 });
+  await smartDialog.getByLabel("Название плейлиста").fill("Умный тест");
+  await smartDialog.getByLabel("Значение").fill(smartWord);
+  await smartDialog.getByText(/Подходит \d+/).waitFor({ timeout: 5000 });
+  const smartCount = (await smartDialog.getByRole("status").textContent())?.trim();
+  // For a look at the editor (not checked): %TEMP%/sirtone-smart-editor.png.
+  await smartDialog.screenshot({ path: join(tmpdir(), "sirtone-smart-editor.png") });
+  await smartDialog.getByRole("button", { name: "Сохранить" }).click();
+  const smartRows = page.getByRole("list", { name: "Треки" }).locator("li");
+  await smartRows.first().waitFor({ timeout: 5000 });
+  const smartList = (await invoke("playlists_list", {})).find((p) => p.name === "Умный тест");
+  const smartTracks = await invoke("playlist_tracks", { id: smartList?.id ?? 0 });
+  const allMatch = smartTracks.every((e) =>
+    e.track.title
+      .toLowerCase()
+      .replaceAll("ё", "е")
+      .includes(smartWord.toLowerCase().replaceAll("ё", "е")),
+  );
+  check(
+    "smart playlist: built in the editor, live count, the page lists the matches",
+    smartList?.smart === true &&
+      smartTracks.length > 0 &&
+      allMatch &&
+      (await smartRows.count()) === smartTracks.length,
+    `«${smartWord}»: ${smartCount}, ${smartTracks.length} tracks`,
+  );
+  const refused = await page.evaluate(
+    (id) =>
+      window.__TAURI_INTERNALS__.invoke("playlist_add", { id, tracks: [1] }).then(
+        () => "accepted",
+        (e) => String(e?.code ?? JSON.stringify(e)),
+      ),
+    smartList?.id ?? 0,
+  );
+  const tracksNow = (await invoke("library_status", {})).tracks;
+  const hostile = await invoke("smart_preview", {
+    rules: JSON.stringify({ all: [{ is: { title: "'); DROP TABLE track;--" } }] }),
+  });
+  await page.getByRole("main").getByRole("button", { name: "Ещё" }).first().click();
+  await page.getByRole("menuitem", { name: "Сохранить как обычный" }).click();
+  await sleep(1200);
+  const copy = (await invoke("playlists_list", {})).find((p) => p.name === "Умный тест — копия");
+  check(
+    "smart playlist: read-only, «Сохранить как обычный», hostile value is text",
+    refused === "InvalidArgument" &&
+      copy?.smart === false &&
+      copy?.tracks === smartTracks.length &&
+      hostile === 0 &&
+      (await invoke("library_status", {})).tracks === tracksNow,
+    `add ${refused}, copy ${JSON.stringify(copy && { smart: copy.smart, tracks: copy.tracks })}, hostile ${hostile}`,
+  );
   // T2.13: Ctrl+F opens search; results as you type, the exact artist is the best match.
   await page.keyboard.press("Control+f");
   const searchField = page.getByLabel("Поиск по медиатеке");

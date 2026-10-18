@@ -3,6 +3,7 @@ import {
   ChevronDown,
   CircleHelp,
   Disc3,
+  ListFilter,
   Mic2,
   PanelLeftClose,
   PanelLeftOpen,
@@ -61,6 +62,8 @@ type Props = {
   onOpenPlaylist?: (id: number) => void;
   /** «Новый плейлист»; absent while the library is empty. */
   onNewPlaylist?: (() => void) | undefined;
+  /** «Новый умный плейлист» (T3.13) — next to the group label. */
+  onNewSmart?: (() => void) | undefined;
 };
 
 export function Sidebar({
@@ -76,6 +79,7 @@ export function Sidebar({
   currentPlaylist = null,
   onOpenPlaylist,
   onNewPlaylist,
+  onNewSmart,
 }: Props) {
   const [listsOpen, setListsOpen] = useState(true);
   const { t } = useTranslation("nav");
@@ -176,19 +180,35 @@ export function Sidebar({
       <div className="mt-4" />
       {REST.map(row)}
       {!collapsed && (onNewPlaylist || playlists.length > 0) && (
-        <button
-          type="button"
-          onClick={() => setListsOpen((o) => !o)}
-          aria-expanded={listsOpen}
-          className="t-group-label mt-4 mb-1 flex items-center gap-1 px-3 text-left text-text-secondary"
-        >
-          {t("playlists")}
-          <ChevronDown
-            size={16}
-            strokeWidth={1.5}
-            className={cn("transition-transform duration-(--dur-fast)", !listsOpen && "-rotate-90")}
-          />
-        </button>
+        <div className="mt-4 mb-1 flex items-center pr-1">
+          <button
+            type="button"
+            onClick={() => setListsOpen((o) => !o)}
+            aria-expanded={listsOpen}
+            className="t-group-label flex flex-1 items-center gap-1 px-3 text-left text-text-secondary"
+          >
+            {t("playlists")}
+            <ChevronDown
+              size={16}
+              strokeWidth={1.5}
+              className={cn(
+                "transition-transform duration-(--dur-fast)",
+                !listsOpen && "-rotate-90",
+              )}
+            />
+          </button>
+          {onNewSmart && (
+            <button
+              type="button"
+              onClick={onNewSmart}
+              aria-label={t("newSmart")}
+              title={t("newSmart")}
+              className="flex size-7 items-center justify-center rounded-full text-icon hover:bg-bg-hover"
+            >
+              <ListFilter size={16} strokeWidth={1.5} />
+            </button>
+          )}
+        </div>
       )}
       {!collapsed && listsOpen && (
         <div className="flex min-h-0 flex-col gap-1 overflow-y-auto">
@@ -198,6 +218,7 @@ export function Sidebar({
               <PlaylistDrop
                 key={p.id}
                 playlistId={p.id}
+                smart={p.smart}
                 onClick={() => onOpenPlaylist?.(p.id)}
                 aria-current={active ? "page" : undefined}
                 className={cn(
@@ -279,8 +300,17 @@ function SpringButton({ screen, className, ...rest }: ButtonProps & { screen: Sc
 }
 
 /** A sidebar playlist: dropping a track adds it (Spotify, `01b` F-35). */
-function PlaylistDrop({ playlistId, className, ...rest }: ButtonProps & { playlistId: number }) {
-  const { setNodeRef, isOver, active } = useDroppable({ id: dropId.playlist(playlistId) });
+/** A playlist row that takes dropped tracks — not a smart one (read-only, Apple). */
+function PlaylistDrop({
+  playlistId,
+  smart,
+  className,
+  ...rest
+}: ButtonProps & { playlistId: number; smart: boolean }) {
+  const { setNodeRef, isOver, active } = useDroppable({
+    id: dropId.playlist(playlistId),
+    disabled: smart,
+  });
   return (
     <button
       ref={setNodeRef}
