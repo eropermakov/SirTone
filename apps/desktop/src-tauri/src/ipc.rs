@@ -86,10 +86,13 @@ pub fn builder() -> Builder<tauri::Wry> {
             feedback::feedback_never,
             feedback::track_primary_artist,
             feedback::never_list,
+            feedback::track_tags,
+            feedback::track_tag_set,
             storage::storage_info,
             storage::storage_clear_logs,
             wave::wave_start,
             wave::wave_reset_learning,
+            wave::wave_why,
             window_chrome::window_set_theme,
         ])
         .events(collect_events![

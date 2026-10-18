@@ -199,7 +199,7 @@ pub struct Catalog {
     plays: Vec<u32>,
     pub last_played: Vec<i64>,
     added: Vec<i64>,
-    liked: Vec<bool>,
+    pub(crate) liked: Vec<bool>,
     pub never: Vec<bool>,
     center: [f32; D],
     index: std::collections::HashMap<i64, u32>,
@@ -470,6 +470,8 @@ pub struct Engine {
     taste: Taste,
     context: std::collections::HashMap<String, (Taste, u32)>,
     session_vec: [f32; D],
+    /// The last rebuild, for «Почему этот трек» (§17).
+    last: Explained,
     buf: [Vec<Scored>; 3],
     blocked: Vec<bool>,
     session: Session,
@@ -500,6 +502,7 @@ impl Engine {
             taste: models.taste,
             context: models.context,
             session_vec: models.session,
+            last: Explained::default(),
             session: Session::default(),
             rng: Rng::new(seed),
         }
@@ -631,6 +634,8 @@ impl Engine {
         for g in &mut self.buf {
             g.clear();
         }
+        let mut sums = [0f32; 3];
+        let mut counted = 0u32;
         let cat = &self.cat;
         let fam = &e.familiarity;
         for t in 0..cat.len() {
@@ -647,6 +652,10 @@ impl Engine {
             let context = sigmoid(dot(&w_ctx, x));
             let session = 0.5 + 0.5 * dot(&w_sess, x).tanh();
             let mut s = w_taste * taste + w.context * context + w.session * session + neutral;
+            sums[0] += w_taste * taste;
+            sums[1] += w.context * context;
+            sums[2] += w.session * session;
+            counted += 1;
             let g = cat.group(t, now_ms, fam);
             if g == 2 && novelty > 0.0 {
                 let mut d2 = 0.0;
@@ -669,6 +678,62 @@ impl Engine {
         for g in &mut self.buf {
             keep_top(g, e.top_k);
         }
+        let k = counted.max(1) as f32;
+        self.last = Explained {
+            wt,
+            bias,
+            w_ctx,
+            w_sess,
+            w: [w_taste, w.context, w.session],
+            mean: sums.map(|v| v / k),
+            daypart: ctx.daypart as u8,
+            now_ms,
+        };
+    }
+
+    /// «Почему этот трек» (§17, FR-LEARN-009): the 1–2 largest contributions over the mean of
+    /// the last rebuild's candidates, plus the familiarity of the track (new / forgotten).
+    pub fn why(&self, id: i64) -> Vec<Why> {
+        let Some(t) = self.cat.idx(id) else {
+            return Vec::new();
+        };
+        let l = &self.last;
+        let x = &self.cat.feat[t];
+        let taste = 0.6 * sigmoid(dot(&l.wt, x) + l.bias) + 0.4 * self.cat.mean(t);
+        let context = sigmoid(dot(&l.w_ctx, x));
+        let session = 0.5 + 0.5 * dot(&l.w_sess, x).tanh();
+        let mut parts = [
+            (l.w[0] * taste - l.mean[0], 0usize),
+            (l.w[1] * context - l.mean[1], 1),
+            (l.w[2] * session - l.mean[2], 2),
+        ];
+        parts.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let mut out = Vec::with_capacity(3);
+        match self.cat.group(t, l.now_ms, &self.cfg.engine.familiarity) {
+            2 => out.push(Why::NewForYou),
+            1 => out.push(Why::Forgotten),
+            _ => {}
+        }
+        for (delta, c) in parts {
+            if out.len() >= 2 || delta <= 0.0 {
+                break;
+            }
+            out.push(match c {
+                0 if self.cat.liked[t] => Why::Liked,
+                0 => {
+                    let g = x[f::GENRE..f::GENRE + f::GENRES]
+                        .iter()
+                        .position(|&v| v >= 0.99);
+                    g.map_or(Why::Taste, |g| Why::Genre(g as u8))
+                }
+                1 => Why::Context(l.daypart),
+                _ => Why::Session,
+            });
+        }
+        if out.is_empty() {
+            out.push(Why::Taste);
+        }
+        out
     }
 
     /// Stage 2: the group furthest behind its quota → Thompson + constraints → softmax.
@@ -766,4 +831,30 @@ fn context_weights(
         }
     }
     w
+}
+
+/// A reason of «Почему этот трек» (§17); the UI words it (`wave.why.*`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Why {
+    Liked,
+    /// The genre group (0…5, `assets/wave/genres.json`) the taste likes.
+    Genre(u8),
+    Taste,
+    /// Often heard at this daypart.
+    Context(u8),
+    Session,
+    NewForYou,
+    Forgotten,
+}
+
+#[derive(Default)]
+struct Explained {
+    wt: [f32; D],
+    bias: f32,
+    w_ctx: [f32; D],
+    w_sess: [f32; D],
+    w: [f32; 3],
+    mean: [f32; 3],
+    daypart: u8,
+    now_ms: i64,
 }

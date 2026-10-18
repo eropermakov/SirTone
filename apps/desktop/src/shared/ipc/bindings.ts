@@ -99,6 +99,9 @@ export const commands = {
 	/**  The primary artist of a track («Никогда в волне» → исполнитель). */
 	trackPrimaryArtist: (track: number) => typedError<number, AppError>(__TAURI_INVOKE("track_primary_artist", { track })),
 	neverList: () => typedError<NeverEntry[], AppError>(__TAURI_INVOKE("never_list")),
+	/**  Manual tags of a track (FR-LEARN-013). */
+	trackTags: (track: number) => typedError<string[], AppError>(__TAURI_INVOKE("track_tags", { track })),
+	trackTagSet: (track: number, tag: string, on: boolean) => typedError<null, AppError>(__TAURI_INVOKE("track_tag_set", { track, tag, on })),
 	storageInfo: () => __TAURI_INVOKE<StorageInfo>("storage_info"),
 	/**  «Удалить старые журналы»: diagnostic logs of earlier days (the app's own files, not music). */
 	storageClearLogs: () => typedError<number, AppError>(__TAURI_INVOKE("storage_clear_logs")),
@@ -106,6 +109,8 @@ export const commands = {
 	waveStart: () => typedError<number, AppError>(__TAURI_INVOKE("wave_start")),
 	/**  «Сбросить обучение» (docs/14 §8.4): the models start over from now; the journal stays. */
 	waveResetLearning: () => typedError<null, AppError>(__TAURI_INVOKE("wave_reset_learning")),
+	/**  «Почему этот трек» for a track of the running wave (empty outside the wave). */
+	waveWhy: (track: number) => __TAURI_INVOKE<WhyReason[]>("wave_why", { track }),
 	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
 	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),
 };
@@ -455,6 +460,14 @@ export type UpdateStatus = {
 	/**  Set on the first start after an update (shown once as a toast). */
 	justUpdated: string | null,
 	notes: string | null,
+};
+
+/**  One reason of «Почему этот трек» (§17); the UI words it as `wave.why.<kind>`. */
+export type WhyReason = {
+	/**  liked · genre · taste · context · session · new · forgotten */
+	kind: string,
+	/**  Genre group (0…5) or daypart code. */
+	arg: number | null,
 };
 
 /* Tauri Specta runtime */

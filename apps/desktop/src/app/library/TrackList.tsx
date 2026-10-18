@@ -18,6 +18,7 @@ import { type ReactNode, useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type DragTrack, dropId } from "@/app/dnd/dnd";
 import { useAddToPlaylist } from "@/app/playlists/useAddToPlaylist";
+import { useTrackTags } from "@/app/playlists/useTrackTags";
 import { timecode } from "@/app/shell/PlayerBar";
 import { type PlayContext, revealTrack, type TrackItem } from "@/shared/ipc/library";
 import { queueAppend, queuePlayNext } from "@/shared/ipc/playback";
@@ -70,6 +71,7 @@ export function TrackList({
   const [card, setCard] = useState<{ id: number; confirmDelete: boolean } | null>(null);
   const closeCard = useCallback(() => setCard(null), []);
   const toPlaylist = useAddToPlaylist();
+  const tagsMenu = useTrackTags(menu ? (tracks[menu.index]?.id ?? null) : null);
   const v = useVirtualizer({
     count: tracks.length,
     getScrollElement: () => scroller.current,
@@ -142,6 +144,7 @@ export function TrackList({
           icon: Pencil,
           onSelect: () => setCard({ id: tr.id, confirmDelete: false }),
         },
+        tagsMenu,
         {
           id: "reveal",
           label: t("trackMenu.reveal"),

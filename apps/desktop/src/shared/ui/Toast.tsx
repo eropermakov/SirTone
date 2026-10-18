@@ -36,7 +36,7 @@ export function Toast({
     <div
       role="status"
       aria-live="polite"
-      className="fixed right-4 bottom-[calc(var(--player-height)+1rem)] z-50 flex w-80 items-start gap-3 rounded-(--radius-md) border border-border bg-bg-flyout p-4 shadow-(--shadow-flyout)"
+      className="fixed right-4 bottom-[calc(var(--player-height)+1rem)] z-(--z-toast) flex w-80 items-start gap-3 rounded-(--radius-md) border border-border bg-bg-flyout p-4 shadow-(--shadow-flyout)"
     >
       {tone === "error" ? (
         <CircleAlert size={20} strokeWidth={1.5} className="shrink-0 text-danger" />

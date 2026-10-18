@@ -114,3 +114,29 @@ fn not_now_blocks_only_in_its_bucket() {
     let morning = e.next(&ctx(Daypart::Morning), &shelf, 0.5, 5, NOW);
     assert!(morning.iter().any(|id| !allowed.contains(id)));
 }
+
+#[test]
+fn why_explains_the_pick() {
+    use sirtone_wave::engine::Why;
+    let mut tracks = synth::library(400, NOW, 1.0, 21);
+    // One fresh, never-played track and one liked, long-familiar track.
+    tracks[0].play_count = 0;
+    tracks[0].last_played_ms = None;
+    tracks[0].added_ms = NOW - 86_400_000;
+    tracks[1].liked = true;
+    tracks[1].play_count = 9;
+    tracks[1].last_played_ms = Some(NOW - 5 * 86_400_000);
+    let history = synth::history(&tracks, NOW);
+    let mut e = Engine::new(
+        Config::builtin().expect("assets"),
+        &tracks,
+        &history,
+        NOW,
+        2,
+    );
+    let _ = e.next(&ctx(Daypart::Evening), &[], 0.5, 5, NOW);
+    assert_eq!(e.why(tracks[0].id).first(), Some(&Why::NewForYou));
+    let liked = e.why(tracks[1].id);
+    assert!(!liked.is_empty() && liked.len() <= 2);
+    assert!(liked.contains(&Why::Liked), "{liked:?}");
+}

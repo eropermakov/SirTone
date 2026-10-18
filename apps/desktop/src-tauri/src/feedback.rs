@@ -116,3 +116,21 @@ pub fn never_list(lib: State<'_, Library>) -> Result<Vec<NeverEntry>, AppError> 
         })
         .collect())
 }
+
+/// Manual tags of a track (FR-LEARN-013).
+#[tauri::command(async)]
+#[specta::specta]
+pub fn track_tags(lib: State<'_, Library>, track: u32) -> Result<Vec<String>, AppError> {
+    lib.with_read(|c| feedback::track_tags(c, i64::from(track)))
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+pub fn track_tag_set(
+    lib: State<'_, Library>,
+    track: u32,
+    tag: String,
+    on: bool,
+) -> Result<(), AppError> {
+    lib.with_write(|c| feedback::set_tag(c, i64::from(track), &tag, on))
+}

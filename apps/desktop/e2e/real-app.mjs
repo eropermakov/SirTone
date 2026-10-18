@@ -873,6 +873,22 @@ if (existsSync(corpus)) {
     `offered ${offered}, inWave ${inWave}, queue ${q0.items.length} → ${q1.items.length}`,
   );
   await invoke("feedback_never", { scope: "track", id: unplayed, on: false });
+  // T3.29: «Почему этот трек» — 1–2 reasons for a track of the running wave; «Метки ›» saves.
+  await invoke("wave_start", {});
+  await sleep(800);
+  const waveTrack = (await invoke("playback_snapshot", {})).trackId;
+  const reasons = await invoke("wave_why", { track: waveTrack });
+  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  await page.getByRole("main").getByRole("button", { name: "Ещё" }).click();
+  await page.getByRole("menuitem", { name: "Метки" }).click();
+  await page.getByRole("menuitem", { name: "Для сна" }).click();
+  await sleep(600);
+  const tags = await invoke("track_tags", { track: waveTrack });
+  check(
+    "why: 1–2 reasons; «Метки › Для сна» is saved",
+    reasons.length >= 1 && reasons.length <= 2 && tags.includes("sleep"),
+    `${reasons.map((r) => r.kind).join(", ")}; tags ${tags.join(",")}`,
+  );
   // T3.28: learning off freezes the models (the wave still plays); «Сбросить обучение» works.
   await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
   await page.getByRole("switch", { name: "Учиться на прослушиваниях" }).click();

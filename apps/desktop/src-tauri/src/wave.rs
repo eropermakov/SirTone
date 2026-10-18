@@ -26,6 +26,17 @@ const MORE: usize = 3;
 enum Cmd {
     Start(Sender<Result<u32, AppError>>),
     More,
+    Why(i64, Sender<Vec<WhyReason>>),
+}
+
+/// One reason of «Почему этот трек» (§17); the UI words it as `wave.why.<kind>`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct WhyReason {
+    /// liked · genre · taste · context · session · new · forgotten
+    pub kind: String,
+    /// Genre group (0…5) or daypart code.
+    pub arg: Option<u8>,
 }
 
 pub struct Wave {
@@ -187,6 +198,30 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                 });
                 let _ = reply.send(r);
             }
+            Cmd::Why(id, reply) => {
+                let reasons = engine.as_ref().map_or_else(Vec::new, |e| {
+                    e.why(id)
+                        .into_iter()
+                        .map(|w| {
+                            use sirtone_wave::engine::Why;
+                            let (kind, arg) = match w {
+                                Why::Liked => ("liked", None),
+                                Why::Genre(g) => ("genre", Some(g)),
+                                Why::Taste => ("taste", None),
+                                Why::Context(d) => ("context", Some(d)),
+                                Why::Session => ("session", None),
+                                Why::NewForYou => ("new", None),
+                                Why::Forgotten => ("forgotten", None),
+                            };
+                            WhyReason {
+                                kind: kind.into(),
+                                arg,
+                            }
+                        })
+                        .collect()
+                });
+                let _ = reply.send(reasons);
+            }
             Cmd::More => {
                 if engine.is_some() {
                     match next_ids(app, &mut slot, &mut engine, MORE)
@@ -223,4 +258,15 @@ pub fn wave_start(wave: State<'_, Wave>) -> Result<u32, AppError> {
 pub fn wave_reset_learning(lib: State<'_, Library>) -> Result<(), AppError> {
     let now = SystemClock.now_utc_ms();
     lib.with_write(|c| sirtone_library::wave::set_state(c, RESET_AT, Some(&now.to_string())))
+}
+
+/// «Почему этот трек» for a track of the running wave (empty outside the wave).
+#[tauri::command(async)]
+#[specta::specta]
+pub fn wave_why(wave: State<'_, Wave>, track: u32) -> Vec<WhyReason> {
+    let (tx, rx) = mpsc::channel();
+    if wave.tx.send(Cmd::Why(i64::from(track), tx)).is_err() {
+        return Vec::new();
+    }
+    rx.recv_timeout(Duration::from_secs(5)).unwrap_or_default()
 }

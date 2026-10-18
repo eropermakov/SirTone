@@ -141,6 +141,65 @@ pub fn set_never_artist(
     Ok(())
 }
 
+/// Manual track tags (FR-LEARN-013, `14` §17): they override automatic estimates.
+pub const TAGS: [&str; 9] = [
+    "season_winter",
+    "season_spring",
+    "season_summer",
+    "season_autumn",
+    "no_season",
+    "sleep",
+    "focus",
+    "for_all_hit",
+    "not_for_company",
+];
+
+pub fn track_tags(conn: &Connection, track: TrackId) -> Result<Vec<String>, LibraryError> {
+    let mut st =
+        conn.prepare("SELECT tag FROM track_tag WHERE track_id = ?1 AND tag <> 'event'")?;
+    let rows = st
+        .query_map([track], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+/// Sets or clears a tag. «no_season» and the season tags exclude each other.
+pub fn set_tag(
+    conn: &mut Connection,
+    track: TrackId,
+    tag: &str,
+    on: bool,
+) -> Result<(), LibraryError> {
+    if !TAGS.contains(&tag) {
+        return Err(LibraryError::Invalid(format!("unknown tag {tag}")));
+    }
+    let tx = conn.transaction()?;
+    if on {
+        if tag == "no_season" {
+            tx.execute(
+                "DELETE FROM track_tag WHERE track_id = ?1 AND tag LIKE 'season_%'",
+                [track],
+            )?;
+        } else if tag.starts_with("season_") {
+            tx.execute(
+                "DELETE FROM track_tag WHERE track_id = ?1 AND tag = 'no_season'",
+                [track],
+            )?;
+        }
+        tx.execute(
+            "INSERT OR IGNORE INTO track_tag(track_id, tag, value, created_at) VALUES (?1, ?2, '', ?3)",
+            params![track, tag, now_ms()],
+        )?;
+    } else {
+        tx.execute(
+            "DELETE FROM track_tag WHERE track_id = ?1 AND tag = ?2",
+            params![track, tag],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 /// A row of «Никогда в волне» in Settings.
 #[derive(Debug, Clone, PartialEq)]
 pub enum NeverItem {
@@ -250,6 +309,50 @@ mod tests {
         set_never_track(&mut c, t, false).unwrap();
         set_never_artist(&mut c, kino, false).unwrap();
         assert!(never_list(&c).unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn tags_toggle_and_seasons_exclude_no_season() {
+        let root = std::env::temp_dir().join(format!("sirtone-tags-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let mut c = open(&root.join(".sirtone/library.db"), crate::Medium::Fixed).unwrap();
+        let t = track_insert(
+            &mut c,
+            &NewTrack {
+                rel_path: "x.mp3".into(),
+                size_bytes: 5,
+                mtime_ms: 0,
+                content_hash: "h".into(),
+                container: "mp3".into(),
+                codec: "mp3".into(),
+                lossless: false,
+                sample_rate: None,
+                channels: None,
+                duration_ms: 1000,
+                title: "X".into(),
+                album_id: None,
+                disc_no: None,
+                track_no: None,
+                year: None,
+                identity: Identity::Inferred,
+                identity_conf: 0.9,
+                unknown_reason: None,
+                artists: vec![],
+            },
+        )
+        .unwrap();
+        set_tag(&mut c, t, "season_summer", true).unwrap();
+        set_tag(&mut c, t, "sleep", true).unwrap();
+        assert_eq!(track_tags(&c, t).unwrap().len(), 2);
+        set_tag(&mut c, t, "no_season", true).unwrap();
+        let mut tags = track_tags(&c, t).unwrap();
+        tags.sort();
+        assert_eq!(tags, ["no_season", "sleep"]);
+        set_tag(&mut c, t, "sleep", false).unwrap();
+        assert_eq!(track_tags(&c, t).unwrap(), ["no_season"]);
+        assert!(set_tag(&mut c, t, "bogus", true).is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

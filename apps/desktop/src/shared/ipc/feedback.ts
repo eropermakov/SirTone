@@ -39,3 +39,11 @@ export const neverList = async (): Promise<NeverEntry[]> =>
 export const resetLearning = async (): Promise<void> => {
   if (isTauri()) unwrap(await commands.waveResetLearning());
 };
+
+/** Manual tags of a track (FR-LEARN-013). */
+export const trackTags = async (track: number): Promise<string[]> =>
+  isTauri() ? unwrap(await commands.trackTags(track)) : [];
+
+export const setTag = async (track: number, tag: string, on: boolean): Promise<void> => {
+  if (isTauri()) unwrap(await commands.trackTagSet(track, tag, on));
+};

@@ -16,6 +16,7 @@ import {
   type TrackItem,
   type TrackPage,
   type UnknownItem,
+  type WhyReason,
 } from "./bindings";
 
 /**
@@ -173,3 +174,7 @@ export const allTrackIds = async (): Promise<number[]> => {
 /** «Моя волна» (Stage 3): the engine picks and plays; returns how many tracks were queued. */
 export const waveStart = async (): Promise<number> =>
   isTauri() ? unwrap(await commands.waveStart()) : 0;
+
+/** «Почему этот трек» for a track of the running wave (empty outside the wave). */
+export const waveWhy = async (track: number): Promise<WhyReason[]> =>
+  isTauri() ? commands.waveWhy(track) : [];

@@ -3,6 +3,7 @@ import {
   CircleSlash,
   Disc3,
   Heart,
+  HelpCircle,
   ListPlus,
   MicVocal,
   MoreHorizontal,
@@ -16,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import { TrackCard } from "@/app/library/TrackCard";
 import type { GoTo } from "@/app/library/TrackList";
 import { useAddToPlaylist } from "@/app/playlists/useAddToPlaylist";
+import { useTrackTags } from "@/app/playlists/useTrackTags";
 import {
   like,
   never,
@@ -24,7 +26,7 @@ import {
   type TrackFeedback,
   trackFeedback,
 } from "@/shared/ipc/feedback";
-import { allTrackIds, playTracks, trackDetails, waveStart } from "@/shared/ipc/library";
+import { allTrackIds, playTracks, trackDetails, waveStart, waveWhy } from "@/shared/ipc/library";
 import { type PlaybackSnapshot, setShuffle, togglePlay } from "@/shared/ipc/playback";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/Button";
@@ -50,6 +52,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
   const [card, setCard] = useState<{ id: number; confirmDelete: boolean } | null>(null);
   const closeCard = useCallback(() => setCard(null), []);
   const toPlaylist = useAddToPlaylist();
+  const tagsMenu = useTrackTags(id);
   const playing = snap.state === "playing";
 
   useEffect(() => {
@@ -116,7 +119,26 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       })
       .catch(() => notify(t("wave.failed")));
 
+  const why = () =>
+    waveWhy(id)
+      .then((rs) => {
+        const days = t("wave.daypart", { returnObjects: true }) as unknown as string[];
+        const genres = t("wave.genres", { returnObjects: true }) as unknown as string[];
+        const text = rs
+          .map((r) =>
+            t(`wave.why.${r.kind}`, {
+              daypart: days[r.arg ?? 0] ?? "",
+              genre: genres[r.arg ?? 0] ?? "",
+            }),
+          )
+          .join(" · ");
+        notify(text || t("wave.why.none"));
+      })
+      .catch(() => notify(t("wave.failed")));
   const items: MenuItem[] = [
+    ...(snap.inWave
+      ? [{ id: "why", label: t("wave.whyMenu"), icon: HelpCircle, onSelect: () => void why() }]
+      : []),
     {
       id: "playlist",
       label: t("trackMenu.addToPlaylist"),
@@ -154,6 +176,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       icon: Pencil,
       onSelect: () => setCard({ id, confirmDelete: false }),
     },
+    tagsMenu,
     {
       id: "never",
       label: t("wave.never"),
