@@ -2,6 +2,7 @@
 
 pub mod analysis;
 pub mod error;
+pub mod fingerprint;
 pub mod ports;
 pub mod settings;
 pub mod text;

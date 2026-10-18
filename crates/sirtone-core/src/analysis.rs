@@ -17,4 +17,6 @@ pub struct B0 {
     /// Chromaprint of the first 120 s, compressed (T3.2); `None` when it could not be made.
     pub fingerprint: Option<Vec<u8>>,
     pub fp_duration_ms: u64,
+    /// Every 8th raw item (`fingerprint::sketch`) for the coarse duplicate check (T3.5).
+    pub fp_sketch: Option<Vec<u8>>,
 }

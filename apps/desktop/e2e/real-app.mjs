@@ -1155,6 +1155,79 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
     live && (await outsideRows.count()) === 1,
     `rows ${await outsideRows.count()}, header ${live}`,
   );
+  // T3.5 / AT-05: the same melody as FLAC and MP3 under other names comes in through Explorer;
+  // the analysis fingerprints it and finds «тот же звук»; the old one gets a ♡ and a playlist
+  // place; «Заменить старый новым» in the «Дубли» dialog moves them and sends the old file to
+  // the Recycle Bin.
+  const dupDir = join(libDir, "Дубли");
+  mkdirSync(dupDir, { recursive: true });
+  const dupSrc = join(root, "fixtures", "generated", "dups");
+  copyFileSync(join(dupSrc, "Утро.flac"), join(dupDir, "Утро.flac"));
+  await sleep(1500);
+  copyFileSync(join(dupSrc, "Рассвет.mp3"), join(dupDir, "Рассвет.mp3"));
+  copyFileSync(join(dupSrc, "Вечер.flac"), join(dupDir, "Вечер.flac"));
+  const dupIds = () => {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    const rows = db
+      .prepare("SELECT id, rel_path FROM track WHERE rel_path LIKE 'Дубли/%' ORDER BY id")
+      .all();
+    db.close();
+    return Object.fromEntries(rows.map((r) => [r.rel_path.split("/")[1], r.id]));
+  };
+  let dupCount = 0;
+  for (let i = 0; i < 90 && dupCount === 0; i++) {
+    await sleep(1000);
+    dupCount = await invoke("duplicates_count", {});
+  }
+  const dupMap = dupIds();
+  const roadPl = (await invoke("playlists_list", {})).find((p) => p.name === "Дорога");
+  const oldId = dupMap["Утро.flac"];
+  const newId = dupMap["Рассвет.mp3"];
+  await invoke("feedback_like", { track: oldId, on: true });
+  await invoke("playlist_add", { id: roadPl.id, tracks: [oldId] });
+  await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
+  await page
+    .getByText(/^Дубли: /)
+    .locator("..")
+    .getByRole("button", { name: "Показать" })
+    .click();
+  const dupDialog = page.getByRole("dialog", { name: "Дубли" });
+  await dupDialog.waitFor({ timeout: 5000 });
+  const sameHeader = await dupDialog.getByText(/Тот же звук/).count();
+  const dupListed = await invoke("duplicates_list", {});
+  await dupDialog
+    .getByRole("listitem")
+    .filter({ hasText: "Рассвет (копия)" })
+    .getByRole("button", { name: "Заменить старый новым" })
+    .click();
+  await sleep(2500);
+  const dupDb = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+  const liked = dupDb
+    .prepare("SELECT count(*) AS n FROM feedback WHERE track_id = ? AND kind = 'like'")
+    .get(newId).n;
+  const inRoad = dupDb
+    .prepare("SELECT count(*) AS n FROM playlist_item WHERE playlist_id = ? AND track_id = ?")
+    .get(roadPl.id, newId).n;
+  const oldRow = dupDb.prepare("SELECT count(*) AS n FROM track WHERE id = ?").get(oldId).n;
+  const eveningPairs = dupDb
+    .prepare("SELECT count(*) AS n FROM duplicate_pair WHERE a = ? OR b = ?")
+    .get(dupMap["Вечер.flac"], dupMap["Вечер.flac"]).n;
+  dupDb.close();
+  await page.keyboard.press("Escape");
+  check(
+    "AT-05: «тот же звук» under other names found; «Заменить» moves ♡ and playlist, old file → Recycle Bin",
+    dupCount >= 1 &&
+      sameHeader === 1 &&
+      liked === 1 &&
+      inRoad === 1 &&
+      oldRow === 0 &&
+      !existsSync(join(dupDir, "Утро.flac")) &&
+      eveningPairs === 0,
+    `pairs ${dupCount} (${dupListed.pairs.map((p) => `${p.class} ${p.a.track.title}↔${p.b.track.title}`).join("; ")}), ♡ ${liked}, playlist ${inRoad}, old row ${oldRow}, file ${existsSync(join(dupDir, "Утро.flac"))}, «Вечер» pairs ${eveningPairs}`,
+  );
+  // The rest of the fixtures leave (the later checks count tracks).
+  rmSync(dupDir, { recursive: true, force: true });
+  await waitTracks(before + 1, 8000);
   rmSync(added);
   const [n2, ms2] = await waitTracks(before, 5000);
   check("deleted file leaves the lists", n2 === before, `${ms2} ms`);

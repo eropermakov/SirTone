@@ -1138,6 +1138,24 @@ pub fn track_details(lib: State<'_, Library>, track: u32) -> Result<TrackDetails
     })
 }
 
+impl Library {
+    /// A track leaves the library through the import worker (journalled): with its file to the
+    /// Recycle Bin or only from the app (FR-DATA-001).
+    pub(crate) fn remove_track(&self, track: i64, with_file: bool) -> Result<(), AppError> {
+        let (tx, rx) = mpsc::channel();
+        self.jobs
+            .send(Job::Remove {
+                track,
+                with_file,
+                reply: tx,
+            })
+            .map_err(|_| AppError::new(ErrorCode::Internal))?;
+        rx.recv_timeout(Duration::from_secs(60))
+            .map_err(|_| AppError::new(ErrorCode::Internal).with_details("removal timed out"))?
+            .map(|_| ())
+    }
+}
+
 /// FR-DATA-001: «удалить файл с диска» (to the Recycle Bin) or «только убрать из приложения».
 #[tauri::command(async)]
 #[specta::specta]
@@ -1148,17 +1166,7 @@ pub fn track_remove(
     with_file: bool,
 ) -> Result<(), AppError> {
     pb.forget_tracks(&[track]);
-    let (tx, rx) = mpsc::channel();
-    lib.jobs
-        .send(Job::Remove {
-            track: i64::from(track),
-            with_file,
-            reply: tx,
-        })
-        .map_err(|_| AppError::new(ErrorCode::Internal))?;
-    rx.recv_timeout(Duration::from_secs(60))
-        .map_err(|_| AppError::new(ErrorCode::Internal).with_details("removal timed out"))?
-        .map(|_| ())
+    lib.remove_track(i64::from(track), with_file)
 }
 
 /// FR-DATA-002: what deleting an artist takes away — for the confirmation.

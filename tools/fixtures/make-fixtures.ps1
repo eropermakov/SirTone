@@ -5,7 +5,7 @@ param([switch]$SkipLong)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $out = Join-Path $root 'fixtures\generated'
-New-Item -ItemType Directory -Force -Path $out, "$out\formats", "$out\signals", "$out\tags", "$out\names", "$out\broken", "$out\long" | Out-Null
+New-Item -ItemType Directory -Force -Path $out, "$out\formats", "$out\signals", "$out\tags", "$out\names", "$out\broken", "$out\long", "$out\dups" | Out-Null
 $sw = [Diagnostics.Stopwatch]::StartNew()
 
 function FF([string[]]$a) {
@@ -100,6 +100,13 @@ $bytes = [IO.File]::ReadAllBytes("$out\formats\mp3-cbr320.mp3")
 [IO.File]::WriteAllBytes("$out\broken\empty.flac", [byte[]]@())
 [IO.File]::WriteAllText("$out\broken\text-as.mp3", 'this is not audio')
 [IO.File]::WriteAllText("$out\broken\playlist.m3u", "#EXTM3U`r`nformats\mp3-cbr320.mp3")
+
+# --- dups (T3.5, AT-05): one melody as FLAC and MP3 under different names — «тот же звук»;
+# another melody — not a duplicate. 25 s each: a fingerprint needs ≥ 64 items (≈ 8 s) of variety.
+$melody = { param($a, $b) "aevalsrc=0.3*sin(2*PI*t*(220*pow(2\,mod(floor(t*3)*$a\,12)/12)))+0.2*sin(2*PI*t*(110*pow(2\,mod(floor(t*1.5)*$b\,12)/12))):s=44100:d=25" }
+FF @('-f', 'lavfi', '-i', (& $melody 5 7), '-c:a', 'flac', '-metadata', 'artist=Мелодия', '-metadata', 'title=Утро', "$out\dups\Утро.flac")
+FF @('-f', 'lavfi', '-i', (& $melody 5 7), '-c:a', 'libmp3lame', '-b:a', '192k', '-metadata', 'artist=Неизвестный', '-metadata', 'title=Рассвет (копия)', "$out\dups\Рассвет.mp3")
+FF @('-f', 'lavfi', '-i', (& $melody 11 3), '-c:a', 'flac', '-metadata', 'artist=Мелодия', '-metadata', 'title=Вечер', "$out\dups\Вечер.flac")
 
 # --- long: 3-hour mix (FR-IMP-007) — cheap low-bitrate silence+tone ---
 if (-not $SkipLong) {

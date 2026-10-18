@@ -145,7 +145,8 @@ pub fn analyze(dec: &dyn PcmDecoder, path: &Path) -> Result<B0, AppError> {
         tail_silence_ms: tail as u64 * 100,
         env_head,
         env_tail,
-        fp_duration_ms: fingerprint.as_ref().map_or(0, |f| f.1),
+        fp_duration_ms: fingerprint.as_ref().map_or(0, |f| f.2),
+        fp_sketch: fingerprint.as_ref().map(|f| f.1.clone()),
         fingerprint: fingerprint.map(|f| f.0),
     })
 }

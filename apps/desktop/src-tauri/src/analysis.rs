@@ -78,7 +78,13 @@ fn step(app: &AppHandle, slot: &mut Option<(PathBuf, Connection)>) -> Duration {
     let path = rel.split('/').fold(root, |p, part| p.join(part));
     let t0 = std::time::Instant::now();
     let stored = match sirtone_analysis::b0::analyze(&sirtone_audio::pcm::PcmFiles, &path) {
-        Ok(b) => sirtone_library::analysis::store_b0(c, track, &b, VERSION),
+        Ok(b) => sirtone_library::analysis::store_b0(c, track, &b, VERSION).and_then(|()| {
+            // T3.5: a fresh fingerprint is compared with the library (duplicates by sound).
+            if b.fingerprint.is_some() && sirtone_library::duplicates::detect(c, track)? > 0 {
+                crate::duplicates::found(app, sirtone_library::duplicates::pending_count(c)?);
+            }
+            Ok(())
+        }),
         Err(e) => {
             tracing::warn!(target: "sirtone::analysis", track, code = ?e.code, "B0 failed");
             sirtone_library::analysis::mark_failed(c, track, VERSION)

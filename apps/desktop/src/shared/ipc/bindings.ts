@@ -158,12 +158,27 @@ export const commands = {
 	 */
 	waveSeasonCard: () => __TAURI_INVOKE<string>("wave_season_card"),
 	analysisProgress: () => typedError<AnalysisProgress, AppError>(__TAURI_INVOKE("analysis_progress")),
+	duplicatesList: () => typedError<DuplicatesView, AppError>(__TAURI_INVOKE("duplicates_list")),
+	duplicatesCount: () => typedError<number, AppError>(__TAURI_INVOKE("duplicates_count")),
+	/**  «Оставить оба». */
+	duplicateKeepBoth: (a: number, b: number) => typedError<null, AppError>(__TAURI_INVOKE("duplicate_keep_both", { a, b })),
+	/**
+	 *  «Заменить старый новым» (`keep` = new, `drop` = old) or «Убрать новый» (the other way):
+	 *  `keep` takes `drop`'s history, `drop`'s file goes to the Recycle Bin.
+	 */
+	duplicateMerge: (keep: number, drop: number) => typedError<null, AppError>(__TAURI_INVOKE("duplicate_merge", { keep, drop })),
+	/**
+	 *  The mass action: every «тот же звук» pair keeps the better file (FR-DUP-003). Returns how
+	 *  many files went to the Recycle Bin.
+	 */
+	duplicatesKeepBest: () => typedError<number, AppError>(__TAURI_INVOKE("duplicates_keep_best")),
 	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
 	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),
 };
 
 /** Events */
 export const events = {
+	duplicatesFound: makeEvent<DuplicatesFound>("duplicates-found"),
 	hotkeyConflict: makeEvent<HotkeyConflict>("hotkey-conflict"),
 	importFinished: makeEvent<ImportFinished>("import-finished"),
 	importProgress: makeEvent<ImportProgress>("import-progress"),
@@ -227,6 +242,38 @@ export type Bootstrap = {
 	settings: unknown,
 	playback: PlaybackSnapshot | null,
 	library: LibraryStatus | null,
+};
+
+export type DupPair = {
+	/**  same_sound · similar */
+	class: string,
+	similarity: number | null,
+	/**  The earlier track. */
+	a: DupSide,
+	/**  The later one («новый»). */
+	b: DupSide,
+};
+
+export type DupSide = {
+	track: TrackItem,
+	codec: string,
+	lossless: boolean,
+	bitrateKbps: number | null,
+	sizeBytes: number | null,
+	plays: number,
+	/**  The better file of the two (lossless > lossy > bitrate > size). */
+	better: boolean,
+};
+
+/**  New pairs were found (the analysis thread); `pending` — how many wait for a decision. */
+export type DuplicatesFound = {
+	pending: number,
+};
+
+export type DuplicatesView = {
+	pairs: DupPair[],
+	/**  Exact copies the imports did not add (source paths, latest first). */
+	exact: string[],
 };
 
 export type ErrorCode = "FileNotFound" | "UnsupportedFormat" | "DecodeFailed" | "PathTooLong" | "DiskFull" | "PermissionDenied" | "DeviceUnavailable" | "DeviceBusy" | "NetworkOffline" | "RateLimited" | "RemoteError" | "DbBusy" | "DbCorrupt" | "Cancelled" | "InvalidArgument" | "LibraryOffline" | 

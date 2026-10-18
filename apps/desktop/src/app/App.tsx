@@ -1,5 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionScreen } from "@/app/library/CollectionScreen";
 import { GenresScreen } from "@/app/library/GenresScreen";
@@ -7,6 +7,7 @@ import { RootPanel } from "@/app/library/RootPanel";
 import { UnknownScreen } from "@/app/library/UnknownScreen";
 import { useLibrary } from "@/app/library/useLibrary";
 import { bootstrap } from "@/shared/ipc/bootstrap";
+import { onDuplicatesFound } from "@/shared/ipc/duplicates";
 import {
   cancelImport,
   confirmMissing,
@@ -43,6 +44,7 @@ import { notify, onNotify } from "@/shared/ui/notify";
 import { Toast } from "@/shared/ui/Toast";
 import { DndRoot } from "./dnd/dnd";
 import type { Open } from "./library/CollectionScreen";
+import { DuplicatesDialog } from "./library/DuplicatesDialog";
 import type { GoTo } from "./library/TrackList";
 import { Onboarding, Tips } from "./onboarding/Onboarding";
 import { PlaylistScreen } from "./playlists/PlaylistScreen";
@@ -145,6 +147,22 @@ export function App() {
   const [onboard, setOnboard] = useState<"setup" | "tips" | null>(null);
   const [coverSlug, setCoverSlug] = useState<AccentSlug>("sirkov");
   const [toast, setToast] = useState<string | null>(null);
+  // «Дубли» (T3.5): found in the background after the analysis — a toast at most every
+  // 10 minutes (the first pass over a big library finds many), the dialog on «Показать».
+  const [dupsFound, setDupsFound] = useState<number | null>(null);
+  const [dupsOpen, setDupsOpen] = useState(false);
+  const dupsShownAt = useRef(0);
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    void onDuplicatesFound((n) => {
+      if (Date.now() - dupsShownAt.current < 10 * 60_000) return;
+      dupsShownAt.current = Date.now();
+      setDupsFound(n);
+    }).then((f) => {
+      off = f;
+    });
+    return () => off?.();
+  }, []);
   useEffect(() => onNotify(setToast), []);
   // «Сиртон обновлён до X» once, on the first start of a new version (D-76).
   const [updated, setUpdated] = useState<UpdateStatus | null>(null);
@@ -327,6 +345,7 @@ export function App() {
                 onChooseLibrary={() => lib.setRootNeeded(true)}
                 onReplaySetup={() => setOnboard("setup")}
                 onReplayTips={() => setOnboard("tips")}
+                onShowDuplicates={() => setDupsOpen(true)}
               />
             ) : screen === "wave" && hasMusic ? (
               <WaveScreen snap={snap} onGo={goTo} />
@@ -420,6 +439,23 @@ export function App() {
             onClose={() => setUpdated(null)}
           />
         )}
+        {dupsFound !== null && !dupsOpen && !error && !report && (
+          <Toast
+            tone="info"
+            heading={t("dups.foundTitle")}
+            message={t("dups.found", { count: dupsFound })}
+            closeLabel={tc("errors.close")}
+            timeoutMs={12000}
+            action={{
+              label: t("dups.show"),
+              onClick: () => {
+                setDupsFound(null);
+                setDupsOpen(true);
+              },
+            }}
+            onClose={() => setDupsFound(null)}
+          />
+        )}
         {toast && !error && !report && (
           <Toast
             tone="info"
@@ -491,6 +527,7 @@ export function App() {
           />
         )}
         {onboard === "tips" && <Tips onClose={() => setOnboard(null)} />}
+        {dupsOpen && <DuplicatesDialog onClose={() => setDupsOpen(false)} />}
         {smartName !== null && (
           <SmartEditor
             initial={blankDraft()}

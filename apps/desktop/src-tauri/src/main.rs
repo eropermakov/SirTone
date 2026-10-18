@@ -6,6 +6,7 @@ mod analysis;
 mod autostart;
 mod bootstrap;
 mod diagnostics;
+mod duplicates;
 mod feedback;
 mod hotkeys;
 mod ipc;

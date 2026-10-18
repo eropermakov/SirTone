@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionSummary } from "@/app/library/CollectionScreen";
 import { mb } from "@/app/library/TrackCard";
+import { duplicatesCount } from "@/shared/ipc/duplicates";
 import {
   analysisProgress,
   type NeverEntry,
@@ -43,6 +44,8 @@ type Props = {
   /** FR-ONB-002/003: the setup and the tips again. */
   onReplaySetup?: () => void;
   onReplayTips?: () => void;
+  /** «Дубли» (T3.5). */
+  onShowDuplicates?: () => void;
 };
 
 const THEMES: { id: ThemePref; key: string }[] = [
@@ -63,6 +66,7 @@ export function SettingsScreen({
   onChooseLibrary,
   onReplaySetup,
   onReplayTips,
+  onShowDuplicates,
 }: Props) {
   const { t } = useTranslation("shell");
 
@@ -114,6 +118,7 @@ export function SettingsScreen({
             </span>
             {library.root && <CollectionSummary status={library} />}
             {library.root && <ServiceData />}
+            {library.root && onShowDuplicates && <DuplicatesLine onShow={onShowDuplicates} />}
             {!library.root && onChooseLibrary && (
               <button
                 type="button"
@@ -730,5 +735,27 @@ function AnalysisLine() {
             total: p.total,
           })}
     </p>
+  );
+}
+
+/** «Дубли: N — Показать» (T3.5): pairs by sound waiting for a decision. */
+function DuplicatesLine({ onShow }: { onShow: () => void }) {
+  const { t } = useTranslation("shell");
+  const [n, setN] = useState<number | null>(null);
+  useEffect(() => {
+    duplicatesCount()
+      .then(setN)
+      .catch(() => {});
+  }, []);
+  if (n === null) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <span className="t-body text-text-primary">
+        {n > 0 ? t("dups.pending", { count: n }) : t("dups.none")}
+      </span>
+      <button type="button" onClick={onShow} className="t-body-strong w-fit text-accent-text">
+        {t("dups.show")}
+      </button>
+    </div>
   );
 }
