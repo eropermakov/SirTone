@@ -145,6 +145,33 @@ pub fn season_w_bytes(w: &[f32; 4]) -> [u8; 4] {
     w.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)
 }
 
+/// Envelope sample of B0 (`env_head`/`env_tail`, 10 Hz): dB clamped to −100…0, stored +100.
+pub fn env_db(v: u8) -> f32 {
+    f32::from(v) - 100.0
+}
+
+/// «Мягкость вступления» (docs/14 §4.1 feature 16): the rise of the envelope over the first
+/// 5 s — a fade-in is soft (1), a start at full level is hard (0). 30 dB of rise = 1.
+pub fn soft_intro(env_head: &[u8]) -> Option<f32> {
+    if env_head.len() < 50 {
+        return None;
+    }
+    let mean = |w: &[u8]| w.iter().map(|&v| env_db(v)).sum::<f32>() / w.len() as f32;
+    let rise = mean(&env_head[45..50]) - mean(&env_head[0..5]);
+    Some((rise / 30.0).clamp(0.0, 1.0))
+}
+
+/// «Мягкость финала» (feature 17): the fall over the last 10 s — a fade-out is soft.
+pub fn soft_outro(env_tail: &[u8]) -> Option<f32> {
+    let n = env_tail.len();
+    if n < 100 {
+        return None;
+    }
+    let mean = |w: &[u8]| w.iter().map(|&v| env_db(v)).sum::<f32>() / w.len() as f32;
+    let fall = mean(&env_tail[n - 100..n - 90]) - mean(&env_tail[n - 10..n]);
+    Some((fall / 30.0).clamp(0.0, 1.0))
+}
+
 /// Number of track features (docs/14 §4.1).
 pub const FEATURES: usize = 32;
 
@@ -169,6 +196,11 @@ pub struct WaveTrack {
     pub never: bool,
     /// Analysed features (B0–B3) with their confidence; `None` until analysed.
     pub features: Option<([f32; FEATURES], f32)>,
+    /// B0 (T3.6): integrated loudness (LUFS), loudness range (LU), soft intro/outro 0…1.
+    pub lufs: Option<f32>,
+    pub lra: Option<f32>,
+    pub soft_intro: Option<f32>,
+    pub soft_outro: Option<f32>,
 }
 
 /// «Не сейчас» still on the shelf (docs/14 §6, D-77).

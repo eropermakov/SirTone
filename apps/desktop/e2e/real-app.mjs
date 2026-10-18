@@ -932,6 +932,17 @@ if (existsSync(corpus)) {
     axeCritical.length === 0,
     axeCritical.join("; ") || "none",
   );
+  // T3.6/T3.10: background analysis B0 runs on its own (newest first) and stores loudness.
+  let prog = await invoke("analysis_progress", {});
+  for (let i = 0; i < 30 && prog.done === 0; i++) {
+    await sleep(1000);
+    prog = await invoke("analysis_progress", {});
+  }
+  check(
+    "background analysis B0 is running",
+    prog.done > 0 && prog.total > 0,
+    `${prog.done} of ${prog.total}, paused ${prog.paused}`,
+  );
   // T2.4: auto-detect — hardware + WebGL benchmark → a level, saved like a manual choice.
   await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
   await page.getByRole("button", { name: "Определить автоматически" }).click();

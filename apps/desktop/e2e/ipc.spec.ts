@@ -68,6 +68,8 @@ async function mockTauri(page: Page) {
             return [];
           case "autostart_available":
             return false;
+          case "analysis_progress":
+            return { done: 0, total: 0, paused: false };
           case "update_status":
             return { current: "0.1.2", justUpdated: null, notes: null };
           case "playback_toggle":

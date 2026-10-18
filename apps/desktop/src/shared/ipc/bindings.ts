@@ -111,6 +111,7 @@ export const commands = {
 	waveResetLearning: () => typedError<null, AppError>(__TAURI_INVOKE("wave_reset_learning")),
 	/**  «Почему этот трек» for a track of the running wave (empty outside the wave). */
 	waveWhy: (track: number) => __TAURI_INVOKE<WhyReason[]>("wave_why", { track }),
+	analysisProgress: () => typedError<AnalysisProgress, AppError>(__TAURI_INVOKE("analysis_progress")),
 	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
 	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),
 };
@@ -144,6 +145,13 @@ export type AlbumItem = {
 export type AlbumPage = {
 	rows: AlbumItem[],
 	next: PageCursor | null,
+};
+
+export type AnalysisProgress = {
+	done: number,
+	total: number,
+	/**  Waiting for power, a game or idle time. */
+	paused: boolean,
 };
 
 export type AppError = {

@@ -174,7 +174,7 @@ pub fn catalog(conn: &Connection) -> Result<Vec<WaveTrack>, LibraryError> {
                 t.wave_never OR coalesce((SELECT a.wave_never FROM track_artist ta
                           JOIN artist a ON a.id = ta.artist_id WHERE ta.track_id = t.id
                           ORDER BY ta.position LIMIT 1), 0),
-                tf.vec, tf.conf
+                tf.vec, tf.conf, t.lufs_i, t.lra, t.env_head, t.env_tail
          FROM track t LEFT JOIN album al ON al.id = t.album_id
          LEFT JOIN track_features tf ON tf.track_id = t.id
          WHERE t.state = 'ok'",
@@ -207,6 +207,14 @@ pub fn catalog(conn: &Connection) -> Result<Vec<WaveTrack>, LibraryError> {
                 liked: r.get::<_, i64>(10)? != 0,
                 never: r.get::<_, i64>(11)? != 0,
                 features,
+                lufs: r.get::<_, Option<f64>>(14)?.map(|v| v as f32),
+                lra: r.get::<_, Option<f64>>(15)?.map(|v| v as f32),
+                soft_intro: r
+                    .get::<_, Option<Vec<u8>>>(16)?
+                    .and_then(|e| sirtone_core::wave::soft_intro(&e)),
+                soft_outro: r
+                    .get::<_, Option<Vec<u8>>>(17)?
+                    .and_then(|e| sirtone_core::wave::soft_outro(&e)),
             })
         })?
         .collect::<Result<_, _>>()?;

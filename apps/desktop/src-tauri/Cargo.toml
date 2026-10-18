@@ -19,6 +19,7 @@ tauri = { workspace = true, features = ["tray-icon", "image-png"] }
 serde = { workspace = true }
 sirtone-core = { workspace = true }
 sirtone-audio = { workspace = true }
+sirtone-analysis = { workspace = true }
 sirtone-platform = { workspace = true }
 specta = { workspace = true }
 specta-typescript = { workspace = true }

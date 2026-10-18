@@ -60,6 +60,10 @@ pub fn library(n: usize, now_ms: i64, analysed: f32, seed: u64) -> Vec<WaveTrack
                 liked,
                 never: rng.f32() < 0.002,
                 features: (rng.f32() < analysed).then_some((x, 1.0)),
+                lufs: None,
+                lra: None,
+                soft_intro: None,
+                soft_outro: None,
             }
         })
         .collect()

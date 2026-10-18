@@ -3,7 +3,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionSummary } from "@/app/library/CollectionScreen";
 import { mb } from "@/app/library/TrackCard";
-import { type NeverEntry, never, neverList, resetLearning } from "@/shared/ipc/feedback";
+import {
+  analysisProgress,
+  type NeverEntry,
+  never,
+  neverList,
+  resetLearning,
+} from "@/shared/ipc/feedback";
 import type { LibraryStatus } from "@/shared/ipc/library";
 import { perfHardware } from "@/shared/ipc/perf";
 import { getSettings, patchSettings } from "@/shared/ipc/settings";
@@ -660,6 +666,7 @@ function WaveLearningSection() {
             }}
           />
         </div>
+        <AnalysisLine />
         <Button variant="ghost" className="self-start text-danger" onClick={() => setAsking(true)}>
           {t("settingsWave.reset")}
         </Button>
@@ -691,5 +698,37 @@ function WaveLearningSection() {
         </Dialog>
       )}
     </div>
+  );
+}
+
+/** «Анализ звука: N из M» — the background analysis (T3.6/T3.10), refreshed every 5 s. */
+function AnalysisLine() {
+  const { t } = useTranslation("shell");
+  const [p, setP] = useState<{ done: number; total: number; paused: boolean } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      analysisProgress()
+        .then((v) => {
+          if (alive) setP(v);
+        })
+        .catch(() => {});
+    void load();
+    const id = window.setInterval(load, 5000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, []);
+  if (!p || p.total === 0) return null;
+  return (
+    <p className="t-caption text-text-secondary">
+      {p.done >= p.total
+        ? t("settingsWave.analysisDone", { count: p.total })
+        : t(p.paused ? "settingsWave.analysisPaused" : "settingsWave.analysis", {
+            done: p.done,
+            total: p.total,
+          })}
+    </p>
   );
 }

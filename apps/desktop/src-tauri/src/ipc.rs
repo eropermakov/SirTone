@@ -5,7 +5,7 @@
 use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::{
-    autostart, bootstrap, feedback, hotkeys, library, perf, playback, playlists, search,
+    analysis, autostart, bootstrap, feedback, hotkeys, library, perf, playback, playlists, search,
     settings_store, storage, updates, wave, window_chrome,
 };
 
@@ -93,6 +93,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             wave::wave_start,
             wave::wave_reset_learning,
             wave::wave_why,
+            analysis::analysis_progress,
             window_chrome::window_set_theme,
         ])
         .events(collect_events![

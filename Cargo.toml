@@ -15,6 +15,7 @@ authors = ["Sir.kov Studio"]
 [workspace.dependencies]     # versions checked 2026-10-15 (docs/08 §5.1)
 sirtone-core = { path = "crates/sirtone-core" }
 sirtone-audio = { path = "crates/sirtone-audio" }
+sirtone-analysis = { path = "crates/sirtone-analysis" }
 sirtone-platform = { path = "crates/sirtone-platform" }
 sirtone-library = { path = "crates/sirtone-library" }
 sirtone-recognize = { path = "crates/sirtone-recognize" }

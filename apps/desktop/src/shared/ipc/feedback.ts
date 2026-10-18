@@ -1,5 +1,11 @@
 import { isTauri } from "@tauri-apps/api/core";
-import { commands, type NeverEntry, type NeverScope, type TrackFeedback } from "./bindings";
+import {
+  type AnalysisProgress,
+  commands,
+  type NeverEntry,
+  type NeverScope,
+  type TrackFeedback,
+} from "./bindings";
 
 export type { NeverEntry, NeverScope, TrackFeedback };
 
@@ -47,3 +53,7 @@ export const trackTags = async (track: number): Promise<string[]> =>
 export const setTag = async (track: number, tag: string, on: boolean): Promise<void> => {
   if (isTauri()) unwrap(await commands.trackTagSet(track, tag, on));
 };
+
+/** Background analysis progress (T3.6/T3.10). */
+export const analysisProgress = async (): Promise<AnalysisProgress | null> =>
+  isTauri() ? unwrap(await commands.analysisProgress()) : null;

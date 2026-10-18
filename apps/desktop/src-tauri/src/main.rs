@@ -2,6 +2,7 @@
 // No console window in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod analysis;
 mod autostart;
 mod bootstrap;
 mod diagnostics;
@@ -110,6 +111,7 @@ fn main() {
             updates::start(app.handle());
             app.manage(library::Library::start(app.handle().clone(), store.clone()));
             app.manage(wave::Wave::start(app.handle().clone()));
+            analysis::start(app.handle().clone());
             match playback::Playback::start(app.handle().clone(), store) {
                 Ok(pb) => {
                     let args: Vec<String> = std::env::args().collect();

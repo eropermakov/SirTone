@@ -17,7 +17,11 @@ use crate::rng::Rng;
 pub mod f {
     pub const ENERGY: usize = 0;
     pub const TEMPO: usize = 4;
+    pub const DYNAMICS: usize = 11;
+    pub const LOUDNESS: usize = 12;
     pub const DURATION: usize = 13;
+    pub const SOFT_IN: usize = 16;
+    pub const SOFT_OUT: usize = 17;
     pub const YEAR: usize = 14;
     pub const GENRE: usize = 26;
     pub const GENRES: usize = 6;
@@ -283,6 +287,19 @@ impl Catalog {
             let (mut x, conf) = t.features.unwrap_or((mean, 0.0));
             // Metadata features are known without analysis (§4.1: «теги»).
             x[f::DURATION] = duration_feature(t.duration_ms);
+            // B0 (T3.6): dynamics, loudness, soft intro/outro (§4.1 features 11, 12, 16, 17).
+            if let Some(v) = t.lra {
+                x[f::DYNAMICS] = (v / 20.0).clamp(0.0, 1.0);
+            }
+            if let Some(v) = t.lufs {
+                x[f::LOUDNESS] = ((v + 30.0) / 25.0).clamp(0.0, 1.0);
+            }
+            if let Some(v) = t.soft_intro {
+                x[f::SOFT_IN] = v;
+            }
+            if let Some(v) = t.soft_outro {
+                x[f::SOFT_OUT] = v;
+            }
             x[f::YEAR] = t.year.map_or(year_mid, year_feature);
             if t.features.is_none() {
                 match g {

@@ -158,3 +158,14 @@ pub trait CoverReader: Send + Sync {
         source_dir: Option<&std::path::Path>,
     ) -> Option<(Vec<u8>, CoverSource)>;
 }
+
+/// Streaming PCM for analysis (T3.6): decodes a file packet by packet and hands interleaved
+/// `f32` frames to `sink(frames, channels, rate)`; `false` from the sink stops early. Never
+/// the whole track in memory. Implemented by `sirtone-audio`.
+pub trait PcmDecoder: Send + Sync {
+    fn decode(
+        &self,
+        path: &std::path::Path,
+        sink: &mut dyn FnMut(&[f32], usize, u32) -> bool,
+    ) -> Result<(), crate::error::AppError>;
+}
