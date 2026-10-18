@@ -1145,6 +1145,15 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
   copyFileSync(join(root, "fixtures", "generated", "tags", "cyrillic-ok.flac"), added);
   const [n1, ms1] = await waitTracks(before + 1, 5000);
   check("file added in Explorer appears ≤ 2 s", n1 === before + 1 && ms1 <= 2000, `${ms1} ms`);
+  // T3.19: it is taken where it is, and «Навести порядок» is offered (never moved silently).
+  const organizeOffered = await page
+    .getByText("Новые файлы в папке медиатеки")
+    .waitFor({ timeout: 5000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  const keptInPlace = existsSync(added);
   const outsideHeader = page.getByRole("main").getByText(/^1 трек ·/);
   const live = await outsideHeader.waitFor({ timeout: 3000 }).then(
     () => true,
@@ -1307,7 +1316,27 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
   }
   rmSync(mergeDir, { recursive: true, force: true });
   await waitTracks(before + 1, 8000);
-  rmSync(added);
+  // T3.19: «Навести порядок во всей медиатеке» puts the Explorer file where the rules say.
+  await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
+  await page.getByRole("button", { name: "Навести порядок во всей медиатеке" }).click();
+  const relOf = (title) => {
+    const odb = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    const r = odb.prepare("SELECT rel_path FROM track WHERE title = ?").get(title);
+    odb.close();
+    return r?.rel_path ?? "";
+  };
+  let organized = relOf("Искала");
+  for (let i = 0; i < 50 && organized.startsWith("Снаружи/"); i++) {
+    await sleep(200);
+    organized = relOf("Искала");
+  }
+  check(
+    "T3.19: Explorer file kept in place, «Навести порядок» offered, then laid out by the rules",
+    organizeOffered && keptInPlace && organized !== "" && !organized.startsWith("Снаружи/"),
+    `offered ${organizeOffered}, kept ${keptInPlace}, now ${organized}`,
+  );
+  rmSync(join(libDir, ...organized.split("/")), { force: true });
+  rmSync(added, { force: true });
   const [n2, ms2] = await waitTracks(before, 5000);
   check("deleted file leaves the lists", n2 === before, `${ms2} ms`);
   // Restart with the folder renamed: offline, nothing recreated at the old path.

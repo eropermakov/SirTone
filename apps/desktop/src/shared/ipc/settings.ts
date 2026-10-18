@@ -24,6 +24,7 @@ export type SettingsPatch = {
   performance?: { level?: number; overrides?: Record<string, unknown> };
   onboarding?: { done?: boolean; tips_seen?: boolean };
   wave?: { learning?: boolean; novelty?: number };
+  library?: { organize_external?: "suggest" | "auto" | "never" };
 };
 
 const WEB_KEY = "sirtone.web.settings";

@@ -255,24 +255,30 @@ fn prune_empty(root: &Path, old_rel: &str) {
     }
 }
 
-/// Puts a track's file where the layout rules say for what the library knows now (after an
-/// artist merge, an album change); returns whether it moved. Idempotent.
-pub fn relayout(
-    conn: &mut Connection,
-    root: &Path,
+/// Where the layout rules put a track for what the library knows now; `None` for a track the
+/// rules do not place (no artist, or «Неизвестные» — an unsure identity stays where it is).
+fn canonical_of(
+    conn: &Connection,
     track: TrackId,
-    fsops: &dyn FileOps,
-) -> Result<bool, LibraryError> {
+) -> Result<Option<(Current, String)>, LibraryError> {
     let cur = current(conn, track)?;
-    let Some(primary) = cur.artist_names.first() else {
-        return Ok(false);
+    let unknown: bool = conn.query_row(
+        "SELECT identity_state = 'unknown' FROM track WHERE id = ?1",
+        [track],
+        |r| r.get(0),
+    )?;
+    let Some(primary) = cur.artist_names.first().cloned() else {
+        return Ok(None);
     };
+    if unknown {
+        return Ok(None);
+    }
     let ext = Path::new(&cur.rel_path)
         .extension()
         .map(|e| e.to_string_lossy().to_ascii_lowercase())
         .unwrap_or_default();
     let placement = layout::canonical(&TrackPlace {
-        artist: primary,
+        artist: &primary,
         album_artist: cur.album_artist.as_deref(),
         album: cur.album.as_deref(),
         title: &cur.title,
@@ -281,8 +287,27 @@ pub fn relayout(
         multi_disc: cur.multi_disc,
         ext: &ext,
     });
-    let (rel, journal) =
-        journalled_move(conn, root, track, &cur.rel_path, &placement.rel_path, fsops)?;
+    Ok(Some((cur, placement.rel_path)))
+}
+
+/// Whether a track lies elsewhere than the rules say (FR-FS-005 «навести порядок?»).
+pub fn out_of_place(conn: &Connection, track: TrackId) -> Result<bool, LibraryError> {
+    Ok(canonical_of(conn, track)?
+        .is_some_and(|(cur, target)| !target.eq_ignore_ascii_case(&cur.rel_path)))
+}
+
+/// Puts a track's file where the layout rules say for what the library knows now (after an
+/// artist merge, an album change, «навести порядок»); returns whether it moved. Idempotent.
+pub fn relayout(
+    conn: &mut Connection,
+    root: &Path,
+    track: TrackId,
+    fsops: &dyn FileOps,
+) -> Result<bool, LibraryError> {
+    let Some((cur, target)) = canonical_of(conn, track)? else {
+        return Ok(false);
+    };
+    let (rel, journal) = journalled_move(conn, root, track, &cur.rel_path, &target, fsops)?;
     if rel == cur.rel_path {
         return Ok(false);
     }
@@ -387,6 +412,75 @@ mod tests {
         fn to_recycle_bin(&self, _: &Path) -> std::io::Result<()> {
             Ok(())
         }
+    }
+
+    /// T3.19: a file put in place by hand is «out of place» until «навести порядок»; an unsure
+    /// identity stays where it is; the emptied folder goes, a folder with a cover stays.
+    #[test]
+    fn organize_moves_known_tracks_and_prunes_empty_folders() {
+        let root = std::env::temp_dir().join(format!("sirtone-organize-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("Снаружи/Глубже")).unwrap();
+        fs::create_dir_all(root.join("Свалка")).unwrap();
+        fs::write(root.join("Снаружи/Глубже/a.mp3"), b"audio").unwrap();
+        fs::write(root.join("Свалка/b.mp3"), b"audio").unwrap();
+        fs::write(root.join("Свалка/cover.jpg"), b"img").unwrap();
+        fs::write(root.join("Свалка/c.mp3"), b"audio").unwrap();
+        let mut c = open(&root.join(".sirtone/library.db"), crate::Medium::Fixed).unwrap();
+        let kino = repo::artist_get_or_create(&c, "Кино").unwrap();
+        let mut add = |rel: &str, title: &str, artists: Vec<ArtistId>, identity: Identity| {
+            track_insert(
+                &mut c,
+                &NewTrack {
+                    rel_path: rel.into(),
+                    size_bytes: 5,
+                    mtime_ms: 0,
+                    content_hash: format!("h{rel}"),
+                    container: "mp3".into(),
+                    codec: "mp3".into(),
+                    lossless: false,
+                    sample_rate: None,
+                    channels: None,
+                    duration_ms: 1000,
+                    title: title.into(),
+                    album_id: None,
+                    disc_no: None,
+                    track_no: None,
+                    year: None,
+                    identity,
+                    identity_conf: 0.9,
+                    unknown_reason: None,
+                    artists,
+                },
+            )
+            .unwrap()
+        };
+        let a = add(
+            "Снаружи/Глубже/a.mp3",
+            "Кукушка",
+            vec![kino],
+            Identity::Inferred,
+        );
+        let b = add(
+            "Свалка/b.mp3",
+            "Пачка сигарет",
+            vec![kino],
+            Identity::Inferred,
+        );
+        let u = add("Свалка/c.mp3", "c", vec![], Identity::Unknown);
+        assert!(out_of_place(&c, a).unwrap() && out_of_place(&c, b).unwrap());
+        assert!(
+            !out_of_place(&c, u).unwrap(),
+            "«Неизвестные» stay where they are"
+        );
+        assert!(relayout(&mut c, &root, a, &Ops).unwrap());
+        assert!(relayout(&mut c, &root, b, &Ops).unwrap());
+        assert!(!relayout(&mut c, &root, a, &Ops).unwrap(), "idempotent");
+        assert!(!out_of_place(&c, a).unwrap());
+        // «Снаружи/Глубже» emptied → both levels gone; «Свалка» keeps its cover and the unknown.
+        assert!(!root.join("Снаружи").exists());
+        assert!(root.join("Свалка/cover.jpg").exists() && root.join("Свалка/c.mp3").exists());
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

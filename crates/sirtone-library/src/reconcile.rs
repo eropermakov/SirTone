@@ -18,7 +18,7 @@ use crate::import::{
     AUDIO_EXT, FileFacts, ImportDeps, SERVICE_DIR, attach_cover, ext_of, folder_hints, hash_file,
     insert_identified,
 };
-use crate::repo;
+use crate::repo::{self, TrackId};
 
 /// A missing row is purged after this long (FR-FS-003: «тихо очищается через 24 ч»).
 pub const PURGE_AFTER_MS: i64 = 24 * 3600 * 1000;
@@ -118,6 +118,8 @@ pub fn scan(root: &Path) -> Result<Scan, std::io::Error> {
 pub struct Report {
     /// Files added in Explorer and taken into the library where they are.
     pub adopted: usize,
+    /// Their tracks (T3.19: «навести порядок» is offered for those not where the rules say).
+    pub adopted_ids: Vec<TrackId>,
     pub moved: usize,
     pub missing_marked: usize,
     /// Missing tracks whose file is back.
@@ -289,8 +291,11 @@ pub fn reconcile(
     let mut hints_cache = HashMap::new();
     for f in adopt {
         match adopt_in_place(conn, root, f, deps, &mut hints_cache)? {
-            true => report.adopted += 1,
-            false => report.ignored += 1,
+            Some(id) => {
+                report.adopted += 1;
+                report.adopted_ids.push(id);
+            }
+            None => report.ignored += 1,
         }
     }
 
@@ -345,22 +350,22 @@ fn adopt_in_place(
     f: &DiskFile,
     deps: &ImportDeps,
     hints_cache: &mut HashMap<PathBuf, (Option<String>, Option<String>)>,
-) -> Result<bool, LibraryError> {
+) -> Result<Option<TrackId>, LibraryError> {
     let abs = abs_of(root, &f.rel);
     let now = crate::db::now_ms();
     let info = match deps.probe.probe(&abs) {
         Ok(i) => i,
         Err(_) => {
             ignore(conn, f, "not_playable", now)?;
-            return Ok(false);
+            return Ok(None);
         }
     };
     let Ok(hash) = hash_file(&abs) else {
-        return Ok(false); // still being written: next pass
+        return Ok(None); // still being written: next pass
     };
     if repo::track_by_hash(conn, &hash)?.is_some() {
         ignore(conn, f, "exact_copy", now)?;
-        return Ok(false);
+        return Ok(None);
     }
     let tags = deps.tags.read(&abs);
     let file_name = abs
@@ -389,7 +394,7 @@ fn adopt_in_place(
         repo::search_reindex(conn, id)?;
     }
     attach_cover(conn, root, album, &abs, abs.parent(), deps);
-    Ok(true)
+    Ok(Some(id))
 }
 
 /// Whether any track is missing right now (for the UI and the purge guard).

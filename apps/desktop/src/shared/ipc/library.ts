@@ -117,6 +117,14 @@ export const onImportFinished = (cb: (p: ImportFinished) => void) =>
 export const onLibraryChanged = (cb: () => void) => listen(events.libraryChanged, () => cb());
 export const onRootNeeded = (cb: () => void) => listen(events.libraryRootNeeded, () => cb());
 
+/** T3.19: files added in Explorer lie elsewhere than the layout rules say. */
+export const onOrganizeSuggested = (cb: (tracks: number) => void) =>
+  listen(events.organizeSuggested, (e) => cb(e.tracks));
+
+/** «Навести порядок»: the waiting files, or the whole library; returns how many moved. */
+export const organizeLibrary = async (all: boolean): Promise<number> =>
+  isTauri() ? unwrap(await commands.libraryOrganize(all)) : 0;
+
 export const unknownTracks = async (): Promise<TrackItem[]> =>
   isTauri() ? unwrap(await commands.unknownTracks()) : [];
 

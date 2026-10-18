@@ -12,6 +12,7 @@ import {
   resetLearning,
 } from "@/shared/ipc/feedback";
 import type { LibraryStatus } from "@/shared/ipc/library";
+import { organizeLibrary } from "@/shared/ipc/library";
 import { perfHardware } from "@/shared/ipc/perf";
 import { getSettings, patchSettings } from "@/shared/ipc/settings";
 import { clearOldLogs, type StorageInfo, storageInfo } from "@/shared/ipc/storage";
@@ -119,6 +120,7 @@ export function SettingsScreen({
             {library.root && <CollectionSummary status={library} />}
             {library.root && <ServiceData />}
             {library.root && onShowDuplicates && <DuplicatesLine onShow={onShowDuplicates} />}
+            {library.root && <OrganizeLine />}
             {!library.root && onChooseLibrary && (
               <button
                 type="button"
@@ -755,6 +757,59 @@ function DuplicatesLine({ onShow }: { onShow: () => void }) {
       </span>
       <button type="button" onClick={onShow} className="t-body-strong w-fit text-accent-text">
         {t("dups.show")}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * «Навести порядок» (T3.19, FR-FS-005): files added in Explorer are taken where they are; the
+ * switch moves new ones by the rules at once (otherwise a toast offers it); the button puts the
+ * whole library in order.
+ */
+function OrganizeLine() {
+  const { t } = useTranslation("shell");
+  const [auto, setAuto] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    getSettings()
+      .then((s) => {
+        const l = s.library as { organize_external?: string } | undefined;
+        setAuto(l?.organize_external === "auto");
+      })
+      .catch(() => {});
+  }, []);
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-4">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="t-body text-text-primary">{t("organize.auto")}</span>
+          <span className="t-caption text-text-secondary">{t("organize.autoHint")}</span>
+        </div>
+        <Switch
+          checked={auto}
+          label={t("organize.auto")}
+          onChange={(on) => {
+            setAuto(on);
+            patchSettings({ library: { organize_external: on ? "auto" : "suggest" } }).catch(() =>
+              setAuto(!on),
+            );
+          }}
+        />
+      </div>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          organizeLibrary(true)
+            .then((n) => notify(t("organize.done", { count: n })))
+            .catch(() => notify(t("organize.failed")))
+            .finally(() => setBusy(false));
+        }}
+        className="t-body-strong w-fit text-accent-text disabled:opacity-40"
+      >
+        {t("organize.all")}
       </button>
     </div>
   );

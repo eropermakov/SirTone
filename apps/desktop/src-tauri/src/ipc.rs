@@ -102,6 +102,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             wave::wave_retune,
             wave::wave_season_card,
             analysis::analysis_progress,
+            library::library_organize,
             artists::artist_suggestions,
             artists::artist_suggestion_dismiss,
             artists::artists_merge,
@@ -123,7 +124,8 @@ pub fn builder() -> Builder<tauri::Wry> {
             hotkeys::HotkeyConflict,
             playback::QueueChanged,
             playlists::PlaylistsChanged,
-            duplicates::DuplicatesFound
+            duplicates::DuplicatesFound,
+            library::OrganizeSuggested
         ])
 }
 

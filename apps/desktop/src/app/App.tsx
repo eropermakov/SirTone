@@ -15,6 +15,8 @@ import {
   type GenreItem,
   importPaths,
   type LibraryStatus,
+  onOrganizeSuggested,
+  organizeLibrary,
   pickFolder,
 } from "@/shared/ipc/library";
 import { next as nextTrack, prev as prevTrack, togglePlay } from "@/shared/ipc/playback";
@@ -151,6 +153,15 @@ export function App() {
   // 10 minutes (the first pass over a big library finds many), the dialog on «Показать».
   const [dupsFound, setDupsFound] = useState<number | null>(null);
   const [dupsOpen, setDupsOpen] = useState(false);
+  // «Навести порядок» (T3.19): files added in Explorer, not where the rules say.
+  const [organize, setOrganize] = useState<number | null>(null);
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    void onOrganizeSuggested(setOrganize).then((f) => {
+      off = f;
+    });
+    return () => off?.();
+  }, []);
   const dupsShownAt = useRef(0);
   useEffect(() => {
     let off: (() => void) | undefined;
@@ -454,6 +465,25 @@ export function App() {
               },
             }}
             onClose={() => setDupsFound(null)}
+          />
+        )}
+        {organize !== null && !error && !report && (
+          <Toast
+            tone="info"
+            heading={t("organize.title")}
+            message={t("organize.found", { count: organize })}
+            closeLabel={tc("errors.close")}
+            timeoutMs={15000}
+            action={{
+              label: t("organize.do"),
+              onClick: () => {
+                setOrganize(null);
+                organizeLibrary(false)
+                  .then((n) => notify(t("organize.done", { count: n })))
+                  .catch(() => notify(t("organize.failed")));
+              },
+            }}
+            onClose={() => setOrganize(null)}
           />
         )}
         {toast && !error && !report && (

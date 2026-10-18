@@ -139,6 +139,14 @@ pub struct LibraryChanged {
     pub tracks: u32,
 }
 
+/// Files added in Explorer lie elsewhere than the layout rules say (T3.19, FR-FS-005): the UI
+/// offers «Навести порядок» (setting `library.organize_external` = `suggest`).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Event)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizeSuggested {
+    pub tracks: u32,
+}
+
 /// Files were dropped before a library folder was chosen: the UI asks for one.
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Event)]
 #[serde(rename_all = "camelCase")]
@@ -180,6 +188,11 @@ enum Job {
         drop: i64,
         reply: mpsc::Sender<Result<(sirtone_library::artists::MergeRecord, u32), AppError>>,
     },
+    /// T3.19: «Навести порядок» — the adopted files waiting for it, or the whole library.
+    Organize {
+        all: bool,
+        reply: mpsc::Sender<Result<u32, AppError>>,
+    },
     /// T3.12: undo a merge of this session, then put the files back.
     UndoMerge {
         record: Box<sirtone_library::artists::MergeRecord>,
@@ -208,6 +221,8 @@ struct Shared {
     offline: bool,
     gone_question: Option<u32>,
     watch: Option<sirtone_library::watch::Watch>,
+    /// Adopted tracks out of place, waiting for «Навести порядок» (T3.19).
+    organize: Vec<i64>,
 }
 
 pub struct Library {
@@ -338,6 +353,7 @@ impl Library {
             offline,
             gone_question: None,
             watch,
+            organize: Vec::new(),
         }));
         let cancel = Arc::new(AtomicBool::new(false));
         let importing = Arc::new(AtomicBool::new(false));
@@ -662,6 +678,7 @@ fn import_worker(
         let mut imports: Vec<PathBuf> = Vec::new();
         let mut assigns = Vec::new();
         let mut merges = Vec::new();
+        let mut organize = Vec::new();
         for j in jobs {
             match j {
                 Job::Import(p) => imports.extend(p),
@@ -681,6 +698,7 @@ fn import_worker(
                 Job::UndoMerge { record, reply } => {
                     merges.push((None, Some(record), None, Some(reply)))
                 }
+                Job::Organize { all, reply } => organize.push((all, reply)),
                 Job::Reconcile { confirmed } => {
                     reconcile_pass = Some(reconcile_pass.unwrap_or(false) || confirmed);
                 }
@@ -736,6 +754,29 @@ fn import_worker(
                 }
             }
             emit_changed(&app, &shared);
+        }
+        for (all, reply) in organize {
+            let tracks: Vec<i64> = if all {
+                db.prepare("SELECT id FROM track WHERE state = 'ok' ORDER BY id")
+                    .and_then(|mut st| {
+                        st.query_map([], |r| r.get(0))?
+                            .collect::<Result<Vec<i64>, _>>()
+                    })
+                    .unwrap_or_default()
+            } else {
+                std::mem::take(&mut lock(&shared).organize)
+            };
+            let moved = tracks
+                .iter()
+                .filter(|&&t| {
+                    sirtone_library::relocate::relayout(db, &root, t, deps.fs.as_ref())
+                        .unwrap_or(false)
+                })
+                .count() as u32;
+            let _ = reply.send(Ok(moved));
+            if moved > 0 {
+                emit_changed(&app, &shared);
+            }
         }
         if !assigns.is_empty() {
             for (track, assignment, with_file, reply) in assigns {
@@ -869,6 +910,7 @@ fn run_reconcile(
         Ok(Outcome::Offline) => go_offline(app, shared),
         Ok(Outcome::Done(r)) => {
             tracing::info!(target: "sirtone::library", ?r, ms = started.elapsed().as_millis() as u64, "reconcile");
+            organize_adopted(app, shared, db, root, deps, &r.adopted_ids);
             if r != Report::default() {
                 emit_changed(app, shared);
             }
@@ -881,6 +923,56 @@ fn run_reconcile(
         }
         Err(e) => tracing::error!(target: "sirtone::library", error = %e, "reconcile failed"),
     }
+}
+
+/// FR-FS-005 (T3.19): files added in Explorer are taken where they are; those the rules would
+/// place elsewhere are moved at once (`organize_external` = `auto`), offered (`suggest`, the
+/// default — never moved silently) or left (`never`).
+fn organize_adopted(
+    app: &AppHandle,
+    shared: &Mutex<Shared>,
+    db: &mut Connection,
+    root: &Path,
+    deps: &ImportDeps,
+    adopted: &[i64],
+) {
+    if adopted.is_empty() {
+        return;
+    }
+    let mode = tauri::Manager::try_state::<Arc<SettingsStore>>(app)
+        .and_then(|s| {
+            s.get()["library"]["organize_external"]
+                .as_str()
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| "suggest".into());
+    if mode == "never" {
+        return;
+    }
+    let off: Vec<i64> = adopted
+        .iter()
+        .copied()
+        .filter(|&t| sirtone_library::relocate::out_of_place(db, t).unwrap_or(false))
+        .collect();
+    if off.is_empty() {
+        return;
+    }
+    if mode == "auto" {
+        for t in off {
+            let _ = sirtone_library::relocate::relayout(db, root, t, deps.fs.as_ref());
+        }
+        return;
+    }
+    let total = {
+        let mut s = lock(shared);
+        for t in off {
+            if !s.organize.contains(&t) {
+                s.organize.push(t);
+            }
+        }
+        s.organize.len() as u32
+    };
+    let _ = OrganizeSuggested { tracks: total }.emit(app);
 }
 
 /// Lists and counters must refresh. The full counters (163 ms on 100 000 tracks) are only
@@ -1238,6 +1330,20 @@ impl Library {
             .map_err(|_| AppError::new(ErrorCode::Internal).with_details("removal timed out"))?
             .map(|_| ())
     }
+}
+
+/// «Навести порядок» (T3.19, FR-FS-005): the adopted files waiting for it (`all` = false) or
+/// every track; files go where the layout rules say, through the journal. Returns how many
+/// moved.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn library_organize(lib: State<'_, Library>, all: bool) -> Result<u32, AppError> {
+    let (tx, rx) = mpsc::channel();
+    lib.jobs
+        .send(Job::Organize { all, reply: tx })
+        .map_err(|_| AppError::new(ErrorCode::Internal))?;
+    rx.recv_timeout(Duration::from_secs(600))
+        .map_err(|_| AppError::new(ErrorCode::Internal).with_details("organize timed out"))?
 }
 
 /// FR-DATA-001: «удалить файл с диска» (to the Recycle Bin) or «только убрать из приложения».

@@ -158,6 +158,12 @@ export const commands = {
 	 */
 	waveSeasonCard: () => __TAURI_INVOKE<string>("wave_season_card"),
 	analysisProgress: () => typedError<AnalysisProgress, AppError>(__TAURI_INVOKE("analysis_progress")),
+	/**
+	 *  «Навести порядок» (T3.19, FR-FS-005): the adopted files waiting for it (`all` = false) or
+	 *  every track; files go where the layout rules say, through the journal. Returns how many
+	 *  moved.
+	 */
+	libraryOrganize: (all: boolean) => typedError<number, AppError>(__TAURI_INVOKE("library_organize", { all })),
 	artistSuggestions: () => typedError<ArtistSuggestion[], AppError>(__TAURI_INVOKE("artist_suggestions")),
 	/**  «Не предлагать». */
 	artistSuggestionDismiss: (a: number, b: number) => typedError<null, AppError>(__TAURI_INVOKE("artist_suggestion_dismiss", { a, b })),
@@ -191,6 +197,7 @@ export const events = {
 	importProgress: makeEvent<ImportProgress>("import-progress"),
 	libraryChanged: makeEvent<LibraryChanged>("library-changed"),
 	libraryRootNeeded: makeEvent<LibraryRootNeeded>("library-root-needed"),
+	organizeSuggested: makeEvent<OrganizeSuggested>("organize-suggested"),
 	playbackError: makeEvent<PlaybackError>("playback-error"),
 	playbackSnapshot: makeEvent<PlaybackSnapshot>("playback-snapshot"),
 	playlistsChanged: makeEvent<PlaylistsChanged>("playlists-changed"),
@@ -400,6 +407,14 @@ export type NeverEntry = {
 };
 
 export type NeverScope = "track" | "artist";
+
+/**
+ *  Files added in Explorer lie elsewhere than the layout rules say (T3.19, FR-FS-005): the UI
+ *  offers «Навести порядок» (setting `library.organize_external` = `suggest`).
+ */
+export type OrganizeSuggested = {
+	tracks: number,
+};
 
 export type PageCursor = {
 	key: string,
