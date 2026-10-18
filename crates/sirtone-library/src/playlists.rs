@@ -218,7 +218,9 @@ pub fn rename(conn: &Connection, id: PlaylistId, name: &str) -> Result<(), Libra
     let name = clean_name(name)?;
     exists_any(conn, id)?;
     conn.execute(
-        "UPDATE playlist SET name = ?2, updated_at = ?3 WHERE id = ?1",
+        // A smart playlist's updated_at is its snapshot time: renaming must not delay a refresh.
+        "UPDATE playlist SET name = ?2,
+           updated_at = CASE kind WHEN 'smart' THEN updated_at ELSE ?3 END WHERE id = ?1",
         params![id, name, now_ms()],
     )?;
     Ok(())
@@ -262,11 +264,11 @@ pub fn list(conn: &Connection) -> Result<Vec<PlaylistRow>, LibraryError> {
         if let Some(r) = rules(conn, row.id)? {
             row.smart = true;
             if r.refresh == Refresh::Live {
-                let tr = smart::evaluate(conn, &r, now)?;
-                row.tracks = tr.len() as u32;
-                row.duration_ms = tr.iter().map(|t| t.duration_ms).sum();
-                row.bytes = live_bytes(conn, &tr)?;
-                row.covers = live_covers(conn, &tr)?;
+                let st = smart::stats(conn, &r, now)?;
+                row.tracks = st.tracks;
+                row.duration_ms = st.duration_ms;
+                row.bytes = st.bytes;
+                row.covers = live_covers(conn, &st.albums)?;
             }
         }
     }
@@ -293,23 +295,13 @@ pub fn list(conn: &Connection) -> Result<Vec<PlaylistRow>, LibraryError> {
     Ok(rows)
 }
 
-fn live_bytes(conn: &Connection, tracks: &[TrackRow]) -> Result<u64, LibraryError> {
-    let mut st = conn.prepare_cached("SELECT size_bytes FROM track WHERE id = ?1")?;
-    let mut sum = 0u64;
-    for t in tracks {
-        sum += st.query_row([t.id], |r| r.get::<_, i64>(0))? as u64;
-    }
-    Ok(sum)
-}
-
 /// Four different covers of the first tracks → mosaic, else one (as for manual playlists).
-fn live_covers(conn: &Connection, tracks: &[TrackRow]) -> Result<Vec<String>, LibraryError> {
+fn live_covers(conn: &Connection, albums: &[i64]) -> Result<Vec<String>, LibraryError> {
     let mut st = conn.prepare_cached(
         "SELECT cv.hash FROM album al JOIN cover cv ON cv.id = al.cover_id WHERE al.id = ?1",
     )?;
     let mut seen: Vec<String> = Vec::with_capacity(4);
-    for t in tracks.iter().take(64) {
-        let Some(a) = t.album_id else { continue };
+    for a in albums {
         if let Some(h) = st.query_row([a], |r| r.get::<_, String>(0)).optional()?
             && !seen.contains(&h)
         {

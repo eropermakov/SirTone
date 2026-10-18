@@ -994,17 +994,18 @@ pub fn count(conn: &Connection, rules: &Rules, now_ms: i64) -> Result<u32, Libra
     Ok(conn.query_row(&sql, params_from_iter(c.params.iter()), |r| r.get(0))?)
 }
 
-/// The playlist's tracks now: matched, sorted, limited.
-pub fn evaluate(
+/// SQL selecting `cols` of the matched tracks in playlist order with the limit applied, and
+/// its parameters.
+fn select(
     conn: &Connection,
     rules: &Rules,
     now_ms: i64,
-) -> Result<Vec<TrackRow>, LibraryError> {
-    register(conn)?;
+    cols: &str,
+) -> Result<(String, Vec<Value>), LibraryError> {
     let (c, order) = compile(rules, now_ms);
     let mut params = c.params.clone();
     let sql = match rules.limit {
-        Limit::None => format!("SELECT {TRACK_COLS} {FROM}{} ORDER BY {order}", c.sql),
+        Limit::None => format!("SELECT {cols} {FROM}{} ORDER BY {order}", c.sql),
         Limit::Count(_) | Limit::Percent(_) => {
             let n = match rules.limit {
                 Limit::Count(n) => i64::from(n),
@@ -1015,10 +1016,7 @@ pub fn evaluate(
                 _ => 0,
             };
             params.push(Value::Integer(n));
-            format!(
-                "SELECT {TRACK_COLS} {FROM}{} ORDER BY {order} LIMIT ?",
-                c.sql
-            )
+            format!("SELECT {cols} {FROM}{} ORDER BY {order} LIMIT ?", c.sql)
         }
         // Apple «limit to N minutes / MB»: tracks in order while the running total fits.
         Limit::Minutes(_) | Limit::Megabytes(_) => {
@@ -1030,7 +1028,7 @@ pub fn evaluate(
             params.push(Value::Integer(cap));
             // One named window: the running total and the row order agree (also with random()).
             format!(
-                "SELECT * FROM (SELECT {TRACK_COLS},
+                "SELECT * FROM (SELECT {cols},
                    sum({col}) OVER (w ROWS UNBOUNDED PRECEDING) AS run_total,
                    row_number() OVER w AS rn
                  {FROM}{} WINDOW w AS (ORDER BY {order}))
@@ -1039,11 +1037,63 @@ pub fn evaluate(
             )
         }
     };
+    Ok((sql, params))
+}
+
+/// The playlist's tracks now: matched, sorted, limited.
+pub fn evaluate(
+    conn: &Connection,
+    rules: &Rules,
+    now_ms: i64,
+) -> Result<Vec<TrackRow>, LibraryError> {
+    register(conn)?;
+    let (sql, params) = select(conn, rules, now_ms, TRACK_COLS)?;
     let mut st = conn.prepare(&sql)?;
     let rows = st
         .query_map(params_from_iter(params.iter()), track_row)?
         .collect::<Result<_, _>>()?;
     Ok(rows)
+}
+
+/// What the sidebar shows for a live smart playlist, aggregated in SQL (no rows built).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Stats {
+    pub tracks: u32,
+    pub duration_ms: u64,
+    pub bytes: u64,
+    /// Album ids of the first tracks (≤ 64, for the mosaic).
+    pub albums: Vec<i64>,
+}
+
+pub fn stats(conn: &Connection, rules: &Rules, now_ms: i64) -> Result<Stats, LibraryError> {
+    register(conn)?;
+    let (sql, params) = select(
+        conn,
+        rules,
+        now_ms,
+        "t.duration_ms AS d, t.size_bytes AS b, t.album_id AS a",
+    )?;
+    // One pass: totals over the whole set as window aggregates, the first 64 rows for covers.
+    let mut st = conn.prepare(&format!(
+        "SELECT count(*) OVER (), sum(d) OVER (), sum(b) OVER (), a FROM ({sql}) LIMIT 64"
+    ))?;
+    let mut rows = st.query(params_from_iter(params.iter()))?;
+    let (mut tracks, mut d, mut b) = (0u32, 0i64, 0i64);
+    let mut albums = Vec::new();
+    while let Some(r) = rows.next()? {
+        tracks = r.get(0)?;
+        d = r.get::<_, Option<i64>>(1)?.unwrap_or(0);
+        b = r.get::<_, Option<i64>>(2)?.unwrap_or(0);
+        if let Some(a) = r.get::<_, Option<i64>>(3)? {
+            albums.push(a);
+        }
+    }
+    Ok(Stats {
+        tracks,
+        duration_ms: d.max(0) as u64,
+        bytes: b.max(0) as u64,
+        albums,
+    })
 }
 
 #[cfg(test)]
@@ -1377,11 +1427,28 @@ mod tests {
         let t = std::time::Instant::now();
         let n = count(&c, &r, 1_800_000_000_000).unwrap();
         let count_ms = t.elapsed().as_secs_f64() * 1e3;
+        // No limit: the sidebar aggregates, the page builds every row.
+        let open = Rules::parse(
+            r#"{"all":[{"gt":{"year":1990}},{"isNot":{"genre":"jazz"}},
+                {"any":[{"contains":{"title":"номер 1"}},{"gt":{"play_count":20}}]}],
+               "sort":"-play_count,title"}"#,
+        )
+        .unwrap();
+        let t = std::time::Instant::now();
+        let st = stats(&c, &open, 1_800_000_000_000).unwrap();
+        let stats_ms = t.elapsed().as_secs_f64() * 1e3;
+        let t = std::time::Instant::now();
+        let all = evaluate(&c, &open, 1_800_000_000_000).unwrap();
+        let page_ms = t.elapsed().as_secs_f64() * 1e3;
         eprintln!(
-            "smart 50k: evaluate {eval_ms:.1} ms ({} rows), count {count_ms:.1} ms ({n})",
-            rows.len()
+            "smart 50k: evaluate {eval_ms:.1} ms ({} rows), count {count_ms:.1} ms ({n}); \
+             unlimited: stats {stats_ms:.1} ms ({} tracks), page {page_ms:.1} ms ({} rows)",
+            rows.len(),
+            st.tracks,
+            all.len()
         );
-        assert!(eval_ms < 100.0 && count_ms < 100.0);
+        assert_eq!(st.tracks as usize, all.len());
+        assert!(eval_ms < 100.0 && count_ms < 100.0 && stats_ms < 100.0 && page_ms < 100.0);
     }
 
     #[test]

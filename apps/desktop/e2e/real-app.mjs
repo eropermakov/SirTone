@@ -1123,12 +1123,29 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
     }
     return [n, Date.now() - t0];
   };
+  // T3.13: a live smart playlist «путь содержит Снаружи» follows the folder — rows and header.
+  await invoke("smart_create", {
+    name: "Снаружи",
+    rules: JSON.stringify({ all: [{ contains: { path: "Снаружи" } }] }),
+  });
+  await page.getByRole("navigation").getByRole("button", { name: "Снаружи" }).click();
+  const outsideRows = page.getByRole("list", { name: "Треки" }).locator("li");
   const before = await tracks();
   mkdirSync(join(libDir, "Снаружи"), { recursive: true });
   const added = join(libDir, "Снаружи", "Искала.flac");
   copyFileSync(join(root, "fixtures", "generated", "tags", "cyrillic-ok.flac"), added);
   const [n1, ms1] = await waitTracks(before + 1, 5000);
   check("file added in Explorer appears ≤ 2 s", n1 === before + 1 && ms1 <= 2000, `${ms1} ms`);
+  const outsideHeader = page.getByRole("main").getByText(/^1 трек ·/);
+  const live = await outsideHeader.waitFor({ timeout: 3000 }).then(
+    () => true,
+    () => false,
+  );
+  check(
+    "live smart playlist follows the folder: the row and «1 трек» in the header",
+    live && (await outsideRows.count()) === 1,
+    `rows ${await outsideRows.count()}, header ${live}`,
+  );
   rmSync(added);
   const [n2, ms2] = await waitTracks(before, 5000);
   check("deleted file leaves the lists", n2 === before, `${ms2} ms`);
