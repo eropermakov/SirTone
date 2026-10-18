@@ -207,6 +207,8 @@ pub struct WaveTrack {
     pub artist_name: Option<String>,
     /// Manual season tags: bit `1 << season` for `season_*`, bit 4 for `no_season`.
     pub season_tags: u8,
+    /// Weekly play ring (`plays_recent`, bucket `i` = week of the last play − i).
+    pub plays_weeks: [u8; 13],
 }
 
 /// «Не сейчас» still on the shelf (docs/14 §6, D-77).

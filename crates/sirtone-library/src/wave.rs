@@ -181,7 +181,8 @@ pub fn catalog(conn: &Connection) -> Result<Vec<WaveTrack>, LibraryError> {
                 coalesce((SELECT sum(CASE tg.tag WHEN 'season_winter' THEN 1 WHEN 'season_spring' THEN 2
                           WHEN 'season_summer' THEN 4 WHEN 'season_autumn' THEN 8
                           WHEN 'no_season' THEN 16 ELSE 0 END)
-                          FROM track_tag tg WHERE tg.track_id = t.id), 0)
+                          FROM track_tag tg WHERE tg.track_id = t.id), 0),
+                t.plays_recent
          FROM track t LEFT JOIN album al ON al.id = t.album_id
          LEFT JOIN track_features tf ON tf.track_id = t.id
          WHERE t.state = 'ok'",
@@ -226,6 +227,15 @@ pub fn catalog(conn: &Connection) -> Result<Vec<WaveTrack>, LibraryError> {
                 album: r.get(19)?,
                 artist_name: r.get(20)?,
                 season_tags: r.get::<_, i64>(21)?.clamp(0, 31) as u8,
+                plays_weeks: {
+                    let mut w = [0u8; 13];
+                    if let Some(b) = r.get::<_, Option<Vec<u8>>>(22)? {
+                        for (o, v) in w.iter_mut().zip(b) {
+                            *o = v;
+                        }
+                    }
+                    w
+                },
             })
         })?
         .collect::<Result<_, _>>()?;

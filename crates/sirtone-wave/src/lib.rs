@@ -6,6 +6,7 @@ pub mod config;
 pub mod context;
 pub mod engine;
 pub mod learn;
+pub mod query;
 pub mod rng;
 pub mod season;
 pub mod synth;

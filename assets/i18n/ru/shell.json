@@ -401,7 +401,8 @@
       "earlySummer": "Начало лета",
       "lateSummer": "Конец лета",
       "earlyAutumn": "Ранняя осень"
-    }
+    },
+    "relaxed": "Мало треков — расширил подбор"
   },
   "settingsNever": {
     "title": "Никогда в волне",

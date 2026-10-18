@@ -59,5 +59,6 @@
     "window_min": 40,
     "skip_step": 0.15,
     "like_step": 0.1
-  }
+  },
+  "min_candidates": 30
 }

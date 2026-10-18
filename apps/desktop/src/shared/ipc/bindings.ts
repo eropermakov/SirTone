@@ -106,10 +106,34 @@ export const commands = {
 	/**  «Удалить старые журналы»: diagnostic logs of earlier days (the app's own files, not music). */
 	storageClearLogs: () => typedError<number, AppError>(__TAURI_INVOKE("storage_clear_logs")),
 	/**
-	 *  «Моя волна» or another built-in profile (`seasonal` — «Сезонная волна», FR-SEAS-003): the
-	 *  engine picks and plays (returns how many tracks were queued).
+	 *  «Моя волна» or another built-in profile (`seasonal` — «Сезонная волна», FR-SEAS-003) with
+	 *  optional «Настроить волну» filters: the engine picks and plays.
 	 */
-	waveStart: (profile: string | null) => typedError<number, AppError>(__TAURI_INVOKE("wave_start", { profile })),
+	waveStart: (profile: string | null, query: {
+	/**  happy · upbeat · calm · sad · positive · negative */
+	mood?: string[],
+	/**  energetic · aggressive · calm */
+	character?: string[],
+	/**  ru · foreign · none */
+	language?: string[],
+	/**  loved · often · forgotten */
+	frequency?: string[],
+	/**  workout · sleep · work · road · rest · party */
+	activity?: string[],
+	/**  light · medium · intense */
+	workoutTempo?: string | null,
+	/**  Daypart code 0…5 (manual atmosphere). */
+	daypart?: number | null,
+	/**  Weather class 0…5 (manual atmosphere). */
+	weather?: number | null,
+	/**  auto · winter · spring · summer · autumn · off */
+	season?: string | null,
+	/**  Influence of season, context, events: 0…2 each. */
+	influence?: [(number | null), (number | null), (number | null)] | null,
+	energy?: [(number | null), (number | null)] | null,
+	/**  BPM. */
+	tempo?: [(number | null), (number | null)] | null,
+} | null) => typedError<WaveStarted, AppError>(__TAURI_INVOKE("wave_start", { profile, query })),
 	/**  «Сбросить обучение» (docs/14 §8.4): the models start over from now; the journal stays. */
 	waveResetLearning: () => typedError<null, AppError>(__TAURI_INVOKE("wave_reset_learning")),
 	/**  «Почему этот трек» for a track of the running wave (empty outside the wave). */
@@ -480,6 +504,46 @@ export type UpdateStatus = {
 	/**  Set on the first start after an update (shown once as a toast). */
 	justUpdated: string | null,
 	notes: string | null,
+};
+
+/**
+ *  «Настроить волну» (T3.18, docs/05 §10.1) as the UI sends it: chip keys per block; empty or
+ *  absent — no filter.
+ */
+export type WaveQueryIpc = {
+	/**  happy · upbeat · calm · sad · positive · negative */
+	mood?: string[],
+	/**  energetic · aggressive · calm */
+	character?: string[],
+	/**  ru · foreign · none */
+	language?: string[],
+	/**  loved · often · forgotten */
+	frequency?: string[],
+	/**  workout · sleep · work · road · rest · party */
+	activity?: string[],
+	/**  light · medium · intense */
+	workoutTempo?: string | null,
+	/**  Daypart code 0…5 (manual atmosphere). */
+	daypart?: number | null,
+	/**  Weather class 0…5 (manual atmosphere). */
+	weather?: number | null,
+	/**  auto · winter · spring · summer · autumn · off */
+	season?: string | null,
+	/**  Influence of season, context, events: 0…2 each. */
+	influence?: [(number | null), (number | null), (number | null)] | null,
+	energy?: [(number | null), (number | null)] | null,
+	/**  BPM. */
+	tempo?: [(number | null), (number | null)] | null,
+};
+
+/**
+ *  What `wave_start` did: tracks queued and the relaxation steps of «Настроить волну»
+ *  (not empty → «Мало треков — расширил подбор», FR-WAVE-006).
+ */
+export type WaveStarted = {
+	queued: number,
+	/**  mood · character · activity · tempo · energy · language · frequency */
+	relaxed: string[],
 };
 
 /**  One reason of «Почему этот трек» (§17); the UI words it as `wave.why.<kind>`. */

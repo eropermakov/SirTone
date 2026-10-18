@@ -11,6 +11,7 @@ use sirtone_core::wave::{ContextSnapshot, FEATURES as D, NotNowRow, WaveTrack};
 
 use crate::context::bucket_matches;
 use crate::learn::{History, Models, ctx_levels, replay};
+use crate::query::{QueryState, SeasonPick, Vibe, WaveQuery, script_lang};
 use crate::rng::Rng;
 use crate::season::{NO_SEASON, Seasonality, dominant};
 
@@ -62,6 +63,24 @@ pub struct Profile {
     /// season (season score below this) are left out.
     #[serde(default)]
     pub season_floor: Option<f32>,
+    /// What «Настроить волну» relaxes first when too few tracks fit (§6, `05` §10.1).
+    #[serde(default = "default_relax")]
+    pub relax_order: Vec<String>,
+}
+
+fn default_relax() -> Vec<String> {
+    [
+        "filters.atmosphere",
+        "filters.activity",
+        "filters.character",
+        "filters.mood",
+        "tempo",
+        "energy",
+        "language",
+        "frequency",
+    ]
+    .map(String::from)
+    .to_vec()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -119,6 +138,8 @@ pub struct EngineParams {
     pub beta_half_life_days: f32,
     /// λ = n/(n + this) for the context levels (§8.2).
     pub context_prior_n: f32,
+    /// Fewer eligible tracks under «Настроить волну» → relaxation (§6).
+    pub min_candidates: usize,
     pub session: SessionCfg,
 }
 
@@ -133,6 +154,7 @@ pub struct Config {
     pub engine: EngineParams,
     pub genres: Genres,
     pub seasons: Seasonality,
+    pub vibe: Vibe,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -194,6 +216,10 @@ impl Config {
                 file: "seasons.json",
                 source: Box::new(e),
             })?,
+            vibe: Vibe::builtin().map_err(|e| ConfigError {
+                file: "vibe",
+                source: Box::new(e),
+            })?,
         })
     }
 
@@ -227,7 +253,14 @@ pub struct Catalog {
     pub artist: Vec<i64>,
     pub(crate) alpha: Vec<f32>,
     pub(crate) beta: Vec<f32>,
-    plays: Vec<u32>,
+    pub(crate) plays: Vec<u32>,
+    /// Analysis confidence (0 — not analysed).
+    pub(crate) conf: Vec<f32>,
+    /// Language by script: 0 unknown, 1 Russian, 2 foreign.
+    pub(crate) lang: Vec<u8>,
+    pub(crate) weeks: Vec<[u8; 13]>,
+    /// `0.6·ln(1 + plays) + 0.4·completion − 0.5·skip_ratio` (`05` §10.1 «любимые»).
+    pub(crate) fav: Vec<f32>,
     pub last_played: Vec<i64>,
     added: Vec<i64>,
     pub(crate) liked: Vec<bool>,
@@ -307,6 +340,10 @@ impl Catalog {
             alpha: Vec::with_capacity(n),
             beta: Vec::with_capacity(n),
             plays: Vec::with_capacity(n),
+            conf: Vec::with_capacity(n),
+            lang: Vec::with_capacity(n),
+            weeks: Vec::with_capacity(n),
+            fav: Vec::with_capacity(n),
             last_played: Vec::with_capacity(n),
             added: Vec::with_capacity(n),
             liked: Vec::with_capacity(n),
@@ -354,6 +391,15 @@ impl Catalog {
             c.alpha.push(1.0);
             c.beta.push(1.0);
             c.plays.push(t.play_count);
+            c.conf.push(conf);
+            c.lang
+                .push(script_lang(t.title.as_deref(), t.artist_name.as_deref()));
+            c.weeks.push(t.plays_weeks);
+            let heard = (t.play_count + t.skip_count).max(1) as f32;
+            c.fav.push(
+                0.6 * (1.0 + t.play_count as f32).ln() + 0.4 * t.completion
+                    - 0.5 * t.skip_count as f32 / heard,
+            );
             c.last_played.push(t.last_played_ms.unwrap_or(i64::MIN / 2));
             c.added.push(t.added_ms);
             c.liked.push(t.liked);
@@ -422,7 +468,7 @@ impl Catalog {
         self.index.get(&id).map(|&i| i as usize)
     }
 
-    fn mean(&self, t: usize) -> f32 {
+    pub(crate) fn mean(&self, t: usize) -> f32 {
         self.alpha[t] / (self.alpha[t] + self.beta[t])
     }
 
@@ -554,6 +600,9 @@ pub struct Engine {
     rng: Rng,
     /// Season words per track id, matched once (titles rarely change; a refill reuses them).
     words: std::collections::HashMap<i64, [f32; 4]>,
+    /// «Настроить волну» and its evaluation on the catalog (T3.18).
+    query: WaveQuery,
+    qs: QueryState,
 }
 
 impl Engine {
@@ -568,6 +617,8 @@ impl Engine {
         let mut words = std::collections::HashMap::with_capacity(tracks.len());
         let (cat, models) = Self::learnt(&cfg, tracks, history, &mut words, now_ms);
         let n = cat.len();
+        let query = WaveQuery::default();
+        let qs = Self::evaluate(&cfg, &cat, &query, now_ms);
         let cap = n.min(cfg.engine.top_k * 64).max(1);
         Self {
             blocked: vec![false; n],
@@ -585,7 +636,26 @@ impl Engine {
             session: Session::default(),
             rng: Rng::new(seed),
             words,
+            query,
+            qs,
         }
+    }
+
+    fn evaluate(cfg: &Config, cat: &Catalog, q: &WaveQuery, now_ms: i64) -> QueryState {
+        QueryState::evaluate(cat, q, cfg, now_ms)
+    }
+
+    /// «Настроить волну» (T3.18): the filters for this session; returns the relaxation steps
+    /// taken («Мало треков — расширил подбор» when not empty).
+    pub fn set_query(&mut self, q: WaveQuery, now_ms: i64) -> Vec<&'static str> {
+        self.query = q;
+        self.qs = Self::evaluate(&self.cfg, &self.cat, &self.query, now_ms);
+        self.qs.relaxed.clone()
+    }
+
+    /// The relaxation steps of the current query.
+    pub fn relaxed(&self) -> &[&'static str] {
+        &self.qs.relaxed
     }
 
     /// The profile this engine plays (`my_wave`, `seasonal`).
@@ -602,6 +672,7 @@ impl Engine {
         self.taste = models.taste;
         self.context = models.context;
         self.session_vec = models.session;
+        self.qs = Self::evaluate(&self.cfg, &self.cat, &self.query, now_ms);
     }
 
     fn learnt(
@@ -632,6 +703,8 @@ impl Engine {
         n: usize,
         now_ms: i64,
     ) -> Vec<i64> {
+        // A chosen «Частота» is a hard filter and the slider is inactive (Q-12, D-42).
+        let novelty = if self.qs.frequency_on { 0.5 } else { novelty };
         self.rebuild(ctx, not_now, novelty, now_ms);
         let mut out = Vec::with_capacity(n);
         for _ in 0..n {
@@ -689,15 +762,34 @@ impl Engine {
     fn rebuild(&mut self, ctx: &ContextSnapshot, not_now: &[NotNowRow], novelty: f32, now_ms: i64) {
         let cfg = &self.cfg;
         let e = &cfg.engine;
-        let w = &cfg.profile.weights;
-        // The event weight goes to taste outside an event window (§5.2); no event yet.
-        let w_taste = w.taste + w.event;
-        // Filters are neutral until «Настроить волну» (T3.18); context and session come from
-        // the replayed journal (§8.2, §8.5); season — Σₛ w(s)·aff(t, s) (§10).
-        let neutral = 0.5 * w.filters;
-        let sw = ctx.season_w;
+        let pw = &cfg.profile.weights;
+        // The event weight goes to taste outside an event window (§5.2); no event yet. Season
+        // pick and influence of «Настроить волну» rescale the weights (T3.18).
+        let [w_taste, w_context, w_session, w_season, w_filters] = QueryState::weights(
+            &self.query,
+            [
+                pw.taste + pw.event,
+                pw.context,
+                pw.session,
+                pw.season,
+                pw.filters,
+            ],
+        );
+        // Atmosphere and season of «Настроить волну» steer scoring; «не сейчас» keeps the
+        // real context (D-77).
+        let mut sctx = ctx.clone();
+        if let Some(d) = self.query.daypart {
+            sctx.daypart = d;
+        }
+        if let Some(wc) = self.query.weather {
+            sctx.weather = Some(wc);
+        }
+        if let SeasonPick::Only(s) = self.query.season {
+            sctx.season_w = std::array::from_fn(|i| f32::from(u8::from(i == usize::from(s))));
+        }
+        let sw = sctx.season_w;
         let season_floor = cfg.profile.season_floor;
-        let w_ctx = context_weights(&self.context, ctx, e.context_prior_n);
+        let w_ctx = context_weights(&self.context, &sctx, e.context_prior_n);
         let w_sess = self.session_vec;
         let sigma = e.taste_sigma * (0.5 + novelty);
         let wt = self.taste.sample(&mut self.rng, sigma);
@@ -727,9 +819,12 @@ impl Engine {
         let mut counted = 0u32;
         let cat = &self.cat;
         let fam = &e.familiarity;
+        let qs = &self.qs;
         for t in 0..cat.len() {
-            // Layer 1: «никогда», disliked, «не сейчас», the hard repeat window.
-            if cat.never[t]
+            // Layer 1: «никогда», disliked, «не сейчас», the hard repeat window; layer 3:
+            // «Настроить волну».
+            if !qs.pass[t]
+                || cat.never[t]
                 || self.blocked[t]
                 || cat.mean(t) < fam.never_return_mean
                 || now_ms - cat.last_played[t] < repeat_ms
@@ -748,14 +843,14 @@ impl Engine {
             let context = sigmoid(dot(&w_ctx, x));
             let session = 0.5 + 0.5 * dot(&w_sess, x).tanh();
             let mut s = w_taste * taste
-                + w.context * context
-                + w.session * session
-                + w.season * season
-                + neutral;
+                + w_context * context
+                + w_session * session
+                + w_season * season
+                + w_filters * qs.filters[t];
             sums[0] += w_taste * taste;
-            sums[1] += w.context * context;
-            sums[2] += w.session * session;
-            sums[3] += w.season * season;
+            sums[1] += w_context * context;
+            sums[2] += w_session * session;
+            sums[3] += w_season * season;
             counted += 1;
             let g = cat.group(t, now_ms, fam);
             if g == 2 && novelty > 0.0 {
@@ -785,10 +880,10 @@ impl Engine {
             bias,
             w_ctx,
             w_sess,
-            w: [w_taste, w.context, w.session, w.season],
+            w: [w_taste, w_context, w_session, w_season],
             mean: sums.map(|v| v / k),
             season_w: sw,
-            daypart: ctx.daypart as u8,
+            daypart: sctx.daypart as u8,
             now_ms,
         };
     }
@@ -858,38 +953,54 @@ impl Engine {
         order.sort_by(|&a, &b| deficit(b).total_cmp(&deficit(a)));
         let explore = e.explore_base + e.explore_slope * novelty;
         let cat = &self.cat;
-        let mut pool: Vec<(f32, u32)> = Vec::with_capacity(e.top_sample);
+        // «Частота» on: no quotas — one pool over all groups (Q-12).
+        let merged = self.qs.frequency_on;
+        const ALL: [usize; 3] = [0, 1, 2];
+        let mut pool: Vec<(f32, u32, usize)> = Vec::with_capacity(e.top_sample * 3);
         // Groups with no quota are a last resort (a small library must still play).
         for pass in 0..2 {
-            for &g in &order {
-                if pass == 0 && q[g] <= 0.0 {
+            for (oi, &g) in order.iter().enumerate() {
+                if merged && (pass > 0 || oi > 0) {
+                    break;
+                }
+                if !merged && pass == 0 && q[g] <= 0.0 {
                     continue;
                 }
                 pool.clear();
-                for c in &self.buf[g] {
-                    let t = c.idx as usize;
-                    if ss.queued.contains(&cat.id[t]) || ss.recent_artists.contains(&cat.artist[t])
-                    {
-                        continue;
-                    }
-                    let x = &cat.feat[t];
-                    if let Some(pe) = ss.prev_energy
-                        && (x[f::ENERGY] - pe).abs() > seq.max_energy_jump
-                    {
-                        continue;
-                    }
-                    let (a, b) = (cat.alpha[t], cat.beta[t]);
-                    let mut s = c.score + explore * (self.rng.beta(a, b) - a / (a + b));
-                    if seq.transition_bonus
-                        && let Some(pt) = ss.prev_tempo
-                        && pt > 0.0
-                        && ((x[f::TEMPO] - pt) / pt).abs() <= 0.08
-                    {
-                        s += 0.02;
-                    }
-                    pool.push((s, c.idx));
-                    if pool.len() == e.top_sample {
-                        break;
+                let groups: &[usize] = if merged {
+                    &ALL
+                } else {
+                    std::slice::from_ref(&order[oi])
+                };
+                for &pg in groups {
+                    let mut taken = 0;
+                    for c in &self.buf[pg] {
+                        let t = c.idx as usize;
+                        if ss.queued.contains(&cat.id[t])
+                            || ss.recent_artists.contains(&cat.artist[t])
+                        {
+                            continue;
+                        }
+                        let x = &cat.feat[t];
+                        if let Some(pe) = ss.prev_energy
+                            && (x[f::ENERGY] - pe).abs() > seq.max_energy_jump
+                        {
+                            continue;
+                        }
+                        let (a, b) = (cat.alpha[t], cat.beta[t]);
+                        let mut s = c.score + explore * (self.rng.beta(a, b) - a / (a + b));
+                        if seq.transition_bonus
+                            && let Some(pt) = ss.prev_tempo
+                            && pt > 0.0
+                            && ((x[f::TEMPO] - pt) / pt).abs() <= 0.08
+                        {
+                            s += 0.02;
+                        }
+                        pool.push((s, c.idx, pg));
+                        taken += 1;
+                        if taken == e.top_sample {
+                            break;
+                        }
                     }
                 }
                 if pool.is_empty() {
@@ -901,11 +1012,11 @@ impl Engine {
                     .map(|p| ((p.0 - max) / e.temperature).exp())
                     .sum();
                 let mut r = self.rng.f32() * total;
-                let mut chosen = pool[pool.len() - 1].1;
-                for &(s, idx) in &pool {
+                let (mut chosen, mut cg) = (pool[pool.len() - 1].1, pool[pool.len() - 1].2);
+                for &(s, idx, pg) in &pool {
                     r -= ((s - max) / e.temperature).exp();
                     if r <= 0.0 {
-                        chosen = idx;
+                        (chosen, cg) = (idx, pg);
                         break;
                     }
                 }
@@ -917,7 +1028,7 @@ impl Engine {
                 }
                 ss.prev_energy = Some(cat.feat[t][f::ENERGY]);
                 ss.prev_tempo = Some(cat.feat[t][f::TEMPO]);
-                ss.group_counts[g] += 1;
+                ss.group_counts[cg] += 1;
                 ss.slots += 1;
                 return Some(chosen);
             }

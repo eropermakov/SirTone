@@ -1,0 +1,21 @@
+{
+  "schema": "sirtone.moods/1",
+  "_note": "Moods on the valence–arousal plane (docs/04 §10.2): prototypes, σ, positive/negative thresholds. A track counts only with deep analysis (conf ≥ conf_min); otherwise «не определено» and it does not pass the filter. Character thresholds are temporary (the spec gives none) until calibration on the golden set (OWN-08).",
+  "conf_min": 0.5,
+  "sigma": 0.22,
+  "prototypes": {
+    "happy": [0.8, 0.7],
+    "upbeat": [0.65, 0.85],
+    "calm": [0.6, 0.2],
+    "sad": [0.2, 0.25]
+  },
+  "positive_min": 0.62,
+  "negative_max": 0.38,
+  "edge": 0.06,
+  "character": {
+    "energetic": [{ "f": "energy", "min": 0.65 }],
+    "aggressive": [{ "f": "aggression", "min": 0.6 }],
+    "calm": [{ "f": "energy", "max": 0.35 }, { "f": "aggression", "max": 0.3 }]
+  },
+  "soft": 0.1
+}

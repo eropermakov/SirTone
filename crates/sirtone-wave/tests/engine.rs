@@ -244,3 +244,140 @@ fn seasonal_wave_follows_the_season() {
     let mine_hits = mine.iter().filter(|id| winter.contains(id)).count();
     assert!(mine_hits < hits, "my wave {mine_hits} vs seasonal {hits}");
 }
+
+mod query {
+    use super::*;
+    use sirtone_wave::query::{Activity, Character, Freq, Lang, Mood, WaveQuery};
+
+    const DAY: i64 = 24 * 3600 * 1000;
+
+    /// AT-08 (data): «энергичное + без слов + забытые + тренировка» — every pick keeps every
+    /// filter that was not relaxed, and relaxation follows the profile's order.
+    #[test]
+    fn filters_hold_or_relax_in_order() {
+        // Large: every filter holds; small: relaxation, in order, and the rest still hold.
+        assert!(at08(8_000).is_empty());
+        assert!(!at08(400).is_empty());
+    }
+
+    #[allow(clippy::expect_used)]
+    fn at08(n: usize) -> Vec<&'static str> {
+        let tracks = synth::library(n, NOW, 1.0, 21);
+        let by_id: std::collections::HashMap<i64, &sirtone_core::wave::WaveTrack> =
+            tracks.iter().map(|t| (t.id, t)).collect();
+        let cfg = Config::builtin().expect("assets");
+        let order: Vec<String> = cfg.profile.relax_order.clone();
+        let mut e = Engine::new(cfg, &tracks, &synth::history(&tracks, NOW), NOW, 4);
+        let q = WaveQuery {
+            character: vec![Character::Energetic],
+            language: vec![Lang::None],
+            frequency: vec![Freq::Forgotten],
+            activity: vec![Activity::Workout],
+            ..WaveQuery::default()
+        };
+        let relaxed = e.set_query(q, NOW);
+        // The steps are a subsequence of relax_order.
+        let pos: Vec<usize> = relaxed
+            .iter()
+            .map(|r| {
+                order
+                    .iter()
+                    .position(|o| o.trim_start_matches("filters.") == *r)
+                    .expect("a configured step")
+            })
+            .collect();
+        assert!(pos.windows(2).all(|w| w[0] < w[1]), "{relaxed:?}");
+        let picks = e.next(&ctx(Daypart::Evening), &[], 0.5, 20, NOW);
+        assert_eq!(picks.len(), 20);
+        for id in &picks {
+            let t = by_id[id];
+            let x = t.features.expect("analysed").0;
+            if !relaxed.contains(&"character") {
+                assert!(x[0] >= 0.55, "energy {}", x[0]);
+            }
+            if !relaxed.contains(&"language") {
+                assert!(x[9] < 0.2, "vocal {}", x[9]);
+            }
+            if !relaxed.contains(&"frequency") {
+                let last = t.last_played_ms.expect("played");
+                assert!(t.play_count >= 3 && NOW - last > 60 * DAY, "{t:?}");
+            }
+            if !relaxed.contains(&"activity") {
+                let bpm = 50.0 + 150.0 * x[4];
+                assert!((110.0..=190.0).contains(&bpm), "bpm {bpm}");
+            }
+        }
+        relaxed
+    }
+
+    #[test]
+    fn unanalysed_tracks_never_pass_a_mood_and_the_wave_relaxes() {
+        let tracks = synth::library(3_000, NOW, 0.0, 22);
+        let mut e = Engine::new(
+            Config::builtin().expect("assets"),
+            &tracks,
+            &synth::history(&tracks, NOW),
+            NOW,
+            5,
+        );
+        let relaxed = e.set_query(
+            WaveQuery {
+                mood: vec![Mood::Happy],
+                ..WaveQuery::default()
+            },
+            NOW,
+        );
+        assert_eq!(relaxed, ["mood"]);
+        assert_eq!(e.next(&ctx(Daypart::Evening), &[], 0.5, 5, NOW).len(), 5);
+    }
+
+    #[test]
+    fn never_is_not_relaxed() {
+        let mut tracks = synth::library(200, NOW, 1.0, 23);
+        for t in &mut tracks {
+            t.never = true;
+        }
+        let mut e = Engine::new(
+            Config::builtin().expect("assets"),
+            &tracks,
+            &synth::history(&tracks, NOW),
+            NOW,
+            6,
+        );
+        let relaxed = e.set_query(
+            WaveQuery {
+                mood: vec![Mood::Sad],
+                language: vec![Lang::Ru],
+                ..WaveQuery::default()
+            },
+            NOW,
+        );
+        assert!(!relaxed.is_empty());
+        assert!(e.next(&ctx(Daypart::Evening), &[], 0.5, 5, NOW).is_empty());
+    }
+
+    #[test]
+    fn frequency_switches_the_slider_off() {
+        let tracks = synth::library(6_000, NOW, 0.5, 24);
+        let mut e = Engine::new(
+            Config::builtin().expect("assets"),
+            &tracks,
+            &synth::history(&tracks, NOW),
+            NOW,
+            7,
+        );
+        let relaxed = e.set_query(
+            WaveQuery {
+                frequency: vec![Freq::Loved],
+                ..WaveQuery::default()
+            },
+            NOW,
+        );
+        assert!(relaxed.is_empty(), "{relaxed:?}");
+        // Slider at «Неожиданное» (70 % new) — but only loved tracks pass, and the wave still
+        // fills: the quotas are off.
+        let picks = e.next(&ctx(Daypart::Evening), &[], 1.0, 30, NOW);
+        assert_eq!(picks.len(), 30);
+        assert!(picks.iter().all(|id| e.group_of(*id, NOW) == Some(0)));
+    }
+}

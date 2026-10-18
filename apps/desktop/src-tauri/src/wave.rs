@@ -13,6 +13,7 @@ use sirtone_platform::clock::SystemClock;
 use sirtone_wave::context::ContextBuilder;
 use sirtone_wave::engine::{Config, Engine};
 use sirtone_wave::learn::History;
+use sirtone_wave::query::{Activity, Character, Freq, Lang, Mood, SeasonPick, WaveQuery};
 use tauri::{AppHandle, Manager, State};
 
 use crate::library::Library;
@@ -24,8 +25,8 @@ const FIRST: usize = 5;
 const MORE: usize = 3;
 
 enum Cmd {
-    /// A new wave with a profile (`my_wave`, `seasonal`).
-    Start(String, Sender<Result<u32, AppError>>),
+    /// A new wave with a profile (`my_wave`, `seasonal`) and «Настроить волну».
+    Start(String, WaveQuery, Sender<Result<WaveStarted, AppError>>),
     More,
     Why(i64, Sender<Vec<WhyReason>>),
     /// The slider moved: the upcoming wave tracks are picked again.
@@ -40,6 +41,124 @@ pub struct WhyReason {
     pub kind: String,
     /// Genre group (0…5), daypart code or season (0 winter … 3 autumn).
     pub arg: Option<u8>,
+}
+
+/// «Настроить волну» (T3.18, docs/05 §10.1) as the UI sends it: chip keys per block; empty or
+/// absent — no filter.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WaveQueryIpc {
+    /// happy · upbeat · calm · sad · positive · negative
+    pub mood: Vec<String>,
+    /// energetic · aggressive · calm
+    pub character: Vec<String>,
+    /// ru · foreign · none
+    pub language: Vec<String>,
+    /// loved · often · forgotten
+    pub frequency: Vec<String>,
+    /// workout · sleep · work · road · rest · party
+    pub activity: Vec<String>,
+    /// light · medium · intense
+    pub workout_tempo: Option<String>,
+    /// Daypart code 0…5 (manual atmosphere).
+    pub daypart: Option<u8>,
+    /// Weather class 0…5 (manual atmosphere).
+    pub weather: Option<u8>,
+    /// auto · winter · spring · summer · autumn · off
+    pub season: Option<String>,
+    /// Influence of season, context, events: 0…2 each.
+    pub influence: Option<[f32; 3]>,
+    pub energy: Option<[f32; 2]>,
+    /// BPM.
+    pub tempo: Option<[f32; 2]>,
+}
+
+fn keys<T>(v: &[String], parse: fn(&str) -> Option<T>) -> Result<Vec<T>, AppError> {
+    v.iter()
+        .map(|k| {
+            parse(k)
+                .ok_or_else(|| AppError::new(ErrorCode::InvalidArgument).with_details(k.clone()))
+        })
+        .collect()
+}
+
+impl WaveQueryIpc {
+    fn into_query(self) -> Result<WaveQuery, AppError> {
+        use sirtone_core::wave::{Daypart, WeatherClass};
+        let bad =
+            |what: &str| AppError::new(ErrorCode::InvalidArgument).with_details(what.to_owned());
+        let daypart = match self.daypart {
+            None => None,
+            Some(d) => Some(
+                [
+                    Daypart::Dawn,
+                    Daypart::Morning,
+                    Daypart::Day,
+                    Daypart::Evening,
+                    Daypart::Dusk,
+                    Daypart::Night,
+                ]
+                .get(usize::from(d))
+                .copied()
+                .ok_or_else(|| bad("daypart"))?,
+            ),
+        };
+        let weather = match self.weather {
+            None => None,
+            Some(w) => Some(
+                [
+                    WeatherClass::Clear,
+                    WeatherClass::Cloudy,
+                    WeatherClass::Fog,
+                    WeatherClass::DrizzleRain,
+                    WeatherClass::Snow,
+                    WeatherClass::Storm,
+                ]
+                .get(usize::from(w))
+                .copied()
+                .ok_or_else(|| bad("weather"))?,
+            ),
+        };
+        let season = match self.season.as_deref() {
+            None | Some("auto") => SeasonPick::Auto,
+            Some("off") => SeasonPick::Off,
+            Some(s) => SeasonPick::Only(
+                ["winter", "spring", "summer", "autumn"]
+                    .iter()
+                    .position(|k| *k == s)
+                    .ok_or_else(|| bad("season"))? as u8,
+            ),
+        };
+        if let Some(w) = self.workout_tempo.as_deref()
+            && !["light", "medium", "intense"].contains(&w)
+        {
+            return Err(bad("workoutTempo"));
+        }
+        Ok(WaveQuery {
+            mood: keys(&self.mood, Mood::from_key)?,
+            character: keys(&self.character, Character::from_key)?,
+            language: keys(&self.language, Lang::from_key)?,
+            frequency: keys(&self.frequency, Freq::from_key)?,
+            activity: keys(&self.activity, Activity::from_key)?,
+            workout_tempo: self.workout_tempo,
+            daypart,
+            weather,
+            season,
+            influence: self.influence.unwrap_or([1.0; 3]),
+            energy: self.energy.map(|[a, b]| (a, b)),
+            tempo: self.tempo.map(|[a, b]| (a, b)),
+        })
+    }
+}
+
+/// What `wave_start` did: tracks queued and the relaxation steps of «Настроить волну»
+/// (not empty → «Мало треков — расширил подбор», FR-WAVE-006).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct WaveStarted {
+    pub queued: u32,
+    /// mood · character · activity · tempo · energy · language · frequency
+    pub relaxed: Vec<String>,
 }
 
 pub struct Wave {
@@ -153,6 +272,7 @@ fn next_ids(
     slot: &mut Conn,
     engine: &mut Option<Engine>,
     profile: &str,
+    query: &WaveQuery,
     n: usize,
 ) -> Result<Vec<u32>, AppError> {
     let clock = SystemClock;
@@ -170,7 +290,9 @@ fn next_ids(
         None => {
             let cfg = Config::builtin_profile(profile)
                 .map_err(|e| AppError::new(ErrorCode::Internal).with_details(e.to_string()))?;
-            *engine = Some(Engine::new(cfg, &tracks, &history, now, now as u64 | 1));
+            let mut e = Engine::new(cfg, &tracks, &history, now, now as u64 | 1);
+            e.set_query(query.clone(), now);
+            *engine = Some(e);
         }
     }
     let Some(e) = engine.as_mut() else {
@@ -187,22 +309,31 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
     let mut engine: Option<Engine> = None;
     let mut slot: Conn = None;
     let mut profile = String::from("my_wave");
+    let mut query = WaveQuery::default();
     while let Ok(cmd) = rx.recv() {
         match cmd {
-            Cmd::Start(p, reply) => {
+            Cmd::Start(p, q, reply) => {
                 // A new wave: a new session (spacing and group counts start over).
                 engine = None;
                 profile = p;
+                query = q;
                 app.state::<Playback>().set_wave_profile(&profile);
-                let r = next_ids(app, &mut slot, &mut engine, &profile, FIRST).and_then(|ids| {
-                    let lib = app.state::<Library>();
-                    let items = items_for(&lib, &ids, PlayContext::Wave)?;
-                    let n = items.len() as u32;
-                    if n > 0 {
-                        app.state::<Playback>().play_queue(items, 0);
-                    }
-                    Ok(n)
-                });
+                let r = next_ids(app, &mut slot, &mut engine, &profile, &query, FIRST).and_then(
+                    |ids| {
+                        let lib = app.state::<Library>();
+                        let items = items_for(&lib, &ids, PlayContext::Wave)?;
+                        let n = items.len() as u32;
+                        if n > 0 {
+                            app.state::<Playback>().play_queue(items, 0);
+                        }
+                        Ok(WaveStarted {
+                            queued: n,
+                            relaxed: engine.as_ref().map_or_else(Vec::new, |e| {
+                                e.relaxed().iter().map(|s| (*s).to_owned()).collect()
+                            }),
+                        })
+                    },
+                );
                 let _ = reply.send(r);
             }
             Cmd::Why(id, reply) => {
@@ -235,10 +366,16 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                     let pb = app.state::<Playback>();
                     let dropped = pb.drop_upcoming_wave();
                     if dropped > 0 {
-                        match next_ids(app, &mut slot, &mut engine, &profile, dropped.max(MORE))
-                            .and_then(|ids| {
-                                items_for(&app.state::<Library>(), &ids, PlayContext::Wave)
-                            }) {
+                        match next_ids(
+                            app,
+                            &mut slot,
+                            &mut engine,
+                            &profile,
+                            &query,
+                            dropped.max(MORE),
+                        )
+                        .and_then(|ids| items_for(&app.state::<Library>(), &ids, PlayContext::Wave))
+                        {
                             Ok(items) if !items.is_empty() => pb.append(items),
                             Ok(_) => {}
                             Err(e) => {
@@ -250,7 +387,7 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
             }
             Cmd::More => {
                 if engine.is_some() {
-                    match next_ids(app, &mut slot, &mut engine, &profile, MORE)
+                    match next_ids(app, &mut slot, &mut engine, &profile, &query, MORE)
                         .and_then(|ids| items_for(&app.state::<Library>(), &ids, PlayContext::Wave))
                     {
                         Ok(items) if !items.is_empty() => app.state::<Playback>().append(items),
@@ -266,18 +403,23 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
     }
 }
 
-/// «Моя волна» or another built-in profile (`seasonal` — «Сезонная волна», FR-SEAS-003): the
-/// engine picks and plays (returns how many tracks were queued).
+/// «Моя волна» or another built-in profile (`seasonal` — «Сезонная волна», FR-SEAS-003) with
+/// optional «Настроить волну» filters: the engine picks and plays.
 #[tauri::command(async)]
 #[specta::specta]
-pub fn wave_start(wave: State<'_, Wave>, profile: Option<String>) -> Result<u32, AppError> {
+pub fn wave_start(
+    wave: State<'_, Wave>,
+    profile: Option<String>,
+    query: Option<WaveQueryIpc>,
+) -> Result<WaveStarted, AppError> {
     let profile = match profile.as_deref() {
         Some("seasonal") => "seasonal",
         _ => "my_wave",
     };
+    let query = query.unwrap_or_default().into_query()?;
     let (tx, rx) = mpsc::channel();
     wave.tx
-        .send(Cmd::Start(profile.into(), tx))
+        .send(Cmd::Start(profile.into(), query, tx))
         .map_err(|_| AppError::new(ErrorCode::Internal))?;
     rx.recv_timeout(Duration::from_secs(20))
         .map_err(|_| AppError::new(ErrorCode::Internal).with_details("wave start timed out"))?

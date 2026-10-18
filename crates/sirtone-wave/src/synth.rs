@@ -72,6 +72,11 @@ pub fn library(n: usize, now_ms: i64, analysed: f32, seed: u64) -> Vec<WaveTrack
                 album: Some(format!("Album {}", i / 12)),
                 artist_name: Some(format!("Artist {artist}")),
                 season_tags: 0,
+                plays_weeks: {
+                    let mut w = [0u8; 13];
+                    w[0] = plays.min(255) as u8;
+                    w
+                },
             }
         })
         .collect()

@@ -15,12 +15,24 @@
     "filters": 0.05
   },
   "season_floor": 0.3,
-  "novelty": { "mode": "slider" },
+  "novelty": {
+    "mode": "slider"
+  },
   "learning_policy": "full",
   "sequencing": {
     "artist_spacing": 5,
     "repeat_window_h": 24,
     "max_energy_jump": 0.35,
     "transition_bonus": true
-  }
+  },
+  "relax_order": [
+    "filters.atmosphere",
+    "filters.activity",
+    "filters.character",
+    "filters.mood",
+    "tempo",
+    "energy",
+    "language",
+    "frequency"
+  ]
 }

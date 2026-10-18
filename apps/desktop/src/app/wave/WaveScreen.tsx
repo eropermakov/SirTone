@@ -67,8 +67,10 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
 
   const startWave = (profile?: "seasonal") =>
     waveStart(profile)
-      .then((n) => {
-        if (n === 0) notify(t("wave.empty"));
+      .then((r) => {
+        if (r.queued === 0) notify(t("wave.empty"));
+        // «Настроить волну» found too few tracks (FR-WAVE-006).
+        else if (r.relaxed.length > 0) notify(t("wave.relaxed"));
       })
       .catch(() => notify(t("wave.failed")));
   const shuffleAll = () =>
