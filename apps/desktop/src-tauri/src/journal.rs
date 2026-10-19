@@ -136,7 +136,13 @@ impl Journal {
             if s.path.as_deref() != Some(open.path.as_path()) {
                 if let Some(open) = guard.take() {
                     drop(guard);
-                    self.send(open, EndReason::Finished);
+                    // An automix overlap cut it short on purpose: heard to the end (T4.9).
+                    let reason = if s.mixing {
+                        EndReason::MixedOut
+                    } else {
+                        EndReason::Finished
+                    };
+                    self.send(open, reason);
                     guard = self.lock();
                 }
             } else if s.state == PlayState::Ended {
@@ -258,6 +264,7 @@ mod tests {
             underruns: 0,
             device: None,
             signal: None,
+            mixing: false,
         }
     }
 
@@ -281,6 +288,17 @@ mod tests {
             wave_profile: Mutex::new(None),
         };
         (j, rx)
+    }
+
+    /// T4.9: an automix overlap ends A as «mixed out» (a complete listen), not a skip.
+    #[test]
+    fn an_automix_handover_is_mixed_out() {
+        let (j, rx) = journal();
+        j.observe(&snap(PlayState::Playing, "a"), Some(item("a", 1)));
+        let mut b = snap(PlayState::Playing, "b");
+        b.mixing = true;
+        j.observe(&b, Some(item("b", 2)));
+        assert_eq!(rx.try_recv().unwrap().end_reason, EndReason::MixedOut);
     }
 
     #[test]

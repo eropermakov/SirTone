@@ -187,9 +187,117 @@ fn norm_of(m: &Mutex<Norm>) -> Norm {
     *m.lock().unwrap_or_else(|p| p.into_inner())
 }
 
-/// The next track for the engine with its gain.
-fn next_for_engine(q: &Queue<QueueItem>, norm: &Norm) -> Option<(PathBuf, f32)> {
-    handover(q).map(|i| (i.path.clone(), norm.gain_db(i, q.shuffled())))
+/// The automix numbers (`assets/automix/automix.json`, T4.8).
+fn mix_params() -> Option<&'static sirtone_playback::automix::MixParams> {
+    static P: OnceLock<Option<sirtone_playback::automix::MixParams>> = OnceLock::new();
+    P.get_or_init(|| {
+        sirtone_playback::automix::MixParams::from_json(include_str!(
+            "../../../../assets/automix/automix.json"
+        ))
+        .ok()
+    })
+    .as_ref()
+}
+
+/// Transition settings (T4.10, FR-PLAY-010) as the planner takes them.
+pub fn mix_cfg(doc: &serde_json::Value) -> sirtone_playback::automix::MixCfg {
+    use sirtone_playback::automix::{Intensity, Mode};
+    let a = &doc["playback"]["automix"];
+    let intensity = match a["intensity"].as_str().unwrap_or("medium") {
+        "soft" => Intensity::Soft,
+        "dj" => Intensity::Dj,
+        _ => Intensity::Smart,
+    };
+    let mode = match a["mode"].as_str().unwrap_or("smart") {
+        "gapless" => Mode::Gapless,
+        "crossfade" => Mode::Crossfade(a["crossfade_s"].as_f64().unwrap_or(6.0) as f32),
+        _ => Mode::Automix(intensity),
+    };
+    sirtone_playback::automix::MixCfg {
+        mode,
+        skip_albums: a["skip_albums"].as_bool().unwrap_or(true),
+        genre_blacklist: a["genre_blacklist"]
+            .as_array()
+            .map(|v| {
+                v.iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
+}
+
+fn mix_track(i: sirtone_library::mixinfo::MixInfo) -> sirtone_playback::automix::MixTrack {
+    sirtone_playback::automix::MixTrack {
+        duration_ms: i.duration_ms,
+        lead_silence_ms: i.lead_silence_ms,
+        tail_silence_ms: i.tail_silence_ms,
+        lufs: i.lufs,
+        env_head: i.env_head,
+        env_tail: i.env_tail,
+        genre: i.genre,
+        bpm: i.bpm,
+        camelot: i.camelot,
+        energy: i.energy,
+        grid: None,
+    }
+}
+
+/// How the current track hands over to `next` (T4.9): the automix plan from the analysis, or
+/// `None` for gapless (L0, files outside the library, no analysis in automix mode).
+fn plan_for(
+    q: &Queue<QueueItem>,
+    next: &QueueItem,
+    cfg: &sirtone_playback::automix::MixCfg,
+    app: Option<&AppHandle>,
+) -> Option<sirtone_audio::engine::MixSpec> {
+    use sirtone_playback::automix::{Curve, Level, MixCtx, Mode, plan};
+    if cfg.mode == Mode::Gapless {
+        return None;
+    }
+    let cur = q.current()?;
+    let (ia, ib) = (cur.track_id?, next.track_id?);
+    let lib = app?.try_state::<crate::library::Library>()?;
+    let (a, b) = lib
+        .with_read(|c| {
+            Ok((
+                sirtone_library::mixinfo::of_track(c, i64::from(ia))?,
+                sirtone_library::mixinfo::of_track(c, i64::from(ib))?,
+            ))
+        })
+        .ok()?;
+    let ctx = MixCtx {
+        album_in_order: cur.source == PlaySource::Album
+            && !q.shuffled()
+            && cur.album_key != 0
+            && cur.album_key == next.album_key,
+    };
+    let p = plan(&mix_track(a?), &mix_track(b?), ctx, cfg, mix_params()?);
+    (p.level != Level::L0).then_some(sirtone_audio::engine::MixSpec {
+        a_out_ms: p.a_out_ms,
+        a_stop_ms: p.a_stop_ms,
+        b_start_ms: p.b_start_ms,
+        a_fade: p.a_curve == Curve::EqualPower,
+        b_fade: p.b_curve == Curve::EqualPower,
+    })
+}
+
+/// The next track for the engine: its gain and how the current one hands over to it.
+fn next_for_engine(
+    q: &Queue<QueueItem>,
+    norm: &Norm,
+    mix: &sirtone_playback::automix::MixCfg,
+    app: Option<&AppHandle>,
+) -> Option<sirtone_audio::engine::NextTrack> {
+    handover(q).map(|i| sirtone_audio::engine::NextTrack {
+        path: i.path.clone(),
+        gain_db: norm.gain_db(i, q.shuffled()),
+        mix: plan_for(q, i, mix, app),
+    })
+}
+
+fn mix_of(m: &Mutex<sirtone_playback::automix::MixCfg>) -> sirtone_playback::automix::MixCfg {
+    m.lock().unwrap_or_else(|p| p.into_inner()).clone()
 }
 
 /// FR-PLAY-007 repeat mode over IPC.
@@ -304,6 +412,8 @@ pub struct Playback {
     _smtc: Option<Arc<Smtc>>,
     /// Normalization settings (T4.11), shared with the engine's event sink.
     norm: Arc<Mutex<Norm>>,
+    /// Transition settings (T4.10).
+    mix: Arc<Mutex<sirtone_playback::automix::MixCfg>>,
 }
 
 /// Mirrors a snapshot into the Windows media controls: the track (with a cover built off the
@@ -403,6 +513,8 @@ impl Playback {
         let sink_journal = journal.clone();
         let norm = Arc::new(Mutex::new(Norm::from_settings(&settings.get())));
         let sink_norm = norm.clone();
+        let mix = Arc::new(Mutex::new(mix_cfg(&settings.get())));
+        let sink_mix = mix.clone();
         let wave_app = app.clone();
         // Media keys, the Windows 11 flyout and widgets (T1.23): buttons go straight to this
         // service, so they work with the window hidden.
@@ -440,6 +552,8 @@ impl Playback {
                         h.send(EngineCmd::SetNext(next_for_engine(
                             &q,
                             &norm_of(&sink_norm),
+                            &mix_of(&sink_mix),
+                            Some(&wave_app),
                         )));
                     }
                 }
@@ -482,7 +596,12 @@ impl Playback {
                         path: next.path,
                         autoplay: true,
                     });
-                    h.send(EngineCmd::SetNext(next_for_engine(&q, &norm)));
+                    h.send(EngineCmd::SetNext(next_for_engine(
+                        &q,
+                        &norm,
+                        &mix_of(&sink_mix),
+                        Some(&wave_app),
+                    )));
                     return;
                 }
                 let current = q
@@ -577,6 +696,7 @@ impl Playback {
             muted_from: Mutex::new(None),
             _smtc: smtc,
             norm,
+            mix,
             app: {
                 let cell = OnceLock::new();
                 let _ = cell.set(app_for_events);
@@ -626,7 +746,12 @@ impl Playback {
 
     /// Tells the engine what follows the current track, so it continues without a gap.
     fn hand_next(&self) {
-        let next = next_for_engine(&self.queue(), &norm_of(&self.norm));
+        let next = next_for_engine(
+            &self.queue(),
+            &norm_of(&self.norm),
+            &mix_of(&self.mix),
+            self.app.get(),
+        );
         self.engine.send(EngineCmd::SetNext(next));
     }
 
@@ -656,6 +781,9 @@ impl Playback {
         };
         self.engine.send(EngineCmd::SetGain(gains));
         let doc = self.settings.get();
+        *self.mix.lock().unwrap_or_else(|p| p.into_inner()) = mix_cfg(&doc);
+        // A new transition setting re-plans the handover still ahead.
+        self.hand_next();
         self.engine.send(EngineCmd::SetEq(eq_from_settings(&doc)));
         self.engine
             .send(EngineCmd::SetLimiter(limiter_wanted(&doc)));

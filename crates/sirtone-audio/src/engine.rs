@@ -34,8 +34,9 @@ pub enum EngineCmd {
     /// Slider value 0…1; the engine applies the cubic curve (docs/04 §7).
     SetVolume(f32),
     /// The track to continue with when the current one ends, without a gap (T1.5, docs/04 §3:
-    /// pre-opened and fed into the same ring) and its normalization gain, dB. `None` clears it.
-    SetNext(Option<(PathBuf, f32)>),
+    /// pre-opened and fed into the same ring), its normalization gain and — for automix or
+    /// crossfade (T4.9) — how A hands over to it. `None` clears it.
+    SetNext(Option<NextTrack>),
     /// New normalization gains (dB) for these files — the playing one and the next one —
     /// ramped where they already sound (a settings change, shuffle flipping album gain).
     SetGain(Vec<(PathBuf, f32)>),
@@ -51,6 +52,38 @@ pub enum EngineCmd {
     /// From the device watcher: an endpoint was unplugged, disabled or removed.
     DeviceLost(String),
     Shutdown,
+}
+
+/// The track after the current one.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NextTrack {
+    pub path: PathBuf,
+    pub gain_db: f32,
+    /// `None` — gapless (L0).
+    pub mix: Option<MixSpec>,
+}
+
+impl NextTrack {
+    pub fn gapless(path: PathBuf, gain_db: f32) -> Self {
+        Self {
+            path,
+            gain_db,
+            mix: None,
+        }
+    }
+}
+
+/// A planned handover (`sirtone_playback::automix::Plan` in engine terms, T4.9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MixSpec {
+    /// In A: B starts here …
+    pub a_out_ms: u64,
+    /// … A stops here.
+    pub a_stop_ms: u64,
+    /// B starts from here (its lead silence skipped).
+    pub b_start_ms: u64,
+    pub a_fade: bool,
+    pub b_fade: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +106,9 @@ pub struct Snapshot {
     pub device: Option<String>,
     /// What the sound goes through (T4.13, FR-PLAY-002): rates, channels, DSP.
     pub signal: Option<SignalPath>,
+    /// The previous track is still sounding under this one (an automix overlap, T4.9): the
+    /// journal ends it as «mixed out», not «finished».
+    pub mixing: bool,
 }
 
 /// The signal path for the «Bit-perfect / Ресемплинг / DSP» indicator (`04` §8).
@@ -157,7 +193,7 @@ pub(crate) struct Deck {
     /// Zero-padded chunks fed after the decoder ended (flushes the resampler delay).
     tail_chunks: u32,
     /// Device-rate frames pushed since the segment start.
-    pushed: u64,
+    pub(crate) pushed: u64,
     /// Segment start: track position (device frames) and `Shared::consumed` at that moment.
     base_frames: u64,
     base_consumed: u64,
@@ -170,6 +206,12 @@ pub(crate) struct Deck {
     pub(crate) chained: Option<(Source, PathBuf)>,
     /// Where chained tracks begin, in deck frames (output and input), oldest first.
     boundaries: VecDeque<Boundary>,
+    /// Device-rate frames produced but not yet written to the ring (interleaved).
+    pub(crate) ready: Vec<f32>,
+    /// Track frame (device rate) where production stops for now (an automix point, T4.9).
+    pub(crate) stop_frame: Option<u64>,
+    /// Production reached `stop_frame`.
+    pub(crate) stopped: bool,
 }
 
 struct Boundary {
@@ -209,6 +251,43 @@ struct Engine {
     eq: Option<((u32, usize), Chain)>,
     eq_params: crate::eq::EqParams,
     limiter_on: bool,
+    /// How the current track hands over to the next one (T4.9); `None` — gapless.
+    next_mix: Option<MixSpec>,
+    /// The overlap in progress: the outgoing deck mixed under the new current one.
+    mixing: Option<Mixing>,
+}
+
+/// An automix / crossfade overlap (T4.9): A (outgoing) and the current deck B are summed with
+/// their curves for `overlap` device frames, then A is dropped.
+pub(crate) struct Mixing {
+    pub(crate) a: Deck,
+    pub(crate) overlap: u64,
+    mixed: u64,
+    a_fade: bool,
+    b_fade: bool,
+    buf: Vec<f32>,
+}
+
+impl Mixing {
+    pub(crate) fn new(a: Deck, overlap: u64, a_fade: bool, b_fade: bool) -> Self {
+        Self {
+            a,
+            overlap,
+            mixed: 0,
+            a_fade,
+            b_fade,
+            buf: Vec::new(),
+        }
+    }
+}
+
+/// Equal-power curves (`04` §4.4): out `cos(πt/2)`, in `sin(πt/2)`; `Keep` = 1.
+fn curve(t: f64, fade: bool, out: bool) -> f32 {
+    if !fade {
+        return 1.0;
+    }
+    let a = std::f64::consts::FRAC_PI_2 * t.clamp(0.0, 1.0);
+    (if out { a.cos() } else { a.sin() }) as f32
 }
 
 /// What runs on the engine thread after the resampler, before the ring.
@@ -254,6 +333,8 @@ impl Engine {
             eq: None,
             eq_params: crate::eq::EqParams::default(),
             limiter_on: false,
+            next_mix: None,
+            mixing: None,
         }
     }
 
@@ -337,10 +418,21 @@ impl Engine {
                     .store(self.volume.powi(3).to_bits(), Ordering::Relaxed);
             }
             EngineCmd::SetNext(next) => {
-                let path = next.map(|(p, db)| {
-                    self.remember_gain(&p, db);
-                    p
+                let mix = next.as_ref().and_then(|n| n.mix);
+                let path = next.map(|n| {
+                    self.remember_gain(&n.path, n.gain_db);
+                    n.path
                 });
+                if self.next_mix != mix {
+                    // A new plan replaces the old one until the overlap begins.
+                    self.next_mix = mix;
+                    if let Some(d) = self.deck.as_mut() {
+                        d.stop_frame = None;
+                        d.stopped = false;
+                        d.chained = None;
+                    }
+                    self.next_attached = false;
+                }
                 if self.next_path != path {
                     self.next_path = path;
                     self.feeding = None;
@@ -434,6 +526,8 @@ impl Engine {
         let source = open_with_gain(&self.gains, &path)?;
         let fmt = self.ensure_output()?;
         self.flush();
+        self.mixing = None;
+        self.next_mix = None;
         self.lost_position = None;
         let mut deck = new_deck(source, path, fmt, 0)?;
         deck.base_consumed = self.shared.consumed.load(Ordering::Relaxed);
@@ -492,6 +586,8 @@ impl Engine {
         };
         source.seek(ms)?;
         self.flush();
+        // A seek ends an overlap: the outgoing track is gone, the plan for the next is redone.
+        self.mixing = None;
         self.lost_position = None;
         let base = ms * u64::from(fmt.rate) / 1000;
         let mut deck = new_deck(source, old.path, fmt, base)?;
@@ -550,7 +646,16 @@ impl Engine {
             };
             self.eq = Some((key, chain));
         }
-        if !self.next_attached
+        // A planned handover (T4.9): A plays up to the point where B comes in.
+        if let Some(m) = self.next_mix
+            && self.mixing.is_none()
+            && deck.stop_frame.is_none()
+            && deck.boundaries.is_empty()
+        {
+            deck.stop_frame = Some(m.a_out_ms * u64::from(out.format.rate) / 1000);
+        }
+        if self.next_mix.is_none()
+            && !self.next_attached
             && !self.next_failed
             && !deck.eof
             && deck.boundaries.is_empty()
@@ -574,8 +679,79 @@ impl Engine {
                 }
             }
         }
+        if let Some(m) = self.mixing.as_mut() {
+            let done = mix_fill(
+                m,
+                deck,
+                out.format,
+                prod,
+                &self.shared,
+                playing,
+                self.eq.as_mut().map(|(_, e)| e),
+            )?;
+            if done {
+                self.mixing = None;
+                self.emit_snapshot();
+            }
+            return Ok(());
+        }
         let eq = self.eq.as_mut().map(|(_, e)| e);
         fill(deck, out.format, prod, &self.shared, playing, eq)?;
+        // The automix point reached and written: B comes in.
+        if deck.stopped
+            && let (Some(m), Some(path)) = (self.next_mix, self.next_path.clone())
+        {
+            let fmt = out.format;
+            let rate = u64::from(fmt.rate);
+            let opened = open_with_gain(&self.gains, &path).and_then(|mut src| {
+                if m.b_start_ms > 0 {
+                    src.seek(m.b_start_ms)?;
+                }
+                new_deck(src, path.clone(), fmt, m.b_start_ms * rate / 1000)
+            });
+            match opened {
+                Ok(mut b) => {
+                    let ch = fmt.channels.max(1);
+                    let unwritten = (deck.ready.len() / ch) as u64;
+                    let at = deck.base_frames + deck.pushed - unwritten;
+                    let stop = (m.a_stop_ms * rate / 1000).max(at);
+                    b.base_consumed = deck.base_consumed + deck.pushed - unwritten;
+                    let Some(mut a) = self.deck.take() else {
+                        return Ok(());
+                    };
+                    a.stop_frame = Some(stop);
+                    a.stopped = false;
+                    self.mixing = Some(Mixing {
+                        a,
+                        overlap: stop - at,
+                        mixed: 0,
+                        a_fade: m.a_fade,
+                        b_fade: m.b_fade,
+                        buf: Vec::new(),
+                    });
+                    self.deck = Some(b);
+                    self.next_mix = None;
+                    self.next_path = None;
+                    self.next_attached = false;
+                    self.next_source = None;
+                    self.next_failed = false;
+                    tracing::info!(target: "sirtone::audio", overlap_ms = (stop - at) * 1000 / rate, "mix");
+                    self.emit_snapshot();
+                }
+                Err(error) => {
+                    // B cannot be opened: A just plays to its end.
+                    self.next_mix = None;
+                    self.next_failed = true;
+                    deck.stop_frame = None;
+                    deck.stopped = false;
+                    (self.events)(EngineEvent::Error {
+                        error,
+                        path: Some(path),
+                    });
+                }
+            }
+            return Ok(());
+        }
         if deck.eof
             && self.feeding.is_none()
             && !self.next_failed
@@ -778,12 +954,14 @@ impl Engine {
                 }),
                 _ => None,
             },
+            mixing: self.mixing.is_some(),
         };
         (self.events)(EngineEvent::Snapshot(snap));
     }
 }
 
-/// Decodes, maps channels, resamples and pushes `deck` while the ring has room for a chunk.
+/// Decodes, maps channels, resamples and pushes `deck` while the ring has room (through the DSP
+/// chain), up to its `stop_frame`.
 pub(crate) fn fill(
     deck: &mut Deck,
     fmt: DeviceFormat,
@@ -792,100 +970,205 @@ pub(crate) fn fill(
     playing: bool,
     mut eq: Option<&mut Chain>,
 ) -> Result<(), AppError> {
-    let ch = fmt.channels;
-    while !deck.eof {
-        let room = prod.slots();
-        if room < deck.out_buf.len() {
-            break;
-        }
-        // Fill one resampler chunk of channel-mapped input.
-        let need = deck
-            .resampler
-            .as_ref()
-            .map_or(CHUNK, |r| r.input_frames_next());
-        while deck.pending.len() < need * ch {
-            deck.decoded.clear();
-            if !deck.source.next_into(&mut deck.decoded)? {
-                if let Some((next, path)) = deck.chained.take() {
-                    // Same rate: the next track's first frame follows this one's last frame.
-                    let at_in = deck.decoded_in;
-                    deck.boundaries.push_back(Boundary {
-                        at_out: at_in * u64::from(fmt.rate) / u64::from(deck.source.rate),
-                        at_in,
-                        path,
-                        duration_ms: next.duration_ms,
-                    });
-                    deck.source = next;
-                    continue;
-                }
+    let ch = fmt.channels.max(1);
+    loop {
+        let can = writable(deck, ch);
+        if can == 0 {
+            if deck.stop_frame.is_some() && (deck.ready.len() >= ch || deck.eof) {
+                // At the automix point (or the track ended before it).
+                deck.stopped = true;
                 break;
             }
-            deck.decoded_in += (deck.decoded.len() / deck.source.channels.max(1)) as u64;
-            let from = deck.pending.len();
-            map_channels(
-                &deck.decoded,
-                deck.source.channels,
-                deck.source.channel_mask,
-                ch,
-                &mut deck.pending,
-            );
-            // Normalization (T4.11) before the resampler: a chained track switches its gain
-            // exactly at its first frame.
-            deck.source.apply_gain(&mut deck.pending[from..], ch);
+            if deck.eof || prod.slots() < deck.out_buf.len() {
+                break;
+            }
+            produce(deck, fmt)?;
+            continue;
         }
-        let have = deck.pending.len() / ch;
-        let at_end = have < need;
-        // Exactly `need` frames go into the resampler; what the last decoded packet brought
-        // beyond that stays in `pending` for the next chunk (dropping it caused audible
-        // gaps every ~23 ms on 44.1→48 kHz). Only the very tail is padded with silence.
-        let (produced, consumed) = match deck.resampler.as_mut() {
-            Some(r) => {
-                if at_end {
-                    deck.pending.resize(need * ch, 0.0);
-                }
-                let input = InterleavedSlice::new(&deck.pending[..need * ch], ch, need)
-                    .map_err(internal)?;
-                let cap = deck.out_buf.len() / ch;
-                let mut output =
-                    InterleavedSlice::new_mut(&mut deck.out_buf, ch, cap).map_err(internal)?;
-                let (_, written) = r
-                    .process_into_buffer(&input, &mut output, None)
-                    .map_err(internal)?;
-                deck.pending.drain(..need * ch);
-                (written, have.min(need))
-            }
-            None => {
-                let n = have.min(deck.out_buf.len() / ch);
-                deck.out_buf[..n * ch].copy_from_slice(&deck.pending[..n * ch]);
-                deck.pending.drain(..n * ch);
-                (n, n)
-            }
-        };
-        deck.in_frames += consumed as u64;
-        // Exact resampled length of this segment: the resampler's delay is skipped at the
-        // start and its flushed zeros are cut at the end.
-        let expected = deck.in_frames * u64::from(fmt.rate) / u64::from(deck.source.rate);
-        let start = deck.skip_out.min(produced);
-        deck.skip_out -= start;
-        let allowed = expected.saturating_sub(deck.pushed) as usize;
-        let end = produced.min(start + allowed);
+        let n = (prod.slots() / ch).min(can);
+        if n == 0 {
+            break;
+        }
         // The DSP chain (EQ, limiter) at the device rate, before the ring.
         if let Some(e) = eq.as_deref_mut() {
-            e.process(&mut deck.out_buf[start * ch..end * ch]);
+            e.process(&mut deck.ready[..n * ch]);
         }
-        let frames = &deck.out_buf[start * ch..end * ch];
-        if let Ok(chunk) = prod.write_chunk_uninit(frames.len()) {
-            chunk.fill_from_iter(frames.iter().copied());
+        if let Ok(chunk) = prod.write_chunk_uninit(n * ch) {
+            chunk.fill_from_iter(deck.ready[..n * ch].iter().copied());
         }
-        deck.pushed += (end - start) as u64;
-        if playing && end > start {
+        deck.ready.drain(..n * ch);
+        if playing {
             shared.starving_ok.store(false, Ordering::Relaxed);
         }
-        if at_end {
-            deck.tail_chunks += 1;
-            if deck.resampler.is_none() || deck.pushed >= expected || deck.tail_chunks > 16 {
-                deck.eof = true;
+    }
+    Ok(())
+}
+
+/// The overlap (T4.9): A's and B's frames summed with their curves, through the chain, into the
+/// ring. `true` once the overlap is complete (A is then dropped).
+pub(crate) fn mix_fill(
+    m: &mut Mixing,
+    b: &mut Deck,
+    fmt: DeviceFormat,
+    prod: &mut rtrb::Producer<f32>,
+    shared: &Shared,
+    playing: bool,
+    mut eq: Option<&mut Chain>,
+) -> Result<bool, AppError> {
+    let ch = fmt.channels.max(1);
+    loop {
+        if m.mixed >= m.overlap {
+            return Ok(true);
+        }
+        let a_can = writable(&m.a, ch);
+        let a_done = a_can == 0 && !wants_more(&m.a, ch);
+        if a_can == 0 && !a_done {
+            produce(&mut m.a, fmt)?;
+            continue;
+        }
+        if b.ready.is_empty() {
+            if b.eof {
+                return Ok(true);
             }
+            produce(b, fmt)?;
+            continue;
+        }
+        let room = prod.slots() / ch;
+        let a_have = if a_done { usize::MAX } else { a_can };
+        let n = room
+            .min(a_have)
+            .min(b.ready.len() / ch)
+            .min((m.overlap - m.mixed) as usize);
+        if n == 0 {
+            return Ok(false);
+        }
+        m.buf.clear();
+        m.buf.extend_from_slice(&b.ready[..n * ch]);
+        let total = m.overlap.max(1) as f64;
+        for f in 0..n {
+            let t = (m.mixed + f as u64) as f64 / total;
+            let (ga, gb) = (curve(t, m.a_fade, true), curve(t, m.b_fade, false));
+            for c in 0..ch {
+                let i = f * ch + c;
+                let a = if a_done { 0.0 } else { m.a.ready[i] };
+                m.buf[i] = a * ga + m.buf[i] * gb;
+            }
+        }
+        if let Some(e) = eq.as_deref_mut() {
+            e.process(&mut m.buf);
+        }
+        if let Ok(chunk) = prod.write_chunk_uninit(n * ch) {
+            chunk.fill_from_iter(m.buf.iter().copied());
+        }
+        if !a_done {
+            m.a.ready.drain(..n * ch);
+        }
+        b.ready.drain(..n * ch);
+        m.mixed += n as u64;
+        if playing {
+            shared.starving_ok.store(false, Ordering::Relaxed);
+        }
+    }
+}
+
+/// Frames of `deck.ready` that may still go out before its `stop_frame` (all without one).
+fn writable(deck: &Deck, ch: usize) -> usize {
+    let ready = deck.ready.len() / ch;
+    match deck.stop_frame {
+        Some(stop) => {
+            let written = deck.base_frames + deck.pushed - ready as u64;
+            ready.min(stop.saturating_sub(written) as usize)
+        }
+        None => ready,
+    }
+}
+
+/// Whether production should go on: no stop, or the ready frames do not reach it yet.
+fn wants_more(deck: &Deck, ch: usize) -> bool {
+    !deck.eof && writable(deck, ch) == deck.ready.len() / ch
+}
+
+/// One resampler chunk of device-rate frames into `deck.ready`.
+fn produce(deck: &mut Deck, fmt: DeviceFormat) -> Result<(), AppError> {
+    let ch = fmt.channels;
+    // Fill one resampler chunk of channel-mapped input.
+    let need = deck
+        .resampler
+        .as_ref()
+        .map_or(CHUNK, |r| r.input_frames_next());
+    while deck.pending.len() < need * ch {
+        deck.decoded.clear();
+        if !deck.source.next_into(&mut deck.decoded)? {
+            if let Some((next, path)) = deck.chained.take() {
+                // Same rate: the next track's first frame follows this one's last frame.
+                let at_in = deck.decoded_in;
+                deck.boundaries.push_back(Boundary {
+                    at_out: at_in * u64::from(fmt.rate) / u64::from(deck.source.rate),
+                    at_in,
+                    path,
+                    duration_ms: next.duration_ms,
+                });
+                deck.source = next;
+                continue;
+            }
+            break;
+        }
+        deck.decoded_in += (deck.decoded.len() / deck.source.channels.max(1)) as u64;
+        let from = deck.pending.len();
+        map_channels(
+            &deck.decoded,
+            deck.source.channels,
+            deck.source.channel_mask,
+            ch,
+            &mut deck.pending,
+        );
+        // Normalization (T4.11) before the resampler: a chained track switches its gain
+        // exactly at its first frame.
+        deck.source.apply_gain(&mut deck.pending[from..], ch);
+    }
+    let have = deck.pending.len() / ch;
+    let at_end = have < need;
+    // Exactly `need` frames go into the resampler; what the last decoded packet brought
+    // beyond that stays in `pending` for the next chunk (dropping it caused audible
+    // gaps every ~23 ms on 44.1→48 kHz). Only the very tail is padded with silence.
+    let (produced, consumed) = match deck.resampler.as_mut() {
+        Some(r) => {
+            if at_end {
+                deck.pending.resize(need * ch, 0.0);
+            }
+            let input =
+                InterleavedSlice::new(&deck.pending[..need * ch], ch, need).map_err(internal)?;
+            let cap = deck.out_buf.len() / ch;
+            let mut output =
+                InterleavedSlice::new_mut(&mut deck.out_buf, ch, cap).map_err(internal)?;
+            let (_, written) = r
+                .process_into_buffer(&input, &mut output, None)
+                .map_err(internal)?;
+            deck.pending.drain(..need * ch);
+            (written, have.min(need))
+        }
+        None => {
+            let n = have.min(deck.out_buf.len() / ch);
+            deck.out_buf[..n * ch].copy_from_slice(&deck.pending[..n * ch]);
+            deck.pending.drain(..n * ch);
+            (n, n)
+        }
+    };
+    deck.in_frames += consumed as u64;
+    // Exact resampled length of this segment: the resampler's delay is skipped at the
+    // start and its flushed zeros are cut at the end.
+    let expected = deck.in_frames * u64::from(fmt.rate) / u64::from(deck.source.rate);
+    let start = deck.skip_out.min(produced);
+    deck.skip_out -= start;
+    let allowed = expected.saturating_sub(deck.pushed) as usize;
+    let end = produced.min(start + allowed);
+    deck.ready
+        .extend_from_slice(&deck.out_buf[start * ch..end * ch]);
+    deck.pushed += (end - start) as u64;
+    if at_end {
+        deck.tail_chunks += 1;
+        if deck.resampler.is_none() || deck.pushed >= expected || deck.tail_chunks > 16 {
+            deck.eof = true;
         }
     }
     Ok(())
@@ -947,6 +1230,9 @@ pub(crate) fn new_deck(
         pushed: 0,
         base_frames,
         base_consumed: 0,
+        ready: Vec::with_capacity(out_max * ch),
+        stop_frame: None,
+        stopped: false,
     })
 }
 

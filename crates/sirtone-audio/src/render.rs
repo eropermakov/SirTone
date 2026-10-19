@@ -122,6 +122,54 @@ pub fn render_to_wav(
     Ok(samples.len() / fmt.channels.max(1))
 }
 
+/// A then B through a planned handover (T4.9: the engine's own overlap code, no device), at
+/// `fmt`, without the render thread's volume. For the automix metrics (`04` §4.5).
+pub fn render_mix(
+    a: &Path,
+    b: &Path,
+    m: crate::engine::MixSpec,
+    fmt: DeviceFormat,
+) -> Result<Vec<f32>, AppError> {
+    use crate::engine::{Mixing, mix_fill};
+    let shared = Shared::new();
+    let (mut prod, mut cons) = rtrb::RingBuffer::<f32>::new(fmt.rate as usize * fmt.channels);
+    let mut out: Vec<f32> = Vec::new();
+    let drain = |cons: &mut rtrb::Consumer<f32>, out: &mut Vec<f32>| {
+        if let Ok(chunk) = cons.read_chunk(cons.slots()) {
+            let (x, y) = chunk.as_slices();
+            out.extend_from_slice(x);
+            out.extend_from_slice(y);
+            chunk.commit_all();
+        }
+    };
+    let rate = u64::from(fmt.rate);
+    let mut da = new_deck(open(a, 0.0)?, a.to_path_buf(), fmt, 0)?;
+    da.stop_frame = Some(m.a_out_ms * rate / 1000);
+    while !da.stopped {
+        fill(&mut da, fmt, &mut prod, &shared, true, None)?;
+        drain(&mut cons, &mut out);
+    }
+    let at = da.pushed - (da.ready.len() / fmt.channels.max(1)) as u64;
+    let stop = (m.a_stop_ms * rate / 1000).max(at);
+    da.stop_frame = Some(stop);
+    da.stopped = false;
+    let mut src = open(b, 0.0)?;
+    if m.b_start_ms > 0 {
+        src.seek(m.b_start_ms)?;
+    }
+    let mut db = new_deck(src, b.to_path_buf(), fmt, m.b_start_ms * rate / 1000)?;
+    let mut mix = Mixing::new(da, stop - at, m.a_fade, m.b_fade);
+    while !mix_fill(&mut mix, &mut db, fmt, &mut prod, &shared, true, None)? {
+        drain(&mut cons, &mut out);
+    }
+    drain(&mut cons, &mut out);
+    while !(db.ready.is_empty() && db.eof) {
+        fill(&mut db, fmt, &mut prod, &shared, true, None)?;
+        drain(&mut cons, &mut out);
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,6 +232,107 @@ mod tests {
         assert!((buf[720] - 0.75).abs() < 0.01, "{}", buf[720]);
         assert!((buf[1_500] - 0.5).abs() < 1e-6);
         assert!(buf.windows(2).all(|w| w[1] <= w[0]));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn sine_file(dir: &Path, name: &str, freq: f32, secs: f32, lead: f32, tail: f32) -> PathBuf {
+        let fmt = DeviceFormat {
+            rate: 48_000,
+            channels: 2,
+        };
+        let n = (48_000.0 * secs) as usize;
+        let (l, t) = ((48_000.0 * lead) as usize, (48_000.0 * tail) as usize);
+        let mut x = Vec::with_capacity(n * 2);
+        for i in 0..n {
+            let v = if i < l || i >= n - t {
+                0.0
+            } else {
+                0.5 * (std::f32::consts::TAU * freq * i as f32 / 48_000.0).sin()
+            };
+            x.push(v);
+            x.push(v);
+        }
+        let p = dir.join(name);
+        std::fs::write(&p, wav_bytes(&x, fmt)).unwrap();
+        p
+    }
+
+    fn rms_db(x: &[f32]) -> f64 {
+        let e = x.iter().map(|v| f64::from(*v).powi(2)).sum::<f64>() / x.len().max(1) as f64;
+        10.0 * e.log10()
+    }
+
+    /// T4.9 metrics (`04` §4.5): an equal-power crossfade of two uncorrelated tones keeps the
+    /// level (≤ 1 dB), has no click, and the output is A up to the overlap, the overlap, then B.
+    #[test]
+    fn a_crossfade_keeps_the_level_without_clicks() {
+        let dir = std::env::temp_dir().join(format!("sirtone-mix-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = sine_file(&dir, "a.wav", 440.0, 10.0, 0.0, 0.0);
+        let b = sine_file(&dir, "b.wav", 660.0, 10.0, 0.0, 0.0);
+        let fmt = DeviceFormat {
+            rate: 48_000,
+            channels: 2,
+        };
+        let m = crate::engine::MixSpec {
+            a_out_ms: 6_000,
+            a_stop_ms: 10_000,
+            b_start_ms: 0,
+            a_fade: true,
+            b_fade: true,
+        };
+        let out = render_mix(&a, &b, m, fmt).unwrap();
+        // Length: 6 s of A, 4 s overlap, 6 s of B.
+        assert_eq!(out.len() / 2, 16 * 48_000);
+        let at = |s: f64| (s * 48_000.0) as usize * 2;
+        let base = rms_db(&out[at(2.0)..at(3.0)]);
+        // 400 ms around the middle of the overlap and its edges.
+        for mid in [6.2, 8.0, 9.8] {
+            let d = rms_db(&out[at(mid - 0.2)..at(mid + 0.2)]) - base;
+            assert!(d.abs() <= 1.0, "{mid} s: {d:.2} dB");
+        }
+        // No click: the biggest sample step at the joints is no bigger than in the steady parts.
+        let step = |x: &[f32]| {
+            let l: Vec<f32> = x.as_chunks::<2>().0.iter().map(|f| f[0]).collect();
+            l.windows(2)
+                .map(|w| (w[1] - w[0]).abs())
+                .fold(0f32, f32::max)
+        };
+        let steady = step(&out[at(1.0)..at(2.0)]).max(step(&out[at(13.0)..at(14.0)]));
+        for joint in [6.0, 10.0] {
+            let s = step(&out[at(joint - 0.05)..at(joint + 0.05)]);
+            assert!(s <= steady * 1.05, "{joint} s: {s} vs {steady}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// L1: A's tail silence and B's lead silence are cut, the joint has no gap.
+    #[test]
+    fn silences_are_trimmed_at_the_joint() {
+        let dir = std::env::temp_dir().join(format!("sirtone-trim-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = sine_file(&dir, "a.wav", 440.0, 5.0, 0.0, 1.0);
+        let b = sine_file(&dir, "b.wav", 440.0, 5.0, 1.0, 0.0);
+        let fmt = DeviceFormat {
+            rate: 48_000,
+            channels: 2,
+        };
+        let m = crate::engine::MixSpec {
+            a_out_ms: 4_000,
+            a_stop_ms: 4_000,
+            b_start_ms: 1_000,
+            a_fade: false,
+            b_fade: false,
+        };
+        let out = render_mix(&a, &b, m, fmt).unwrap();
+        assert_eq!(out.len() / 2, 8 * 48_000);
+        // No silent 10 ms block around the joint (4 s).
+        let blocks = out[(3 * 48_000) * 2..(5 * 48_000) * 2].chunks(960);
+        assert!(
+            blocks
+                .into_iter()
+                .all(|bl| bl.iter().any(|v| v.abs() > 0.01))
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

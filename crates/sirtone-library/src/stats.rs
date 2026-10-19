@@ -64,7 +64,12 @@ pub fn apply(conn: &Connection, e: &PlayEvent) -> Result<(), LibraryError> {
         EndReason::Finished | EndReason::MixedOut | EndReason::Skip
     ) && e.duration_ms > 0
     {
-        let frac = (e.played_ms as f64 / e.duration_ms as f64).min(1.0);
+        // Mixed out by automix: the overlap cut the end on purpose — a complete listen.
+        let frac = if e.end_reason == EndReason::MixedOut {
+            1.0
+        } else {
+            (e.played_ms as f64 / e.duration_ms as f64).min(1.0)
+        };
         (1.0 - EMA_ALPHA) * ema + EMA_ALPHA * frac
     } else {
         ema

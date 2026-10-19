@@ -14,6 +14,7 @@ pub mod feedback;
 pub mod import;
 pub mod layout;
 pub mod loudness;
+pub mod mixinfo;
 pub mod online;
 pub mod palette;
 pub mod playlists;

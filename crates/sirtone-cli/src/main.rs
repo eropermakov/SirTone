@@ -15,6 +15,7 @@ mod library;
 mod soak;
 mod wave;
 
+use sirtone_audio::engine::NextTrack as EngineNext;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::mpsc;
@@ -76,7 +77,9 @@ fn play(files: &[String], volume: f32) -> ExitCode {
     });
     let mut current = 0usize;
     engine.send(EngineCmd::SetNext(
-        files.get(1).map(|f| (PathBuf::from(f), 0.0)),
+        files
+            .get(1)
+            .map(|f| EngineNext::gapless(PathBuf::from(f), 0.0)),
     ));
     let mut code = ExitCode::SUCCESS;
     loop {
@@ -88,7 +91,9 @@ fn play(files: &[String], volume: f32) -> ExitCode {
                     current += 1;
                     println!("\n→ {next}");
                     engine.send(EngineCmd::SetNext(
-                        files.get(current + 1).map(|f| (PathBuf::from(f), 0.0)),
+                        files
+                            .get(current + 1)
+                            .map(|f| EngineNext::gapless(PathBuf::from(f), 0.0)),
                     ));
                 }
                 print!(
