@@ -599,6 +599,16 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
             "playback.volume must be 0..=1".into(),
         ));
     }
+    let mix = &s.playback.automix;
+    if !["gapless", "crossfade", "smart"].contains(&mix.mode.as_str())
+        || !["soft", "medium", "dj"].contains(&mix.intensity.as_str())
+        || !(1.0..=12.0).contains(&mix.crossfade_s)
+    {
+        return Err(SettingsError::Invalid(
+            "playback.automix: mode gapless|crossfade|smart, intensity soft|medium|dj, crossfade 1–12 s"
+                .into(),
+        ));
+    }
     let eq = &s.playback.eq;
     if eq.bands_db.len() != 10
         || eq.bands_db.iter().any(|v| !(-12.0..=12.0).contains(v))

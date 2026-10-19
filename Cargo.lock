@@ -4829,6 +4829,8 @@ dependencies = [
 name = "sirtone-playback"
 version = "0.1.27"
 dependencies = [
+ "serde",
+ "serde_json",
  "sirtone-core",
 ]
 
