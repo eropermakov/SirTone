@@ -1761,6 +1761,53 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
     await invoke("playback_toggle", {});
   }
 
+  // AT-20 (T3.32): «Для всех» — a track «не для компании» never comes, nothing sad or gloomy
+  // is queued, and without popularity data the caption says so. (The guests' model leaving the
+  // owner's models untouched is checked bit for bit in `sirtone-wave` tests.)
+  const anal = (() => {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    try {
+      return db
+        .prepare(
+          "SELECT t.id, t.mood_bits FROM track t JOIN track_features tf ON tf.track_id = t.id WHERE t.state = 'ok' ORDER BY t.id",
+        )
+        .all();
+    } finally {
+      db.close();
+    }
+  })();
+  const bannedId = anal[0]?.id;
+  if (bannedId !== undefined) {
+    await invoke("track_tag_set", { track: bannedId, tag: "not_for_company", on: true });
+  }
+  const fa = await invoke("wave_start", { profile: "for_all", query: null });
+  const faQueue = (await invoke("queue_get", {})).items.map((x) => x.trackId);
+  const bitsOf = new Map(anal.map((r) => [r.id, r.mood_bits]));
+  const gloomy = faQueue.filter((id) => ((bitsOf.get(id) ?? 0) & (8 | 32)) !== 0);
+  const faSnap = await invoke("playback_snapshot", {});
+  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  const faBtn = await page
+    .getByRole("button", { name: "Для всех" })
+    .first()
+    .waitFor({ timeout: 3000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  check(
+    "AT-20: «Для всех» — no «не для компании», nothing sad or gloomy, honest caption without popularity",
+    fa.queued > 0 &&
+      faSnap.waveProfile === "for_all" &&
+      !faQueue.includes(bannedId) &&
+      gloomy.length === 0 &&
+      fa.noPopularity === true &&
+      faBtn,
+    `queued ${fa.queued} few ${fa.few} noPop ${fa.noPopularity}, profile ${faSnap.waveProfile}, banned ${bannedId} in ${faQueue.includes(bannedId)}, gloomy ${gloomy.length}, button ${faBtn}`,
+  );
+  if ((await invoke("playback_snapshot", {})).state === "playing") {
+    await invoke("playback_toggle", {});
+  }
+
   // T3.20 (FR-UI-006): albums without a cover get a generated placeholder (genre sign / logo
   // letter) instead of the grey note.
   const albumsNow = (await invoke("collection_albums", { after: null, limit: 500 })).rows;

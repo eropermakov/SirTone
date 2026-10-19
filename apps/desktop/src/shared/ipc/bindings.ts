@@ -151,6 +151,8 @@ export const commands = {
 	energy?: [(number | null), (number | null)] | null,
 	/**  BPM. */
 	tempo?: [(number | null), (number | null)] | null,
+	/**  «Для всех» atmospheres (FR-ALL-003): background · company · party. */
+	gathering?: string | null,
 } | null) => typedError<WaveStarted, AppError>(__TAURI_INVOKE("wave_start", { profile, query })),
 	/**  «Сбросить обучение» (docs/14 §8.4): the models start over from now; the journal stays. */
 	waveResetLearning: () => typedError<null, AppError>(__TAURI_INVOKE("wave_reset_learning")),
@@ -698,6 +700,8 @@ export type WaveQueryIpc = {
 	energy?: [(number | null), (number | null)] | null,
 	/**  BPM. */
 	tempo?: [(number | null), (number | null)] | null,
+	/**  «Для всех» atmospheres (FR-ALL-003): background · company · party. */
+	gathering?: string | null,
 };
 
 /**
@@ -708,6 +712,10 @@ export type WaveStarted = {
 	queued: number,
 	/**  mood · character · activity · tempo · energy · language · frequency */
 	relaxed: string[],
+	/**  «Для всех»: «подборка без данных о популярности» (FR-ALL-005). */
+	noPopularity: boolean,
+	/**  «Для всех»: fewer than 30 suitable tracks — the honest caption. */
+	few: boolean,
 };
 
 /**  One reason of «Почему этот трек» (§17); the UI words it as `wave.why.<kind>`. */

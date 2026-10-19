@@ -394,6 +394,8 @@ pub struct Catalog {
     /// The guests' model: beta per track (§8, `separate_model`).
     pub(crate) guest_alpha: Vec<f32>,
     pub(crate) guest_beta: Vec<f32>,
+    /// Tracks with known popularity («подборка без данных о популярности» when 0).
+    pop_known: usize,
     center: [f32; D],
     index: std::collections::HashMap<i64, u32>,
 }
@@ -482,6 +484,7 @@ impl Catalog {
             hit: Vec::with_capacity(n),
             guest_alpha: vec![1.0; n],
             guest_beta: vec![1.0; n],
+            pop_known: 0,
             center: [0.0; D],
             index: std::collections::HashMap::with_capacity(n),
         };
@@ -608,6 +611,7 @@ impl Catalog {
         for (i, t) in tracks.iter().enumerate() {
             let (mut sum, mut wsum) = (0f32, 0f32);
             if let Some(l) = t.listeners {
+                self.pop_known += 1;
                 sum += w.popularity * ((1.0 + l as f32).log10() / ref_log).min(1.0);
                 wsum += w.popularity;
             }
@@ -669,8 +673,8 @@ impl Catalog {
     }
 
     /// Tracks with known popularity (the caption «подборка без данных о популярности»).
-    pub fn with_popularity(&self, tracks: &[WaveTrack]) -> usize {
-        tracks.iter().filter(|t| t.listeners.is_some()).count()
+    pub fn popularity_known(&self) -> usize {
+        self.pop_known
     }
 
     /// Season affinity of every track from its tags, words (cached by id — matched once per
@@ -910,9 +914,21 @@ impl Engine {
         &self.qs.relaxed
     }
 
-    /// The profile this engine plays (`my_wave`, `seasonal`).
+    /// The profile this engine plays (`my_wave`, `seasonal`, `for_all`).
     pub fn profile_id(&self) -> &str {
         &self.cfg.profile.id
+    }
+
+    /// «Для всех» captions (FR-ALL-005): no popularity data at all; fewer suitable tracks than
+    /// the honest limit. Both false outside «Для всех».
+    pub fn company_captions(&self) -> (bool, bool) {
+        if !self.cfg.profile.company {
+            return (false, false);
+        }
+        (
+            self.cat.popularity_known() == 0,
+            self.cat.company_count() < self.cfg.universal.few,
+        )
     }
 
     /// Fresh statistics and signals (after plays, likes, imports), the session kept: spacing,

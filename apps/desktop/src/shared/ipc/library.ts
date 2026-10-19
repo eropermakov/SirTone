@@ -199,12 +199,12 @@ export const allTrackIds = async (): Promise<number[]> => {
 
 /** «Моя волна» (Stage 3): the engine picks and plays; returns how many tracks were queued. */
 export const waveStart = async (
-  profile?: "seasonal",
+  profile?: "seasonal" | "for_all",
   query?: WaveQueryIpc,
 ): Promise<WaveStarted> =>
   isTauri()
     ? unwrap(await commands.waveStart(profile ?? null, query ?? null))
-    : { queued: 0, relaxed: [] };
+    : { queued: 0, relaxed: [], noPopularity: false, few: false };
 
 /** The seasonal card's name key under `wave.season` (FR-SEAS-004). */
 export const waveSeasonCard = async (): Promise<string | null> =>

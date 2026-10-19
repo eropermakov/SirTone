@@ -71,6 +71,8 @@ pub struct WaveQueryIpc {
     pub energy: Option<[f32; 2]>,
     /// BPM.
     pub tempo: Option<[f32; 2]>,
+    /// «Для всех» atmospheres (FR-ALL-003): background · company · party.
+    pub gathering: Option<String>,
 }
 
 fn keys<T>(v: &[String], parse: fn(&str) -> Option<T>) -> Result<Vec<T>, AppError> {
@@ -134,18 +136,39 @@ impl WaveQueryIpc {
         {
             return Err(bad("workoutTempo"));
         }
+        // «Для всех» atmospheres (§16) on the existing filters: «Фон» — calm energy, «Компания» —
+        // middle energy and positive, «Вечеринка» — the party activity.
+        let mut mood = self.mood.clone();
+        let mut activity = self.activity.clone();
+        let mut energy = self.energy;
+        match self.gathering.as_deref() {
+            None => {}
+            Some("background") => energy = Some([0.0, 0.55]),
+            Some("company") => {
+                energy = Some([0.3, 0.75]);
+                if !mood.iter().any(|m| m == "positive") {
+                    mood.push("positive".into());
+                }
+            }
+            Some("party") => {
+                if !activity.iter().any(|a| a == "party") {
+                    activity.push("party".into());
+                }
+            }
+            Some(_) => return Err(bad("gathering")),
+        }
         Ok(WaveQuery {
-            mood: keys(&self.mood, Mood::from_key)?,
+            mood: keys(&mood, Mood::from_key)?,
             character: keys(&self.character, Character::from_key)?,
             language: keys(&self.language, Lang::from_key)?,
             frequency: keys(&self.frequency, Freq::from_key)?,
-            activity: keys(&self.activity, Activity::from_key)?,
+            activity: keys(&activity, Activity::from_key)?,
             workout_tempo: self.workout_tempo,
             daypart,
             weather,
             season,
             influence: self.influence.unwrap_or([1.0; 3]),
-            energy: self.energy.map(|[a, b]| (a, b)),
+            energy: energy.map(|[a, b]| (a, b)),
             tempo: self.tempo.map(|[a, b]| (a, b)),
         })
     }
@@ -159,6 +182,10 @@ pub struct WaveStarted {
     pub queued: u32,
     /// mood · character · activity · tempo · energy · language · frequency
     pub relaxed: Vec<String>,
+    /// «Для всех»: «подборка без данных о популярности» (FR-ALL-005).
+    pub no_popularity: bool,
+    /// «Для всех»: fewer than 30 suitable tracks — the honest caption.
+    pub few: bool,
 }
 
 pub struct Wave {
@@ -326,11 +353,16 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                         if n > 0 {
                             app.state::<Playback>().play_queue(items, 0);
                         }
+                        let (no_popularity, few) = engine
+                            .as_ref()
+                            .map_or((false, false), |e| e.company_captions());
                         Ok(WaveStarted {
                             queued: n,
                             relaxed: engine.as_ref().map_or_else(Vec::new, |e| {
                                 e.relaxed().iter().map(|s| (*s).to_owned()).collect()
                             }),
+                            no_popularity,
+                            few,
                         })
                     },
                 );
@@ -415,6 +447,7 @@ pub fn wave_start(
 ) -> Result<WaveStarted, AppError> {
     let profile = match profile.as_deref() {
         Some("seasonal") => "seasonal",
+        Some("for_all") => "for_all",
         _ => "my_wave",
     };
     let query = query.unwrap_or_default().into_query()?;

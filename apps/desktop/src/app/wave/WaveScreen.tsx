@@ -34,6 +34,7 @@ import { Cover } from "@/shared/ui/Cover";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
 import { PauseIcon, PlayIcon } from "@/shared/ui/TransportIcons";
+import { ForAllButton, type Gathering } from "./ForAllButton";
 import { NoveltySlider } from "./NoveltySlider";
 import { SeasonWaveButton } from "./SeasonWaveButton";
 
@@ -65,14 +66,18 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       .catch(() => {});
   }, [id]);
 
-  const startWave = (profile?: "seasonal") =>
-    waveStart(profile)
+  const startWave = (profile?: "seasonal" | "for_all", gathering?: Gathering | null) =>
+    waveStart(profile, gathering ? { gathering } : undefined)
       .then((r) => {
         if (r.queued === 0) notify(t("wave.empty"));
+        // «Для всех» is honest about its data (FR-ALL-005).
+        else if (r.few) notify(t("wave.forAll.few"));
+        else if (r.noPopularity) notify(t("wave.forAll.noPopularity"));
         // «Настроить волну» found too few tracks (FR-WAVE-006).
         else if (r.relaxed.length > 0) notify(t("wave.relaxed"));
       })
       .catch(() => notify(t("wave.failed")));
+  const forAll = (g: Gathering | null) => void startWave("for_all", g);
   const shuffleAll = () =>
     allTrackIds().then((ids) => {
       if (ids.length === 0) return;
@@ -91,6 +96,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
             {t("wave.start")}
           </Button>
           <SeasonWaveButton onStart={() => void startWave("seasonal")} />
+          <ForAllButton onStart={forAll} />
           <Button variant="secondary" onClick={() => void shuffleAll()}>
             <Shuffle size={16} strokeWidth={1.5} />
             {t("wave.shuffleAll")}
@@ -255,6 +261,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
         {snap.waveProfile !== "seasonal" && (
           <SeasonWaveButton onStart={() => void startWave("seasonal")} />
         )}
+        <ForAllButton onStart={forAll} />
       </div>
       <div className="relative flex items-center gap-4">
         <button
