@@ -223,6 +223,8 @@ export type AlbumItem = {
 	cover: string | null,
 	/**  Newest track, ms (sort «Недавно добавленные»). */
 	addedAt: number | null,
+	/**  Placeholder hint when there is no cover: `genre << 4 | mood` (T3.20, `art.rs`). */
+	art: number,
 };
 
 export type AlbumPage = {
@@ -474,6 +476,8 @@ export type PlaybackSnapshot = {
 	hasPrev: boolean,
 	/**  Album cover hash of the current track. */
 	cover: string | null,
+	/**  Placeholder hint when there is no cover (T3.20). */
+	art: number,
 	repeat: RepeatMode,
 	shuffle: boolean,
 	/**  Output underruns since start (diagnostics, P-13). */
@@ -529,6 +533,8 @@ export type QueueEntry = {
 	artists: string | null,
 	trackId: number | null,
 	cover: string | null,
+	/**  Placeholder hint (T3.20). */
+	art: number,
 	/**  Added by ∞ (shown under «Рекомендовано из вашей медиатеки» with «+»/«−»). */
 	recommended: boolean,
 };

@@ -25,6 +25,7 @@ export const EMPTY_SNAPSHOT: PlaybackSnapshot = {
   hasNext: false,
   hasPrev: false,
   cover: null,
+  art: 0x70,
   repeat: "off",
   shuffle: false,
   underruns: 0,

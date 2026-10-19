@@ -43,6 +43,7 @@ export type Open = {
   title: string;
   subtitle: string;
   cover: string | null;
+  art?: number;
 };
 
 /** «Вся коллекция: N треков · Ч ч М мин · X ГБ» (docs/06 §4, FR-LIB-001). */
@@ -165,7 +166,13 @@ export function CollectionScreen({
         </button>
         <div className="flex items-end gap-6">
           {open.kind === "albums" && (
-            <Cover hash={open.cover} px={184} rounded="md" className="shadow-(--shadow-artwork)" />
+            <Cover
+              hash={open.cover}
+              art={open.art}
+              px={184}
+              rounded="md"
+              className="shadow-(--shadow-artwork)"
+            />
           )}
           <div className="min-w-0 flex-1">
             <h1 className="t-page-title truncate text-primary-text">{open.title}</h1>
@@ -201,6 +208,7 @@ export function CollectionScreen({
           title: a.title,
           subtitle: [a.artist, a.year].filter(Boolean).join(" · "),
           cover: a.cover,
+          art: a.art,
           count: a.tracks,
         }))
       : sortArtists(artists, artistSort).map((a) => ({
@@ -272,6 +280,7 @@ export function CollectionScreen({
               title: c.title,
               subtitle: kind === "albums" ? c.subtitle : "",
               cover: c.cover,
+              ...(c.art === undefined ? {} : { art: c.art }),
             })
           }
           onPlay={(c) =>

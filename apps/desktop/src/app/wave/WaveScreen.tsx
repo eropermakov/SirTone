@@ -225,6 +225,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       />
       <Cover
         hash={snap.cover}
+        art={snap.title ? snap.art : undefined}
         px={280}
         rounded="md"
         className="relative rounded-(--radius-lg) shadow-(--shadow-artwork)"

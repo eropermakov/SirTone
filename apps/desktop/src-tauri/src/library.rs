@@ -83,6 +83,8 @@ pub struct AlbumItem {
     pub cover: Option<String>,
     /// Newest track, ms (sort «Недавно добавленные»).
     pub added_at: f64,
+    /// Placeholder hint when there is no cover: `genre << 4 | mood` (T3.20, `art.rs`).
+    pub art: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
@@ -215,6 +217,8 @@ pub struct Resolved {
     pub album_id: Option<i64>,
     /// Primary artist (shuffle spreading, «К исполнителю»).
     pub artist_id: Option<i64>,
+    /// Placeholder hint (T3.20).
+    pub art: u8,
 }
 
 struct Shared {
@@ -630,10 +634,16 @@ impl Library {
                         cover: r.get(3)?,
                         album_id: r.get(4)?,
                         artist_id: r.get(5)?,
+                        art: 0,
                     })
                 }) {
                     out.push(r);
                 }
+            }
+            let ids: Vec<i64> = out.iter().map(|r| i64::from(r.id)).collect();
+            let art = sirtone_library::art::track_hints(c, &ids)?;
+            for r in &mut out {
+                r.art = art.get(&i64::from(r.id)).copied().unwrap_or(0x70);
             }
             Ok(out)
         })
@@ -1152,6 +1162,12 @@ pub fn collection_albums(
     });
     lib.with_read(|c| {
         let (rows, next) = collection::albums_page(c, cur.as_ref(), limit.clamp(1, 500))?;
+        let ids: Vec<i64> = rows
+            .iter()
+            .filter(|a| a.cover.is_none())
+            .map(|a| a.id)
+            .collect();
+        let art = sirtone_library::art::album_hints(c, &ids)?;
         Ok(AlbumPage {
             rows: rows
                 .into_iter()
@@ -1161,6 +1177,7 @@ pub fn collection_albums(
                     artist: a.artist,
                     year: a.year,
                     tracks: a.tracks,
+                    art: art.get(&a.id).copied().unwrap_or(0x70),
                     cover: a.cover,
                     added_at: a.added_at as f64,
                 })

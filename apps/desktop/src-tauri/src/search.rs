@@ -122,6 +122,7 @@ fn album(a: AlbumRow) -> AlbumItem {
         tracks: a.tracks,
         cover: a.cover,
         added_at: a.added_at as f64,
+        art: sirtone_library::art::UNKNOWN_GENRE << 4,
     }
 }
 
@@ -157,7 +158,7 @@ pub fn library_search(lib: State<'_, Library>, query: String) -> Result<SearchRe
     } else {
         Vec::new()
     };
-    Ok(SearchResults {
+    let mut out = SearchResults {
         vibe,
         suggestions,
         best: r.best.map(|b| match b {
@@ -176,5 +177,30 @@ pub fn library_search(lib: State<'_, Library>, query: String) -> Result<SearchRe
                 name,
             })
             .collect(),
-    })
+    };
+    // Placeholders of albums without a cover (T3.20).
+    let mut ids: Vec<i64> = out
+        .albums
+        .iter()
+        .filter(|a| a.cover.is_none())
+        .map(|a| i64::from(a.id))
+        .collect();
+    if let Some(BestMatch::Album(a)) = &out.best
+        && a.cover.is_none()
+    {
+        ids.push(i64::from(a.id));
+    }
+    if !ids.is_empty() {
+        let art = lib.with_read(|c| sirtone_library::art::album_hints(c, &ids))?;
+        let fill = |a: &mut AlbumItem| {
+            if let Some(v) = art.get(&i64::from(a.id)) {
+                a.art = *v;
+            }
+        };
+        out.albums.iter_mut().for_each(fill);
+        if let Some(BestMatch::Album(a)) = &mut out.best {
+            fill(a);
+        }
+    }
+    Ok(out)
 }

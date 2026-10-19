@@ -105,7 +105,7 @@ export function QueuePanel({ onClose, trackKey }: { onClose: () => void; trackKe
                     onClick={() => queueJump(i)}
                     className="flex min-w-0 flex-1 items-center gap-3 text-left"
                   >
-                    <Cover hash={it.cover} px={40} />
+                    <Cover hash={it.cover} px={40} art={it.art} />
                     <div className="min-w-0">
                       <div
                         className={cn(

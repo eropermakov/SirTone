@@ -34,6 +34,7 @@ const albumCard = (a: AlbumItem): Card => ({
   title: a.title,
   subtitle: [a.artist, a.year].filter(Boolean).join(" · "),
   cover: a.cover,
+  art: a.art,
 });
 
 /**
@@ -377,6 +378,7 @@ function BestCard({
       ) : (
         <Cover
           hash={best.kind === "album" ? best.item.cover : null}
+          art={best.kind === "album" ? best.item.art : undefined}
           px={96}
           rounded="md"
           className="shadow-(--shadow-artwork)"

@@ -50,6 +50,8 @@ pub struct PlaybackSnapshot {
     pub has_prev: bool,
     /// Album cover hash of the current track.
     pub cover: Option<String>,
+    /// Placeholder hint when there is no cover (T3.20).
+    pub art: u8,
     pub repeat: RepeatMode,
     pub shuffle: bool,
     /// Output underruns since start (diagnostics, P-13).
@@ -76,6 +78,8 @@ pub struct QueueItem {
     pub artists: Option<String>,
     pub track_id: Option<u32>,
     pub cover: Option<String>,
+    /// Placeholder hint (T3.20).
+    pub art: u8,
     /// Where playback was started from (journal, T1.31).
     pub source: PlaySource,
     /// Album and primary artist (shuffle spreading); 0 = unknown.
@@ -120,6 +124,8 @@ pub struct QueueEntry {
     pub artists: Option<String>,
     pub track_id: Option<u32>,
     pub cover: Option<String>,
+    /// Placeholder hint (T3.20).
+    pub art: u8,
     /// Added by ∞ (shown under «Рекомендовано из вашей медиатеки» with «+»/«−»).
     pub recommended: bool,
 }
@@ -261,6 +267,7 @@ fn empty_snapshot() -> PlaybackSnapshot {
         has_next: false,
         has_prev: false,
         cover: None,
+        art: 0x70,
         repeat: RepeatMode::Off,
         shuffle: false,
         underruns: 0,
@@ -396,6 +403,7 @@ impl Playback {
                     has_next: current.is_some() && has_next,
                     has_prev: current.is_some() && has_prev,
                     cover: current.as_ref().and_then(|c| c.cover.clone()),
+                    art: current.as_ref().map_or(0x70, |c| c.art),
                     repeat,
                     shuffle,
                     underruns: u32::try_from(s.underruns).unwrap_or(u32::MAX),
@@ -474,6 +482,7 @@ impl Playback {
                     artists: None,
                     track_id: None,
                     cover: None,
+                    art: 0x70,
                     source: PlaySource::External,
                     album_key: 0,
                     artist_key: 0,
@@ -718,6 +727,7 @@ impl Playback {
                     artists: i.artists.clone(),
                     track_id: i.track_id,
                     cover: i.cover.clone(),
+                    art: i.art,
                     recommended: i.source == PlaySource::Hybrid,
                 })
                 .collect(),
@@ -912,6 +922,7 @@ mod tests {
             artists: None,
             track_id: Some(id),
             cover: None,
+            art: 0x70,
             source: PlaySource::Collection,
             album_key: 0,
             artist_key: 0,
@@ -936,6 +947,7 @@ mod tests {
             cover: None,
             album_id: Some(7),
             artist_id: Some(3),
+            art: 0x70,
         };
         let moved = [
             fresh(1, "D:\\m\\Исполнитель\\A.mp3"),
@@ -1007,6 +1019,7 @@ fn apply_fresh(q: &mut Queue<QueueItem>, fresh: &[crate::library::Resolved]) -> 
             artists: (!r.artists.is_empty()).then(|| r.artists.clone()),
             track_id: i.track_id,
             cover: r.cover.clone(),
+            art: r.art,
             source: i.source,
             album_key: r.album_id.map_or(0, |v| v as u64),
             artist_key: r.artist_id.map_or(0, |v| v as u64),
@@ -1044,6 +1057,7 @@ pub(crate) fn items_with_source(
             artists: (!r.artists.is_empty()).then_some(r.artists),
             track_id: Some(r.id),
             cover: r.cover,
+            art: r.art,
             source,
             album_key: r.album_id.map_or(0, |v| v as u64),
             artist_key: r.artist_id.map_or(0, |v| v as u64),

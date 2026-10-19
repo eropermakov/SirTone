@@ -20,6 +20,8 @@ export type Card = {
   title: string;
   subtitle: string;
   cover: string | null;
+  /** Placeholder hint without a cover (T3.20). */
+  art?: number;
 };
 
 type Props = {
@@ -160,7 +162,7 @@ export function CardGrid({
                       )}
                     >
                       {kind === "albums" ? (
-                        <Cover hash={c.cover} px={CARD} rounded="md" />
+                        <Cover hash={c.cover} px={CARD} rounded="md" art={c.art} />
                       ) : (
                         <span className="t-hero flex size-full items-center justify-center bg-artwork-placeholder text-text-tertiary">
                           {initials(c.title)}

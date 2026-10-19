@@ -2,6 +2,7 @@
 //! The only owner of SQLite connections (docs/03 §3.1).
 
 pub mod analysis;
+pub mod art;
 pub mod artists;
 pub mod collection;
 pub mod continuation;

@@ -1760,6 +1760,29 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
   if ((await invoke("playback_snapshot", {})).state === "playing") {
     await invoke("playback_toggle", {});
   }
+
+  // T3.20 (FR-UI-006): albums without a cover get a generated placeholder (genre sign / logo
+  // letter) instead of the grey note.
+  const albumsNow = (await invoke("collection_albums", { after: null, limit: 500 })).rows;
+  const bare = albumsNow.filter((a) => a.cover === null);
+  await page.getByRole("navigation").getByRole("button", { name: "Альбомы" }).click();
+  const placeholders = page.locator("[data-art]");
+  for (let i = 0; i < 20 && (await placeholders.count()) === 0; i++) await sleep(150);
+  const shown = await placeholders.count();
+  if (process.env.SMOKE_SHOTS) {
+    await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "t320-albums.png") });
+  }
+  const genres = new Set(bare.map((a) => a.art >> 4));
+  check(
+    "T3.20: albums without a cover show a generated placeholder (genre / mood / logo)",
+    bare.length > 0 &&
+      bare.every((a) => typeof a.art === "number") &&
+      shown > 0 &&
+      // Fixture tracks carry no genre tags and synthetic sound: the base placeholder (genre 7);
+      // the genre/mood variants are unit-tested (`art.rs`).
+      [...genres].every((g) => g <= 7),
+    `bare ${bare.length}, placeholders ${shown}, genres ${JSON.stringify([...genres])}`,
+  );
 }
 
 // T1.22: five default hotkeys configured; each either registered or reported as taken (when the
