@@ -817,6 +817,17 @@ fn place(
         "UPDATE track SET import_batch_id = ?2 WHERE id = ?1",
         params![id, batch],
     )?;
+    // Picard's recording id: popularity for «Для всех» without an online lookup (T3.32).
+    if let Some(m) = tags
+        .mbid_recording
+        .as_deref()
+        .filter(|m| sirtone_core::ports::valid_mbid(m))
+    {
+        tx.execute(
+            "UPDATE track SET mbid_recording = ?2 WHERE id = ?1",
+            params![id, m],
+        )?;
+    }
     tx.execute(
         "UPDATE fs_journal SET state = 'done' WHERE id = ?1",
         [journal],

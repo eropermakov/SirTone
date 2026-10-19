@@ -32,6 +32,10 @@ impl TagReader for LoftyTags {
                 .map(|d| i32::from(d.year))
                 .filter(|y| (1900..=2100).contains(y)),
             genre: text(tag.genre()),
+            mbid_recording: tag
+                .get_string(ItemKey::MusicBrainzRecordingId)
+                .map(|s| s.trim().to_ascii_lowercase())
+                .filter(|s| sirtone_core::ports::valid_mbid(s)),
         }
     }
 }

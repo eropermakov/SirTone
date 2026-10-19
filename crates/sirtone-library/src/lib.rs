@@ -15,6 +15,7 @@ pub mod import;
 pub mod layout;
 pub mod online;
 pub mod playlists;
+pub mod popularity;
 pub mod reconcile;
 pub mod relocate;
 pub mod repo;

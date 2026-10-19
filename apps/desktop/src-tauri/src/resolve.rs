@@ -46,6 +46,8 @@ pub fn start(app: AppHandle) {
             std::thread::sleep(FIRST);
             loop {
                 kick(&app);
+                // «Для всех»: ListenBrainz popularity, monthly per track (T3.32).
+                crate::popularity::kick(&app);
                 std::thread::sleep(EVERY);
             }
         })

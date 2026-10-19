@@ -38,6 +38,13 @@ pub struct Tags {
     pub disc_total: Option<u32>,
     pub year: Option<i32>,
     pub genre: Option<String>,
+    /// MusicBrainz recording id (Picard writes it): popularity for «Для всех» (T3.32).
+    pub mbid_recording: Option<String>,
+}
+
+/// A MusicBrainz id: 36 characters, hex digits and dashes.
+pub fn valid_mbid(s: &str) -> bool {
+    s.len() == 36 && s.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
 }
 
 pub trait TagReader: Send + Sync {

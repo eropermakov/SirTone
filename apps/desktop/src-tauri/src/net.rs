@@ -28,6 +28,13 @@ impl Transport for Lazy {
             Err(e) => Err(e.clone()),
         }
     }
+
+    fn post(&self, url: &str, ua: &str, body: &[u8], max: usize) -> Result<Response, NetError> {
+        match self.0.get_or_init(Reqwest::new) {
+            Ok(r) => r.post(url, ua, body, max),
+            Err(e) => Err(e.clone()),
+        }
+    }
 }
 
 /// `http_cache` of the current library, on its own connection.

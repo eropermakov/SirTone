@@ -84,6 +84,21 @@ pub struct Response {
 pub trait Transport: Send + Sync {
     /// GET `url` with the User-Agent; at most `max_bytes` of body (more is an error).
     fn get(&self, url: &str, user_agent: &str, max_bytes: usize) -> Result<Response, NetError>;
+
+    /// POST a JSON `body` (ListenBrainz popularity takes its MBIDs so). A transport without a
+    /// network of its own (tests, recorded fixtures) answers 404: nothing leaves the machine.
+    fn post(
+        &self,
+        _url: &str,
+        _user_agent: &str,
+        _body: &[u8],
+        _max_bytes: usize,
+    ) -> Result<Response, NetError> {
+        Ok(Response {
+            status: 404,
+            body: Vec::new(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -230,6 +245,56 @@ impl Net {
         }
     }
 
+    /// POST a JSON body to `path` under the host's base — cached by the URL and the body,
+    /// within the host's rate, like [`Self::get`].
+    pub fn post(&self, host: Host, path: &str, body: &[u8]) -> Result<Vec<u8>, NetError> {
+        let p = host.policy();
+        if path.contains("://") || path.starts_with('/') || path.contains("..") {
+            return Err(NetError::NotAllowed(path.into()));
+        }
+        let url = format!("{}{path}", p.base);
+        // FNV-1a of the body keeps the cache key short.
+        let hash = body.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
+            (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3)
+        });
+        let key = format!("{url}#post:{hash:016x}");
+        let now = (self.now)();
+        if let Some(c) = &self.cache
+            && let Some(body) = c.get(&key, now)
+        {
+            return Ok(body);
+        }
+        if self.is_offline() {
+            return Err(NetError::Offline);
+        }
+        self.wait_turn(host, p.interval);
+        match self
+            .transport
+            .post(&url, &self.user_agent, body, p.max_bytes)
+        {
+            Ok(r) if (200..300).contains(&r.status) => {
+                self.fails.store(0, Ordering::Relaxed);
+                self.down_until.store(0, Ordering::Relaxed);
+                if let Some(c) = &self.cache {
+                    c.put(&key, &r.body, (self.now)(), p.cache_ttl_s);
+                }
+                Ok(r.body)
+            }
+            Ok(r) => {
+                self.fails.store(0, Ordering::Relaxed);
+                Err(NetError::Status(r.status))
+            }
+            Err(NetError::Network(e)) => {
+                if self.fails.fetch_add(1, Ordering::Relaxed) + 1 >= FAILS_OFFLINE {
+                    self.down_until
+                        .store((self.now)() + PROBE_MS, Ordering::Relaxed);
+                }
+                Err(NetError::Network(e))
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     /// The host's rate: waits until its next slot, then books the one after.
     fn wait_turn(&self, host: Host, interval: Duration) {
         let wait = {
@@ -356,6 +421,33 @@ impl Transport for Reqwest {
             return Err(NetError::TooLarge);
         }
         Ok(Response { status, body })
+    }
+
+    fn post(
+        &self,
+        url: &str,
+        user_agent: &str,
+        body: &[u8],
+        max_bytes: usize,
+    ) -> Result<Response, NetError> {
+        use std::io::Read;
+        let resp = self
+            .0
+            .post(url)
+            .header(reqwest::header::USER_AGENT, user_agent)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(body.to_vec())
+            .send()
+            .map_err(|e| NetError::Network(e.to_string()))?;
+        let status = resp.status().as_u16();
+        let mut out = Vec::new();
+        resp.take(max_bytes as u64 + 1)
+            .read_to_end(&mut out)
+            .map_err(|e| NetError::Network(e.to_string()))?;
+        if out.len() > max_bytes {
+            return Err(NetError::TooLarge);
+        }
+        Ok(Response { status, body: out })
     }
 }
 

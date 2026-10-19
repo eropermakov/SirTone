@@ -18,6 +18,7 @@ mod net;
 mod perf;
 mod playback;
 mod playlists;
+mod popularity;
 mod resolve;
 mod search;
 mod settings_store;
@@ -80,6 +81,7 @@ fn main() {
         .manage(updates::Updates::default())
         .manage(continuation::Continuation::default())
         .manage(resolve::Resolver::default())
+        .manage(popularity::Popularity::default())
         .manage(hotkeys::Hotkeys::default())
         // Covers without IPC (docs/03 §5.6); work off the main thread.
         .register_asynchronous_uri_scheme_protocol("sirtone-cover", |ctx, request, responder| {
