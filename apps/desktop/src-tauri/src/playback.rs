@@ -794,6 +794,11 @@ impl Playback {
         self.hand_next();
     }
 
+    /// A visualiser frame source on this engine (T4.1).
+    pub fn viz_source(&self) -> sirtone_audio::viz::VizSource {
+        self.engine.viz()
+    }
+
     pub fn snapshot(&self) -> PlaybackSnapshot {
         self.last
             .lock()

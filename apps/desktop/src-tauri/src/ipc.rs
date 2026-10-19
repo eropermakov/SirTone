@@ -6,7 +6,7 @@ use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::{
     analysis, artists, autostart, bootstrap, continuation, duplicates, feedback, hotkeys, library,
-    net, perf, playback, playlists, search, settings_store, storage, unknowns, updates, wave,
+    net, perf, playback, playlists, search, settings_store, storage, unknowns, updates, viz, wave,
     window_chrome,
 };
 
@@ -44,6 +44,8 @@ pub fn builder() -> Builder<tauri::Wry> {
             unknowns::unknown_normal,
             unknowns::unknown_release,
             unknowns::unknown_retry,
+            viz::viz_start,
+            viz::viz_stop,
             continuation::continuation_preview,
             continuation::continuation_set,
             continuation::continuation_exclude,

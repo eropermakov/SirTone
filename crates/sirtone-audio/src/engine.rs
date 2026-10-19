@@ -78,11 +78,17 @@ pub type EventSink = Box<dyn Fn(EngineEvent) + Send>;
 #[derive(Clone)]
 pub struct EngineHandle {
     tx: Sender<EngineCmd>,
+    shared: Arc<Shared>,
 }
 
 impl EngineHandle {
     pub fn send(&self, cmd: EngineCmd) {
         let _ = self.tx.send(cmd);
+    }
+
+    /// A visualiser frame source (T4.1); the tap runs while it lives.
+    pub fn viz(&self) -> crate::viz::VizSource {
+        crate::viz::VizSource::new(self.shared.clone())
     }
 }
 
@@ -91,14 +97,16 @@ pub fn start(events: EventSink) -> Result<EngineHandle, AppError> {
     let (tx, rx) = mpsc::channel();
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let watcher_stop = stop.clone();
+    let shared = Shared::new();
+    let engine_shared = shared.clone();
     std::thread::Builder::new()
         .name("sirtone-engine".into())
         .spawn(move || {
-            Engine::new(events).run(rx);
+            Engine::new(events, engine_shared).run(rx);
             stop.store(true, Ordering::Relaxed);
         })
         .map_err(|e| AppError::new(ErrorCode::Internal).with_details(e))?;
-    let handle = EngineHandle { tx };
+    let handle = EngineHandle { tx, shared };
     crate::devices::watch(handle.clone(), watcher_stop);
     Ok(handle)
 }
@@ -175,10 +183,10 @@ struct Engine {
 }
 
 impl Engine {
-    fn new(events: EventSink) -> Self {
+    fn new(events: EventSink, shared: Arc<Shared>) -> Self {
         Self {
             events,
-            shared: Shared::new(),
+            shared,
             output: None,
             deck: None,
             state: PlayState::Empty,

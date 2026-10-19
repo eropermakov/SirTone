@@ -31,6 +31,11 @@ pub struct Shared {
     pub stop: AtomicBool,
     /// Set by the render thread when the device failed (unplugged, invalidated).
     pub failed: AtomicBool,
+    /// A visualiser is open: the render thread copies what it plays into the tap (T4.1).
+    pub viz_on: AtomicBool,
+    /// The tap of the current device, waiting for the visualiser thread to take it. Only the
+    /// engine (on open) and the visualiser touch it — never the render thread.
+    pub(crate) viz_tap: std::sync::Mutex<Option<crate::viz::Tap>>,
 }
 
 impl Shared {
@@ -70,7 +75,7 @@ impl Output {
     /// fills. COM objects are thread-bound, so the device is opened on the render thread.
     pub fn open(shared: Arc<Shared>) -> Result<(Self, rtrb::Producer<f32>), AppError> {
         let (tx_fmt, rx_fmt) = mpsc::channel::<Result<(DeviceFormat, String), AppError>>();
-        let (tx_ring, rx_ring) = mpsc::channel::<rtrb::Consumer<f32>>();
+        let (tx_ring, rx_ring) = mpsc::channel::<(rtrb::Consumer<f32>, rtrb::Producer<f32>)>();
         shared.stop.store(false, Ordering::Relaxed);
         shared.failed.store(false, Ordering::Relaxed);
         let rt_shared = shared.clone();
@@ -85,8 +90,10 @@ impl Output {
                             channels: usize::from(fmt.get_nchannels()),
                         };
                         let _ = tx_fmt.send(Ok((format, id)));
-                        let Ok(ring) = rx_ring.recv() else { return };
-                        if render_loop(client, fmt, ring, &rt_shared).is_err() {
+                        let Ok((ring, tap)) = rx_ring.recv() else {
+                            return;
+                        };
+                        if render_loop(client, fmt, ring, tap, &rt_shared).is_err() {
                             rt_shared.failed.store(true, Ordering::Release);
                         }
                     }
@@ -101,8 +108,15 @@ impl Output {
             .map_err(|e| AppError::new(ErrorCode::DeviceUnavailable).with_details(e))??;
         let (prod, cons) =
             rtrb::RingBuffer::<f32>::new(format.rate as usize * format.channels * RING_MS / 1000);
+        // The visualiser's side ring (T4.1): filled only while `viz_on`.
+        let (tap_prod, tap_cons) = rtrb::RingBuffer::<f32>::new(
+            format.rate as usize * format.channels * crate::viz::TAP_MS / 1000,
+        );
+        if let Ok(mut slot) = shared.viz_tap.lock() {
+            *slot = Some((tap_cons, format));
+        }
         tx_ring
-            .send(cons)
+            .send((cons, tap_prod))
             .map_err(|e| AppError::new(ErrorCode::DeviceUnavailable).with_details(e))?;
         tracing::info!(target: "sirtone::audio", rate = format.rate, channels = format.channels, "output opened");
         Ok((
@@ -178,6 +192,7 @@ fn render_loop(
     client: AudioClient,
     fmt: WaveFormat,
     mut ring: rtrb::Consumer<f32>,
+    mut tap: rtrb::Producer<f32>,
     shared: &Shared,
 ) -> Result<(), AppError> {
     register_mmcss();
@@ -211,11 +226,16 @@ fn render_loop(
             (ring.slots() / ch).min(frames)
         };
         let mut written = 0usize;
+        // The visualiser's copy (T4.1): only copying, no allocation or lock.
+        let viz = shared.viz_on.load(Ordering::Relaxed);
         if take > 0
             && let Ok(chunk) = ring.read_chunk(take * ch)
         {
             let (a, b) = chunk.as_slices();
             for (i, s) in a.iter().chain(b).enumerate() {
+                if viz {
+                    let _ = tap.push(*s);
+                }
                 if i % ch == 0 {
                     pause_gain = if playing {
                         (pause_gain + ramp_step).min(1.0)

@@ -27,6 +27,7 @@ mod storage;
 mod tray;
 mod unknowns;
 mod updates;
+mod viz;
 mod wave;
 mod window_chrome;
 
@@ -85,6 +86,7 @@ fn main() {
         .manage(resolve::Resolver::default())
         .manage(popularity::Popularity::default())
         .manage(covers_online::CoversOnline::default())
+        .manage(viz::Viz::default())
         .manage(hotkeys::Hotkeys::default())
         // Covers without IPC (docs/03 §5.6); work off the main thread.
         .register_asynchronous_uri_scheme_protocol("sirtone-cover", |ctx, request, responder| {

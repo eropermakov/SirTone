@@ -4748,6 +4748,7 @@ version = "0.1.26"
 dependencies = [
  "rtrb",
  "rubato 5.0.1",
+ "rustfft",
  "sirtone-core",
  "symphonia 0.6.1",
  "symphonia-adapter-libopus",
