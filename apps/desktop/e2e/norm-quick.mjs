@@ -69,7 +69,8 @@ try {
   let row;
   for (let i = 0; i < 240 && !row?.lufs_i; i++) {
     await sleep(1000);
-    if (i % 20 === 19) console.log("analysis", JSON.stringify(await invoke("analysis_progress", {})));
+    if (i % 20 === 19)
+      console.log("analysis", JSON.stringify(await invoke("analysis_progress", {})));
     const d = db();
     row = d.prepare("SELECT id, lufs_i, true_peak_db FROM track LIMIT 1").get();
     d.close();
@@ -93,6 +94,8 @@ try {
       patch: { playback: { normalization: { enabled, target_lufs: -14 } } },
     });
   await norm(false);
+  // The tone is 10 s: repeat it so every measurement hears it.
+  await invoke("playback_set_repeat", { mode: "one" });
   await invoke("play_tracks", { ids: [row.id], start: 0, context: "collection", playlist: null });
   await sleep(1500);
   const off = rms();
@@ -112,6 +115,29 @@ try {
     "«Тихо» is 5 dB under «Обычно»",
     quiet !== null && Math.abs(on - quiet - 5) <= 0.2,
     `${quiet} dBFS`,
+  );
+  // T4.12: the equalizer — −12 dB at 500 Hz pulls the 440/660 Hz tone down a lot; flat bands
+  // change nothing; off restores the level.
+  const eq = (enabled, bands) =>
+    invoke("settings_patch", {
+      patch: { playback: { eq: { enabled, preamp_db: 0, bands_db: bands } } },
+    });
+  const flat = Array(10).fill(0);
+  await eq(true, flat);
+  await sleep(800);
+  const eqFlat = rms();
+  const cut = [...flat];
+  cut[4] = -12;
+  await eq(true, cut);
+  await sleep(800);
+  const eqCut = rms();
+  await eq(false, cut);
+  await sleep(800);
+  const eqOff = rms();
+  check(
+    "equalizer: flat = no change, −12 dB at 500 Hz cuts the tone ≥ 6 dB, off restores",
+    Math.abs(eqFlat - quiet) <= 0.1 && quiet - eqCut >= 6 && Math.abs(eqOff - quiet) <= 0.2,
+    `flat ${eqFlat}, cut ${eqCut}, off ${eqOff} (before ${quiet}) dBFS`,
   );
 } catch (e) {
   check("run", false, String(e).slice(0, 300));

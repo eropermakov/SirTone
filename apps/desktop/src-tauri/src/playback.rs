@@ -122,6 +122,23 @@ impl Norm {
     }
 }
 
+/// The equalizer settings (T4.12, FR-PLAY-009) for the engine.
+pub fn eq_from_settings(doc: &serde_json::Value) -> sirtone_audio::eq::EqParams {
+    let e = &doc["playback"]["eq"];
+    sirtone_audio::eq::EqParams {
+        enabled: e["enabled"].as_bool().unwrap_or(false),
+        preamp_db: e["preamp_db"].as_f64().map_or(0.0, |v| v as f32),
+        bands_db: e["bands_db"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|v| v.as_f64().map_or(0.0, |v| v as f32))
+                    .collect()
+            })
+            .unwrap_or_else(|| vec![0.0; 10]),
+    }
+}
+
 fn norm_of(m: &Mutex<Norm>) -> Norm {
     *m.lock().unwrap_or_else(|p| p.into_inner())
 }
@@ -502,6 +519,7 @@ impl Playback {
             .as_bool()
             .unwrap_or(true);
         engine.send(EngineCmd::SetPauseOnDeviceLoss(pause_on_loss));
+        engine.send(EngineCmd::SetEq(eq_from_settings(&settings.get())));
         let _ = handle.set(engine.clone());
         Ok(Self {
             engine,
@@ -590,6 +608,8 @@ impl Playback {
                 .collect()
         };
         self.engine.send(EngineCmd::SetGain(gains));
+        self.engine
+            .send(EngineCmd::SetEq(eq_from_settings(&self.settings.get())));
     }
 
     /// After a queue edit: the engine gets the new «next», the player bar its flags, the panel

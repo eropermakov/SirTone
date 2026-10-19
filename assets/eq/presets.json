@@ -1,0 +1,96 @@
+{
+  "_doc": "Equalizer presets (T4.12, FR-PLAY-009, docs/04 §6). Names — the Apple Music/iOS list. Apple publishes no values: \"vlc\" ones are the classic Winamp/VLC table (modules/audio_filter/equalizer_presets.h, LGPL-2.1 data; bands mapped onto ISO octaves, clamped to ±12 dB; Electronic = VLC «techno»); \"temporary\" ones are gentle starting shapes to be tuned by ear by the owner on real speakers and headphones (04 §6 🧪). Bands: 31.25, 62.5, 125, 250, 500, 1k, 2k, 4k, 8k, 16k Hz.",
+  "bands_hz": [31.25, 62.5, 125, 250, 500, 1000, 2000, 4000, 8000, 16000],
+  "presets": [
+    {
+      "id": "flat",
+      "bands_db": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+      "source": "temporary"
+    },
+    {
+      "id": "bass_booster",
+      "bands_db": [6.0, 5.0, 4.0, 2.5, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+      "source": "temporary"
+    },
+    {
+      "id": "bass_reducer",
+      "bands_db": [-6.0, -5.0, -4.0, -2.5, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+      "source": "temporary"
+    },
+    {
+      "id": "treble_booster",
+      "bands_db": [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2.5, 4.0, 5.0, 6.0],
+      "source": "temporary"
+    },
+    {
+      "id": "treble_reducer",
+      "bands_db": [0.0, 0.0, 0.0, 0.0, 0.0, -1.0, -2.5, -4.0, -5.0, -6.0],
+      "source": "temporary"
+    },
+    {
+      "id": "vocal_booster",
+      "bands_db": [-2.0, -3.0, -3.0, 1.0, 3.5, 3.5, 3.0, 1.5, 0.0, -1.5],
+      "source": "temporary"
+    },
+    {
+      "id": "loudness",
+      "bands_db": [6.0, 4.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 3.0, 4.0],
+      "source": "temporary"
+    },
+    {
+      "id": "rock",
+      "bands_db": [8.0, 4.8, -5.6, -8.0, -3.2, 4.0, 8.8, 11.2, 11.2, 11.2],
+      "source": "vlc"
+    },
+    {
+      "id": "pop",
+      "bands_db": [-1.6, 4.8, 7.2, 8.0, 5.6, 0.0, -2.4, -2.4, -1.6, -1.6],
+      "source": "vlc"
+    },
+    {
+      "id": "jazz",
+      "bands_db": [4.0, 3.0, 1.5, 2.0, -1.5, -1.5, 0.0, 1.5, 3.0, 3.5],
+      "source": "temporary"
+    },
+    {
+      "id": "classical",
+      "bands_db": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -7.2, -7.2, -7.2, -9.6],
+      "source": "vlc"
+    },
+    {
+      "id": "electronic",
+      "bands_db": [8.0, 5.6, 0.0, -5.6, -4.8, 0.0, 8.0, 9.6, 9.6, 8.8],
+      "source": "vlc"
+    },
+    {
+      "id": "hip_hop",
+      "bands_db": [5.0, 4.0, 1.5, 3.0, -1.0, -1.0, 1.5, -0.5, 2.0, 3.0],
+      "source": "temporary"
+    },
+    {
+      "id": "acoustic",
+      "bands_db": [4.5, 4.5, 3.5, 1.0, 2.0, 1.5, 3.5, 4.0, 3.5, 2.0],
+      "source": "temporary"
+    },
+    {
+      "id": "dance",
+      "bands_db": [9.6, 7.2, 2.4, 0.0, 0.0, -5.6, -7.2, -7.2, 0.0, 0.0],
+      "source": "vlc"
+    },
+    {
+      "id": "small_speakers",
+      "bands_db": [5.5, 4.5, 4.0, 2.5, 1.0, 0.0, -1.0, -2.5, -3.5, -4.5],
+      "source": "temporary"
+    },
+    {
+      "id": "spoken_word",
+      "bands_db": [-3.5, -0.5, 0.0, 0.5, 3.5, 4.5, 4.5, 4.0, 2.5, 0.0],
+      "source": "temporary"
+    },
+    {
+      "id": "late_night",
+      "bands_db": [-2.0, -1.0, 0.0, 1.0, 2.0, 2.0, 1.5, 0.0, -1.0, -2.0],
+      "source": "temporary"
+    }
+  ]
+}

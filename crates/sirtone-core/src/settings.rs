@@ -599,6 +599,15 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
             "playback.volume must be 0..=1".into(),
         ));
     }
+    let eq = &s.playback.eq;
+    if eq.bands_db.len() != 10
+        || eq.bands_db.iter().any(|v| !(-12.0..=12.0).contains(v))
+        || !(-12.0..=12.0).contains(&eq.preamp_db)
+    {
+        return Err(SettingsError::Invalid(
+            "playback.eq: 10 bands and the preamp within ±12 dB".into(),
+        ));
+    }
     if !crate::loudness::TARGETS.contains(&s.playback.normalization.target_lufs) {
         return Err(SettingsError::Invalid(
             "playback.normalization.target_lufs must be -19, -14 or -11".into(),

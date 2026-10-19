@@ -6,6 +6,7 @@
 pub mod decode;
 pub mod devices;
 pub mod engine;
+pub mod eq;
 pub mod gapless;
 pub mod latency;
 pub mod mf;

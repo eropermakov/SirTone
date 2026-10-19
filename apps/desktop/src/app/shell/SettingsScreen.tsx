@@ -32,7 +32,9 @@ import { Button } from "@/shared/ui/Button";
 import { Chip } from "@/shared/ui/Chip";
 import { Dialog } from "@/shared/ui/Dialog";
 import { notify } from "@/shared/ui/notify";
+import { Slider } from "@/shared/ui/Slider";
 import { Switch } from "@/shared/ui/Switch";
+import EQ_PRESETS_JSON from "../../../../../assets/eq/presets.json";
 
 type Props = {
   theme: ThemePref;
@@ -135,6 +137,8 @@ export function SettingsScreen({
       )}
 
       <SoundSection />
+
+      <EqSection />
 
       <NetworkSection />
 
@@ -654,6 +658,11 @@ export function SeasonSwitch() {
   );
 }
 
+const EQ_PRESETS = EQ_PRESETS_JSON as {
+  bands_hz: number[];
+  presets: { id: string; bands_db: number[] }[];
+};
+
 /** The three targets (Spotify Quiet / Normal / Loud, `01b` F-02). */
 const TARGETS = [-19, -14, -11] as const;
 
@@ -724,6 +733,124 @@ function SoundSection() {
                 label={t("settingsSound.album")}
                 onChange={(v) => save({ ...n, album: v })}
               />
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type EqState = { enabled: boolean; preset: string; preamp: number; bands: number[] };
+const EQ_FLAT: EqState = { enabled: false, preset: "flat", preamp: 0, bands: Array(10).fill(0) };
+/** Slider 0…1 ↔ −12…+12 dB, in 0.5 dB steps. */
+const toDb = (v: number) => Math.round((v * 24 - 12) * 2) / 2;
+const fromDb = (db: number) => (db + 12) / 24;
+
+/**
+ * «Эквалайзер» (T4.12, FR-PLAY-009, `04` §6 — Winamp/VLC 10 bands + preamp, Apple's preset
+ * names): on/off (off is a true bypass), presets, 10 bands and the preamp, ±12 dB. Moving a band
+ * makes the preset «Свой». The engine glides to new values in 20 ms.
+ */
+function EqSection() {
+  const { t } = useTranslation("shell");
+  const [eq, setEq] = useState<EqState>(EQ_FLAT);
+  useEffect(() => {
+    getSettings().then((s) => {
+      const v = ((s.playback ?? {}) as { eq?: Record<string, unknown> }).eq;
+      setEq({
+        enabled: v?.enabled === true,
+        preset: typeof v?.preset === "string" ? v.preset : "flat",
+        preamp: typeof v?.preamp_db === "number" ? v.preamp_db : 0,
+        bands: Array.isArray(v?.bands_db) ? (v.bands_db as number[]) : EQ_FLAT.bands,
+      });
+    });
+  }, []);
+  const save = (next: EqState) => {
+    const prev = eq;
+    setEq(next);
+    patchSettings({
+      playback: {
+        eq: {
+          enabled: next.enabled,
+          preset: next.preset,
+          preamp_db: next.preamp,
+          bands_db: next.bands,
+        },
+      },
+    }).catch(() => setEq(prev));
+  };
+  const hz = (f: number) =>
+    f >= 1000 ? t("settingsEq.khz", { v: f / 1000 }) : t("settingsEq.hz", { v: f });
+  const db = (v: number) => t("settingsEq.db", { v: v > 0 ? `+${v}` : String(v) });
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsEq.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsEq.enable")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsEq.hint")}</div>
+          </div>
+          <Switch
+            checked={eq.enabled}
+            label={t("settingsEq.enable")}
+            onChange={(v) => save({ ...eq, enabled: v })}
+          />
+        </div>
+        {eq.enabled && (
+          <>
+            <fieldset
+              className="m-0 flex flex-wrap gap-2 border-0 p-0"
+              aria-label={t("settingsEq.presets")}
+            >
+              {EQ_PRESETS.presets.map((p) => (
+                <Chip
+                  key={p.id}
+                  active={eq.preset === p.id}
+                  onClick={() => save({ ...eq, preset: p.id, bands: p.bands_db })}
+                >
+                  {t(`settingsEq.preset.${p.id}`)}
+                </Chip>
+              ))}
+              {eq.preset === "custom" && (
+                <Chip active onClick={() => {}}>
+                  {t("settingsEq.preset.custom")}
+                </Chip>
+              )}
+            </fieldset>
+            <div className="flex flex-col gap-1">
+              {[
+                { key: "pre", label: t("settingsEq.preamp"), value: eq.preamp },
+                ...EQ_PRESETS.bands_hz.map((f, i) => ({
+                  key: String(f),
+                  label: hz(f),
+                  value: eq.bands[i] ?? 0,
+                })),
+              ].map((row, i) => (
+                <div key={row.key} className="flex items-center gap-4">
+                  <span className="t-caption w-20 shrink-0 text-text-secondary">{row.label}</span>
+                  <Slider
+                    value={fromDb(row.value)}
+                    step={1 / 48}
+                    label={row.label}
+                    valueText={db(row.value)}
+                    onCommit={(v) => {
+                      const d = toDb(v);
+                      if (i === 0) save({ ...eq, preamp: d });
+                      else {
+                        const bands = [...eq.bands];
+                        bands[i - 1] = d;
+                        save({ ...eq, preset: "custom", bands });
+                      }
+                    }}
+                    className="flex-1"
+                  />
+                  <span className="t-caption w-14 shrink-0 text-right text-text-tertiary">
+                    {db(row.value)}
+                  </span>
+                </div>
+              ))}
             </div>
           </>
         )}

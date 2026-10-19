@@ -39,6 +39,8 @@ pub enum EngineCmd {
     /// New normalization gains (dB) for these files — the playing one and the next one —
     /// ramped where they already sound (a settings change, shuffle flipping album gain).
     SetGain(Vec<(PathBuf, f32)>),
+    /// Equalizer settings (T4.12); glides over 20 ms, off is a true bypass.
+    SetEq(crate::eq::EqParams),
     /// FR-PLAY-012: pause when the output device disappears (default on), else follow the new default.
     SetPauseOnDeviceLoss(bool),
     /// From the device watcher: the system default output changed.
@@ -187,6 +189,9 @@ struct Engine {
     logged_underruns: u64,
     /// Normalization gains (linear) by file, latest first: every source opened gets its own.
     gains: Vec<(PathBuf, f32)>,
+    /// The equalizer (T4.12) for the current device format, and its settings.
+    eq: Option<((u32, usize), crate::eq::Eq)>,
+    eq_params: crate::eq::EqParams,
 }
 
 /// A live gain change is ramped over this long (no click).
@@ -213,6 +218,8 @@ impl Engine {
             default_changed_at: None,
             logged_underruns: 0,
             gains: Vec::new(),
+            eq: None,
+            eq_params: crate::eq::EqParams::default(),
         }
     }
 
@@ -333,6 +340,13 @@ impl Engine {
                         s.set_gain(amp, GAIN_RAMP_MS);
                     }
                 }
+                return;
+            }
+            EngineCmd::SetEq(p) => {
+                if let Some((_, eq)) = self.eq.as_mut() {
+                    eq.set(&p);
+                }
+                self.eq_params = p;
                 return;
             }
             EngineCmd::SetPauseOnDeviceLoss(on) => {
@@ -478,6 +492,13 @@ impl Engine {
         let (Some(deck), Some((out, prod))) = (self.deck.as_mut(), self.output.as_mut()) else {
             return Ok(());
         };
+        // The equalizer follows the device format (a new device → new filters, same settings).
+        let key = (out.format.rate, out.format.channels);
+        if self.eq.as_ref().is_none_or(|(k, _)| *k != key) {
+            let mut eq = crate::eq::Eq::new(key.0, key.1);
+            eq.set(&self.eq_params);
+            self.eq = Some((key, eq));
+        }
         if !self.next_attached
             && !self.next_failed
             && !deck.eof
@@ -502,7 +523,8 @@ impl Engine {
                 }
             }
         }
-        fill(deck, out.format, prod, &self.shared, playing)?;
+        let eq = self.eq.as_mut().map(|(_, e)| e);
+        fill(deck, out.format, prod, &self.shared, playing, eq)?;
         if deck.eof
             && self.feeding.is_none()
             && !self.next_failed
@@ -528,7 +550,14 @@ impl Engine {
             }
         }
         if let Some(next) = self.feeding.as_mut() {
-            fill(next, out.format, prod, &self.shared, playing)?;
+            fill(
+                next,
+                out.format,
+                prod,
+                &self.shared,
+                playing,
+                self.eq.as_mut().map(|(_, e)| e),
+            )?;
         }
         Ok(())
     }
@@ -700,6 +729,7 @@ pub(crate) fn fill(
     prod: &mut rtrb::Producer<f32>,
     shared: &Shared,
     playing: bool,
+    mut eq: Option<&mut crate::eq::Eq>,
 ) -> Result<(), AppError> {
     let ch = fmt.channels;
     while !deck.eof {
@@ -778,6 +808,10 @@ pub(crate) fn fill(
         deck.skip_out -= start;
         let allowed = expected.saturating_sub(deck.pushed) as usize;
         let end = produced.min(start + allowed);
+        // The equalizer (T4.12) at the device rate, before the ring.
+        if let Some(e) = eq.as_deref_mut() {
+            e.process(&mut deck.out_buf[start * ch..end * ch]);
+        }
         let frames = &deck.out_buf[start * ch..end * ch];
         if let Ok(chunk) = prod.write_chunk_uninit(frames.len()) {
             chunk.fill_from_iter(frames.iter().copied());

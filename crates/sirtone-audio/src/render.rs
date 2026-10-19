@@ -51,7 +51,7 @@ pub fn render_with_gains(
                 next = rest.next();
             }
         }
-        fill(&mut deck, fmt, &mut prod, &shared, true)?;
+        fill(&mut deck, fmt, &mut prod, &shared, true, None)?;
         if let Ok(chunk) = cons.read_chunk(cons.slots()) {
             let (a, b) = chunk.as_slices();
             out.extend_from_slice(a);

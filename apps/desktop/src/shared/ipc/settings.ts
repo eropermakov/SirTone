@@ -28,6 +28,7 @@ export type SettingsPatch = {
   network?: { offline_mode?: boolean };
   playback?: {
     normalization?: { enabled?: boolean; target_lufs?: number; album_mode?: "auto" | "off" };
+    eq?: { enabled?: boolean; preset?: string; preamp_db?: number; bands_db?: number[] };
   };
   viz?: { mode?: "waves" | "milkdrop" | "video"; follow_theme_accent?: boolean; minimal?: boolean };
 };

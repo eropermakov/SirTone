@@ -65,6 +65,7 @@
 | Winamp / VLC | 10 полос + preamp ◌ | ◌ | — |
 
 **Копируем:** графический эквалайзер с **preamp**, пресеты, true-bypass.
+**Значения пресетов (T4.12, D-98):** Apple их не публикует (поиск 2026-10-20 — только сторонние приложения); классическая таблица Winamp/VLC — `videolan/vlc` `modules/audio_filter/equalizer_presets.h` (LGPL-2.1, 18 пресетов, полосы 60…16 кГц) ✔.
 **Адаптация:** **10 полос** (ISO-октавы 31,25 Гц … 16 кГц, ±12 dB) по умолчанию — модель данных на N полос (можно расширить до 18 как AIMP/foobar2000); набор пресетов — по списку Apple Music/iOS ◌ (Flat, Bass Booster/Reducer, Treble Booster/Reducer, Vocal Booster, Loudness, Rock, Pop, Jazz, Classical, Electronic, Hip-Hop, Acoustic, Dance, Small Speakers, Spoken Word, Late Night); авто-preamp от клиппинга; сглаживание коэффициентов.
 
 ---
