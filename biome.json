@@ -14,7 +14,7 @@
       "!DESIGN.md",
       "!**/shared/ipc/bindings.ts",
       "!crates/*/tests/data",
-      "!assets/viz/milkdrop/presets.js"
+      "!assets/viz/milkdrop"
     ]
   },
   "formatter": {

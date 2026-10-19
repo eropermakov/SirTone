@@ -65,6 +65,7 @@ async function mockTauri(page: Page) {
           case "hotkeys_status":
           case "playlists_list":
           case "never_list":
+          case "viz_videos":
             return [];
           case "autostart_available":
             return false;
