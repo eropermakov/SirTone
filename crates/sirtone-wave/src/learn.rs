@@ -75,6 +75,8 @@ pub struct Models {
     /// Context level → (model, number of signals).
     pub context: HashMap<String, (Taste, u32)>,
     pub session: [f32; D],
+    /// The last skips of the session: (catalog index, decay) — the repel of D-92.
+    pub skips: Vec<(usize, f32)>,
 }
 
 /// Replays the history into fresh models (§8.1 table → §8.2 updates).
@@ -90,6 +92,7 @@ pub fn replay(cfg: &Config, cat: &Catalog, h: &History, now_ms: i64) -> Models {
         taste: Taste::default(),
         context: HashMap::new(),
         session: [0.0; D],
+        skips: Vec::new(),
     };
     let half = e.beta_half_life_days;
     let decay = |ts: i64| 2f32.powf(-((now_ms - ts).max(0) as f32 / DAY_MS) / half);
@@ -175,6 +178,7 @@ pub fn replay(cfg: &Config, cat: &Catalog, h: &History, now_ms: i64) -> Models {
                 };
                 apply(&mut m, i, 0.0, w, ev.ts, Some(&lv));
                 if let Some(k) = sess_decay(ev.ts) {
+                    m.skips.push((i, k));
                     for ((sv, xv), cv) in m
                         .session
                         .iter_mut()
@@ -244,6 +248,11 @@ pub fn replay(cfg: &Config, cat: &Catalog, h: &History, now_ms: i64) -> Models {
             }
             _ => {}
         }
+    }
+    // Only the last few skips repel (the events are in time order).
+    let keep = sess.repel_last;
+    if m.skips.len() > keep {
+        m.skips.drain(..m.skips.len() - keep);
     }
     // In time order: the taste learns online, so the order matters (a HashMap's would not be
     // the same twice).

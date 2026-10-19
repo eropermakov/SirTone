@@ -593,3 +593,95 @@ fn for_all_excludes_and_learns_apart() {
     let vi = tracks.iter().position(|t| t.id == victim).expect("victim");
     assert!(after.guest_beta[vi] > before.guest_beta[vi]);
 }
+
+/// T3.25: every built-in profile loads; an invalid one is a clear error naming the file.
+#[test]
+fn profiles_validate() {
+    for id in ["my_wave", "seasonal", "for_all"] {
+        assert_eq!(Config::builtin_profile(id).expect(id).profile.id, id);
+    }
+    let base = include_str!("../../../assets/wave/profiles/my_wave.json");
+    let cases = [
+        ("{", "user.json"),
+        (r#"{"schema":"other"}"#, "schema"),
+        (&base.replace(r#""taste": 0.45"#, r#""taste": -1"#), "taste"),
+        (
+            &base.replace(r#""learning_policy": "full""#, r#""learning_policy": "x""#),
+            "learning_policy",
+        ),
+    ];
+    for (text, needle) in cases {
+        let e = Config::with_profile("user.json", text).expect_err("refused");
+        let msg = e.to_string();
+        assert!(msg.contains("user.json") && msg.contains(needle), "{msg}");
+    }
+}
+
+/// AT-21 (T3.28 with the vibe of T3.9): three skips of sad tracks in a row — the next picks of
+/// the wave hold fewer sad ones (the session model and the taste learn at once).
+#[test]
+fn three_sad_skips_turn_the_wave_away_from_sad() {
+    use sirtone_core::wave::{EndReason, PlaySource};
+    use sirtone_wave::query::{Mood, Vibe};
+
+    let tracks = synth::library(5_000, NOW, 1.0, 77);
+    let vibe = Vibe::builtin().expect("vibe");
+    let sad = |id: i64| {
+        tracks
+            .iter()
+            .find(|t| t.id == id)
+            .and_then(|t| t.features)
+            .is_some_and(|(x, _)| vibe.excluded(&x, &[Mood::Sad], &[]))
+    };
+    let share = |history: &sirtone_wave::learn::History, seed: u64| {
+        let mut e = Engine::new(
+            Config::builtin().expect("assets"),
+            &tracks,
+            history,
+            NOW,
+            seed,
+        );
+        let mut n = 0;
+        let mut s = 0;
+        for i in 0..40 {
+            for id in e.next(&ctx(Daypart::Evening), &[], 0.5, 5, NOW + i * 60_000) {
+                n += 1;
+                s += usize::from(sad(id));
+            }
+        }
+        s as f32 / n.max(1) as f32
+    };
+    let history = synth::history(&tracks, NOW);
+    let before: f32 = (0..4).map(|k| share(&history, 11 + k)).sum::<f32>() / 4.0;
+    // Three sad tracks skipped early, a minute apart, just now.
+    let mut h2 = history.clone();
+    let sad_ids: Vec<i64> = tracks
+        .iter()
+        .map(|t| t.id)
+        .filter(|id| sad(*id))
+        .take(3)
+        .collect();
+    assert_eq!(sad_ids.len(), 3);
+    for (k, id) in sad_ids.iter().enumerate() {
+        let mut ev = h2.events[0].clone();
+        ev.track_id = *id;
+        ev.ts = NOW - 60_000 * (3 - k as i64);
+        ev.played_ms = 8_000;
+        ev.end_reason = EndReason::Skip;
+        ev.source = PlaySource::Wave;
+        ev.profile = Some("my_wave".into());
+        h2.events.push(ev);
+    }
+    let after: f32 = (0..4).map(|k| share(&h2, 11 + k)).sum::<f32>() / 4.0;
+    assert!(before > 0.05, "the library has sad tracks: {before}");
+    assert!(after < before * 0.5, "sad share {before:.3} → {after:.3}");
+    // AT-21: the next 10 tracks of the session — at most one sad (the mean over seeds).
+    let next10 = |seed: u64| {
+        let mut e = Engine::new(Config::builtin().expect("assets"), &tracks, &h2, NOW, seed);
+        let mut ids = e.next(&ctx(Daypart::Evening), &[], 0.5, 5, NOW);
+        ids.extend(e.next(&ctx(Daypart::Evening), &[], 0.5, 5, NOW + 60_000));
+        ids.iter().filter(|id| sad(**id)).count()
+    };
+    let mean10 = (0..8).map(|k| next10(100 + k)).sum::<usize>() as f32 / 8.0;
+    assert!(mean10 <= 1.0, "sad in the next 10: {mean10}");
+}

@@ -211,7 +211,15 @@ pub struct SessionCfg {
     pub window_min: f32,
     pub skip_step: f32,
     pub like_step: f32,
+    /// Session skips push away tracks of the same vibe (D-92).
+    pub repel: f32,
+    pub repel_sigma: f32,
+    pub repel_last: usize,
 }
+
+/// The vibe features the session repel compares (§4.1): energy, valence, arousal,
+/// danceability and the eight mood tags.
+const REPEL_DIMS: [usize; 12] = [0, 1, 2, 3, 18, 19, 20, 21, 22, 23, 24, 25];
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct EngineParams {
@@ -284,16 +292,30 @@ impl Config {
         Self::builtin_profile("my_wave")
     }
 
-    /// A built-in profile by id (`my_wave`, `seasonal`); an unknown id is «Моя волна».
+    /// A built-in profile by id (`my_wave`, `seasonal`, `for_all`); an unknown id is «Моя
+    /// волна».
     pub fn builtin_profile(id: &str) -> Result<Self, ConfigError> {
+        let (_, file, text) = PROFILES.iter().find(|p| p.0 == id).unwrap_or(&PROFILES[0]);
+        Self::with_profile(file, text)
+    }
+
+    /// A profile from its JSON (`14` §5.1, schema `sirtone.wave-profile/1`) with the bundled
+    /// assets; an invalid one is a clear error naming the file and what is wrong (T3.25).
+    pub fn with_profile(file: &'static str, text: &str) -> Result<Self, ConfigError> {
         let parse = |file: &'static str, text: &str| -> Result<serde_json::Value, ConfigError> {
             serde_json::from_str(text).map_err(|e| ConfigError {
                 file,
                 source: Box::new(e),
             })
         };
-        let (_, file, text) = PROFILES.iter().find(|p| p.0 == id).unwrap_or(&PROFILES[0]);
         let p = parse(file, text)?;
+        let invalid = |what: String| ConfigError {
+            file,
+            source: what.into(),
+        };
+        if p["schema"].as_str() != Some("sirtone.wave-profile/1") {
+            return Err(invalid("schema must be sirtone.wave-profile/1".into()));
+        }
         let e = parse(
             "engine.json",
             include_str!("../../../assets/wave/engine.json"),
@@ -318,10 +340,44 @@ impl Config {
                 guest_profiles.push(pid.to_string());
             }
         }
+        let profile: Profile = serde_json::from_value(p).map_err(err(file))?;
+        let w = &profile.weights;
+        let weights = [
+            ("taste", w.taste),
+            ("session", w.session),
+            ("context", w.context),
+            ("season", w.season),
+            ("event", w.event),
+            ("curve", w.curve),
+            ("novelty", w.novelty),
+            ("universal", w.universal),
+            ("filters", w.filters),
+        ];
+        if let Some((name, v)) = weights.iter().find(|(_, v)| !v.is_finite() || *v < 0.0) {
+            return Err(invalid(format!("weight {name} = {v}: must be ≥ 0")));
+        }
+        if weights.iter().map(|(_, v)| v).sum::<f32>() <= 0.0 {
+            return Err(invalid("all weights are 0".into()));
+        }
+        if !["full", "guests"].contains(&profile.learning_policy.as_str()) {
+            return Err(invalid(format!(
+                "learning_policy {}: full or guests",
+                profile.learning_policy
+            )));
+        }
+        if profile.sequencing.artist_spacing == 0 {
+            return Err(invalid("sequencing.artist_spacing must be ≥ 1".into()));
+        }
+        if profile
+            .season_floor
+            .is_some_and(|f| !(0.0..=1.0).contains(&f))
+        {
+            return Err(invalid("season_floor must be within 0…1".into()));
+        }
         Ok(Self {
             universal: serde_json::from_value(u).map_err(err("universal.json"))?,
             guest_profiles,
-            profile: serde_json::from_value(p).map_err(err(file))?,
+            profile,
             engine: serde_json::from_value(e).map_err(err("engine.json"))?,
             genres: serde_json::from_value(g).map_err(err("genres.json"))?,
             seasons: Seasonality::builtin().map_err(|e| ConfigError {
@@ -848,6 +904,8 @@ pub struct Engine {
     taste: Taste,
     context: std::collections::HashMap<String, (Taste, u32)>,
     session_vec: [f32; D],
+    /// Features and decay of the last session skips (D-92).
+    repel: Vec<([f32; D], f32)>,
     /// The last rebuild, for «Почему этот трек» (§17).
     last: Explained,
     buf: [Vec<Scored>; 3],
@@ -872,6 +930,7 @@ impl Engine {
     ) -> Self {
         let mut words = std::collections::HashMap::with_capacity(tracks.len());
         let (cat, models) = Self::learnt(&cfg, tracks, history, &mut words, now_ms);
+        let repel = Self::repel_of(&cat, &models);
         let n = cat.len();
         let query = WaveQuery::default();
         let qs = Self::evaluate(&cfg, &cat, &query, now_ms);
@@ -888,6 +947,7 @@ impl Engine {
             taste: models.taste,
             context: models.context,
             session_vec: models.session,
+            repel,
             last: Explained::default(),
             session: Session::default(),
             rng: Rng::new(seed),
@@ -935,6 +995,7 @@ impl Engine {
     /// what was already queued and the group counts carry on.
     pub fn reload(&mut self, tracks: &[WaveTrack], history: &History, now_ms: i64) {
         let (cat, models) = Self::learnt(&self.cfg, tracks, history, &mut self.words, now_ms);
+        self.repel = Self::repel_of(&cat, &models);
         self.blocked = vec![false; cat.len()];
         self.cat = cat;
         self.taste = models.taste;
@@ -958,6 +1019,14 @@ impl Engine {
         cat.guest_alpha.clone_from(&models.guest_alpha);
         cat.guest_beta.clone_from(&models.guest_beta);
         (cat, models)
+    }
+
+    fn repel_of(cat: &Catalog, models: &Models) -> Vec<([f32; D], f32)> {
+        models
+            .skips
+            .iter()
+            .map(|&(i, w)| (cat.feat[i], w))
+            .collect()
     }
 
     pub fn catalog(&self) -> &Catalog {
@@ -1065,6 +1134,9 @@ impl Engine {
         let season_floor = cfg.profile.season_floor;
         let w_ctx = context_weights(&self.context, &sctx, e.context_prior_n);
         let w_sess = self.session_vec;
+        let repel = &self.repel;
+        let repel_w = e.session.repel;
+        let inv2s2 = 1.0 / (2.0 * e.session.repel_sigma * e.session.repel_sigma).max(1e-6);
         let sigma = e.taste_sigma * (0.5 + novelty);
         let wt = self.taste.sample(&mut self.rng, sigma);
         let bias = self.taste.b;
@@ -1147,6 +1219,19 @@ impl Engine {
                     d2 += d * d;
                 }
                 s += e.novelty_pull * novelty * (d2 / D as f32).sqrt();
+            }
+            // The session's skips push away the same vibe (D-92).
+            if !repel.is_empty() {
+                let mut p = 0f32;
+                for (y, w) in repel {
+                    let mut d2 = 0f32;
+                    for &k in &REPEL_DIMS {
+                        let d = x[k] - y[k];
+                        d2 += d * d;
+                    }
+                    p += w * (-(d2 / REPEL_DIMS.len() as f32) * inv2s2).exp();
+                }
+                s -= repel_w * p.min(1.0);
             }
             // Soft repeat penalty for a week after the hard window (§6).
             let since = now_ms - cat.last_played[t];
