@@ -142,6 +142,8 @@ export function SettingsScreen({
 
       <EqSection />
 
+      <TransitionsSection />
+
       <NetworkSection />
 
       <PerformanceSection />
@@ -891,6 +893,122 @@ function EqSection() {
               ))}
             </div>
           </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const MIX_MODES = ["gapless", "crossfade", "smart"] as const;
+const MIX_INTENSITY = ["soft", "medium", "dj"] as const;
+type Mix = {
+  mode: (typeof MIX_MODES)[number];
+  intensity: (typeof MIX_INTENSITY)[number];
+  crossfade: number;
+  skipAlbums: boolean;
+};
+
+/**
+ * «Переходы между треками» (T4.10, FR-PLAY-010, `04` §4.1 — Apple «Crossfade», Spotify
+ * «Automix», Rockbox): «Без переходов» (gapless), «Кроссфейд» 1–12 с, «Умный автомикс» with its
+ * intensity; albums played in order are never mixed unless the switch is off.
+ */
+function TransitionsSection() {
+  const { t } = useTranslation("shell");
+  const [mix, setMix] = useState<Mix>({
+    mode: "smart",
+    intensity: "medium",
+    crossfade: 6,
+    skipAlbums: true,
+  });
+  useEffect(() => {
+    getSettings().then((s) => {
+      const a = ((s.playback ?? {}) as { automix?: Record<string, unknown> }).automix;
+      setMix({
+        mode: MIX_MODES.includes(a?.mode as Mix["mode"]) ? (a?.mode as Mix["mode"]) : "smart",
+        intensity: MIX_INTENSITY.includes(a?.intensity as Mix["intensity"])
+          ? (a?.intensity as Mix["intensity"])
+          : "medium",
+        crossfade: typeof a?.crossfade_s === "number" ? a.crossfade_s : 6,
+        skipAlbums: a?.skip_albums !== false,
+      });
+    });
+  }, []);
+  const save = (next: Mix) => {
+    const prev = mix;
+    setMix(next);
+    patchSettings({
+      playback: {
+        automix: {
+          mode: next.mode,
+          intensity: next.intensity,
+          crossfade_s: next.crossfade,
+          skip_albums: next.skipAlbums,
+        },
+      },
+    }).catch(() => setMix(prev));
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsMix.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <fieldset
+          className="m-0 flex flex-wrap gap-2 border-0 p-0"
+          aria-label={t("settingsMix.title")}
+        >
+          {MIX_MODES.map((m) => (
+            <Chip key={m} active={mix.mode === m} onClick={() => save({ ...mix, mode: m })}>
+              {t(`settingsMix.mode.${m}`)}
+            </Chip>
+          ))}
+        </fieldset>
+        <div className="t-caption text-text-secondary">{t(`settingsMix.hint.${mix.mode}`)}</div>
+        {mix.mode === "smart" && (
+          <fieldset
+            className="m-0 flex flex-wrap gap-2 border-0 p-0"
+            aria-label={t("settingsMix.intensity")}
+          >
+            {MIX_INTENSITY.map((i) => (
+              <Chip
+                key={i}
+                active={mix.intensity === i}
+                onClick={() => save({ ...mix, intensity: i })}
+              >
+                {t(`settingsMix.intensityName.${i}`)}
+              </Chip>
+            ))}
+          </fieldset>
+        )}
+        {mix.mode === "crossfade" && (
+          <div className="flex items-center gap-4">
+            <span className="t-caption w-28 shrink-0 text-text-secondary">
+              {t("settingsMix.length")}
+            </span>
+            <Slider
+              value={(mix.crossfade - 1) / 11}
+              step={1 / 11}
+              label={t("settingsMix.length")}
+              valueText={t("settingsMix.seconds", { count: mix.crossfade })}
+              onCommit={(v) => save({ ...mix, crossfade: Math.round(1 + v * 11) })}
+              className="flex-1"
+            />
+            <span className="t-caption w-14 shrink-0 text-right text-text-tertiary">
+              {t("settingsMix.seconds", { count: mix.crossfade })}
+            </span>
+          </div>
+        )}
+        {mix.mode !== "gapless" && (
+          <div className="flex items-center gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="t-body text-text-primary">{t("settingsMix.skipAlbums")}</div>
+              <div className="t-caption text-text-secondary">{t("settingsMix.skipAlbumsHint")}</div>
+            </div>
+            <Switch
+              checked={mix.skipAlbums}
+              label={t("settingsMix.skipAlbums")}
+              onChange={(v) => save({ ...mix, skipAlbums: v })}
+            />
+          </div>
         )}
       </div>
     </div>
