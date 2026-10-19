@@ -26,11 +26,12 @@ fn insert(
     kind: &str,
     ctx_key: Option<&str>,
     expires_at: Option<i64>,
+    profile: Option<&str>,
 ) -> Result<(), LibraryError> {
     conn.execute(
-        "INSERT INTO feedback(ts, track_id, artist_id, kind, ctx_key, expires_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![now_ms(), track, artist, kind, ctx_key, expires_at],
+        "INSERT INTO feedback(ts, track_id, artist_id, kind, ctx_key, expires_at, profile)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![now_ms(), track, artist, kind, ctx_key, expires_at, profile],
     )?;
     Ok(())
 }
@@ -75,6 +76,16 @@ pub fn track_state(conn: &Connection, track: TrackId) -> Result<TrackState, Libr
 }
 
 pub fn set_like(conn: &Connection, track: TrackId, on: bool) -> Result<(), LibraryError> {
+    set_like_in(conn, track, on, None)
+}
+
+/// A like given while the wave played `profile` («Для всех» → the guests' model only).
+pub fn set_like_in(
+    conn: &Connection,
+    track: TrackId,
+    on: bool,
+    profile: Option<&str>,
+) -> Result<(), LibraryError> {
     insert(
         conn,
         Some(track),
@@ -82,6 +93,7 @@ pub fn set_like(conn: &Connection, track: TrackId, on: bool) -> Result<(), Libra
         if on { "like" } else { "unlike" },
         None,
         None,
+        profile,
     )
 }
 
@@ -94,6 +106,7 @@ pub fn not_now(conn: &Connection, track: TrackId, ctx_key: &str) -> Result<(), L
         "not_now",
         Some(ctx_key),
         Some(now_ms() + NOT_NOW_MS),
+        None,
     )
 }
 
@@ -101,6 +114,17 @@ pub fn set_never_track(
     conn: &mut Connection,
     track: TrackId,
     on: bool,
+) -> Result<(), LibraryError> {
+    set_never_track_in(conn, track, on, None)
+}
+
+/// «Никогда» while the wave played `profile` (the exclusion holds everywhere; the taste
+/// learns from it only outside «Для всех»).
+pub fn set_never_track_in(
+    conn: &mut Connection,
+    track: TrackId,
+    on: bool,
+    profile: Option<&str>,
 ) -> Result<(), LibraryError> {
     let tx = conn.transaction()?;
     tx.execute(
@@ -114,6 +138,7 @@ pub fn set_never_track(
         if on { "never" } else { "unnever" },
         None,
         None,
+        profile,
     )?;
     tx.commit()?;
     Ok(())
@@ -134,6 +159,7 @@ pub fn set_never_artist(
         None,
         Some(artist),
         if on { "never" } else { "unnever" },
+        None,
         None,
         None,
     )?;

@@ -351,6 +351,7 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                                 Why::NewForYou => ("new", None),
                                 Why::Forgotten => ("forgotten", None),
                                 Why::Season(s) => ("season", Some(s)),
+                                Why::ForAll => ("forAll", None),
                             };
                             WhyReason {
                                 kind: kind.into(),

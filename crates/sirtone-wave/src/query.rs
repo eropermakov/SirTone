@@ -387,6 +387,20 @@ impl Vibe {
         .fold(0, |b, (i, _)| b | 1 << i)
     }
 
+    /// «Для всех» exclusions (T3.32): the track is one of these moods or characters by the same
+    /// membership functions as the wave filters and smart playlists (≥ 0.5).
+    pub fn excluded(&self, x: &[f32; D], moods: &[Mood], characters: &[Character]) -> bool {
+        moods.iter().any(|m| self.mood(x, *m, 1.0) >= 0.5)
+            || characters.iter().any(|c| {
+                self.ranges(x, &self.character[*c as usize], self.soft, self.soft_bpm) >= 0.5
+            })
+    }
+
+    /// Analysis complete enough for the mood and character filters.
+    pub fn analysed_enough(&self, conf: f32) -> bool {
+        self.analysed(conf)
+    }
+
     /// Activity memberships in the order of `Activity` (`track.activity_json`).
     pub fn activities(&self, x: &[f32; D]) -> [f32; 6] {
         self.activity
@@ -688,16 +702,23 @@ impl QueryState {
 
     /// The scoring weights after the query's season pick and influence: season/context scaled
     /// by 0…2, then all rescaled to the original total. Order: taste, context, session, season.
-    pub fn weights(q: &WaveQuery, w: [f32; 5]) -> [f32; 5] {
-        let [taste, context, session, season, filters] = w;
+    pub fn weights(q: &WaveQuery, w: [f32; 6]) -> [f32; 6] {
+        let [taste, context, session, season, filters, universal] = w;
         let ms = if q.season == SeasonPick::Off {
             0.0
         } else {
             q.influence[0].clamp(0.0, 2.0)
         };
         let mc = q.influence[1].clamp(0.0, 2.0);
-        let total = taste + context + session + season + filters;
-        let out = [taste, context * mc, session, season * ms, filters];
+        let total = taste + context + session + season + filters + universal;
+        let out = [
+            taste,
+            context * mc,
+            session,
+            season * ms,
+            filters,
+            universal,
+        ];
         let sum: f32 = out.iter().sum();
         if sum <= 1e-6 {
             return w;
@@ -757,7 +778,7 @@ mod tests {
     #[test]
     fn influence_rescales_to_the_same_total() {
         let mut q = WaveQuery::default();
-        let w = [0.45, 0.15, 0.1, 0.1, 0.1];
+        let w = [0.45, 0.15, 0.1, 0.1, 0.1, 0.0];
         assert_eq!(QueryState::weights(&q, w), w);
         q.season = SeasonPick::Off;
         let o = QueryState::weights(&q, w);

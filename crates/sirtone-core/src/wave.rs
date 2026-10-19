@@ -211,6 +211,12 @@ pub struct WaveTrack {
     pub season_tags: u8,
     /// Weekly play ring (`plays_recent`, bucket `i` = week of the last play − i).
     pub plays_weeks: [u8; 13],
+    /// Unique listeners worldwide (ListenBrainz, «Для всех», T3.32); `None` — unknown.
+    pub listeners: Option<u32>,
+    /// «Хит для всех» 1 · «Не для компании» −1 · neither 0 (manual tags).
+    pub company: i8,
+    /// Explicit by the metadata.
+    pub explicit: bool,
     /// B1 (T3.7): tempo (70–180 BPM) and key in Camelot («8B»).
     pub bpm: Option<f32>,
     pub key_camelot: Option<String>,
@@ -232,6 +238,8 @@ pub struct FeedbackRow {
     pub artist_id: Option<i64>,
     pub kind: String,
     pub ctx_key: Option<String>,
+    /// The wave profile it was given in (a «Для всех» like teaches the guests' model only).
+    pub profile: Option<String>,
 }
 
 /// What the wave engine needs from storage (docs/14 §2.1). Grows with the stages that use it.

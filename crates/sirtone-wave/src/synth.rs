@@ -72,6 +72,9 @@ pub fn library(n: usize, now_ms: i64, analysed: f32, seed: u64) -> Vec<WaveTrack
                 album: Some(format!("Album {}", i / 12)),
                 artist_name: Some(format!("Artist {artist}")),
                 season_tags: 0,
+                listeners: None,
+                company: 0,
+                explicit: false,
                 bpm: None,
                 key_camelot: None,
                 plays_weeks: {
@@ -138,6 +141,7 @@ pub fn history(tracks: &[WaveTrack], now_ms: i64) -> History {
                     artist_id: None,
                     kind: kind.into(),
                     ctx_key: None,
+                    profile: None,
                 });
             }
         }

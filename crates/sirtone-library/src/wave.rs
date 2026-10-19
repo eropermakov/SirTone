@@ -182,7 +182,12 @@ pub fn catalog(conn: &Connection) -> Result<Vec<WaveTrack>, LibraryError> {
                           WHEN 'season_summer' THEN 4 WHEN 'season_autumn' THEN 8
                           WHEN 'no_season' THEN 16 ELSE 0 END)
                           FROM track_tag tg WHERE tg.track_id = t.id), 0),
-                t.plays_recent, t.bpm, t.key_camelot
+                t.plays_recent, t.bpm, t.key_camelot,
+                (SELECT pc.listeners FROM popularity_cache pc WHERE pc.mbid = t.mbid_recording),
+                coalesce((SELECT max(CASE tg.tag WHEN 'for_all_hit' THEN 1
+                          WHEN 'not_for_company' THEN 2 ELSE 0 END)
+                          FROM track_tag tg WHERE tg.track_id = t.id), 0),
+                coalesce(t.explicit, 0)
          FROM track t LEFT JOIN album al ON al.id = t.album_id
          LEFT JOIN track_features tf ON tf.track_id = t.id
          WHERE t.state = 'ok'",
@@ -227,6 +232,16 @@ pub fn catalog(conn: &Connection) -> Result<Vec<WaveTrack>, LibraryError> {
                 album: r.get(19)?,
                 artist_name: r.get(20)?,
                 season_tags: r.get::<_, i64>(21)?.clamp(0, 31) as u8,
+                listeners: r
+                    .get::<_, Option<i64>>(25)?
+                    .map(|v| v.clamp(0, i64::from(u32::MAX)) as u32),
+                // «Не для компании» wins over «Хит для всех».
+                company: match r.get::<_, i64>(26)? {
+                    2 => -1,
+                    1 => 1,
+                    _ => 0,
+                },
+                explicit: r.get::<_, i64>(27)? != 0,
                 bpm: r.get::<_, Option<f64>>(23)?.map(|v| v as f32),
                 key_camelot: r.get(24)?,
                 plays_weeks: {
@@ -246,7 +261,7 @@ pub fn catalog(conn: &Connection) -> Result<Vec<WaveTrack>, LibraryError> {
 
 pub fn feedback_since(conn: &Connection, since_ms: i64) -> Result<Vec<FeedbackRow>, LibraryError> {
     let mut st = conn.prepare(
-        "SELECT ts, track_id, artist_id, kind, ctx_key FROM feedback WHERE ts >= ?1 ORDER BY id",
+        "SELECT ts, track_id, artist_id, kind, ctx_key, profile FROM feedback WHERE ts >= ?1 ORDER BY id",
     )?;
     let rows = st
         .query_map([since_ms], |r| {
@@ -256,6 +271,7 @@ pub fn feedback_since(conn: &Connection, since_ms: i64) -> Result<Vec<FeedbackRo
                 artist_id: r.get(2)?,
                 kind: r.get(3)?,
                 ctx_key: r.get(4)?,
+                profile: r.get(5)?,
             })
         })?
         .collect::<Result<_, _>>()?;

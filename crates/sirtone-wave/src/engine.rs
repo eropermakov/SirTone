@@ -11,7 +11,7 @@ use sirtone_core::wave::{ContextSnapshot, FEATURES as D, NotNowRow, WaveTrack};
 
 use crate::context::bucket_matches;
 use crate::learn::{History, Models, ctx_levels, replay};
-use crate::query::{QueryState, SeasonPick, Vibe, WaveQuery, script_lang};
+use crate::query::{Character, Mood, QueryState, SeasonPick, Vibe, WaveQuery, script_lang};
 use crate::rng::Rng;
 use crate::season::{NO_SEASON, Seasonality, dominant};
 
@@ -103,6 +103,61 @@ pub struct Profile {
     /// What «Настроить волну» relaxes first when too few tracks fit (§6, `05` §10.1).
     #[serde(default = "default_relax")]
     pub relax_order: Vec<String>,
+    /// «Для всех» (§16): the universality score leads and its exclusions hold.
+    #[serde(default)]
+    pub company: bool,
+    /// `full` — the owner's models; `guests` — the separate guests' model only (§8, AT-20).
+    #[serde(default = "default_policy")]
+    pub learning_policy: String,
+}
+
+fn default_policy() -> String {
+    "full".into()
+}
+
+/// «Для всех» rules (`assets/wave/universal.json`, §16).
+#[derive(Debug, Clone, Deserialize)]
+pub struct UniversalWeights {
+    pub popularity: f32,
+    pub sound: f32,
+    pub genre: f32,
+    pub guests: f32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UniversalSound {
+    pub tempo: [f32; 2],
+    pub tempo_soft: f32,
+    pub duration_s: [f32; 2],
+    pub duration_soft_s: f32,
+    pub energy_soft: f32,
+    pub vocal_min: f32,
+    pub dynamics_max: f32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GenreWord {
+    pub word: String,
+    pub score: f32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UniversalExclude {
+    pub moods: Vec<String>,
+    pub characters: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Universal {
+    pub weights: UniversalWeights,
+    pub popularity_ref_listeners: f32,
+    pub sound: UniversalSound,
+    pub genre_groups: [f32; 6],
+    pub genre_words: Vec<GenreWord>,
+    pub hit_bonus: f32,
+    pub exclude: UniversalExclude,
+    /// Fewer suitable tracks → the honest caption (FR-ALL-005).
+    pub few: usize,
 }
 
 fn default_relax() -> Vec<String> {
@@ -192,6 +247,9 @@ pub struct Config {
     pub genres: Genres,
     pub seasons: Seasonality,
     pub vibe: Vibe,
+    pub universal: Universal,
+    /// Profiles whose plays and signals teach only the guests' model (`learning_policy`).
+    pub guest_profiles: Vec<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -202,7 +260,7 @@ pub struct ConfigError {
 }
 
 /// Built-in profiles (docs/14 §5): id → file.
-const PROFILES: [(&str, &str, &str); 2] = [
+const PROFILES: [(&str, &str, &str); 3] = [
     (
         "my_wave",
         "profiles/my_wave.json",
@@ -212,6 +270,11 @@ const PROFILES: [(&str, &str, &str); 2] = [
         "seasonal",
         "profiles/seasonal.json",
         include_str!("../../../assets/wave/profiles/seasonal.json"),
+    ),
+    (
+        "for_all",
+        "profiles/for_all.json",
+        include_str!("../../../assets/wave/profiles/for_all.json"),
     ),
 ];
 
@@ -245,7 +308,19 @@ impl Config {
                 source: Box::new(e),
             }
         };
+        let u = parse(
+            "universal.json",
+            include_str!("../../../assets/wave/universal.json"),
+        )?;
+        let mut guest_profiles = Vec::new();
+        for (pid, pfile, ptext) in PROFILES {
+            if parse(pfile, ptext)?["learning_policy"].as_str() == Some("guests") {
+                guest_profiles.push(pid.to_string());
+            }
+        }
         Ok(Self {
+            universal: serde_json::from_value(u).map_err(err("universal.json"))?,
+            guest_profiles,
             profile: serde_json::from_value(p).map_err(err(file))?,
             engine: serde_json::from_value(e).map_err(err("engine.json"))?,
             genres: serde_json::from_value(g).map_err(err("genres.json"))?,
@@ -308,6 +383,17 @@ pub struct Catalog {
     pub season: Vec<[f32; 4]>,
     /// «Убрать из сезонной» — out of the seasonal wave only.
     pub no_season: Vec<bool>,
+    /// «Для всех» (§16): the static part of universality — Σ wᵢ·sᵢ and Σ wᵢ over the parts
+    /// the track has (popularity, sound, genre); the guests' part is added per rebuild.
+    pub(crate) univ: Vec<f32>,
+    pub(crate) univ_w: Vec<f32>,
+    /// Passes the «Для всех» exclusions (moods, «не для компании», explicit, analysed).
+    pub(crate) company_ok: Vec<bool>,
+    /// «Хит для всех».
+    pub(crate) hit: Vec<bool>,
+    /// The guests' model: beta per track (§8, `separate_model`).
+    pub(crate) guest_alpha: Vec<f32>,
+    pub(crate) guest_beta: Vec<f32>,
     center: [f32; D],
     index: std::collections::HashMap<i64, u32>,
 }
@@ -390,6 +476,12 @@ impl Catalog {
             never: Vec::with_capacity(n),
             season: Vec::with_capacity(n),
             no_season: Vec::with_capacity(n),
+            univ: Vec::with_capacity(n),
+            univ_w: Vec::with_capacity(n),
+            company_ok: Vec::with_capacity(n),
+            hit: Vec::with_capacity(n),
+            guest_alpha: vec![1.0; n],
+            guest_beta: vec![1.0; n],
             center: [0.0; D],
             index: std::collections::HashMap::with_capacity(n),
         };
@@ -479,7 +571,106 @@ impl Catalog {
                 *v /= wsum;
             }
         }
+        c.universal(tracks, &groups, cfg);
         c
+    }
+
+    /// The static part of «Для всех» (§16): popularity, sound and genre universality, and the
+    /// exclusions.
+    fn universal(&mut self, tracks: &[WaveTrack], groups: &[Option<usize>], cfg: &Config) {
+        let u = &cfg.universal;
+        let w = &u.weights;
+        let snd = &u.sound;
+        let moods: Vec<Mood> = u
+            .exclude
+            .moods
+            .iter()
+            .filter_map(|m| Mood::from_key(m))
+            .collect();
+        let chars: Vec<Character> = u
+            .exclude
+            .characters
+            .iter()
+            .filter_map(|c| Character::from_key(c))
+            .collect();
+        let words: Vec<(String, f32)> = u
+            .genre_words
+            .iter()
+            .filter_map(|g| norm(&g.word).map(|n| (n, g.score)))
+            .collect();
+        // Trapezoid: 1 inside [lo, hi], down to 0 over `soft` outside.
+        let trap = |v: f32, lo: f32, hi: f32, soft: f32| {
+            let miss = (lo - v).max(v - hi).max(0.0);
+            (1.0 - miss / soft.max(1e-6)).max(0.0)
+        };
+        let ref_log = (1.0 + u.popularity_ref_listeners).log10().max(1e-6);
+        let c = self.center;
+        for (i, t) in tracks.iter().enumerate() {
+            let (mut sum, mut wsum) = (0f32, 0f32);
+            if let Some(l) = t.listeners {
+                sum += w.popularity * ((1.0 + l as f32).log10() / ref_log).min(1.0);
+                wsum += w.popularity;
+            }
+            let analysed = t.features.is_some();
+            let x = &self.feat[i];
+            if analysed {
+                let parts = [
+                    // Positive and danceable at least as the library's middle.
+                    trap(x[f::VALENCE], c[f::VALENCE], 1.0, 0.15),
+                    trap(x[f::DANCE], c[f::DANCE], 1.0, 0.15),
+                    // Energy near the middle.
+                    (1.0 - (x[f::ENERGY] - c[f::ENERGY]).abs() / snd.energy_soft).max(0.0),
+                    trap(x[f::VOCAL], snd.vocal_min, 1.0, 0.2),
+                    t.bpm
+                        .map_or(0.5, |b| trap(b, snd.tempo[0], snd.tempo[1], snd.tempo_soft)),
+                    trap(
+                        t.duration_ms as f32 / 1000.0,
+                        snd.duration_s[0],
+                        snd.duration_s[1],
+                        snd.duration_soft_s,
+                    ),
+                    trap(x[f::DYNAMICS], 0.0, snd.dynamics_max, 0.15),
+                ];
+                sum += w.sound * parts.iter().sum::<f32>() / parts.len() as f32;
+                wsum += w.sound;
+            }
+            let by_word = t
+                .genre
+                .as_deref()
+                .and_then(norm)
+                .and_then(|g| words.iter().find(|(wd, _)| g.contains(wd.as_str())))
+                .map(|(_, s)| *s);
+            let genre = by_word
+                .or_else(|| groups[i].map(|g| u.genre_groups[g]))
+                .or_else(|| {
+                    analysed.then(|| {
+                        (0..f::GENRES)
+                            .map(|k| x[f::GENRE + k] * u.genre_groups[k])
+                            .sum::<f32>()
+                    })
+                });
+            if let Some(g) = genre {
+                sum += w.genre * g;
+                wsum += w.genre;
+            }
+            self.univ.push(sum);
+            self.univ_w.push(wsum);
+            let conf = t.features.map_or(0.0, |(_, c)| c);
+            let fits = cfg.vibe.analysed_enough(conf) && !cfg.vibe.excluded(x, &moods, &chars);
+            self.hit.push(t.company > 0);
+            self.company_ok
+                .push(t.company >= 0 && !t.explicit && (fits || t.company > 0));
+        }
+    }
+
+    /// How many tracks pass the «Для всех» exclusions (the honest caption below `few`).
+    pub fn company_count(&self) -> usize {
+        self.company_ok.iter().filter(|v| **v).count()
+    }
+
+    /// Tracks with known popularity (the caption «подборка без данных о популярности»).
+    pub fn with_popularity(&self, tracks: &[WaveTrack]) -> usize {
+        tracks.iter().filter(|t| t.listeners.is_some()).count()
     }
 
     /// Season affinity of every track from its tags, words (cached by id — matched once per
@@ -748,6 +939,8 @@ impl Engine {
         let models = replay(cfg, &cat, history, now_ms);
         cat.alpha.clone_from(&models.alpha);
         cat.beta.clone_from(&models.beta);
+        cat.guest_alpha.clone_from(&models.guest_alpha);
+        cat.guest_beta.clone_from(&models.guest_beta);
         (cat, models)
     }
 
@@ -826,7 +1019,7 @@ impl Engine {
         let pw = &cfg.profile.weights;
         // The event weight goes to taste outside an event window (§5.2); no event yet. Season
         // pick and influence of «Настроить волну» rescale the weights (T3.18).
-        let [w_taste, w_context, w_session, w_season, w_filters] = QueryState::weights(
+        let [w_taste, w_context, w_session, w_season, w_filters, w_univ] = QueryState::weights(
             &self.query,
             [
                 pw.taste + pw.event,
@@ -834,8 +1027,12 @@ impl Engine {
                 pw.session,
                 pw.season,
                 pw.filters,
+                pw.universal,
             ],
         );
+        let company = cfg.profile.company;
+        let uw_guests = cfg.universal.weights.guests;
+        let hit_bonus = cfg.universal.hit_bonus;
         // Atmosphere and season of «Настроить волну» steer scoring; «не сейчас» keeps the
         // real context (D-77).
         let mut sctx = ctx.clone();
@@ -876,7 +1073,7 @@ impl Engine {
         for g in &mut self.buf {
             g.clear();
         }
-        let mut sums = [0f32; 4];
+        let mut sums = [0f32; 5];
         let mut counted = 0u32;
         let cat = &self.cat;
         let fam = &e.familiarity;
@@ -899,19 +1096,32 @@ impl Engine {
             {
                 continue;
             }
+            // «Для всех» (§16): exclusions are hard, never relaxed.
+            if company && !cat.company_ok[t] {
+                continue;
+            }
             let x = &cat.feat[t];
             let taste = 0.6 * sigmoid(dot(&wt, x) + bias) + 0.4 * cat.mean(t);
             let context = sigmoid(dot(&w_ctx, x));
             let session = 0.5 + 0.5 * dot(&w_sess, x).tanh();
+            let universal = if w_univ > 0.0 {
+                let g = cat.guest_alpha[t] / (cat.guest_alpha[t] + cat.guest_beta[t]);
+                let u = (cat.univ[t] + uw_guests * g) / (cat.univ_w[t] + uw_guests);
+                u + if cat.hit[t] { hit_bonus } else { 0.0 }
+            } else {
+                0.0
+            };
             let mut s = w_taste * taste
                 + w_context * context
                 + w_session * session
                 + w_season * season
-                + w_filters * qs.filters[t];
+                + w_filters * qs.filters[t]
+                + w_univ * universal;
             sums[0] += w_taste * taste;
             sums[1] += w_context * context;
             sums[2] += w_session * session;
             sums[3] += w_season * season;
+            sums[4] += w_univ * universal;
             counted += 1;
             let g = cat.group(t, now_ms, fam);
             if g == 2 && novelty > 0.0 {
@@ -941,7 +1151,7 @@ impl Engine {
             bias,
             w_ctx,
             w_sess,
-            w: [w_taste, w_context, w_session, w_season],
+            w: [w_taste, w_context, w_session, w_season, w_univ],
             mean: sums.map(|v| v / k),
             season_w: sw,
             daypart: sctx.daypart as u8,
@@ -962,11 +1172,25 @@ impl Engine {
         let session = 0.5 + 0.5 * dot(&l.w_sess, x).tanh();
         let a = &self.cat.season[t];
         let season: f32 = (0..4).map(|s| l.season_w[s] * a[s]).sum();
+        let universal = if l.w[4] > 0.0 {
+            let c = &self.cat;
+            let g = c.guest_alpha[t] / (c.guest_alpha[t] + c.guest_beta[t]);
+            let gw = self.cfg.universal.weights.guests;
+            (c.univ[t] + gw * g) / (c.univ_w[t] + gw)
+                + if c.hit[t] {
+                    self.cfg.universal.hit_bonus
+                } else {
+                    0.0
+                }
+        } else {
+            0.0
+        };
         let mut parts = [
             (l.w[0] * taste - l.mean[0], 0usize),
             (l.w[1] * context - l.mean[1], 1),
             (l.w[2] * session - l.mean[2], 2),
             (l.w[3] * season - l.mean[3], 3),
+            (l.w[4] * universal - l.mean[4], 4),
         ];
         parts.sort_by(|a, b| b.0.total_cmp(&a.0));
         let mut out = Vec::with_capacity(3);
@@ -994,6 +1218,7 @@ impl Engine {
                 }
                 1 => Why::Context(l.daypart),
                 2 => Why::Session,
+                4 => Why::ForAll,
                 _ => Why::Season(dominant(&l.season_w) as u8),
             });
         }
@@ -1130,6 +1355,8 @@ pub enum Why {
     Forgotten,
     /// Fits the season (0 winter … 3 autumn).
     Season(u8),
+    /// «Для всех»: liked by many, easy to listen to together.
+    ForAll,
 }
 
 #[derive(Default)]
@@ -1138,8 +1365,8 @@ struct Explained {
     bias: f32,
     w_ctx: [f32; D],
     w_sess: [f32; D],
-    w: [f32; 4],
-    mean: [f32; 4],
+    w: [f32; 5],
+    mean: [f32; 5],
     season_w: [f32; 4],
     daypart: u8,
     now_ms: i64,

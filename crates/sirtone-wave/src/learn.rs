@@ -68,6 +68,9 @@ fn key_levels(key: &str) -> Option<Vec<String>> {
 pub struct Models {
     pub alpha: Vec<f32>,
     pub beta: Vec<f32>,
+    /// The guests' model (`learning_policy: guests`, «Для всех»): beta per track.
+    pub guest_alpha: Vec<f32>,
+    pub guest_beta: Vec<f32>,
     pub taste: Taste,
     /// Context level → (model, number of signals).
     pub context: HashMap<String, (Taste, u32)>,
@@ -82,6 +85,8 @@ pub fn replay(cfg: &Config, cat: &Catalog, h: &History, now_ms: i64) -> Models {
     let mut m = Models {
         alpha: vec![1.0; n],
         beta: vec![1.0; n],
+        guest_alpha: vec![1.0; n],
+        guest_beta: vec![1.0; n],
         taste: Taste::default(),
         context: HashMap::new(),
         session: [0.0; D],
@@ -112,10 +117,43 @@ pub fn replay(cfg: &Config, cat: &Catalog, h: &History, now_ms: i64) -> Models {
             }
         }
     };
+    // Plays and signals in a guests' profile («Для всех») teach only the guests' model; the
+    // owner's models stay exactly as they were (§8, AT-20).
+    let guests = |p: &Option<String>| {
+        p.as_deref()
+            .is_some_and(|p| cfg.guest_profiles.iter().any(|g| g == p))
+    };
+    let guest = |m: &mut Models, i: usize, y: f32, w: f32, ts: i64| {
+        let k = w * decay(ts);
+        if y > 0.5 {
+            m.guest_alpha[i] += k;
+        } else {
+            m.guest_beta[i] += k;
+        }
+    };
     for ev in &h.events {
         let Some(i) = cat.idx(ev.track_id) else {
             continue;
         };
+        if guests(&ev.profile) {
+            match ev.end_reason {
+                EndReason::Finished | EndReason::MixedOut => {
+                    guest(&mut m, i, 1.0, s.finished, ev.ts)
+                }
+                EndReason::Skip => {
+                    let w = if ev.played_ms < 30_000 {
+                        s.skip_early
+                    } else if ev.played_ms < ev.duration_ms / 2 {
+                        s.skip_mid
+                    } else {
+                        s.skip_late
+                    };
+                    guest(&mut m, i, 0.0, w, ev.ts);
+                }
+                _ => {}
+            }
+            continue;
+        }
         let lv = ctx_levels(&ev.context);
         let new_for_you = ev.category == Some(2);
         match ev.end_reason {
@@ -169,6 +207,14 @@ pub fn replay(cfg: &Config, cat: &Catalog, h: &History, now_ms: i64) -> Models {
         let Some(t) = f.track_id else {
             continue;
         };
+        if guests(&f.profile) {
+            if f.kind == "like"
+                && let Some(i) = cat.idx(t)
+            {
+                guest(&mut m, i, 1.0, s.like, f.ts);
+            }
+            continue;
+        }
         match f.kind.as_str() {
             "like" => {
                 liked.insert(t, (true, f.ts));
@@ -199,6 +245,10 @@ pub fn replay(cfg: &Config, cat: &Catalog, h: &History, now_ms: i64) -> Models {
             _ => {}
         }
     }
+    // In time order: the taste learns online, so the order matters (a HashMap's would not be
+    // the same twice).
+    let mut liked: Vec<(i64, (bool, i64))> = liked.into_iter().collect();
+    liked.sort_by_key(|(t, (_, ts))| (*ts, *t));
     for (t, (on, ts)) in liked {
         if on && let Some(i) = cat.idx(t) {
             apply(&mut m, i, 1.0, s.like, ts, None);
@@ -279,6 +329,7 @@ mod tests {
                 artist_id: None,
                 kind: "like".into(),
                 ctx_key: None,
+                profile: None,
             }],
         };
         let m = replay(&cfg, &cat, &h, NOW);
@@ -312,6 +363,7 @@ mod tests {
                 artist_id: None,
                 kind: "not_now".into(),
                 ctx_key: Some("d3/s3/wx".into()),
+                profile: None,
             }],
         };
         let m = replay(&cfg, &cat, &h, NOW);

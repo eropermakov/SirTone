@@ -507,3 +507,89 @@ fn deep_features_and_genre_precedence() {
     // Shares of the library: the one known genre is rock.
     assert_eq!(genres(2), &[0.0, 1.0, 0.0, 0.0, 0.0, 0.0]);
 }
+
+/// AT-20 (T3.32, docs/14 §16): «Для всех» plays only tracks that pass its exclusions —
+/// no sad, gloomy or aggressive ones, nothing «не для компании»; two skips there change only
+/// the guests' model, and the owner's models stay bit for bit the same.
+#[test]
+fn for_all_excludes_and_learns_apart() {
+    use sirtone_core::wave::{EndReason, PlayEvent, PlaySource};
+    use sirtone_wave::engine::Catalog;
+    use sirtone_wave::learn::replay;
+    use sirtone_wave::query::{Character, Mood, Vibe};
+
+    let mut tracks = synth::library(2_000, NOW, 1.0, 21);
+    // A «Хит для всех» that would otherwise be excluded, and a «не для компании».
+    let hit = tracks[0].id;
+    tracks[0].company = 1;
+    if let Some((x, _)) = tracks[0].features.as_mut() {
+        x[1] = 0.1;
+        x[2] = 0.1;
+    }
+    let banned = tracks[1].id;
+    tracks[1].company = -1;
+    let history = synth::history(&tracks, NOW);
+    let cfg = Config::builtin_profile("for_all").expect("assets");
+    assert_eq!(cfg.profile.id, "for_all");
+    let vibe = Vibe::builtin().expect("vibe");
+    let mut e = Engine::new(cfg.clone(), &tracks, &history, NOW, 5);
+    let mut seen = std::collections::HashSet::new();
+    for i in 0..60 {
+        for id in e.next(&ctx(Daypart::Evening), &[], 0.5, 5, NOW + i * 60_000) {
+            seen.insert(id);
+        }
+    }
+    assert!(seen.len() >= 100, "{}", seen.len());
+    assert!(!seen.contains(&banned));
+    let feat = |id: i64| {
+        tracks
+            .iter()
+            .find(|t| t.id == id)
+            .and_then(|t| t.features)
+            .map(|f| f.0)
+            .expect("analysed")
+    };
+    for id in &seen {
+        if *id == hit {
+            continue;
+        }
+        let x = feat(*id);
+        assert!(
+            !vibe.excluded(&x, &[Mood::Sad, Mood::Negative], &[Character::Aggressive]),
+            "{id} {x:?}"
+        );
+    }
+    // Two skips in «Для всех»: only the guests' model moves.
+    let cat = Catalog::build(&tracks, &cfg);
+    let my = Config::builtin().expect("assets");
+    let before = replay(&my, &cat, &history, NOW);
+    let mut h2 = history.clone();
+    let victim = tracks[5].id;
+    for k in 0..2 {
+        let mut ev: PlayEvent = h2.events[0].clone();
+        ev.track_id = victim;
+        ev.ts = NOW - 1_000 * (k + 1);
+        ev.played_ms = 5_000;
+        ev.end_reason = EndReason::Skip;
+        ev.source = PlaySource::Wave;
+        ev.profile = Some("for_all".into());
+        h2.events.push(ev);
+    }
+    let after = replay(&my, &cat, &h2, NOW);
+    let bits = |v: &[f32]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+    assert_eq!(bits(&before.alpha), bits(&after.alpha));
+    assert_eq!(bits(&before.beta), bits(&after.beta));
+    assert_eq!(format!("{:?}", before.taste), format!("{:?}", after.taste));
+    let mut ck: Vec<_> = before.context.keys().cloned().collect();
+    ck.sort();
+    for k in &ck {
+        assert_eq!(
+            format!("{:?}", before.context[k]),
+            format!("{:?}", after.context[k])
+        );
+    }
+    assert_eq!(before.context.len(), after.context.len());
+    assert_eq!(bits(&before.session), bits(&after.session));
+    let vi = tracks.iter().position(|t| t.id == victim).expect("victim");
+    assert!(after.guest_beta[vi] > before.guest_beta[vi]);
+}

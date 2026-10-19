@@ -77,7 +77,41 @@ fn main() -> ExitCode {
         eprintln!("NFR-PERF-004 failed");
         return ExitCode::FAILURE;
     }
+    if for_all(n, now, &tracks, &history, &ctx) == ExitCode::FAILURE {
+        return ExitCode::FAILURE;
+    }
     continuation(100_000)
+}
+
+/// «Для всех» (T3.32): the same rebuild with the universality score and its exclusions.
+fn for_all(
+    n: usize,
+    now: i64,
+    tracks: &[sirtone_core::wave::WaveTrack],
+    history: &sirtone_wave::learn::History,
+    ctx: &ContextSnapshot,
+) -> ExitCode {
+    let Ok(cfg) = Config::builtin_profile("for_all") else {
+        eprintln!("for_all profile does not parse");
+        return ExitCode::FAILURE;
+    };
+    let mut e = Engine::new(cfg, tracks, history, now, 1);
+    let mut ms: Vec<f64> = (0..220)
+        .map(|i| {
+            let t = Instant::now();
+            std::hint::black_box(e.next(ctx, &[], 0.5, 5, now + i * 1000));
+            t.elapsed().as_secs_f64() * 1e3
+        })
+        .skip(20)
+        .collect();
+    ms.sort_by(f64::total_cmp);
+    let p95 = ms[(ms.len() as f64 * 0.95) as usize];
+    println!("«Для всех», {n} tracks: p95 {p95:.2} ms (budget {BUDGET_MS} ms)");
+    if p95 > BUDGET_MS {
+        eprintln!("NFR-PERF-004 failed for «Для всех»");
+        return ExitCode::FAILURE;
+    }
+    ExitCode::SUCCESS
 }
 
 /// T3.14: the playlist continuation on 100 000 tracks — preparing the library (once per library
