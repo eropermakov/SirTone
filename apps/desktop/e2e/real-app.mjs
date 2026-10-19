@@ -976,15 +976,19 @@ if (existsSync(corpus)) {
   const n0 = await vizRead();
   await sleep(1000);
   const n1 = await vizRead();
-  await sleep(2500);
-  const hidden = await page.evaluate(() => {
-    const el = document.querySelector('[data-testid="night-vibe"]');
-    const exit = el?.querySelector("button");
-    return {
-      cursor: el?.classList.contains("cursor-none") ?? false,
-      exit: exit ? getComputedStyle(exit).opacity : null,
-    };
-  });
+  // Hidden after 3 s of stillness; a real mouse moving over the window restarts the wait.
+  let hidden = { cursor: false, exit: null };
+  for (let i = 0; i < 16 && !(hidden.cursor && hidden.exit === "0"); i++) {
+    await sleep(500);
+    hidden = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="night-vibe"]');
+      const exit = el?.querySelector("button");
+      return {
+        cursor: el?.classList.contains("cursor-none") ?? false,
+        exit: exit ? getComputedStyle(exit).opacity : null,
+      };
+    });
+  }
   if (process.env.SMOKE_SHOTS) {
     await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "t47-night.png") });
   }
@@ -1005,6 +1009,118 @@ if (existsSync(corpus)) {
       w1.frames - w0.frames > 40,
     `full ${fullOn}→${fullOff}, ${n1.frames - n0.frames}/s, hidden ${JSON.stringify(hidden)}, after ${w1.frames - w0.frames}/s`,
   );
+  // T4.3: «MilkDrop» — the mode switches on the fly; presets are precompiled (strict CSP, no
+  // eval), drawn ≥ 45 FPS; «следующий» and ✕ change the preset, ✕ is remembered.
+  await page.getByRole("button", { name: "Режим визуализации" }).click();
+  await page.getByRole("menuitem", { name: "MilkDrop" }).click();
+  await page.locator('canvas[data-testid="milkdrop"]').waitFor({ timeout: 10000 });
+  const mdReady = page.getByRole("button", { name: "Следующий пресет" });
+  await mdReady.waitFor({ timeout: 15000 }).catch(async () => {
+    const err = await page.evaluate(() => window.__sirtoneMilkdropError ?? "no error recorded");
+    throw new Error(`MilkDrop did not start: ${err}`);
+  });
+  for (let i = 0; i < 40; i++) {
+    if (await page.evaluate(() => (window.__sirtoneMilkdrop?.stats.drawn ?? 0) > 0)) break;
+    await sleep(250);
+  }
+  await sleep(3000);
+  const md0 = await page.evaluate(() => ({
+    ...window.__sirtoneMilkdrop?.stats,
+    count: window.__sirtoneMilkdrop?.count,
+  }));
+  await sleep(2000);
+  const md1 = await page.evaluate(() => ({ ...window.__sirtoneMilkdrop?.stats }));
+  const mdErrors = await page.evaluate(() => window.__sirtoneCspErrors ?? 0);
+  await page.getByRole("button", { name: "Следующий пресет" }).click();
+  await sleep(500);
+  const mdNext = await page.evaluate(() => window.__sirtoneMilkdrop?.stats.preset);
+  // ✕ rates the preset the toolbar shows at the moment of the click.
+  const mdRated = await page.evaluate(() => window.__sirtoneMilkdrop?.control().preset);
+  await page.getByRole("button", { name: "Больше не показывать этот пресет" }).click();
+  await sleep(800);
+  const mdAfterNo = await page.evaluate(() => window.__sirtoneMilkdrop?.stats.preset);
+  const ratingsFile = join(dataDir, "viz-presets.json");
+  const rated = existsSync(ratingsFile) ? JSON.parse(readFileSync(ratingsFile, "utf8")) : {};
+  if (process.env.SMOKE_SHOTS) {
+    await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "t43-milkdrop.png") });
+  }
+  check(
+    "MilkDrop: presets load and draw ≥ 45 FPS, next and ✕ change the preset, ✕ remembered",
+    md0.count > 100 &&
+      md1.drawn > md0.drawn &&
+      md1.fps >= 45 &&
+      mdErrors === 0 &&
+      mdNext !== md0.preset &&
+      mdAfterNo !== mdNext &&
+      rated[mdRated] === -1,
+    `${md0.count} presets, ${md1.fps?.toFixed(1)} FPS, worst load ${md1.worstMs?.toFixed(0)} ms, ${md0.preset} → ${mdNext} → ${mdAfterNo}, ✕ ${mdRated} → ${JSON.stringify(rated)}, csp ${mdErrors}`,
+  );
+  // T4.4: «Видео» — a clip in the library's backgrounds folder plays muted and looping through
+  // the ranged protocol (made here with ffmpeg; dropping is the same copy, done by Rust).
+  const ffmpeg = spawnSync("ffmpeg", ["-version"]).status === 0;
+  if (ffmpeg) {
+    const bgDir = join(libDir, ".sirtone", "backgrounds");
+    mkdirSync(bgDir, { recursive: true });
+    const clipId = "00000000000000aa.webm";
+    spawnSync("ffmpeg", [
+      "-y",
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=30",
+      "-t",
+      "3",
+      "-c:v",
+      "libvpx-vp9",
+      "-b:v",
+      "300k",
+      join(bgDir, clipId),
+    ]);
+    writeFileSync(
+      join(bgDir, "index.json"),
+      JSON.stringify([{ id: clipId, mood: "any", source: "smoke:1", bytes: 1 }]),
+    );
+    await page.evaluate(async () => {
+      // The app loaded its clip list at start: ask again (the drop path does the same).
+      window.dispatchEvent(new Event("sirtone-videos-refresh"));
+    });
+    await page.getByRole("button", { name: "Режим визуализации" }).click();
+    await page.getByRole("menuitem", { name: "Видео" }).click();
+    const vid = page.locator('video[data-testid="viz-video"]');
+    await vid.waitFor({ timeout: 10000 });
+    await sleep(2500);
+    const vs = await vid.evaluate((v) => ({
+      t: v.currentTime,
+      ready: v.readyState,
+      muted: v.muted,
+      loop: v.loop,
+      err: v.error?.code ?? 0,
+    }));
+    // The protocol is for <video> only (CSP media-src; fetch is not allowed): an unknown id
+    // must fail to load there.
+    const bad = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const v = document.createElement("video");
+          v.muted = true;
+          v.onerror = () => resolve(v.error?.code ?? -1);
+          v.onloadedmetadata = () => resolve(0);
+          v.src = "http://sirtone-bg.localhost/..%2Findex.json";
+          setTimeout(() => resolve(-2), 5000);
+        }),
+    );
+    check(
+      "Видео: the clip plays muted and looping over HTTP ranges; an unknown id does not load",
+      vs.ready >= 2 && vs.t > 0.5 && vs.muted && vs.loop && vs.err === 0 && bad > 0,
+      `${JSON.stringify(vs)}, bad id → error ${bad}`,
+    );
+  } else {
+    check("Видео: skipped — no ffmpeg to make a test clip", true);
+  }
+  await invoke("settings_patch", { patch: { viz: { mode: "waves" } } });
+  await page.locator('canvas[data-testid="waves"]').waitFor({ timeout: 10000 });
   await axeScreen("«Моя волна»");
   // T2.20 / P-01 (DESIGN.md §1, `08` §1): event → the frame that shows the change, measured
   // in the page. Direct actions ≤ 100 ms, a screen change ≤ 400 ms.

@@ -13,7 +13,8 @@
       "!**/src-tauri/gen",
       "!DESIGN.md",
       "!**/shared/ipc/bindings.ts",
-      "!crates/*/tests/data"
+      "!crates/*/tests/data",
+      "!assets/viz/milkdrop/presets.js"
     ]
   },
   "formatter": {

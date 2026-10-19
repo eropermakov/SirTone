@@ -1,22 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { getSettings, onSettingsChanged, type SettingsDoc } from "@/shared/ipc/settings";
-import { onVizPower, startViz, vizColors } from "@/shared/ipc/viz";
+import { startViz, vizColors } from "@/shared/ipc/viz";
 import { fallbackColors, lookOf, type PaletteInput, WAVES } from "@/shared/viz/palette";
 import { WavesEngine, wavesStats } from "@/shared/viz/waves";
-
-type Prefs = { level: number; followAccent: boolean; minimal: boolean };
-
-const prefsOf = (doc: SettingsDoc): Prefs => {
-  const perf = (doc.performance ?? {}) as { level?: number };
-  const viz = (doc.viz ?? {}) as { follow_theme_accent?: boolean; minimal?: boolean };
-  return {
-    level: perf.level ?? 3,
-    followAccent: viz.follow_theme_accent ?? true,
-    minimal: viz.minimal ?? false,
-  };
-};
-
-const REDUCED = "(prefers-reduced-motion: reduce)";
+import { useVizEnv } from "./useVizEnv";
 
 /** The engine on screen, for pulses from the wave screen's own buttons (like). */
 let active: WavesEngine | null = null;
@@ -43,38 +29,9 @@ export function WavesBackground({
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const engine = useRef<WavesEngine | null>(null);
-  const [prefs, setPrefs] = useState<Prefs | null>(null);
+  const { prefs, reduced, power, pausedRef, effectiveLevel } = useVizEnv();
   const [failed, setFailed] = useState(false);
   const [input, setInput] = useState<PaletteInput | null>(null);
-  const [reduced, setReduced] = useState(() => window.matchMedia(REDUCED).matches);
-  const [power, setPower] = useState({ paused: false, battery: false });
-  const pausedRef = useRef(false);
-  pausedRef.current = power.paused;
-
-  useEffect(() => {
-    const m = window.matchMedia(REDUCED);
-    const on = () => setReduced(m.matches);
-    m.addEventListener("change", on);
-    let alive = true;
-    let unlisten: (() => void) | undefined;
-    const load = () => getSettings().then((d) => alive && setPrefs(prefsOf(d)));
-    load();
-    let unPower: (() => void) | undefined;
-    onVizPower((p) => alive && setPower(p)).then((u) => {
-      if (alive) unPower = u;
-      else u();
-    });
-    onSettingsChanged(load).then((u) => {
-      if (alive) unlisten = u;
-      else u();
-    });
-    return () => {
-      alive = false;
-      m.removeEventListener("change", on);
-      unlisten?.();
-      unPower?.();
-    };
-  }, []);
 
   // The track's colours (cover palette, vibe, collection) — once per track.
   useEffect(() => {
@@ -94,9 +51,7 @@ export function WavesBackground({
   }, [trackId, cover, prefs]);
 
   const gl = !!prefs && prefs.level > 0 && !failed;
-  // On battery one level lower (FR-VIZ-008), never below 1.
-  const level = Math.max(1, (prefs?.level ?? 3) - (power.battery ? 1 : 0));
-  const quality = WAVES.quality[String(level) as "1" | "2" | "3" | "4"];
+  const quality = WAVES.quality[String(Math.min(4, effectiveLevel)) as "1" | "2" | "3" | "4"];
   const minimal = !!prefs && (prefs.minimal || quality.minimal);
   // What a newly created engine starts with.
   const latest = useRef({ quality, minimal, input });
@@ -157,7 +112,7 @@ export function WavesBackground({
       if (active === e) active = null;
       engine.current = null;
     };
-  }, [gl, reduced]);
+  }, [gl, reduced, pausedRef]);
 
   useEffect(() => {
     engine.current?.setQuality({ ...quality, minimal });

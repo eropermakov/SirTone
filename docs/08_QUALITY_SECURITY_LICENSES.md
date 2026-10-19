@@ -170,7 +170,7 @@
 | Анимация / DnD | `motion` 14.2.0 · `@dnd-kit/core` 6.3.1 (стабильный; `@dnd-kit/react` 0.5.1 — следим) | MIT | pointer-сенсоры |
 | i18n | `i18next` 26.4.5 · `react-i18next` 17.0.16 (+ ICU-плагин) | MIT | |
 | Иконки | `lucide-react` 1.57.0 | ISC | если владелец не даст своих |
-| Визуализация | `butterchurn` 2.6.7 · `butterchurn-presets` 2.4.7 (11,9 МБ, 1765 файлов; берём отобранные) | MIT | последние релизы 2025-07 / 2022-04 |
+| Визуализация | `butterchurn` 2.6.7 (+ `@babel/runtime` 7.29, `ecma-proposal-math-extensions` 0.0.2 — MIT) · `butterchurn-presets` 2.4.7 — только dev: `tools/preset-indexer` отбирает пресеты и компилирует уравнения в `assets/viz/milkdrop/presets.js` (D-95); авторы — `assets/viz/milkdrop/CREDITS.md` | MIT | последние релизы 2025-07 / 2022-04 |
 | Тесты/линт | `vitest` 5.0.4 · `@playwright/test` 1.64.1 · `@biomejs/biome` 2.5.15 · `eslint` 10.12.0 | MIT / Apache-2.0 | |
 | MCP | `@upstash/context7-mcp` 4.4.1 · `@playwright/mcp` 0.0.83 · `shadcn` MCP | MIT / Apache-2.0 | версии зафиксированы в `.mcp.json` |
 

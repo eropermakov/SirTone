@@ -51,6 +51,13 @@ export const commands = {
 	vizColors: (trackId: number | null, cover: string | null) => typedError<VizColors, AppError>(__TAURI_INVOKE("viz_colors", { trackId, cover })),
 	/**  Enters (`on`) or leaves the night vibe: full screen and the keep-awake thread. */
 	nightSet: (on: boolean) => __TAURI_INVOKE<void>("night_set", { on }),
+	vizPresetRatings: () => __TAURI_INVOKE<PresetRating[]>("viz_preset_ratings"),
+	/**  Rates a preset: 1 ♥, −1 ✕, 0 — no opinion (forgotten). */
+	vizPresetRate: (name: string, rating: number) => typedError<null, AppError>(__TAURI_INVOKE("viz_preset_rate", { name, rating })),
+	vizVideos: () => __TAURI_INVOKE<VideoClip[]>("viz_videos"),
+	vizVideoSetMood: (id: string, mood: string) => typedError<null, AppError>(__TAURI_INVOKE("viz_video_set_mood", { id, mood })),
+	/**  Removes a clip: our copy goes to the Recycle Bin (the dropped original was never touched). */
+	vizVideoRemove: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("viz_video_remove", { id })),
 	/**  The recommendations under a playlist (FR-PLS-003): empty with ∞ off or nothing close. */
 	continuationPreview: (playlist: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("continuation_preview", { playlist })),
 	/**  ∞ on/off: a playlist's own, or (no playlist) the one for albums and other lists. */
@@ -239,6 +246,7 @@ export const events = {
 	playbackSnapshot: makeEvent<PlaybackSnapshot>("playback-snapshot"),
 	playlistsChanged: makeEvent<PlaylistsChanged>("playlists-changed"),
 	queueChanged: makeEvent<QueueChanged>("queue-changed"),
+	videosAdded: makeEvent<VideosAdded>("videos-added"),
 	vizPower: makeEvent<VizPower>("viz-power"),
 };
 
@@ -552,6 +560,11 @@ export type PlaylistsChanged = {
 	id: number,
 };
 
+export type PresetRating = {
+	name: string,
+	rating: number,
+};
+
 /**  The queue changed (order, contents, modes): the panel refetches. */
 export type QueueChanged = {
 	len: number,
@@ -712,6 +725,23 @@ export type VibeHit = {
 	chips: string[],
 	tracks: TrackItem[],
 	query: WaveQueryIpc,
+};
+
+export type VideoClip = {
+	/**  `<hex>.<ext>` — the file name in the backgrounds folder. */
+	id: string,
+	/**  `any | happy | energetic | calm | sad`. */
+	mood: string,
+	/**  The dropped file's name and size: the same file dropped twice is kept once. */
+	source: string,
+	/**  Size in bytes (f64 across IPC: no BigInt). */
+	bytes: number | null,
+};
+
+/**  Clips were added by a drop: their ids, and how many files were refused (type or size). */
+export type VideosAdded = {
+	added: string[],
+	refused: number,
 };
 
 /**  What the «Волны» palette is built from (T4.2, `06` §7.2). */

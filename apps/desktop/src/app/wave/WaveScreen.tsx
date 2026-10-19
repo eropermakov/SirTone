@@ -39,7 +39,9 @@ import { ForAllButton, type Gathering } from "./ForAllButton";
 import { NightVibe } from "./NightVibe";
 import { NoveltySlider } from "./NoveltySlider";
 import { SeasonWaveButton } from "./SeasonWaveButton";
-import { pulseWaves, WavesBackground } from "./WavesBackground";
+import { VizBackground } from "./VizBackground";
+import { VizToolbar } from "./VizToolbar";
+import { pulseWaves } from "./WavesBackground";
 
 const NONE: TrackFeedback = { liked: false, neverTrack: false, neverArtist: false };
 
@@ -241,8 +243,9 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
           onExit={leaveNight}
         />
       ) : (
-        <WavesBackground trackId={id} cover={snap.cover} />
+        <VizBackground trackId={id} cover={snap.cover} />
       )}
+      {!night && <VizToolbar />}
       <Cover
         hash={snap.cover}
         art={snap.title ? snap.art : undefined}

@@ -61,6 +61,7 @@ import { SettingsScreen } from "./shell/SettingsScreen";
 import { type Screen, Sidebar } from "./shell/Sidebar";
 import { usePerformance } from "./shell/usePerformance";
 import { usePlayback } from "./shell/usePlayback";
+import { useVideoDrops } from "./wave/useVideoDrops";
 import { WaveScreen } from "./wave/WaveScreen";
 
 /** One place in the app: a sidebar section, maybe with an album/artist opened. */
@@ -240,6 +241,8 @@ export function App() {
   });
   const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW).matches);
   usePerformance();
+  // «Видео» clips dropped anywhere on the window (T4.4).
+  useVideoDrops();
 
   // Load settings once (and move prototype 0.1 choices over), then follow changes from Rust.
   useEffect(() => {

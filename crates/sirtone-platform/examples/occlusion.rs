@@ -1,6 +1,8 @@
 //! Prints how much of a window is covered and whether it is minimised (T4.6 diagnostics):
 //! `cargo run -p sirtone-platform --example occlusion -- <hwnd>`; lists the windows above it.
 
+#![allow(clippy::print_stdout)] // a console tool: printing is its job
+
 use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::UI::WindowsAndMessaging::{
     GW_HWNDPREV, GWL_EXSTYLE, GetClassNameW, GetWindow, GetWindowLongPtrW, GetWindowRect,

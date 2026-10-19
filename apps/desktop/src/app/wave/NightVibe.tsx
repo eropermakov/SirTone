@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { nightSet } from "@/shared/ipc/viz";
 import { cn } from "@/shared/lib/utils";
 import { WAVES } from "@/shared/viz/palette";
-import { WavesBackground } from "./WavesBackground";
+import { VizBackground } from "./VizBackground";
 
 /**
  * «Ночной вайб» (T4.7, FR-VIZ-009, `06` §7.5): the visualisation on the whole screen — the window
@@ -69,7 +69,7 @@ export function NightVibe({
         !awake && "cursor-none",
       )}
     >
-      <WavesBackground trackId={trackId} cover={cover} scrim={false} />
+      <VizBackground trackId={trackId} cover={cover} scrim={false} />
       <div className="absolute bottom-8 left-8 flex flex-col gap-1 text-text-tertiary">
         <div className="t-body-strong">{title}</div>
         <div className="t-caption">{artists}</div>

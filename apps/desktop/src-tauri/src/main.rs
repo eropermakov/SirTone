@@ -5,6 +5,7 @@
 mod analysis;
 mod artists;
 mod autostart;
+mod backgrounds;
 mod bootstrap;
 mod continuation;
 mod covers_online;
@@ -21,6 +22,7 @@ mod perf;
 mod playback;
 mod playlists;
 mod popularity;
+mod presets;
 mod resolve;
 mod search;
 mod settings_store;
@@ -89,7 +91,21 @@ fn main() {
         .manage(covers_online::CoversOnline::default())
         .manage(viz::Viz::default())
         .manage(night::Night::default())
+        .manage(presets::Presets::open(&data_dir))
         .manage(hotkeys::Hotkeys::default())
+        // «Видео» clips with HTTP ranges (T4.4); off the main thread.
+        .register_asynchronous_uri_scheme_protocol("sirtone-bg", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let path = request.uri().path().to_string();
+            let range = request
+                .headers()
+                .get("range")
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string);
+            std::thread::spawn(move || {
+                responder.respond(backgrounds::protocol(&app, &path, range.as_deref()))
+            });
+        })
         // Covers without IPC (docs/03 §5.6); work off the main thread.
         .register_asynchronous_uri_scheme_protocol("sirtone-cover", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
@@ -114,7 +130,15 @@ fn main() {
             if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event
                 && let Some(lib) = window.try_state::<library::Library>()
             {
-                lib.import_paths(window.app_handle(), paths.clone());
+                // Video clips become «Видео» backgrounds (T4.4); everything else is music.
+                let (videos, music): (Vec<_>, Vec<_>) =
+                    paths.iter().cloned().partition(|p| backgrounds::is_video(p));
+                if !videos.is_empty() {
+                    backgrounds::add_dropped(window.app_handle(), videos);
+                }
+                if !music.is_empty() {
+                    lib.import_paths(window.app_handle(), music);
+                }
             }
         })
         .setup(move |app| {

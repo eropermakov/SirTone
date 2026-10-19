@@ -1,5 +1,13 @@
 import { Channel, isTauri } from "@tauri-apps/api/core";
-import { commands, events, type VizColors, type VizPower } from "./bindings";
+import {
+  commands,
+  events,
+  type PresetRating,
+  type VideoClip,
+  type VideosAdded,
+  type VizColors,
+  type VizPower,
+} from "./bindings";
 
 /**
  * The visualiser feed (T4.1, `04` §9, D-14): 60 frames a second of what is being heard, as raw
@@ -87,3 +95,32 @@ export async function onVizPower(cb: (p: VizPower) => void): Promise<() => void>
 export async function nightSet(on: boolean): Promise<void> {
   if (isTauri()) await commands.nightSet(on);
 }
+
+/** MilkDrop preset ratings (T4.3): ♥ 1, ✕ −1. */
+export async function presetRatings(): Promise<PresetRating[]> {
+  return isTauri() ? commands.vizPresetRatings() : [];
+}
+
+export async function presetRate(name: string, rating: number): Promise<void> {
+  if (isTauri()) await commands.vizPresetRate(name, rating);
+}
+
+/** «Видео» clips (T4.4): the person's own loops in the library's backgrounds folder. */
+export async function videoClips(): Promise<VideoClip[]> {
+  return isTauri() ? commands.vizVideos() : [];
+}
+
+export async function videoSetMood(id: string, mood: string): Promise<void> {
+  if (isTauri()) await commands.vizVideoSetMood(id, mood);
+}
+
+export async function videoRemove(id: string): Promise<void> {
+  if (isTauri()) await commands.vizVideoRemove(id);
+}
+
+export async function onVideosAdded(cb: (e: VideosAdded) => void): Promise<() => void> {
+  return isTauri() ? events.videosAdded.listen((e) => cb(e.payload)) : () => {};
+}
+
+/** The URL `<video>` plays a clip from (HTTP ranges, `backgrounds.rs`). */
+export const videoUrl = (id: string) => `http://sirtone-bg.localhost/${id}`;
