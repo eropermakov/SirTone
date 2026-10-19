@@ -239,7 +239,8 @@ fn mix_track(i: sirtone_library::mixinfo::MixInfo) -> sirtone_playback::automix:
         bpm: i.bpm,
         camelot: i.camelot,
         energy: i.energy,
-        grid: None,
+        head_grid: None,
+        tail_grid: None,
     }
 }
 

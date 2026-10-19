@@ -24,17 +24,16 @@ pub struct MixTrack {
     /// Camelot key, `8A`…; `None` — unknown.
     pub camelot: Option<String>,
     pub energy: Option<f32>,
-    /// Beat grids of the head and the tail windows (T4.9c); `None` until measured.
-    pub grid: Option<BeatGrid>,
+    /// Beat grids of the first and the last 30 s (T4.9c, D-100); `None` until measured.
+    pub head_grid: Option<BeatGrid>,
+    pub tail_grid: Option<BeatGrid>,
 }
 
-/// Beat positions near the joint: the first beat of the head, the beats of the tail (ms), the
-/// tempo, and how steady the grid is (0…1).
-#[derive(Debug, Clone, Default, PartialEq)]
+/// A beat grid over a window: the tempo, one beat (ms in the track), how steady (0…1).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct BeatGrid {
     pub bpm: f32,
-    pub head_first_beat_ms: f32,
-    pub tail_beats_ms: Vec<f32>,
+    pub beat_ms: f64,
     pub stability: f32,
 }
 
@@ -188,13 +187,19 @@ pub struct Plan {
     pub b_start_ms: u64,
     pub a_curve: Curve,
     pub b_curve: Curve,
+    /// How long the overlap sounds (output time). Without a stretch it is `a_stop − a_out`.
+    pub out_ms: u64,
+    /// L3: A's playback rate held after the ramp (input per output; 1 — no stretch) …
+    pub rate: f64,
+    /// … reached from 1 over this long at the start of the overlap.
+    pub ramp_ms: u64,
     /// Why this level (diagnostics, `explain`).
     pub reason: &'static str,
 }
 
 impl Plan {
     pub fn overlap_ms(&self) -> u64 {
-        self.a_stop_ms - self.a_out_ms
+        self.out_ms
     }
 
     fn gapless(a: &MixTrack, reason: &'static str) -> Self {
@@ -205,6 +210,9 @@ impl Plan {
             b_start_ms: 0,
             a_curve: Curve::Keep,
             b_curve: Curve::Keep,
+            out_ms: 0,
+            rate: 1.0,
+            ramp_ms: 0,
             reason,
         }
     }
@@ -288,7 +296,7 @@ fn tempo_ratio(a: f32, b: f32) -> f32 {
 /// Can A and B be beatmatched (`04` §4.3 L3)? Grids steady, tempi within the tolerance, keys
 /// compatible.
 pub fn beatmatch_ok(a: &MixTrack, b: &MixTrack, tolerance: f32, p: &MixParams) -> bool {
-    let (Some(ga), Some(gb)) = (a.grid.as_ref(), b.grid.as_ref()) else {
+    let (Some(ga), Some(gb)) = (a.tail_grid.as_ref(), b.head_grid.as_ref()) else {
         return false;
     };
     if tolerance <= 0.0
@@ -341,6 +349,9 @@ pub fn plan(a: &MixTrack, b: &MixTrack, ctx: MixCtx, cfg: &MixCfg, p: &MixParams
             },
             a_curve: Curve::EqualPower,
             b_curve: Curve::EqualPower,
+            out_ms: ov,
+            rate: 1.0,
+            ramp_ms: 0,
             reason: "mode: crossfade",
         };
     }
@@ -369,6 +380,9 @@ pub fn plan(a: &MixTrack, b: &MixTrack, ctx: MixCtx, cfg: &MixCfg, p: &MixParams
             b_start_ms: b_start,
             a_curve: Curve::Keep,
             b_curve: Curve::Keep,
+            out_ms: 0,
+            rate: 1.0,
+            ramp_ms: 0,
             reason: "silence trimmed",
         };
     }
@@ -382,25 +396,80 @@ pub fn plan(a: &MixTrack, b: &MixTrack, ctx: MixCtx, cfg: &MixCfg, p: &MixParams
     } else {
         Curve::Keep
     };
-    // L3 needs the beat grids (T4.9c): the gate is here, the executor comes with it.
-    let level = if beatmatch_ok(a, b, ip.tempo_tolerance, p) {
-        Level::L3
-    } else {
-        Level::L2
-    };
-    Plan {
-        level,
+    let l2 = Plan {
+        level: Level::L2,
         a_out_ms: a_stop - ov,
         a_stop_ms: a_stop,
         b_start_ms: b_start,
         a_curve,
         b_curve,
-        reason: if level == Level::L3 {
-            "beatmatch"
-        } else {
-            "envelope overlap"
-        },
+        out_ms: ov,
+        rate: 1.0,
+        ramp_ms: 0,
+        reason: "envelope overlap",
+    };
+    if beatmatch_ok(a, b, ip.tempo_tolerance, p)
+        && let Some(l3) = beatmatch(a, b, &l2, p)
+    {
+        return l3;
     }
+    l2
+}
+
+/// A's input consumed after `u` ms of output with the rate ramping 1 → `r` over `ramp`, then
+/// held at `r`.
+fn consumed(u: f64, r: f64, ramp: f64) -> f64 {
+    if u <= ramp {
+        u + (r - 1.0) * u * u / (2.0 * ramp)
+    } else {
+        ramp * (1.0 + r) / 2.0 + (u - ramp) * r
+    }
+}
+
+/// L3 (`04` §4.3, VirtualDJ «tempo» / djay «Sync + Tempo blend»): A, entering on one of its
+/// beats, is pulled to B's tempo over about a bar and held there; the overlap is whole bars of B;
+/// B starts at the point that puts its beats on A's. `None` — it does not fit before A's end.
+fn beatmatch(a: &MixTrack, b: &MixTrack, l2: &Plan, p: &MixParams) -> Option<Plan> {
+    let (ga, gb) = (a.tail_grid?, b.head_grid?);
+    let pb = 60_000.0 / f64::from(gb.bpm);
+    // A's beat period in its own time, at the octave nearest B's.
+    let pa = [1.0, 2.0, 0.5]
+        .map(|f| 60_000.0 / f64::from(ga.bpm) * f)
+        .into_iter()
+        .min_by(|x, y| ((x / pb) - 1.0).abs().total_cmp(&((y / pb) - 1.0).abs()))?;
+    let r = pa / pb;
+    let end = a.audio_end_ms() as f64;
+    let bars = (l2.out_ms as f64 / pb / 4.0).round() as u32;
+    let (lo, hi) = (p.beatmatch.beats_min, p.beatmatch.beats_max);
+    let beats = (bars * 4).clamp(lo, hi);
+    let out = f64::from(beats) * pb;
+    let ramp = (4.0 * pb).min(out / 2.0);
+    // A enters on its last beat that still lets the overlap end with A's sound.
+    let latest = end - consumed(out, r, ramp);
+    let a_out = ga.beat_ms + ((latest - ga.beat_ms) / pa).floor() * pa;
+    if a_out < end / 2.0 {
+        return None;
+    }
+    // The first A beat after the ramp and its output time; B starts so that its beat is there.
+    let m = (consumed(ramp, r, ramp) / pa).ceil();
+    let u_m = ramp + (m * pa - ramp * (1.0 + r) / 2.0) / r;
+    let lead = b.lead_silence_ms.unwrap_or(0) as f64;
+    let mut b_start = (gb.beat_ms - u_m).rem_euclid(pb);
+    while b_start < lead {
+        b_start += pb;
+    }
+    Some(Plan {
+        level: Level::L3,
+        a_out_ms: a_out.round() as u64,
+        a_stop_ms: (a_out + consumed(out, r, ramp)).round() as u64,
+        b_start_ms: b_start.round() as u64,
+        a_curve: Curve::EqualPower,
+        b_curve: Curve::EqualPower,
+        out_ms: out.round() as u64,
+        rate: r,
+        ramp_ms: ramp.round() as u64,
+        reason: "beatmatch",
+    })
 }
 
 #[cfg(test)]
@@ -597,31 +666,34 @@ mod tests {
         let p = params();
         let grid = |bpm: f32, stability: f32| BeatGrid {
             bpm,
-            head_first_beat_ms: 0.0,
-            tail_beats_ms: vec![],
+            beat_ms: 0.0,
             stability,
+        };
+        let set = |t: &mut MixTrack, g: BeatGrid| {
+            t.head_grid = Some(g);
+            t.tail_grid = Some(g);
         };
         let mut a = track(0, 0, 0);
         let mut b = track(0, 0, 0);
-        a.grid = Some(grid(124.0, 0.9));
-        b.grid = Some(grid(128.0, 0.9));
+        set(&mut a, grid(124.0, 0.9));
+        set(&mut b, grid(128.0, 0.9));
         a.camelot = Some("8A".into());
         b.camelot = Some("9A".into());
         let smart = cfg(Mode::Automix(Intensity::Smart));
         assert_eq!(plan(&a, &b, MixCtx::default(), &smart, &p).level, Level::L3);
         // Half tempo counts as the same (×2/÷2).
-        b.grid = Some(grid(64.0, 0.9));
+        set(&mut b, grid(64.0, 0.9));
         assert_eq!(plan(&a, &b, MixCtx::default(), &smart, &p).level, Level::L3);
         // An unsteady grid → L2.
-        b.grid = Some(grid(128.0, 0.5));
+        set(&mut b, grid(128.0, 0.5));
         assert_eq!(plan(&a, &b, MixCtx::default(), &smart, &p).level, Level::L2);
         // Too far apart for «Умно» (6 %), close enough for «Как диджей» (10 %).
-        b.grid = Some(grid(135.0, 0.9));
+        set(&mut b, grid(135.0, 0.9));
         assert_eq!(plan(&a, &b, MixCtx::default(), &smart, &p).level, Level::L2);
         let dj = cfg(Mode::Automix(Intensity::Dj));
         assert_eq!(plan(&a, &b, MixCtx::default(), &dj, &p).level, Level::L3);
         // Clashing keys → L2; «Мягко» never beatmatches.
-        b.grid = Some(grid(128.0, 0.9));
+        set(&mut b, grid(128.0, 0.9));
         b.camelot = Some("3B".into());
         assert_eq!(plan(&a, &b, MixCtx::default(), &smart, &p).level, Level::L2);
         b.camelot = Some("8B".into());
@@ -629,7 +701,75 @@ mod tests {
         let soft = cfg(Mode::Automix(Intensity::Soft));
         assert_ne!(plan(&a, &b, MixCtx::default(), &soft, &p).level, Level::L3);
         // No grid at all (today's analysis) → L2.
-        a.grid = None;
+        a.tail_grid = None;
         assert_eq!(plan(&a, &b, MixCtx::default(), &smart, &p).level, Level::L2);
+    }
+
+    /// L3: after the ramp every A beat (in output time) falls on a B beat; A enters on a beat;
+    /// the overlap is whole bars of B and ends with A's sound.
+    #[test]
+    fn beatmatched_beats_coincide() {
+        let p = params();
+        for (ta, tb, pa_ms, pb_ms) in [
+            (124.0f32, 128.0f32, 37.0, 210.0),
+            (90.0, 92.0, 100.0, 0.0),
+            (174.0, 87.5, 5.0, 300.0),
+        ] {
+            let mut a = track(0, 0, 0);
+            let mut b = track(0, 0, 0);
+            a.tail_grid = Some(BeatGrid {
+                bpm: ta,
+                beat_ms: 150_000.0 + pa_ms,
+                stability: 0.9,
+            });
+            b.head_grid = Some(BeatGrid {
+                bpm: tb,
+                beat_ms: pb_ms,
+                stability: 0.9,
+            });
+            a.camelot = Some("8A".into());
+            b.camelot = Some("8A".into());
+            let pl = plan(
+                &a,
+                &b,
+                MixCtx::default(),
+                &cfg(Mode::Automix(Intensity::Dj)),
+                &p,
+            );
+            assert_eq!(pl.level, Level::L3, "{ta}→{tb}");
+            let pb = 60_000.0 / f64::from(tb);
+            let pa = [1.0, 2.0, 0.5]
+                .map(|f| 60_000.0 / f64::from(ta) * f)
+                .into_iter()
+                .min_by(|x, y| ((x / pb) - 1.0).abs().total_cmp(&((y / pb) - 1.0).abs()))
+                .unwrap();
+            // A enters on its beat.
+            let ph = ((pl.a_out_ms as f64 - (150_000.0 + pa_ms)) / pa)
+                .fract()
+                .abs();
+            assert!(ph.min(1.0 - ph) * pa < 1.0, "entry off the beat");
+            // Whole bars of B.
+            let bars = pl.out_ms as f64 / pb / 4.0;
+            assert!((bars - bars.round()).abs() < 0.01, "{bars}");
+            assert!(pl.a_stop_ms <= 180_000);
+            let r = pl.rate;
+            let ramp = pl.ramp_ms as f64;
+            let mut checked = 0;
+            for m in 1.. {
+                let input = m as f64 * pa;
+                if input <= consumed(ramp, r, ramp) {
+                    continue;
+                }
+                let u = ramp + (input - ramp * (1.0 + r) / 2.0) / r;
+                if u > pl.out_ms as f64 {
+                    break;
+                }
+                let at_b = pl.b_start_ms as f64 + u - pb_ms;
+                let off = (at_b / pb - (at_b / pb).round()).abs() * pb;
+                assert!(off < 2.0, "{ta}→{tb}: beat {m} off by {off:.1} ms");
+                checked += 1;
+            }
+            assert!(checked >= 4, "{checked}");
+        }
     }
 }
