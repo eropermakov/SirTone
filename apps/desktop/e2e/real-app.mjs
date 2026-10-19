@@ -935,11 +935,21 @@ if (existsSync(corpus)) {
   );
   // T4.6: minimised (only this isolated app's window, by its pid) → the feed stops; restored →
   // it runs again.
+  // Restoring does not bring a window to the front (Windows' foreground lock keeps the active
+  // window on top — which the coverage rule then rightly counts): after SW_RESTORE the test
+  // lifts its own window with SetWindowPos TOPMOST → NOTOPMOST, without activating it.
+  const appHwnd = spawnSync("powershell", [
+    "-NoProfile",
+    "-Command",
+    `(Get-Process -Id ${app.pid}).MainWindowHandle`,
+  ])
+    .stdout.toString()
+    .trim();
   const showWindow = (cmd) =>
     spawnSync("powershell", [
       "-NoProfile",
       "-Command",
-      `Add-Type -Name W -Namespace U -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr h, int c);'; [void][U.W]::ShowWindow((Get-Process -Id ${app.pid}).MainWindowHandle, ${cmd})`,
+      `Add-Type -Name W -Namespace U -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr h, int c); [DllImport("user32.dll")] public static extern bool SetWindowPos(System.IntPtr h, System.IntPtr a, int x, int y, int cx, int cy, uint f);'; $h = [System.IntPtr]${appHwnd}; [void][U.W]::ShowWindow($h, ${cmd}); if (${cmd} -eq 9) { [void][U.W]::SetWindowPos($h, [System.IntPtr](-1), 0, 0, 0, 0, 0x13); [void][U.W]::SetWindowPos($h, [System.IntPtr](-2), 0, 0, 0, 0, 0x13) }`,
     ]);
   showWindow(6);
   await sleep(1500);
@@ -955,6 +965,45 @@ if (existsSync(corpus)) {
     "viz: minimised → no frames; restored → frames again (FR-VIZ-008)",
     min1.frames - min0.frames < 5 && res1.frames - res0.frames > 40,
     `minimised ${min1.frames - min0.frames} in 1.5 s, restored ${res1.frames - res0.frames}/s`,
+  );
+  // T4.7 / AT-02: «Ночной вайб» — full screen, the feed moves to it, controls and cursor hide
+  // after 3 s of stillness, Esc leaves and the wave screen gets its feed back.
+  await page.getByRole("button", { name: "Ночной вайб" }).click();
+  const nightEl = page.locator('[data-testid="night-vibe"]');
+  await nightEl.waitFor({ timeout: 5000 });
+  await sleep(1500);
+  const fullOn = await invoke("plugin:window|is_fullscreen", { label: "main" }).catch(() => null);
+  const n0 = await vizRead();
+  await sleep(1000);
+  const n1 = await vizRead();
+  await sleep(2500);
+  const hidden = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="night-vibe"]');
+    const exit = el?.querySelector("button");
+    return {
+      cursor: el?.classList.contains("cursor-none") ?? false,
+      exit: exit ? getComputedStyle(exit).opacity : null,
+    };
+  });
+  if (process.env.SMOKE_SHOTS) {
+    await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "t47-night.png") });
+  }
+  await page.keyboard.press("Escape");
+  await nightEl.waitFor({ state: "detached", timeout: 5000 });
+  await sleep(1500);
+  const fullOff = await invoke("plugin:window|is_fullscreen", { label: "main" }).catch(() => null);
+  const w0 = await vizRead();
+  await sleep(1000);
+  const w1 = await vizRead();
+  check(
+    "night vibe: full screen, frames, UI and cursor hide when still, Esc back with frames",
+    fullOn === true &&
+      n1.frames - n0.frames > 40 &&
+      hidden.cursor &&
+      hidden.exit === "0" &&
+      fullOff === false &&
+      w1.frames - w0.frames > 40,
+    `full ${fullOn}→${fullOff}, ${n1.frames - n0.frames}/s, hidden ${JSON.stringify(hidden)}, after ${w1.frames - w0.frames}/s`,
   );
   await axeScreen("«Моя волна»");
   // T2.20 / P-01 (DESIGN.md §1, `08` §1): event → the frame that shows the change, measured

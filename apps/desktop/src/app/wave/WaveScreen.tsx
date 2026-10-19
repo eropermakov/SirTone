@@ -6,6 +6,7 @@ import {
   HelpCircle,
   ListPlus,
   MicVocal,
+  Moon,
   MoreHorizontal,
   Pencil,
   Shuffle,
@@ -35,6 +36,7 @@ import { Menu, type MenuItem } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
 import { PauseIcon, PlayIcon } from "@/shared/ui/TransportIcons";
 import { ForAllButton, type Gathering } from "./ForAllButton";
+import { NightVibe } from "./NightVibe";
 import { NoveltySlider } from "./NoveltySlider";
 import { SeasonWaveButton } from "./SeasonWaveButton";
 import { pulseWaves, WavesBackground } from "./WavesBackground";
@@ -53,6 +55,8 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
   const id = snap.trackId ?? null;
   const [fb, setFb] = useState<TrackFeedback>(NONE);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [night, setNight] = useState(false);
+  const leaveNight = useCallback(() => setNight(false), []);
   const [card, setCard] = useState<{ id: number; confirmDelete: boolean } | null>(null);
   const closeCard = useCallback(() => setCard(null), []);
   const toPlaylist = useAddToPlaylist();
@@ -227,7 +231,18 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       className="relative flex h-full min-h-0 flex-col items-center justify-center gap-8 overflow-hidden rounded-(--radius-xl) text-text-primary"
     >
       {/* The visualisation is the screen's background (T4.2, DESIGN.md §9: alabaster text). */}
-      <WavesBackground trackId={id} cover={snap.cover} />
+      {/* One visualiser at a time: the night vibe takes the feed while it is open. */}
+      {night ? (
+        <NightVibe
+          trackId={id}
+          cover={snap.cover}
+          title={snap.title}
+          artists={snap.artists}
+          onExit={leaveNight}
+        />
+      ) : (
+        <WavesBackground trackId={id} cover={snap.cover} />
+      )}
       <Cover
         hash={snap.cover}
         art={snap.title ? snap.art : undefined}
@@ -291,6 +306,15 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
           className="flex size-12 items-center justify-center rounded-full text-icon hover:bg-bg-hover"
         >
           <CircleSlash size={24} strokeWidth={1.5} />
+        </button>
+        <button
+          type="button"
+          aria-label={t("wave.night")}
+          title={t("wave.night")}
+          onClick={() => setNight(true)}
+          className="flex size-12 items-center justify-center rounded-full text-icon hover:bg-bg-hover"
+        >
+          <Moon size={24} strokeWidth={1.5} />
         </button>
         <button
           type="button"

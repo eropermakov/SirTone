@@ -59,11 +59,12 @@ export function startViz(onFrame: (f: VizFrame) => void): () => void {
     const f = parseFrame(msg);
     if (f) onFrame(f);
   };
-  void commands.vizStart(ch);
+  // The session number: a stop names it, so a late stop never ends a newer feed.
+  const session = commands.vizStart(ch);
   (window as unknown as { __sirtoneVizStats?: typeof vizStats }).__sirtoneVizStats = vizStats;
   return () => {
     alive = false;
-    void commands.vizStop();
+    void session.then((id) => commands.vizStop(id));
   };
 }
 
@@ -80,4 +81,9 @@ export async function vizColors(
 /** Pause / battery for the visualiser (T4.6): sent by the feed thread when it changes. */
 export async function onVizPower(cb: (p: VizPower) => void): Promise<() => void> {
   return isTauri() ? events.vizPower.listen((e) => cb(e.payload)) : () => {};
+}
+
+/** «Ночной вайб» (T4.7): full screen and the display kept awake while playing. */
+export async function nightSet(on: boolean): Promise<void> {
+  if (isTauri()) await commands.nightSet(on);
 }

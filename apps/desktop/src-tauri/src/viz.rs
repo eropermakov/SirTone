@@ -36,7 +36,9 @@ impl specta::Type for VizFrame {
 
 #[derive(Default)]
 pub struct Viz {
-    running: Mutex<Option<Arc<AtomicBool>>>,
+    /// The running feed: its session number and its stop flag.
+    running: Mutex<Option<(u32, Arc<AtomicBool>)>>,
+    session: std::sync::atomic::AtomicU32,
     /// «Цвет вашей музыки» and when it was worked out (recomputed after `COLLECTION_TTL`).
     collection: Mutex<Option<(Instant, Vec<VizSwatch>)>>,
 }
@@ -70,16 +72,19 @@ fn power_now(app: &AppHandle) -> VizPower {
             battery: false,
         };
     }
-    let hidden = app
-        .get_webview_window("main")
+    let window = app.get_webview_window("main");
+    let hidden = window
+        .as_ref()
         .and_then(|w| w.hwnd().ok())
         .is_some_and(|h| {
             let h = h.0 as isize;
             sirtone_platform::occlusion::minimized(h)
                 || sirtone_platform::occlusion::covered(h) >= COVERED
         });
+    // Our own night vibe is full screen too: only someone else's full screen pauses.
+    let ours = window.is_some_and(|w| w.is_fullscreen().unwrap_or(false));
     VizPower {
-        paused: hidden || sirtone_platform::power::fullscreen_busy(),
+        paused: hidden || (!ours && sirtone_platform::power::fullscreen_busy()),
         battery: sirtone_platform::power::on_battery() && !crate::analysis::battery_ignored(),
     }
 }
@@ -125,9 +130,13 @@ pub struct VizColors {
 }
 
 impl Viz {
-    fn stop(&self) {
+    /// Stops the feed — only session `only` when given: a late stop of a replaced visualiser
+    /// (IPC calls may arrive out of order) must not end its successor's feed.
+    fn stop(&self, only: Option<u32>) {
         if let Ok(mut r) = self.running.lock()
-            && let Some(flag) = r.take()
+            && r.as_ref()
+                .is_some_and(|(id, _)| only.is_none_or(|o| o == *id))
+            && let Some((_, flag)) = r.take()
         {
             flag.store(false, Ordering::Release);
         }
@@ -162,14 +171,16 @@ fn bpm_of(app: &AppHandle, track: Option<u32>) -> f32 {
         .map_or(0.0, |b| b as f32)
 }
 
-/// Starts the feed (one at a time: a new start replaces the old one).
+/// Starts the feed (one at a time: a new start replaces the old one); returns its session for
+/// `viz_stop`.
 #[tauri::command]
 #[specta::specta]
-pub fn viz_start(app: AppHandle, viz: State<'_, Viz>, channel: Channel<VizFrame>) {
-    viz.stop();
+pub fn viz_start(app: AppHandle, viz: State<'_, Viz>, channel: Channel<VizFrame>) -> u32 {
+    viz.stop(None);
+    let id = viz.session.fetch_add(1, Ordering::AcqRel) + 1;
     let flag = Arc::new(AtomicBool::new(true));
     if let Ok(mut r) = viz.running.lock() {
-        *r = Some(flag.clone());
+        *r = Some((id, flag.clone()));
     }
     let mut source = app.state::<Playback>().viz_source();
     let _ = std::thread::Builder::new()
@@ -233,6 +244,7 @@ pub fn viz_start(app: AppHandle, viz: State<'_, Viz>, channel: Channel<VizFrame>
                 }
             }
         });
+    id
 }
 
 /// The colours for the «Волны» palette of a track (T4.2): its vibe, its cover's palette and the
@@ -338,6 +350,6 @@ pub async fn viz_colors(
 /// Stops the feed (the visualiser left the screen or the window is hidden).
 #[tauri::command]
 #[specta::specta]
-pub fn viz_stop(viz: State<'_, Viz>) {
-    viz.stop();
+pub fn viz_stop(viz: State<'_, Viz>, session: u32) {
+    viz.stop(Some(session));
 }

@@ -6,8 +6,8 @@ use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::{
     analysis, artists, autostart, bootstrap, continuation, duplicates, feedback, hotkeys, library,
-    net, perf, playback, playlists, search, settings_store, storage, unknowns, updates, viz, wave,
-    window_chrome,
+    net, night, perf, playback, playlists, search, settings_store, storage, unknowns, updates, viz,
+    wave, window_chrome,
 };
 
 /// Free-form JSON across IPC, exported as TS `unknown`. specta inlines `serde_json::Value`
@@ -47,6 +47,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             viz::viz_start,
             viz::viz_stop,
             viz::viz_colors,
+            night::night_set,
             continuation::continuation_preview,
             continuation::continuation_set,
             continuation::continuation_exclude,

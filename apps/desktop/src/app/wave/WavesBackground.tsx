@@ -34,9 +34,12 @@ export function pulseWaves(kind: "like" | "click"): void {
 export function WavesBackground({
   trackId,
   cover,
+  scrim = true,
 }: {
   trackId: number | null;
   cover: string | null;
+  /** The `artwork-scrim` under readable text; the night vibe shows the animation bare. */
+  scrim?: boolean;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const engine = useRef<WavesEngine | null>(null);
@@ -191,7 +194,7 @@ export function WavesBackground({
           />
         )
       )}
-      <div className="absolute inset-0 bg-(--artwork-scrim)" />
+      {scrim && <div className="absolute inset-0 bg-(--artwork-scrim)" />}
     </div>
   );
 }

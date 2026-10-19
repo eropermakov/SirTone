@@ -27,5 +27,6 @@
     "3": { "fps": 60, "scale": 0.75, "minimal": false },
     "4": { "fps": 60, "scale": 1.0, "minimal": false }
   },
+  "night": { "hide_after_ms": 3000 },
   "fallback": { "blur_px": 100, "drift_s": 25 }
 }

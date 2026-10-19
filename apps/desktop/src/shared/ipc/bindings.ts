@@ -37,15 +37,20 @@ export const commands = {
 	unknownRelease: (track: number) => typedError<null, AppError>(__TAURI_INVOKE("unknown_release", { track })),
 	/**  «Повторить онлайн»: the lookup starts over from the first unknown track now. */
 	unknownRetry: () => __TAURI_INVOKE<boolean>("unknown_retry"),
-	/**  Starts the feed (one at a time: a new start replaces the old one). */
-	vizStart: (channel: Channel<unknown>) => __TAURI_INVOKE<void>("viz_start", { channel }),
+	/**
+	 *  Starts the feed (one at a time: a new start replaces the old one); returns its session for
+	 *  `viz_stop`.
+	 */
+	vizStart: (channel: Channel<unknown>) => __TAURI_INVOKE<number>("viz_start", { channel }),
 	/**  Stops the feed (the visualiser left the screen or the window is hidden). */
-	vizStop: () => __TAURI_INVOKE<void>("viz_stop"),
+	vizStop: (session: number) => __TAURI_INVOKE<void>("viz_stop", { session }),
 	/**
 	 *  The colours for the «Волны» palette of a track (T4.2): its vibe, its cover's palette and the
 	 *  collection colour. Covers are decoded off the IPC thread.
 	 */
 	vizColors: (trackId: number | null, cover: string | null) => typedError<VizColors, AppError>(__TAURI_INVOKE("viz_colors", { trackId, cover })),
+	/**  Enters (`on`) or leaves the night vibe: full screen and the keep-awake thread. */
+	nightSet: (on: boolean) => __TAURI_INVOKE<void>("night_set", { on }),
 	/**  The recommendations under a playlist (FR-PLS-003): empty with ∞ off or nothing close. */
 	continuationPreview: (playlist: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("continuation_preview", { playlist })),
 	/**  ∞ on/off: a playlist's own, or (no playlist) the one for albums and other lists. */

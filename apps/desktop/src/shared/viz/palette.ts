@@ -33,6 +33,7 @@ export type WavesConfig = {
   transition_ms: number;
   jitter_frames: number;
   quality: Record<"1" | "2" | "3" | "4", Quality>;
+  night: { hide_after_ms: number };
   fallback: { blur_px: number; drift_s: number };
 };
 export const WAVES = cfg as unknown as WavesConfig;
