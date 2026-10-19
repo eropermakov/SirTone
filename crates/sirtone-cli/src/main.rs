@@ -74,6 +74,7 @@ fn play(files: &[String], volume: f32) -> ExitCode {
         path: PathBuf::from(&files[0]),
         autoplay: true,
         gain_db: 0.0,
+        fade_ms: None,
     });
     let mut current = 0usize;
     engine.send(EngineCmd::SetNext(

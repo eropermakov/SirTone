@@ -109,6 +109,11 @@ pub struct BeatmatchParams {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct MixNowParams {
+    pub min_lead_ms: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct ManualParams {
     pub fade_out_ms: u64,
     pub fade_in_ms: u64,
@@ -123,12 +128,22 @@ pub struct MixParams {
     pub intensity: std::collections::HashMap<String, IntensityParams>,
     pub beatmatch: BeatmatchParams,
     pub manual: ManualParams,
+    pub mix_now: MixNowParams,
     pub genre_blacklist_words: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl MixParams {
     pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(s)
+    }
+
+    /// The longest overlap a mode allows (crossfade: its length).
+    pub fn max_overlap_ms(&self, mode: Mode) -> Option<u64> {
+        match mode {
+            Mode::Gapless => None,
+            Mode::Crossfade(s) => Some((s.clamp(1.0, 12.0) * 1000.0) as u64),
+            Mode::Automix(i) => self.of(i).map(|p| p.max_ms),
+        }
     }
 
     fn of(&self, i: Intensity) -> Option<&IntensityParams> {

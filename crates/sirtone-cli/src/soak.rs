@@ -115,6 +115,7 @@ pub fn soak(args: &[String]) -> ExitCode {
             path: path(i),
             autoplay: true,
             gain_db: 0.0,
+            fade_ms: None,
         });
         engine.send(EngineCmd::SetNext(Some(EngineNext::gapless(
             path(i + 1),
@@ -288,6 +289,7 @@ pub fn drift(args: &[String]) -> ExitCode {
         path: file,
         autoplay: true,
         gain_db: 0.0,
+        fade_ms: None,
     });
     let start = Instant::now();
     let end = start + Duration::from_secs_f64(minutes * 60.0);

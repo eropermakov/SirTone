@@ -63,6 +63,7 @@ fn render_loop_never_allocates() {
         path: file,
         autoplay: true,
         gain_db: 0.0,
+        fade_ms: None,
     });
     let steps = [
         EngineCmd::Seek(4000),

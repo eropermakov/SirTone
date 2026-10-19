@@ -1,9 +1,10 @@
-import { Infinity as InfinityIcon, Minus, Plus, X } from "lucide-react";
+import { Blend, Infinity as InfinityIcon, Minus, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   EMPTY_QUEUE,
   getQueue,
+  mixNow,
   onQueueChanged,
   type QueueView,
   queueJump,
@@ -54,6 +55,20 @@ export function QueuePanel({ onClose, trackKey }: { onClose: () => void; trackKe
       <div className="flex items-center justify-between">
         <h2 className="t-card-title text-text-primary">{t("queue.title")}</h2>
         <div className="flex items-center gap-1">
+          {q.position + 1 < q.items.length && (
+            <Button
+              variant="icon"
+              label={t("queue.mixNow")}
+              title={t("queue.mixNow")}
+              onClick={() =>
+                void mixNow().then((ok) => {
+                  if (!ok) notify(t("queue.mixNowOff"));
+                })
+              }
+            >
+              <Blend size={20} strokeWidth={1.5} />
+            </Button>
+          )}
           {q.autoplay !== null && (
             <Button
               variant="icon"

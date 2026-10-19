@@ -17,6 +17,11 @@ export const commands = {
 	playbackSetVolume: (volume: number | null) => __TAURI_INVOKE<void>("playback_set_volume", { volume }),
 	playbackNext: () => __TAURI_INVOKE<void>("playback_next"),
 	playbackPrev: () => __TAURI_INVOKE<void>("playback_prev"),
+	/**
+	 *  «Смешать сейчас» (T4.9b): `false` — nothing to mix into (transitions off, no next track,
+	 *  too close to the end).
+	 */
+	playbackMixNow: () => __TAURI_INVOKE<boolean>("playback_mix_now"),
 	/**  Plays library tracks `ids` as one context starting at `start` (double-click in a list). */
 	playTracks: (ids: number[], start: number, context: PlayContext, playlist: number | null) => typedError<null, AppError>(__TAURI_INVOKE("play_tracks", { ids, start, context, playlist })),
 	/**  «Воспроизвести далее» (FR-PLAY-006). */

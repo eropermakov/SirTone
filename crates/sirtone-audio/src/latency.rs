@@ -186,6 +186,7 @@ pub fn measure(file: &Path, runs: usize) -> Result<Latency, AppError> {
             path: file.to_path_buf(),
             autoplay: true,
             gain_db: 0.0,
+            fade_ms: None,
         });
         if let Some(ms) = probe.wait(t0, Duration::from_secs(3)) {
             out.cold_ms.push(ms);
@@ -199,6 +200,7 @@ pub fn measure(file: &Path, runs: usize) -> Result<Latency, AppError> {
             path: file.to_path_buf(),
             autoplay: true,
             gain_db: 0.0,
+            fade_ms: None,
         });
         if let Some(ms) = probe.wait(t0, Duration::from_secs(3)) {
             out.warm_ms.push(ms);

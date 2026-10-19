@@ -56,6 +56,7 @@ fn plays_seeks_pauses_and_ends_on_device() {
         path,
         autoplay: true,
         gain_db: 0.0,
+        fade_ms: None,
     });
 
     // Clock: after ~1.5 s of wall time the position is ~1.5 s (latency-compensated).
@@ -126,11 +127,13 @@ fn broken_file_reports_error_and_engine_survives() {
         path: bad,
         autoplay: true,
         gain_db: 0.0,
+        fade_ms: None,
     });
     engine.send(EngineCmd::Load {
         path: good,
         autoplay: true,
         gain_db: 0.0,
+        fade_ms: None,
     });
     let s = wait_for(&last, Duration::from_secs(3), |s| {
         s.state == PlayState::Playing && s.position_ms > 300
@@ -157,6 +160,7 @@ fn start_with(path: PathBuf) -> (sirtone_audio::EngineHandle, Arc<Mutex<Option<S
         path,
         autoplay: true,
         gain_db: 0.0,
+        fade_ms: None,
     });
     (engine, last)
 }

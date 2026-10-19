@@ -593,6 +593,7 @@ impl Playback {
                     let norm = norm_of(&sink_norm);
                     h.send(EngineCmd::Load {
                         gain_db: norm.gain_db(&next, q.shuffled()),
+                        fade_ms: None,
                         path: next.path,
                         autoplay: true,
                     });
@@ -757,12 +758,77 @@ impl Playback {
 
     /// Starts `item` with its normalization gain.
     fn load(&self, item: QueueItem) {
+        self.load_with(item, None);
+    }
+
+    fn load_with(&self, item: QueueItem, fade_ms: Option<(u32, u32)>) {
         let shuffled = self.queue().shuffled();
         self.engine.send(EngineCmd::Load {
             gain_db: norm_of(&self.norm).gain_db(&item, shuffled),
+            fade_ms,
             path: item.path,
             autoplay: true,
         });
+    }
+
+    /// The manual «Следующий» fade (T4.9b, `04` §4.3): only while transitions are on — in
+    /// «Без переходов» a skip is a clean cut.
+    fn manual_fade(&self) -> Option<(u32, u32)> {
+        let p = mix_params()?;
+        (mix_of(&self.mix).mode != sirtone_playback::automix::Mode::Gapless)
+            .then_some((p.manual.fade_out_ms as u32, p.manual.fade_in_ms as u32))
+    }
+
+    /// «Смешать сейчас» (djay *Mix Now*, `04` §4.3): the next track comes in ≥ 1.5 s from what
+    /// is heard now, over `min(rest, longest overlap)`. `false` — nothing to mix into.
+    pub fn mix_now(&self) -> bool {
+        let cfg = mix_of(&self.mix);
+        let Some(p) = mix_params() else {
+            return false;
+        };
+        let Some(max) = p.max_overlap_ms(cfg.mode) else {
+            return false;
+        };
+        let snap = self.snapshot();
+        let Some(dur) = snap.duration_ms.map(u64::from) else {
+            return false;
+        };
+        let a_out = u64::from(snap.position_ms) + p.mix_now.min_lead_ms;
+        if a_out + 500 >= dur {
+            return false;
+        }
+        let ov = (dur - a_out).min(max);
+        let next = {
+            let q = self.queue();
+            handover(&q).map(|i| (i.clone(), norm_of(&self.norm).gain_db(i, q.shuffled())))
+        };
+        let Some((item, gain_db)) = next else {
+            return false;
+        };
+        let b_start = item
+            .track_id
+            .zip(self.app.get())
+            .and_then(|(id, app)| {
+                app.try_state::<crate::library::Library>()?
+                    .with_read(|c| sirtone_library::mixinfo::of_track(c, i64::from(id)))
+                    .ok()
+                    .flatten()
+            })
+            .and_then(|i| i.lead_silence_ms)
+            .unwrap_or(0);
+        self.engine
+            .send(EngineCmd::SetNext(Some(sirtone_audio::engine::NextTrack {
+                path: item.path,
+                gain_db,
+                mix: Some(sirtone_audio::engine::MixSpec {
+                    a_out_ms: a_out,
+                    a_stop_ms: a_out + ov,
+                    b_start_ms: b_start,
+                    a_fade: true,
+                    b_fade: true,
+                }),
+            })));
+        true
     }
 
     /// The normalization settings or the album context changed (T4.11): new gains for the
@@ -1050,7 +1116,8 @@ impl Playback {
         self.journal.close(EndReason::Skip);
         let step = self.queue().advance();
         if let Step::Play(item) = step {
-            self.load(item);
+            let fade = self.manual_fade();
+            self.load_with(item, fade);
         }
         self.hand_next();
     }
@@ -1294,6 +1361,14 @@ pub fn playback_next(pb: State<'_, Playback>) {
 #[specta::specta]
 pub fn playback_prev(pb: State<'_, Playback>) {
     pb.prev();
+}
+
+/// «Смешать сейчас» (T4.9b): `false` — nothing to mix into (transitions off, no next track,
+/// too close to the end).
+#[tauri::command]
+#[specta::specta]
+pub fn playback_mix_now(pb: State<'_, Playback>) -> bool {
+    pb.mix_now()
 }
 
 /// Puts what the library now says into every queued item but the current one; returns how many

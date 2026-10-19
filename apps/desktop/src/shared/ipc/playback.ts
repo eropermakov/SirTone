@@ -65,6 +65,11 @@ export function next(): void {
   if (isTauri()) void commands.playbackNext();
 }
 
+/** «Смешать сейчас» (T4.9b): `false` — nothing to mix into (transitions off, no next track). */
+export async function mixNow(): Promise<boolean> {
+  return isTauri() ? commands.playbackMixNow() : false;
+}
+
 export function prev(): void {
   if (isTauri()) void commands.playbackPrev();
 }

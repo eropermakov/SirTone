@@ -25,6 +25,9 @@ pub enum EngineCmd {
         autoplay: bool,
         /// Normalization gain, dB (T4.11; 0 — none).
         gain_db: f32,
+        /// A manual «Следующий» with a short fade (T4.9b, `04` §4.3: foobar2000/Rockbox): the
+        /// sounding track fades out over `.0` ms from where it is heard, the new one in over `.1`.
+        fade_ms: Option<(u32, u32)>,
     },
     Play,
     Pause,
@@ -265,6 +268,8 @@ pub(crate) struct Mixing {
     mixed: u64,
     a_fade: bool,
     b_fade: bool,
+    /// B's fade-in length (frames); 0 — the whole overlap.
+    pub(crate) b_in: u64,
     buf: Vec<f32>,
 }
 
@@ -276,6 +281,7 @@ impl Mixing {
             mixed: 0,
             a_fade,
             b_fade,
+            b_in: 0,
             buf: Vec::new(),
         }
     }
@@ -394,9 +400,11 @@ impl Engine {
                 path,
                 autoplay,
                 gain_db,
+                fade_ms,
             } => {
                 self.remember_gain(&path, gain_db);
-                if let Err(e) = self.load(path.clone(), autoplay) {
+                let faded = fade_ms.is_some_and(|f| self.load_faded(&path, f));
+                if !faded && let Err(e) = self.load(path.clone(), autoplay) {
                     (self.events)(EngineEvent::Error {
                         error: e,
                         path: Some(path),
@@ -520,6 +528,61 @@ impl Engine {
             (path.to_path_buf(), sirtone_core::loudness::amplitude(db)),
         );
         self.gains.truncate(8);
+    }
+
+    /// «Следующий» with a fade (T4.9b): the ring is dropped (the new track starts within the
+    /// flush, not after 200 ms of queued sound), the current track is decoded again from the
+    /// point being heard and fades out under the new one. `false` — nothing playing to fade, the
+    /// caller loads plainly.
+    fn load_faded(&mut self, path: &Path, (out_ms, in_ms): (u32, u32)) -> bool {
+        if self.state != PlayState::Playing || self.mixing.is_some() {
+            return false;
+        }
+        let Some(fmt) = self.output.as_ref().map(|(o, _)| o.format) else {
+            return false;
+        };
+        let pos = self.position_ms();
+        let Some(old) = self.deck.take() else {
+            return false;
+        };
+        let rate = u64::from(fmt.rate);
+        let opened = (|| -> Result<(Deck, Deck), AppError> {
+            let mut src = if old.boundaries.is_empty() {
+                old.source
+            } else {
+                open_with_gain(&self.gains, &old.path)?
+            };
+            src.seek(pos)?;
+            let a = new_deck(src, old.path.clone(), fmt, pos * rate / 1000)?;
+            let b = new_deck(
+                open_with_gain(&self.gains, path)?,
+                path.to_path_buf(),
+                fmt,
+                0,
+            )?;
+            Ok((a, b))
+        })();
+        let Ok((mut a, mut b)) = opened else {
+            return false;
+        };
+        self.flush();
+        let now = self.shared.consumed.load(Ordering::Relaxed);
+        let overlap = u64::from(out_ms) * rate / 1000;
+        a.base_consumed = now;
+        a.stop_frame = Some(a.base_frames + overlap);
+        b.base_consumed = now;
+        let mut m = Mixing::new(a, overlap, true, true);
+        m.b_in = u64::from(in_ms) * rate / 1000;
+        self.mixing = Some(m);
+        self.deck = Some(b);
+        self.feeding = None;
+        self.next_mix = None;
+        self.next_path = None;
+        self.next_attached = false;
+        self.next_source = None;
+        self.next_failed = false;
+        self.lost_position = None;
+        true
     }
 
     fn load(&mut self, path: PathBuf, autoplay: bool) -> Result<(), AppError> {
@@ -721,14 +784,7 @@ impl Engine {
                     };
                     a.stop_frame = Some(stop);
                     a.stopped = false;
-                    self.mixing = Some(Mixing {
-                        a,
-                        overlap: stop - at,
-                        mixed: 0,
-                        a_fade: m.a_fade,
-                        b_fade: m.b_fade,
-                        buf: Vec::new(),
-                    });
+                    self.mixing = Some(Mixing::new(a, stop - at, m.a_fade, m.b_fade));
                     self.deck = Some(b);
                     self.next_mix = None;
                     self.next_path = None;
@@ -1045,9 +1101,13 @@ pub(crate) fn mix_fill(
         m.buf.clear();
         m.buf.extend_from_slice(&b.ready[..n * ch]);
         let total = m.overlap.max(1) as f64;
+        let b_total = if m.b_in == 0 { total } else { m.b_in as f64 };
         for f in 0..n {
-            let t = (m.mixed + f as u64) as f64 / total;
-            let (ga, gb) = (curve(t, m.a_fade, true), curve(t, m.b_fade, false));
+            let at = (m.mixed + f as u64) as f64;
+            let (ga, gb) = (
+                curve(at / total, m.a_fade, true),
+                curve(at / b_total, m.b_fade, false),
+            );
             for c in 0..ch {
                 let i = f * ch + c;
                 let a = if a_done { 0.0 } else { m.a.ready[i] };

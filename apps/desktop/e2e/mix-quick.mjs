@@ -110,6 +110,60 @@ try {
   const ev = db(`SELECT track_id, end_reason, played_ms FROM play_event ORDER BY id`);
   const first = ev.find((e) => e.track_id === a.id);
   check("the journal ends A as «mixed out»", first?.end_reason === "mixed_out", JSON.stringify(ev));
+  // T4.9b: the manual «Следующий» — B is current at once, the cut is a short fade (no silence),
+  // and A is a skip.
+  await invoke("play_tracks", {
+    ids: [a.id, b.id],
+    start: 0,
+    context: "collection",
+    playlist: null,
+  });
+  await sleep(1500);
+  const capNext = existsSync(loopback)
+    ? spawn(loopback, ["--capture-pid", String(app.pid), "--seconds", "3"])
+    : null;
+  let capOut = "";
+  capNext?.stdout.on("data", (d) => {
+    capOut += d;
+  });
+  await sleep(700);
+  const t0 = Date.now();
+  await invoke("playback_next", {});
+  let switched = false;
+  while (!switched && Date.now() - t0 < 300) {
+    switched = (await invoke("playback_snapshot", {})).trackId === b.id;
+  }
+  const dt = Date.now() - t0;
+  await new Promise((r) => (capNext ? capNext.on("exit", r) : r()));
+  const mn = capOut.match(/10 ms silent blocks inside signal: (\d+)/);
+  check(
+    "manual next: B at once, a short fade without silence",
+    switched && dt < 150 && (!capNext || (mn && mn[1] === "0")),
+    `${dt} ms, ${mn ? mn[0] : capOut.trim().slice(0, 120)}`,
+  );
+  // «Смешать сейчас» in automix mode: B comes in ~1.5 s later and A is mixed out.
+  await invoke("settings_patch", { patch: { playback: { automix: { mode: "smart" } } } });
+  await invoke("play_tracks", {
+    ids: [a.id, b.id],
+    start: 0,
+    context: "collection",
+    playlist: null,
+  });
+  await sleep(1200);
+  const mixed = await invoke("playback_mix_now", {});
+  await sleep(2500);
+  const afterMix = (await invoke("playback_snapshot", {})).trackId;
+  await invoke("playback_toggle", {});
+  await sleep(1500);
+  const ev2 = db("SELECT track_id, end_reason FROM play_event ORDER BY id");
+  check(
+    "«Смешать сейчас»: B comes in, A is mixed out",
+    mixed === true &&
+      afterMix === b.id &&
+      ev2.at(-1)?.track_id === a.id &&
+      ev2.at(-1)?.end_reason === "mixed_out",
+    `mixed ${mixed}, now ${afterMix}, ${JSON.stringify(ev2.slice(-3))}`,
+  );
 } catch (e) {
   check("run", false, String(e).slice(0, 300));
 }
