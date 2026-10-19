@@ -1,5 +1,5 @@
 import type { VizFrame } from "../ipc/viz";
-import { WAVES, type WavesConfig, type WavesPalette } from "./palette";
+import { blendLook, type Look, WAVES, type WavesConfig } from "./palette";
 
 /**
  * «Волны» (T4.2, FR-VIZ-003/010, `06` §7.1–7.2): a WebGL2 fragment shader — domain warping with
@@ -99,10 +99,9 @@ export class WavesEngine {
   private queue: VizFrame[] = [];
   private frame: VizFrame | null = null;
   private bands: [number, number, number] = [0, 0, 0];
-  private from: WavesPalette | null = null;
-  private to: WavesPalette | null = null;
-  private paletteAt = 0;
-  private speed = WAVES.speed[0];
+  private from: Look | null = null;
+  private to: Look | null = null;
+  private lookAt = 0;
   private lift = { at: -1e9, ms: 0 };
   private lastLift = -1e9;
   private pointers: Pointer[] = [];
@@ -186,26 +185,19 @@ export class WavesEngine {
     this.resize();
   }
 
-  /** The palette and the motion speed (∝ arousal) for the current track; eased over
-   * `transition_ms`. */
-  setVibe(palette: WavesPalette, arousal: number | null): void {
+  /** The look of the current track (T4.5): palette and motion together, eased from what is on
+   * screen over `transition_ms` (≤ 3 s). */
+  setVibe(look: Look): void {
     const now = performance.now();
-    this.from = this.to ? this.current(now) : palette;
-    this.to = palette;
-    this.paletteAt = now;
-    const a = arousal ?? 0.5;
-    this.speed = this.c.speed[0] + (this.c.speed[1] - this.c.speed[0]) * a;
+    this.from = this.to ? this.current(now) : look;
+    this.to = look;
+    this.lookAt = now;
     if (!this.running) this.draw(now);
   }
 
-  private current(now: number): WavesPalette {
-    const to = this.to ?? [];
-    const from = this.from ?? to;
-    const k = Math.min(1, (now - this.paletteAt) / this.c.transition_ms);
-    const e = 0.5 - 0.5 * Math.cos(Math.PI * k);
-    return to.map((c, i) =>
-      c.map((v, j) => (from[i]?.[j] ?? v) + (v - (from[i]?.[j] ?? v)) * e),
-    ) as WavesPalette;
+  private current(now: number): Look | null {
+    if (!this.to) return null;
+    return blendLook(this.from ?? this.to, this.to, (now - this.lookAt) / this.c.transition_ms);
   }
 
   setAudioFrame(f: VizFrame): void {
@@ -303,7 +295,8 @@ export class WavesEngine {
       this.bands[i] = cur + (want - cur) * (want > cur ? s.attack : s.release);
     }
     // Paused: the field keeps drifting, slower.
-    this.time += dt * this.speed * (f?.playing ? 1 : 0.35) * 10;
+    const speed = this.current(now)?.motion.speed ?? this.c.speed[0];
+    this.time += dt * speed * (f?.playing ? 1 : 0.35) * 10;
     this.fpsN += 1;
     if (now - this.fpsT >= 1000) {
       wavesStats.fps = (this.fpsN * 1000) / (now - this.fpsT || 1);
@@ -314,18 +307,23 @@ export class WavesEngine {
 
   private draw(now: number): void {
     const gl = this.gl;
-    if (!gl || !this.prog || !this.to || gl.isContextLost()) return;
+    const look = this.current(now);
+    if (!gl || !this.prog || !look || gl.isContextLost()) return;
     const c = this.c;
+    const m = look.motion;
     const reduced = this.opts.reducedMotion;
     const f = this.frame;
     const beat =
       !reduced && f?.playing && f.bpm > 0 ? Math.exp(-f.beatPhase * c.warp.beat_decay) : 0;
-    const warp = c.warp.base + (reduced ? 0 : this.bands[0] * c.warp.bass + beat * c.warp.beat);
+    const warp =
+      m.warpBase + (reduced ? 0 : this.bands[0] * c.warp.bass + beat * c.warp.beat * m.beatGain);
     const sparkle =
-      this.q.minimal || reduced ? 0 : Math.min(c.sparkle.max, this.bands[2] * c.sparkle.treble);
+      this.q.minimal || reduced
+        ? 0
+        : Math.min(c.sparkle.max, this.bands[2] * c.sparkle.treble * m.sparkleGain);
     const liftK = (now - this.lift.at) / (this.lift.ms || 1);
     const lift = liftK >= 0 && liftK < 1 ? c.pulse.lift * Math.sin(Math.PI * liftK) : 0;
-    const pal = this.current(now);
+    const pal = look.palette;
     const ptr = new Float32Array(32);
     this.pointers = this.pointers.filter((p) => now - p.born < c.pointer.decay_ms);
     this.pointers.forEach((p, i) => {
@@ -339,7 +337,7 @@ export class WavesEngine {
     gl.uniform1f(this.u("u_sparkle"), sparkle);
     gl.uniform1f(this.u("u_density"), c.sparkle.density);
     gl.uniform1f(this.u("u_lift"), lift);
-    gl.uniform1f(this.u("u_grain"), c.grain);
+    gl.uniform1f(this.u("u_grain"), m.grain);
     gl.uniform3fv(this.u("u_c"), pal.flat());
     gl.uniform4fv(this.u("u_ptr"), ptr);
     gl.drawArrays(gl.TRIANGLES, 0, 3);

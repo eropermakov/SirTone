@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getSettings, onSettingsChanged, type SettingsDoc } from "@/shared/ipc/settings";
 import { startViz, vizColors } from "@/shared/ipc/viz";
-import { buildPalette, fallbackColors, type PaletteInput, WAVES } from "@/shared/viz/palette";
+import { fallbackColors, lookOf, type PaletteInput, WAVES } from "@/shared/viz/palette";
 import { WavesEngine, wavesStats } from "@/shared/viz/waves";
 
 type Prefs = { level: number; followAccent: boolean; minimal: boolean };
@@ -102,10 +102,7 @@ export function WavesBackground({
     const now = latest.current;
     e.setQuality({ ...now.quality, minimal: now.minimal });
     if (now.input) {
-      e.setVibe(
-        buildPalette({ ...now.input, minimal: now.minimal }),
-        now.input.colors?.arousal ?? null,
-      );
+      e.setVibe(lookOf({ ...now.input, minimal: now.minimal }));
     }
     (window as unknown as { __sirtoneWaves?: unknown }).__sirtoneWaves = {
       stats: wavesStats,
@@ -154,7 +151,7 @@ export function WavesBackground({
 
   useEffect(() => {
     if (!input) return;
-    engine.current?.setVibe(buildPalette({ ...input, minimal }), input.colors?.arousal ?? null);
+    engine.current?.setVibe(lookOf({ ...input, minimal }));
   }, [input, minimal]);
 
   const colors = input ? fallbackColors(input) : null;

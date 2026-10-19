@@ -713,6 +713,11 @@ export type VizColors = {
 	/**  The track's vibe, 0…1 (`None` — not analysed yet). */
 	valence: number | null,
 	arousal: number | null,
+	/**  The rest of the vibe vector for the motion (T4.5, FR-VIZ-002), 0…1. */
+	energy: number | null,
+	aggression: number | null,
+	danceability: number | null,
+	acousticness: number | null,
 	/**  The cover's dominant colours, the biggest first (empty — no cover). */
 	cover: VizSwatch[],
 	/**  «Цвет вашей музыки» (empty — no covers in the library). */

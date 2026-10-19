@@ -143,6 +143,7 @@ export function SettingsScreen({
       <HotkeysSection />
 
       <WaveLearningSection />
+      <VizSection />
 
       <NeverSection />
 
@@ -641,6 +642,49 @@ export function SeasonSwitch() {
           patchSettings({ appearance: { seasonal_theme: v } }).catch(() => setOn(!v));
         }}
       />
+    </div>
+  );
+}
+
+/** «Визуализация» (FR-VIZ-006/010): blend with the accent, the minimalist wave screen. */
+function VizSection() {
+  const { t } = useTranslation("shell");
+  const [viz, setViz] = useState({ follow_theme_accent: true, minimal: false });
+  useEffect(() => {
+    getSettings().then((s) => {
+      const v = s.viz as { follow_theme_accent?: boolean; minimal?: boolean } | undefined;
+      setViz({
+        follow_theme_accent: v?.follow_theme_accent ?? true,
+        minimal: v?.minimal ?? false,
+      });
+    });
+  }, []);
+  const toggle = (key: "follow_theme_accent" | "minimal", v: boolean) => {
+    setViz((cur) => ({ ...cur, [key]: v }));
+    patchSettings({ viz: { [key]: v } }).catch(() => setViz((cur) => ({ ...cur, [key]: !v })));
+  };
+  const rows = [
+    {
+      key: "follow_theme_accent",
+      label: "settingsViz.followAccent",
+      hint: "settingsViz.followAccentHint",
+    },
+    { key: "minimal", label: "settingsViz.minimal", hint: "settingsViz.minimalHint" },
+  ] as const;
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsViz.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        {rows.map((r) => (
+          <div key={r.key} className="flex items-center gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="t-body text-text-primary">{t(r.label)}</div>
+              <div className="t-caption text-text-secondary">{t(r.hint)}</div>
+            </div>
+            <Switch checked={viz[r.key]} label={t(r.label)} onChange={(v) => toggle(r.key, v)} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

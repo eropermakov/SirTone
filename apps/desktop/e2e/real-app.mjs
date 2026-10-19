@@ -912,7 +912,10 @@ if (existsSync(corpus)) {
   const vizCols = await invoke("viz_colors", { trackId: vizSnap.trackId, cover: vizSnap.cover });
   check(
     "viz: palette from the cover and the collection",
-    (!vizSnap.cover || vizCols.cover.length > 0) && vizCols.collection.length > 0,
+    (!vizSnap.cover || vizCols.cover.length > 0) &&
+      vizCols.collection.length > 0 &&
+      "energy" in vizCols &&
+      "acousticness" in vizCols,
     `cover ${vizCols.cover.length}, collection ${vizCols.collection.length}`,
   );
   if (process.env.SMOKE_SHOTS) {

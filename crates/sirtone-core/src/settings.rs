@@ -599,6 +599,11 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
             "playback.volume must be 0..=1".into(),
         ));
     }
+    if !["waves", "milkdrop", "video"].contains(&s.viz.mode.as_str()) {
+        return Err(SettingsError::Invalid(
+            "viz.mode must be waves, milkdrop or video".into(),
+        ));
+    }
     if s.wave.novelty > 100 {
         return Err(SettingsError::Invalid(
             "wave.novelty must be 0..=100".into(),

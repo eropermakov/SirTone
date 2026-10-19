@@ -1,6 +1,6 @@
+import cfg from "../../../../../assets/viz/waves.json";
 import type { VizColors, VizSwatch } from "../ipc/bindings";
 import { hexToOklch, hexToRgb, type Oklch, oklchToHex, rgbToHex } from "../lib/color";
-import cfg from "../../../../../assets/viz/waves.json";
 
 /**
  * The «Волны» palette (T4.2, FR-VIZ-003/006, `06` §7.2): the track's colour from its vibe in
@@ -17,13 +17,20 @@ export type WavesConfig = {
   lightness: Range;
   mix: { collection: number; accent: number; cover: number };
   speed: Range;
-  warp: { base: number; bass: number; beat: number; beat_decay: number };
+  warp: { bass: number; beat: number; beat_decay: number };
   sparkle: { treble: number; max: number; density: number };
   pulse: { like_ms: number; click_ms: number; lift: number; min_gap_ms: number };
   pointer: { radius: number; decay_ms: number; strength: number; max: number; move_gap_ms: number };
+  motion: {
+    speed_w: { arousal: number; energy: number };
+    warp_base: Range;
+    warp_w: { energy: number; aggression: number };
+    beat_gain: Range;
+    sparkle_gain: Range;
+    grain: Range;
+  };
   smoothing: { attack: number; release: number };
   transition_ms: number;
-  grain: number;
   jitter_frames: number;
   quality: Record<"1" | "2" | "3" | "4", Quality>;
   fallback: { blur_px: number; drift_s: number };
@@ -128,4 +135,61 @@ export function fallbackColors(p: PaletteInput, c: WavesConfig = WAVES): string[
   const pal = buildPalette({ ...p, minimal: false }, c);
   const hex = ([r, g, b]: [number, number, number]) => rgbToHex({ r, g, b });
   return [hex(pal[0]), hex(pal[2]), hex(pal[3])];
+}
+
+/** How the field moves for a track (T4.5, FR-VIZ-002): a continuous map of the vibe vector. */
+export type Motion = {
+  speed: number;
+  warpBase: number;
+  beatGain: number;
+  sparkleGain: number;
+  grain: number;
+};
+
+/** Palette + motion: what a track looks like; eased as one on a track change. */
+export type Look = { palette: WavesPalette; motion: Motion };
+
+type VibeVector = Pick<
+  VizColors,
+  "arousal" | "energy" | "aggression" | "danceability" | "acousticness"
+>;
+
+/** Unknown features (not analysed) sit in the middle. */
+export function motionOf(v: Partial<VibeVector> | null, c: WavesConfig = WAVES): Motion {
+  const f = (x: number | null | undefined) => clamp01(x ?? 0.5);
+  const m = c.motion;
+  const at = (r: Range, t: number) => lerp(r[0], r[1], clamp01(t));
+  const sw = m.speed_w.arousal + m.speed_w.energy || 1;
+  const ww = m.warp_w.energy + m.warp_w.aggression || 1;
+  return {
+    speed: at(c.speed, (f(v?.arousal) * m.speed_w.arousal + f(v?.energy) * m.speed_w.energy) / sw),
+    warpBase: at(
+      m.warp_base,
+      (f(v?.energy) * m.warp_w.energy + f(v?.aggression) * m.warp_w.aggression) / ww,
+    ),
+    beatGain: at(m.beat_gain, f(v?.danceability)),
+    sparkleGain: at(m.sparkle_gain, 1 - f(v?.acousticness)),
+    grain: at(m.grain, f(v?.acousticness)),
+  };
+}
+
+/** The look `k` (0…1 of the transition) of the way from `a` to `b`, cosine-eased (Butterchurn's
+ * blend, `01a` §B.2). */
+export function blendLook(a: Look, b: Look, k: number): Look {
+  if (k >= 1) return b;
+  const e = 0.5 - 0.5 * Math.cos(Math.PI * clamp01(k));
+  const mix = (x: number, y: number) => x + (y - x) * e;
+  const palette = b.palette.map((col, i) =>
+    col.map((v, j) => mix(a.palette[i]?.[j] ?? v, v)),
+  ) as WavesPalette;
+  const m = {} as Motion;
+  for (const key of Object.keys(b.motion) as (keyof Motion)[]) {
+    m[key] = mix(a.motion[key], b.motion[key]);
+  }
+  return { palette, motion: m };
+}
+
+/** The look of a track from what `viz_colors` returned. */
+export function lookOf(p: PaletteInput, c: WavesConfig = WAVES): Look {
+  return { palette: buildPalette(p, c), motion: motionOf(p.colors, c) };
 }

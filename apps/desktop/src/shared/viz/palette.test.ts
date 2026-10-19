@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPalette, mixOklab, vibeColor, WAVES } from "./palette";
+import { blendLook, buildPalette, lookOf, mixOklab, motionOf, vibeColor, WAVES } from "./palette";
 
 describe("waves palette (T4.2, 06 §7.2)", () => {
   it("puts the vibe corners on their hues", () => {
@@ -29,6 +29,10 @@ describe("waves palette (T4.2, 06 §7.2)", () => {
     const colors = {
       valence: 0.2,
       arousal: 0.3,
+      energy: null,
+      aggression: null,
+      danceability: null,
+      acousticness: null,
       cover: [{ l: 0.6, c: 0.15, h: 30, w: 0.6 }],
       collection: [{ l: 0.5, c: 0.1, h: 200, w: 1 }],
     };
@@ -45,5 +49,65 @@ describe("waves palette (T4.2, 06 §7.2)", () => {
     expect(
       buildPalette({ colors: null, accent: "#aacc00", followAccent: true, minimal: false }),
     ).toHaveLength(4);
+  });
+
+  it("moves a sad track slowly and an energetic one fast (T4.5, FR-VIZ-002)", () => {
+    const sad = motionOf({
+      arousal: 0.1,
+      energy: 0.15,
+      aggression: 0.05,
+      danceability: 0.2,
+      acousticness: 0.8,
+    });
+    const hot = motionOf({
+      arousal: 0.9,
+      energy: 0.9,
+      aggression: 0.6,
+      danceability: 0.85,
+      acousticness: 0.1,
+    });
+    expect(hot.speed).toBeGreaterThan(sad.speed * 2);
+    expect(hot.warpBase).toBeGreaterThan(sad.warpBase);
+    expect(hot.beatGain).toBeGreaterThan(sad.beatGain);
+    expect(hot.sparkleGain).toBeGreaterThan(sad.sparkleGain);
+    expect(sad.grain).toBeGreaterThan(hot.grain);
+    // Continuous: a small step in the vibe is a small step in the motion.
+    const a = motionOf({ arousal: 0.5, energy: 0.5 });
+    const b = motionOf({ arousal: 0.51, energy: 0.5 });
+    expect(Math.abs(b.speed - a.speed)).toBeLessThan(0.01 * (WAVES.speed[1] - WAVES.speed[0]));
+    // Not analysed: the middle.
+    expect(motionOf(null).speed).toBeCloseTo((WAVES.speed[0] + WAVES.speed[1]) / 2);
+  });
+
+  it("a sad → energetic change completes within 3 s (T4.5 acceptance)", () => {
+    expect(WAVES.transition_ms).toBeLessThanOrEqual(3000);
+    const input = (valence: number, arousal: number) => ({
+      colors: {
+        valence,
+        arousal,
+        energy: arousal,
+        aggression: 0.2,
+        danceability: arousal,
+        acousticness: 1 - arousal,
+        cover: [],
+        collection: [],
+      },
+      accent: "#aacc00",
+      followAccent: false,
+      minimal: false,
+    });
+    const sad = lookOf(input(0.1, 0.1));
+    const hot = lookOf(input(0.9, 0.9));
+    // Halfway — in between; at the end of the transition — the target exactly.
+    const mid = blendLook(sad, hot, 0.5);
+    expect(mid.motion.speed).toBeGreaterThan(sad.motion.speed);
+    expect(mid.motion.speed).toBeLessThan(hot.motion.speed);
+    const end = blendLook(sad, hot, WAVES.transition_ms / WAVES.transition_ms);
+    expect(end).toEqual(hot);
+    // Smooth start: barely moved after the first frame.
+    const first = blendLook(sad, hot, 16 / WAVES.transition_ms);
+    expect(Math.abs(first.motion.speed - sad.motion.speed)).toBeLessThan(
+      0.01 * (hot.motion.speed - sad.motion.speed),
+    );
   });
 });

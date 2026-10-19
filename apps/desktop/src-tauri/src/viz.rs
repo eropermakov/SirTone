@@ -69,6 +69,11 @@ pub struct VizColors {
     /// The track's vibe, 0…1 (`None` — not analysed yet).
     pub valence: Option<f64>,
     pub arousal: Option<f64>,
+    /// The rest of the vibe vector for the motion (T4.5, FR-VIZ-002), 0…1.
+    pub energy: Option<f64>,
+    pub aggression: Option<f64>,
+    pub danceability: Option<f64>,
+    pub acousticness: Option<f64>,
     /// The cover's dominant colours, the biggest first (empty — no cover).
     pub cover: Vec<VizSwatch>,
     /// «Цвет вашей музыки» (empty — no covers in the library).
@@ -180,22 +185,41 @@ pub async fn viz_colors(
 ) -> Result<VizColors, sirtone_core::error::AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         let lib = app.state::<Library>();
-        let (valence, arousal) = track_id
+        let v: [Option<f64>; 6] = track_id
             .and_then(|t| {
                 lib.with_read(|c| {
                     Ok(c.query_row(
-                        "SELECT valence, arousal FROM track WHERE id = ?1",
+                        "SELECT valence, arousal, energy, aggression, danceability, acousticness
+                           FROM track WHERE id = ?1",
                         [t],
-                        |r| Ok((r.get::<_, Option<f64>>(0)?, r.get::<_, Option<f64>>(1)?)),
+                        |r| {
+                            let mut v = [None; 6];
+                            for (i, x) in v.iter_mut().enumerate() {
+                                *x = r.get::<_, Option<f64>>(i)?;
+                            }
+                            Ok(v)
+                        },
                     )?)
                 })
                 .ok()
             })
-            .unwrap_or((None, None));
+            .unwrap_or([None; 6]);
+        let [
+            valence,
+            arousal,
+            energy,
+            aggression,
+            danceability,
+            acousticness,
+        ] = v;
         let Some(root) = lib.root() else {
             return VizColors {
                 valence,
                 arousal,
+                energy,
+                aggression,
+                danceability,
+                acousticness,
                 cover: Vec::new(),
                 collection: Vec::new(),
             };
@@ -236,6 +260,10 @@ pub async fn viz_colors(
         VizColors {
             valence,
             arousal,
+            energy,
+            aggression,
+            danceability,
+            acousticness,
             cover,
             collection,
         }

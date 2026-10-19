@@ -26,6 +26,7 @@ export type SettingsPatch = {
   wave?: { learning?: boolean; novelty?: number };
   library?: { organize_external?: "suggest" | "auto" | "never" };
   network?: { offline_mode?: boolean };
+  viz?: { mode?: "waves" | "milkdrop" | "video"; follow_theme_accent?: boolean; minimal?: boolean };
 };
 
 const WEB_KEY = "sirtone.web.settings";
