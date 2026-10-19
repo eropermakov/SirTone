@@ -60,6 +60,44 @@ pub struct PlaybackSnapshot {
     pub duration_ms: Option<u32>,
     /// Slider value 0…1.
     pub volume: f32,
+    /// The signal path indicator (T4.13, FR-PLAY-002); `None` — nothing loaded.
+    pub signal: Option<SignalInfo>,
+}
+
+/// «Bit-perfect» / «Ресемплинг 44,1 → 48» / «DSP» (`04` §8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SignalInfo {
+    /// `bitperfect` — the device gets the file's samples unchanged; `resampled` — only the rate
+    /// or channels change; `dsp` — EQ, normalization or the limiter touch the samples (or the
+    /// volume is below 100 %).
+    pub kind: SignalKind,
+    pub source_rate: u32,
+    pub device_rate: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+pub enum SignalKind {
+    Bitperfect,
+    Resampled,
+    Dsp,
+}
+
+fn signal_of(s: &sirtone_audio::engine::Snapshot) -> Option<SignalInfo> {
+    let p = s.signal?;
+    let kind = if p.dsp || s.volume < 1.0 {
+        SignalKind::Dsp
+    } else if p.source_rate != p.device_rate || p.source_channels != p.device_channels {
+        SignalKind::Resampled
+    } else {
+        SignalKind::Bitperfect
+    };
+    Some(SignalInfo {
+        kind,
+        source_rate: p.source_rate,
+        device_rate: p.device_rate,
+    })
 }
 
 /// A track or device error; the UI shows `errors.<code>` in a toast (DESIGN.md §9).
@@ -118,7 +156,8 @@ impl Norm {
             Some(a) if self.album && item.source == PlaySource::Album && !shuffled => a,
             _ => item.loud.track,
         };
-        sirtone_core::loudness::gain_db(self.target, l)
+        // The limiter runs whenever normalization is on (`limiter_wanted`).
+        sirtone_core::loudness::gain_db_limited(self.target, l, true)
     }
 }
 
@@ -137,6 +176,11 @@ pub fn eq_from_settings(doc: &serde_json::Value) -> sirtone_audio::eq::EqParams 
             })
             .unwrap_or_else(|| vec![0.0; 10]),
     }
+}
+
+/// The limiter (T4.13) runs while anything may raise the level: normalization or the EQ.
+fn limiter_wanted(doc: &serde_json::Value) -> bool {
+    Norm::from_settings(doc).enabled || eq_from_settings(doc).enabled
 }
 
 fn norm_of(m: &Mutex<Norm>) -> Norm {
@@ -337,6 +381,7 @@ fn empty_snapshot() -> PlaybackSnapshot {
         position_ms: 0,
         duration_ms: None,
         volume: 1.0,
+        signal: None,
     }
 }
 
@@ -480,6 +525,7 @@ impl Playback {
                     position_ms: u32::try_from(s.position_ms).unwrap_or(u32::MAX),
                     duration_ms: s.duration_ms.map(|d| u32::try_from(d).unwrap_or(u32::MAX)),
                     volume: s.volume,
+                    signal: signal_of(&s),
                 };
                 if let Ok(mut l) = sink_last.lock() {
                     if *l == snap {
@@ -520,6 +566,7 @@ impl Playback {
             .unwrap_or(true);
         engine.send(EngineCmd::SetPauseOnDeviceLoss(pause_on_loss));
         engine.send(EngineCmd::SetEq(eq_from_settings(&settings.get())));
+        engine.send(EngineCmd::SetLimiter(limiter_wanted(&settings.get())));
         let _ = handle.set(engine.clone());
         Ok(Self {
             engine,
@@ -608,8 +655,10 @@ impl Playback {
                 .collect()
         };
         self.engine.send(EngineCmd::SetGain(gains));
+        let doc = self.settings.get();
+        self.engine.send(EngineCmd::SetEq(eq_from_settings(&doc)));
         self.engine
-            .send(EngineCmd::SetEq(eq_from_settings(&self.settings.get())));
+            .send(EngineCmd::SetLimiter(limiter_wanted(&doc)));
     }
 
     /// After a queue edit: the engine gets the new «next», the player bar its flags, the panel

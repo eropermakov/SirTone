@@ -9,6 +9,7 @@ pub mod engine;
 pub mod eq;
 pub mod gapless;
 pub mod latency;
+pub mod limiter;
 pub mod mf;
 pub mod output;
 pub mod pcm;

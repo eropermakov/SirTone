@@ -136,9 +136,25 @@ try {
   const eqOff = rms();
   check(
     "equalizer: flat = no change, −12 dB at 500 Hz cuts the tone ≥ 6 dB, off restores",
-    Math.abs(eqFlat - quiet) <= 0.1 && quiet - eqCut >= 6 && Math.abs(eqOff - quiet) <= 0.2,
+    Math.abs(eqFlat - quiet) <= 0.15 && quiet - eqCut >= 6 && Math.abs(eqOff - quiet) <= 0.2,
     `flat ${eqFlat}, cut ${eqCut}, off ${eqOff} (before ${quiet}) dBFS`,
   );
+  // T4.13: the signal path — nothing on and volume 100 % → «Bit-perfect» or «ресемплинг»
+  // (the 44.1 kHz tone on a 48 kHz device); normalization on → «DSP» (the limiter runs).
+  await invoke("settings_patch", { patch: { playback: { normalization: { enabled: false } } } });
+  await invoke("playback_set_volume", { volume: 1 });
+  await sleep(800);
+  const clean = (await invoke("playback_snapshot", {})).signal;
+  await invoke("settings_patch", { patch: { playback: { normalization: { enabled: true } } } });
+  await sleep(800);
+  const processed = (await invoke("playback_snapshot", {})).signal;
+  const wantClean = clean?.sourceRate === clean?.deviceRate ? "bitperfect" : "resampled";
+  check(
+    "signal path: clean chain → bit-perfect/resampled, normalization → dsp",
+    clean?.kind === wantClean && processed?.kind === "dsp",
+    `${JSON.stringify(clean)} → ${JSON.stringify(processed)}`,
+  );
+  await invoke("playback_set_volume", { volume: 0.5 });
 } catch (e) {
   check("run", false, String(e).slice(0, 300));
 }

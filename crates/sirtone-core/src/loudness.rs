@@ -2,9 +2,9 @@
 //! album gain, ReplayGain 2.0 / R128 tags, EBU R128 measurement). Pure: the player gives the
 //! numbers it knows, this decides the gain.
 //!
-//! Safety first while there is no limiter (T4.13): never boost what cannot be bounded — unknown
-//! loudness → 0 dB; known loudness with unknown peak → cuts only; the peak cap `−1 dBTP − peak`
-//! holds at every target, «Громко» included.
+//! Never boost what cannot be bounded: unknown loudness → 0 dB; known loudness with unknown peak
+//! → cuts only; the peak cap `−1 dBTP − peak` holds — except in «Громко» with the limiter
+//! (T4.13) behind it, as `04` §5 allows ([`gain_db_limited`]).
 
 /// What is known about a track's (or an album's) loudness.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -37,6 +37,18 @@ pub fn gain_db(target: f32, l: Loudness) -> f32 {
     }
     // Never more cut than the clamp allows (a peak above 0 dBFS must not push it further).
     g.max(-MAX_CUT_DB)
+}
+
+/// [`gain_db`] with a limiter behind it (T4.13, `04` §5): «Громко» (−11) may then boost past
+/// the peak cap — the limiter keeps the peaks at −1 dBFS; the other targets keep the cap.
+pub fn gain_db_limited(target: f32, l: Loudness, limiter: bool) -> f32 {
+    if !(limiter && target >= TARGETS[2]) {
+        return gain_db(target, l);
+    }
+    match l.lufs.filter(|v| v.is_finite()) {
+        Some(lufs) => (target - lufs).clamp(-MAX_CUT_DB, MAX_BOOST_DB),
+        None => 0.0,
+    }
 }
 
 /// dB → linear amplitude.
@@ -118,6 +130,18 @@ mod tests {
                 "{target} {lufs} {peak}: {g} ≠ {want}"
             );
         }
+    }
+
+    #[test]
+    fn loud_with_the_limiter_passes_the_peak_cap() {
+        // «Громко»: −16 LUFS, peak −1.5 → +5 (the limiter holds the peaks), not +0.5.
+        assert!((gain_db_limited(-11.0, l(-16.0, -1.5), true) - 5.0).abs() < 1e-4);
+        assert!((gain_db_limited(-11.0, l(-16.0, -1.5), false) - 0.5).abs() < 1e-4);
+        // «Обычно» keeps the cap even with the limiter.
+        assert!((gain_db_limited(-14.0, l(-18.0, -2.0), true) - 1.0).abs() < 1e-4);
+        // Still within +6 and nothing for the unknown.
+        assert!((gain_db_limited(-11.0, l(-30.0, -20.0), true) - 6.0).abs() < 1e-4);
+        assert_eq!(gain_db_limited(-11.0, Loudness::default(), true), 0.0);
     }
 
     #[test]

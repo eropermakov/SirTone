@@ -41,6 +41,9 @@ pub enum EngineCmd {
     SetGain(Vec<(PathBuf, f32)>),
     /// Equalizer settings (T4.12); glides over 20 ms, off is a true bypass.
     SetEq(crate::eq::EqParams),
+    /// The limiter (T4.13): on while anything may raise the level (normalization, EQ). Settings
+    /// decide it, not each track — its 1.5 ms delay must not come and go at gapless joints.
+    SetLimiter(bool),
     /// FR-PLAY-012: pause when the output device disappears (default on), else follow the new default.
     SetPauseOnDeviceLoss(bool),
     /// From the device watcher: the system default output changed.
@@ -68,6 +71,19 @@ pub struct Snapshot {
     pub underruns: u64,
     /// Endpoint id of the current output device.
     pub device: Option<String>,
+    /// What the sound goes through (T4.13, FR-PLAY-002): rates, channels, DSP.
+    pub signal: Option<SignalPath>,
+}
+
+/// The signal path for the «Bit-perfect / Ресемплинг / DSP» indicator (`04` §8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SignalPath {
+    pub source_rate: u32,
+    pub source_channels: usize,
+    pub device_rate: u32,
+    pub device_channels: usize,
+    /// EQ, normalization gain or the limiter touch the samples.
+    pub dsp: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -189,9 +205,26 @@ struct Engine {
     logged_underruns: u64,
     /// Normalization gains (linear) by file, latest first: every source opened gets its own.
     gains: Vec<(PathBuf, f32)>,
-    /// The equalizer (T4.12) for the current device format, and its settings.
-    eq: Option<((u32, usize), crate::eq::Eq)>,
+    /// The DSP chain (EQ T4.12, limiter T4.13) for the current device format, and its settings.
+    eq: Option<((u32, usize), Chain)>,
     eq_params: crate::eq::EqParams,
+    limiter_on: bool,
+}
+
+/// What runs on the engine thread after the resampler, before the ring.
+pub(crate) struct Chain {
+    eq: crate::eq::Eq,
+    limiter: crate::limiter::Limiter,
+    limiter_on: bool,
+}
+
+impl Chain {
+    pub(crate) fn process(&mut self, buf: &mut [f32]) {
+        self.eq.process(buf);
+        if self.limiter_on {
+            self.limiter.process(buf);
+        }
+    }
 }
 
 /// A live gain change is ramped over this long (no click).
@@ -220,6 +253,7 @@ impl Engine {
             gains: Vec::new(),
             eq: None,
             eq_params: crate::eq::EqParams::default(),
+            limiter_on: false,
         }
     }
 
@@ -343,11 +377,19 @@ impl Engine {
                 return;
             }
             EngineCmd::SetEq(p) => {
-                if let Some((_, eq)) = self.eq.as_mut() {
-                    eq.set(&p);
+                if let Some((_, c)) = self.eq.as_mut() {
+                    c.eq.set(&p);
                 }
                 self.eq_params = p;
-                return;
+            }
+            EngineCmd::SetLimiter(on) => {
+                if let Some((_, c)) = self.eq.as_mut()
+                    && c.limiter_on != on
+                {
+                    c.limiter.reset();
+                    c.limiter_on = on;
+                }
+                self.limiter_on = on;
             }
             EngineCmd::SetPauseOnDeviceLoss(on) => {
                 self.pause_on_device_loss = on;
@@ -467,6 +509,10 @@ impl Engine {
 
     /// Drops everything queued in the ring (render thread acknowledges within one period).
     fn flush(&mut self) {
+        // Nothing of the old sound may come out of the limiter's delay line.
+        if let Some((_, c)) = self.eq.as_mut() {
+            c.limiter.reset();
+        }
         // An empty ring right after a flush is intended, not an underrun; `pump` re-arms.
         self.shared.starving_ok.store(true, Ordering::Relaxed);
         self.flush_seq += 1;
@@ -497,7 +543,12 @@ impl Engine {
         if self.eq.as_ref().is_none_or(|(k, _)| *k != key) {
             let mut eq = crate::eq::Eq::new(key.0, key.1);
             eq.set(&self.eq_params);
-            self.eq = Some((key, eq));
+            let chain = Chain {
+                eq,
+                limiter: crate::limiter::Limiter::new(key.0, key.1),
+                limiter_on: self.limiter_on,
+            };
+            self.eq = Some((key, chain));
         }
         if !self.next_attached
             && !self.next_failed
@@ -717,6 +768,16 @@ impl Engine {
             volume: self.volume,
             underruns: self.shared.underruns.load(Ordering::Relaxed),
             device: self.output.as_ref().map(|(o, _)| o.device_id.clone()),
+            signal: match (self.deck.as_ref(), self.output.as_ref()) {
+                (Some(d), Some((o, _))) => Some(SignalPath {
+                    source_rate: d.source.rate,
+                    source_channels: d.source.channels,
+                    device_rate: o.format.rate,
+                    device_channels: o.format.channels,
+                    dsp: self.limiter_on || self.eq_params.enabled || d.source.gain_db() != 0.0,
+                }),
+                _ => None,
+            },
         };
         (self.events)(EngineEvent::Snapshot(snap));
     }
@@ -729,7 +790,7 @@ pub(crate) fn fill(
     prod: &mut rtrb::Producer<f32>,
     shared: &Shared,
     playing: bool,
-    mut eq: Option<&mut crate::eq::Eq>,
+    mut eq: Option<&mut Chain>,
 ) -> Result<(), AppError> {
     let ch = fmt.channels;
     while !deck.eof {
@@ -808,7 +869,7 @@ pub(crate) fn fill(
         deck.skip_out -= start;
         let allowed = expected.saturating_sub(deck.pushed) as usize;
         let end = produced.min(start + allowed);
-        // The equalizer (T4.12) at the device rate, before the ring.
+        // The DSP chain (EQ, limiter) at the device rate, before the ring.
         if let Some(e) = eq.as_deref_mut() {
             e.process(&mut deck.out_buf[start * ch..end * ch]);
         }

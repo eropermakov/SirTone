@@ -32,6 +32,7 @@ export const EMPTY_SNAPSHOT: PlaybackSnapshot = {
   positionMs: 0,
   durationMs: null,
   volume: 1,
+  signal: null,
 };
 
 export async function getSnapshot(): Promise<PlaybackSnapshot> {

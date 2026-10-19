@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionSummary } from "@/app/library/CollectionScreen";
 import { mb } from "@/app/library/TrackCard";
+import type { SignalInfo } from "@/shared/ipc/bindings";
 import { duplicatesCount } from "@/shared/ipc/duplicates";
 import {
   analysisProgress,
@@ -14,6 +15,7 @@ import {
 import type { LibraryStatus } from "@/shared/ipc/library";
 import { organizeLibrary } from "@/shared/ipc/library";
 import { perfHardware } from "@/shared/ipc/perf";
+import { getSnapshot, onSnapshot } from "@/shared/ipc/playback";
 import { getSettings, patchSettings } from "@/shared/ipc/settings";
 import { clearOldLogs, type StorageInfo, storageInfo } from "@/shared/ipc/storage";
 import {
@@ -670,6 +672,41 @@ const TARGETS = [-19, -14, -11] as const;
  * «Звук» (T4.11, FR-PLAY-008): loudness normalization — on/off, «Тихо / Обычно / Громко»,
  * album gain while an album plays in order. Applied at once (the engine ramps the gain).
  */
+/** «Тракт: Bit-perfect · 48 кГц» (T4.13, FR-PLAY-002, `04` §8), live from the player. */
+function SignalLine() {
+  const { t } = useTranslation("shell");
+  const [sig, setSig] = useState<SignalInfo | null>(null);
+  useEffect(() => {
+    let alive = true;
+    let off: (() => void) | undefined;
+    getSnapshot().then((s) => alive && setSig(s.signal));
+    onSnapshot((s) => alive && setSig(s.signal)).then((u) => {
+      if (alive) off = u;
+      else u();
+    });
+    return () => {
+      alive = false;
+      off?.();
+    };
+  }, []);
+  if (!sig) return null;
+  const khz = (hz: number) => t("settingsSound.khz", { v: (hz / 1000).toLocaleString("ru") });
+  const text =
+    sig.kind === "bitperfect"
+      ? t("settingsSound.signal.bitperfect", { rate: khz(sig.deviceRate) })
+      : sig.kind === "resampled"
+        ? t("settingsSound.signal.resampled", {
+            from: khz(sig.sourceRate),
+            to: khz(sig.deviceRate),
+          })
+        : t("settingsSound.signal.dsp");
+  return (
+    <div className="t-caption text-text-secondary" data-testid="signal-path">
+      {text}
+    </div>
+  );
+}
+
 function SoundSection() {
   const { t } = useTranslation("shell");
   const [n, setN] = useState({ enabled: true, target: -14, album: true });
@@ -700,6 +737,7 @@ function SoundSection() {
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsSound.title")}</h2>
       <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <SignalLine />
         <div className="flex items-center gap-4">
           <div className="min-w-0 flex-1">
             <div className="t-body text-text-primary">{t("settingsSound.normalize")}</div>

@@ -524,6 +524,8 @@ export type PlaybackSnapshot = {
 	durationMs: number | null,
 	/**  Slider value 0…1. */
 	volume: number | null,
+	/**  The signal path indicator (T4.13, FR-PLAY-002); `None` — nothing loaded. */
+	signal: SignalInfo | null,
 };
 
 export type PlaybackState = "empty" | "playing" | "paused" | "ended";
@@ -620,6 +622,20 @@ export type SearchResults = {
 	/**  Nothing found: the library's closest artists. */
 	suggestions: ArtistItem[],
 };
+
+/**  «Bit-perfect» / «Ресемплинг 44,1 → 48» / «DSP» (`04` §8). */
+export type SignalInfo = {
+	/**
+	 *  `bitperfect` — the device gets the file's samples unchanged; `resampled` — only the rate
+	 *  or channels change; `dsp` — EQ, normalization or the limiter touch the samples (or the
+	 *  volume is below 100 %).
+	 */
+	kind: SignalKind,
+	sourceRate: number,
+	deviceRate: number,
+};
+
+export type SignalKind = "bitperfect" | "resampled" | "dsp";
 
 export type StorageInfo = {
 	/**  `library.db` with its WAL. */

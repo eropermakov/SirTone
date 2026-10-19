@@ -222,6 +222,15 @@ impl Source {
         }
     }
 
+    /// The normalization gain this source is heading to, dB (0 — none).
+    pub fn gain_db(&self) -> f32 {
+        if self.gain_target == 1.0 {
+            0.0
+        } else {
+            20.0 * self.gain_target.log10()
+        }
+    }
+
     /// Applies the gain to decoded frames (`ch` wide). Unity gain is a true bypass.
     pub fn apply_gain(&mut self, buf: &mut [f32], ch: usize) {
         if self.gain == 1.0 && self.gain_target == 1.0 {

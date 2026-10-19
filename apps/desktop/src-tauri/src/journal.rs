@@ -257,6 +257,7 @@ mod tests {
             volume: 1.0,
             underruns: 0,
             device: None,
+            signal: None,
         }
     }
 
