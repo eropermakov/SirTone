@@ -582,13 +582,38 @@ impl Playback {
         n
     }
 
-    /// Library tracks in the queue (the online lookup leaves them where they are).
-    pub fn queued_track_ids(&self) -> std::collections::HashSet<u32> {
-        self.queue()
-            .items()
-            .iter()
-            .filter_map(|i| i.track_id)
-            .collect()
+    /// The library track that is playing (the online lookup does not move it under the engine).
+    pub fn current_track_id(&self) -> Option<u32> {
+        self.queue().current().and_then(|i| i.track_id)
+    }
+
+    /// Library files moved (assign, «навести порядок», artist merge, the online lookup): queued
+    /// tracks get their new path and tags. The playing item keeps its path — the engine matches
+    /// its events by it.
+    pub fn refresh_from(&self, lib: &crate::library::Library) {
+        let ids: Vec<u32> = {
+            let q = self.queue();
+            let pos = q.position();
+            let mut ids: Vec<u32> = q
+                .items()
+                .iter()
+                .enumerate()
+                .filter(|(n, _)| *n != pos)
+                .filter_map(|(_, i)| i.track_id)
+                .collect();
+            ids.sort_unstable();
+            ids.dedup();
+            ids
+        };
+        if ids.is_empty() {
+            return;
+        }
+        let Ok(fresh) = lib.resolve(&ids) else {
+            return;
+        };
+        if apply_fresh(&mut self.queue(), &fresh) > 0 {
+            self.queue_edited();
+        }
     }
 
     /// Recommendations up to and including the current item (the continuation goes on from
@@ -880,6 +905,62 @@ pub fn playback_set_volume(pb: State<'_, Playback>, volume: f32) {
 mod tests {
     use super::*;
 
+    fn lib_item(id: u32, path: &str) -> QueueItem {
+        QueueItem {
+            path: PathBuf::from(path),
+            title: format!("t{id}"),
+            artists: None,
+            track_id: Some(id),
+            cover: None,
+            source: PlaySource::Collection,
+            album_key: 0,
+            artist_key: 0,
+        }
+    }
+
+    #[test]
+    fn moved_files_reach_the_queue_but_not_the_playing_item() {
+        let mut q = Queue::new();
+        q.replace(
+            vec![
+                lib_item(1, "D:\\m\\Неизвестные\\a.mp3"),
+                lib_item(2, "D:\\m\\Неизвестные\\b.mp3"),
+            ],
+            0,
+        );
+        let fresh = |id: u32, path: &str| crate::library::Resolved {
+            id,
+            path: PathBuf::from(path),
+            title: format!("T{id}"),
+            artists: "Исполнитель".into(),
+            cover: None,
+            album_id: Some(7),
+            artist_id: Some(3),
+        };
+        let moved = [
+            fresh(1, "D:\\m\\Исполнитель\\A.mp3"),
+            fresh(2, "D:\\m\\Исполнитель\\B.mp3"),
+        ];
+        assert_eq!(apply_fresh(&mut q, &moved), 1);
+        assert_eq!(
+            q.current().map(|i| i.path.clone()),
+            Some(PathBuf::from("D:\\m\\Неизвестные\\a.mp3")),
+            "the engine matches the playing item by its path"
+        );
+        let next = handover(&q).cloned().unwrap();
+        assert_eq!(next.path, PathBuf::from("D:\\m\\Исполнитель\\B.mp3"));
+        assert_eq!(
+            (next.title.as_str(), next.artists.as_deref(), next.album_key),
+            ("T2", Some("Исполнитель"), 7)
+        );
+        assert_eq!(next.source, PlaySource::Collection);
+        assert_eq!(
+            apply_fresh(&mut q, &moved),
+            0,
+            "nothing new the second time"
+        );
+    }
+
     #[test]
     fn folder_plays_its_first_playable_file() {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../fixtures/generated");
@@ -911,6 +992,32 @@ pub fn playback_next(pb: State<'_, Playback>) {
 #[specta::specta]
 pub fn playback_prev(pb: State<'_, Playback>) {
     pb.prev();
+}
+
+/// Puts what the library now says into every queued item but the current one; returns how many
+/// changed.
+fn apply_fresh(q: &mut Queue<QueueItem>, fresh: &[crate::library::Resolved]) -> usize {
+    q.update_others(|i| {
+        let Some(r) = i.track_id.and_then(|t| fresh.iter().find(|r| r.id == t)) else {
+            return false;
+        };
+        let item = QueueItem {
+            path: r.path.clone(),
+            title: r.title.clone(),
+            artists: (!r.artists.is_empty()).then(|| r.artists.clone()),
+            track_id: i.track_id,
+            cover: r.cover.clone(),
+            source: i.source,
+            album_key: r.album_id.map_or(0, |v| v as u64),
+            artist_key: r.artist_id.map_or(0, |v| v as u64),
+        };
+        if *i == item {
+            false
+        } else {
+            *i = item;
+            true
+        }
+    })
 }
 
 /// Library tracks as queue items.

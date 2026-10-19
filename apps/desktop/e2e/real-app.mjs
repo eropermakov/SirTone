@@ -550,6 +550,30 @@ if (existsSync(corpus)) {
     after === before - 1 && existsSync(movedDir),
     `${before} → ${after}, folder ${existsSync(movedDir)}`,
   );
+  // The assigned track was queued right after the playing one: its queue item follows the
+  // file, so skipping to it plays it from the new place.
+  const queuedMoved = (await invoke("queue_get", {})).items[1];
+  const movedRel = (() => {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    try {
+      return db.prepare("SELECT rel_path FROM track WHERE id = ?").get(queuedMoved?.trackId)
+        ?.rel_path;
+    } finally {
+      db.close();
+    }
+  })();
+  await invoke("playback_next", {});
+  await sleep(1500);
+  const skipped = await invoke("playback_snapshot", {});
+  check(
+    "a queued track moved by «Назначить» plays from its new path",
+    skipped.state === "playing" &&
+      skipped.trackId === queuedMoved?.trackId &&
+      skipped.positionMs > 0 &&
+      queuedMoved?.title === "Проверочная песня" &&
+      /^Проверочный исполнитель\//.test(movedRel ?? ""),
+    `${skipped.state} #${skipped.trackId} at ${skipped.positionMs} ms, queued «${queuedMoved?.title}» #${queuedMoved?.trackId}, ${movedRel}`,
+  );
   // T2.10: track card through «Ещё ›», then «только убрать из приложения» keeps the file.
   await unknownRows.nth(2).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Ещё" }).click();

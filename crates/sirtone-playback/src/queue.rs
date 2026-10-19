@@ -193,6 +193,23 @@ impl<T: Clone> Queue<T> {
         n
     }
 
+    /// [`Queue::update`] for every item but the current one (the playing item stays as the
+    /// player loaded it).
+    pub fn update_others(&mut self, mut f: impl FnMut(&mut T) -> bool) -> usize {
+        let mut n = 0;
+        for (at, i) in self.items.iter_mut().enumerate() {
+            if at != self.index {
+                n += usize::from(f(i));
+            }
+        }
+        if let Some(u) = self.unshuffled.as_mut() {
+            for i in u {
+                f(i);
+            }
+        }
+        n
+    }
+
     pub fn shuffled(&self) -> bool {
         self.unshuffled.is_some()
     }
@@ -424,5 +441,22 @@ mod tests {
         assert_eq!((q.len(), q.position(), q.current()), (2, 0, Some(&20)));
         assert_eq!(q.replace(vec![30], 9), Step::Play(30), "start is clamped");
         assert_eq!(q.replace(Vec::new(), 0), Step::End);
+    }
+
+    #[test]
+    fn update_others_leaves_the_current_item() {
+        let mut q = Queue::new();
+        q.replace(vec![1, 2, 1, 3], 0);
+        q.set_shuffle(true, 7, |_| ShuffleKey::default());
+        // The same track queued again later is updated; the playing copy is not.
+        assert_eq!(q.update_others(|i| (*i == 1).then(|| *i = 9).is_some()), 1);
+        assert_eq!(q.current(), Some(&1));
+        assert!(q.items()[1..].contains(&9) && !q.items()[1..].contains(&1));
+        q.set_shuffle(false, 0, |_| ShuffleKey::default());
+        assert_eq!(
+            q.items(),
+            &[1, 2, 9, 3],
+            "the unshuffled order is patched too"
+        );
     }
 }

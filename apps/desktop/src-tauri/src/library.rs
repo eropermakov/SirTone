@@ -792,6 +792,7 @@ fn import_worker(
                 }
             }
             emit_changed(&app, &shared);
+            refresh_queue(&app);
         }
         for (all, reply) in organize {
             let tracks: Vec<i64> = if all {
@@ -814,6 +815,7 @@ fn import_worker(
             let _ = reply.send(Ok(moved));
             if moved > 0 {
                 emit_changed(&app, &shared);
+                refresh_queue(&app);
             }
         }
         if !assigns.is_empty() {
@@ -844,6 +846,7 @@ fn import_worker(
                 let _ = reply.send(r);
             }
             emit_changed(&app, &shared);
+            refresh_queue(&app);
         }
         let paths = imports;
         if let Err(e) = import::recover(db, &root, deps.fs.as_ref()) {
@@ -962,6 +965,7 @@ fn run_reconcile(
             organize_adopted(app, shared, db, root, deps, &r.adopted_ids);
             if r != Report::default() {
                 emit_changed(app, shared);
+                refresh_queue(app);
             }
         }
         Ok(Outcome::Question { gone, report }) => {
@@ -1022,6 +1026,16 @@ fn organize_adopted(
         s.organize.len() as u32
     };
     let _ = OrganizeSuggested { tracks: total }.emit(app);
+}
+
+/// Files moved: queued tracks take their new paths (the playing one keeps its own).
+fn refresh_queue(app: &AppHandle) {
+    if let (Some(pb), Some(lib)) = (
+        tauri::Manager::try_state::<crate::playback::Playback>(app),
+        tauri::Manager::try_state::<Library>(app),
+    ) {
+        pb.refresh_from(&lib);
+    }
 }
 
 /// Lists and counters must refresh. The full counters (163 ms on 100 000 tracks) are only

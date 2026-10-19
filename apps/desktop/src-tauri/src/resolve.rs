@@ -209,7 +209,7 @@ fn resolve(app: &AppHandle, me: &Resolver, r: &Resolvable) -> Result<bool, Stop>
 enum Visit {
     /// Looked up (counts toward the cap).
     Looked,
-    /// Left for another time (queued under the player).
+    /// Left for another time (playing, or gone from the batch).
     Skipped,
     /// Offline or the service is busy: this one is first next time.
     Stop,
@@ -253,11 +253,6 @@ fn walk(
 
 fn run(app: &AppHandle, me: &Resolver) -> (usize, usize) {
     let (mut looked, mut moved) = (0, 0);
-    // Queued tracks are not moved under the player (their queue items keep the path).
-    let queued = app
-        .try_state::<crate::playback::Playback>()
-        .map(|p| p.queued_track_ids())
-        .unwrap_or_default();
     let batch: std::cell::RefCell<Vec<Resolvable>> = std::cell::RefCell::default();
     let cursor = walk(
         me.cursor.load(Ordering::Relaxed),
@@ -275,7 +270,12 @@ fn run(app: &AppHandle, me: &Resolver) -> (usize, usize) {
             let Some(r) = batch.borrow().iter().find(|r| r.id == id).cloned() else {
                 return Visit::Skipped;
             };
-            if u32::try_from(id).is_ok_and(|t| queued.contains(&t)) {
+            // The playing track is not moved under the engine (queued ones take their new
+            // paths after the move).
+            let playing = app
+                .try_state::<crate::playback::Playback>()
+                .and_then(|p| p.current_track_id());
+            if playing.is_some() && u32::try_from(id).ok() == playing {
                 return Visit::Skipped;
             }
             looked += 1;
