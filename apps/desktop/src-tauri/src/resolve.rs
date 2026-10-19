@@ -54,6 +54,19 @@ pub fn start(app: AppHandle) {
         .ok();
 }
 
+/// «Повторить онлайн»: from the first unknown track, now. `false` — offline (the UI says so).
+pub fn retry(app: &AppHandle) -> bool {
+    if crate::net::offline(app) {
+        return false;
+    }
+    if let Some(r) = app.try_state::<Resolver>() {
+        r.cursor.store(0, Ordering::Relaxed);
+        r.not_before.store(0, Ordering::Relaxed);
+    }
+    kick(app);
+    true
+}
+
 /// Starts a run unless one is going, the network is off or the service asked to wait.
 pub fn kick(app: &AppHandle) {
     let Some(r) = app.try_state::<Resolver>() else {

@@ -148,6 +148,26 @@ export const unknownTracks = async (): Promise<TrackItem[]> =>
 export const unknownList = async (): Promise<UnknownItem[]> =>
   isTauri() ? unwrap(await commands.unknownList()) : [];
 
+/** «Неизвестные» II (T3.11): a hint in one click, one artist for many, «нормальный», the
+ * quarantine and «Повторить онлайн». */
+export const unknownAccept = async (track: number, index: number): Promise<void> => {
+  if (isTauri()) unwrap(await commands.unknownAccept(track, index));
+};
+
+export const unknownAssignArtist = async (tracks: number[], artist: string): Promise<number> =>
+  isTauri() ? unwrap(await commands.unknownAssignArtist(tracks, artist)) : 0;
+
+export const unknownNormal = async (tracks: number[]): Promise<number> =>
+  isTauri() ? unwrap(await commands.unknownNormal(tracks)) : 0;
+
+export const unknownRelease = async (track: number): Promise<void> => {
+  if (isTauri()) unwrap(await commands.unknownRelease(track));
+};
+
+/** `false` — offline. */
+export const unknownRetry = async (): Promise<boolean> =>
+  isTauri() ? commands.unknownRetry() : false;
+
 /** «Назначить»: who and what the track is; the file moves to its canonical place. */
 export const assignTrack = async (track: number, a: TrackAssignment): Promise<void> => {
   if (isTauri()) unwrap(await commands.trackAssign(track, a));

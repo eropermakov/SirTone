@@ -164,7 +164,22 @@ fn step(
         }),
         Err(e) => {
             tracing::warn!(target: "sirtone::analysis", track, code = ?e.code, "B0 failed");
-            sirtone_library::analysis::mark_failed(c, track, VERSION)
+            // FR-IMP-008: a library file the decoder no longer reads (imported playable, so it
+            // broke since) goes to the quarantine — the user decides; nothing is deleted.
+            let broken = matches!(
+                e.code,
+                sirtone_core::error::ErrorCode::UnsupportedFormat
+                    | sirtone_core::error::ErrorCode::DecodeFailed
+            );
+            sirtone_library::analysis::mark_failed(c, track, VERSION).and_then(|()| {
+                if broken
+                    && sirtone_library::unknowns::quarantine(c, track)?
+                    && let Some(lib) = app.try_state::<Library>()
+                {
+                    lib.notify_changed(app);
+                }
+                Ok(())
+            })
         }
     };
     if stored.is_err() {

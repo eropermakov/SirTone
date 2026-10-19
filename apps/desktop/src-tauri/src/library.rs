@@ -580,12 +580,22 @@ impl Library {
         mbid: String,
         confidence: f64,
     ) -> Result<String, AppError> {
+        self.assign_with(track, assignment, Some((mbid, confidence)))
+    }
+
+    /// An assignment on the import worker (journalled move), optionally confirmed online.
+    pub(crate) fn assign_with(
+        &self,
+        track: i64,
+        assignment: sirtone_library::relocate::Assignment,
+        online: Option<(String, f64)>,
+    ) -> Result<String, AppError> {
         let (tx, rx) = mpsc::channel();
         self.jobs
             .send(Job::Assign {
                 track,
                 assignment,
-                online: Some((mbid, confidence)),
+                online,
                 reply: tx,
             })
             .map_err(|_| AppError::new(ErrorCode::Internal))?;
@@ -1051,6 +1061,13 @@ fn refresh_queue(app: &AppHandle) {
 /// Lists and counters must refresh. The full counters (163 ms on 100 000 tracks) are only
 /// invalidated here and recomputed lazily by the next `library_status` — never under the lock on
 /// every import tick (deferred from T1.20).
+impl Library {
+    /// The lists refetch (a change made outside the import worker: quarantine, «нормальный»).
+    pub(crate) fn notify_changed(&self, app: &AppHandle) {
+        emit_changed(app, &self.shared);
+    }
+}
+
 fn emit_changed(app: &AppHandle, shared: &Mutex<Shared>) {
     let mut s = lock(shared);
     s.counts = None;
@@ -1226,21 +1243,54 @@ pub fn collection_artists(
 #[serde(rename_all = "camelCase")]
 pub struct UnknownItem {
     pub track: TrackItem,
-    /// no_metadata | conflict | low_confidence | offline_pending | possible_non_track | needs_review
+    /// no_metadata | conflict | low_confidence | offline_pending | possible_non_track |
+    /// needs_review | quarantined (stopped playing, FR-IMP-008)
     pub reason: Option<String>,
+    /// Hints in one click (T3.11): who it may be, best first.
+    pub candidates: Vec<UnknownCandidate>,
+}
+
+/// A hint for an unknown track (from the online lookup, D-87).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct UnknownCandidate {
+    pub title: String,
+    /// «A, B».
+    pub artists: String,
+    /// From MusicBrainz (accepting it confirms the identity).
+    pub online: bool,
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 pub fn unknown_list(lib: State<'_, Library>) -> Result<Vec<UnknownItem>, AppError> {
     lib.with_read(|c| {
-        Ok(collection::unknown_rows(c, 5000)?
-            .into_iter()
-            .map(|u| UnknownItem {
+        let mut out = Vec::new();
+        for u in collection::unknown_rows(c, 5000)? {
+            let candidates = sirtone_library::unknowns::candidates(c, u.track.id)?
+                .into_iter()
+                .take(3)
+                .map(|k| UnknownCandidate {
+                    title: k.title,
+                    artists: k.artists.join(", "),
+                    online: k.mbid.is_some(),
+                })
+                .collect();
+            out.push(UnknownItem {
                 track: track_item(u.track),
                 reason: u.reason,
-            })
-            .collect())
+                candidates,
+            });
+        }
+        // FR-IMP-008: files that stopped playing wait for the user's word.
+        for t in sirtone_library::unknowns::quarantined(c, 1000)? {
+            out.push(UnknownItem {
+                track: track_item(t),
+                reason: Some("quarantined".into()),
+                candidates: Vec::new(),
+            });
+        }
+        Ok(out)
     })
 }
 

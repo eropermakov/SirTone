@@ -24,6 +24,19 @@ export const commands = {
 	/**  «В конец очереди». */
 	queueAppend: (ids: number[], context: PlayContext) => typedError<null, AppError>(__TAURI_INVOKE("queue_append", { ids, context })),
 	queueGet: () => __TAURI_INVOKE<QueueView>("queue_get"),
+	/**
+	 *  «Принять подсказку»: the hint `index` (best first) becomes the identity; an online hint
+	 *  confirms it (`confirmed` + its recording id).
+	 */
+	unknownAccept: (track: number, index: number) => typedError<null, AppError>(__TAURI_INVOKE("unknown_accept", { track, index })),
+	/**  One artist for many unknown tracks at once (titles and albums stay); returns how many moved. */
+	unknownAssignArtist: (tracks: number[], artist: string) => typedError<number, AppError>(__TAURI_INVOKE("unknown_assign_artist", { tracks, artist })),
+	/**  «Нормальный» (FR-IMP-007): long files are music after all. */
+	unknownNormal: (tracks: number[]) => typedError<number, AppError>(__TAURI_INVOKE("unknown_normal", { tracks })),
+	/**  «Вернуть» from the quarantine: the track is back and analysed again. */
+	unknownRelease: (track: number) => typedError<null, AppError>(__TAURI_INVOKE("unknown_release", { track })),
+	/**  «Повторить онлайн»: the lookup starts over from the first unknown track now. */
+	unknownRetry: () => __TAURI_INVOKE<boolean>("unknown_retry"),
 	/**  The recommendations under a playlist (FR-PLS-003): empty with ∞ off or nothing close. */
 	continuationPreview: (playlist: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("continuation_preview", { playlist })),
 	/**  ∞ on/off: a playlist's own, or (no playlist) the one for albums and other lists. */
@@ -646,11 +659,25 @@ export type TrackPage = {
 	next: PageCursor | null,
 };
 
+/**  A hint for an unknown track (from the online lookup, D-87). */
+export type UnknownCandidate = {
+	title: string,
+	/**  «A, B». */
+	artists: string,
+	/**  From MusicBrainz (accepting it confirms the identity). */
+	online: boolean,
+};
+
 /**  A track in «Неизвестные» with its reason (docs/05 §4.7). */
 export type UnknownItem = {
 	track: TrackItem,
-	/**  no_metadata | conflict | low_confidence | offline_pending | possible_non_track | needs_review */
+	/**
+	 *  no_metadata | conflict | low_confidence | offline_pending | possible_non_track |
+	 *  needs_review | quarantined (stopped playing, FR-IMP-008)
+	 */
 	reason: string | null,
+	/**  Hints in one click (T3.11): who it may be, best first. */
+	candidates: UnknownCandidate[],
 };
 
 /**  What the UI needs: the running version and, once, «just updated». */

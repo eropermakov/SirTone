@@ -1784,7 +1784,12 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
   const faQueue = (await invoke("queue_get", {})).items.map((x) => x.trackId);
   const bitsOf = new Map(anal.map((r) => [r.id, r.mood_bits]));
   const gloomy = faQueue.filter((id) => ((bitsOf.get(id) ?? 0) & (8 | 32)) !== 0);
-  const faSnap = await invoke("playback_snapshot", {});
+  // The player's snapshot follows the engine's next tick.
+  let faSnap = await invoke("playback_snapshot", {});
+  for (let i = 0; i < 20 && faSnap.waveProfile !== "for_all"; i++) {
+    await sleep(150);
+    faSnap = await invoke("playback_snapshot", {});
+  }
   await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
   const faBtn = await page
     .getByRole("button", { name: "Для всех" })
@@ -1807,6 +1812,66 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
   if ((await invoke("playback_snapshot", {})).state === "playing") {
     await invoke("playback_toggle", {});
   }
+
+  // AT-12 (T3.11, FR-IMP-007): a 3-hour mix lands in «Неизвестные» as «возможно, не трек»;
+  // «нормальный» + an artist for it (the bulk action) moves it, and it goes into a playlist.
+  await invoke("import_paths", { paths: [join(fixtures, "long", "mix-3h.mp3")] });
+  const mixRow = () => {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    try {
+      return db
+        .prepare(
+          "SELECT id, rel_path, identity_state, unknown_reason, user_normal FROM track WHERE rel_path LIKE '%mix-3h%' AND state = 'ok'",
+        )
+        .get();
+    } finally {
+      db.close();
+    }
+  };
+  let mix = mixRow();
+  for (let i = 0; i < 60 && !mix; i++) {
+    await sleep(250);
+    mix = mixRow();
+  }
+  const mixBefore = mix ? `${mix.identity_state}/${mix.unknown_reason}` : "none";
+  let mixAfter = null;
+  let inPl = false;
+  if (mix) {
+    await invoke("unknown_normal", { tracks: [mix.id] });
+    const normalReason = mixRow()?.unknown_reason;
+    const moved = await invoke("unknown_assign_artist", {
+      tracks: [mix.id],
+      artist: "Диджей Проверка",
+    });
+    mixAfter = { ...mixRow(), normalReason, moved };
+    const roadPl12 = (await invoke("playlists_list", {})).find((p) => p.name === "Дорога");
+    if (roadPl12) {
+      await invoke("playlist_add", { id: roadPl12.id, tracks: [mix.id] });
+      inPl = (await invoke("playlist_tracks", { id: roadPl12.id })).some(
+        (e) => e.track.id === mix.id,
+      );
+    }
+  }
+  await page.getByRole("button", { name: "Неизвестные" }).click();
+  const retryBtn = await page
+    .getByRole("button", { name: "Повторить онлайн" })
+    .waitFor({ timeout: 3000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  check(
+    "AT-12: 3-hour mix «возможно, не трек» → «нормальный» + artist (bulk) → moved, in a playlist; «Повторить онлайн» offered",
+    mixBefore === "unknown/possible_non_track" &&
+      mixAfter?.normalReason === "needs_review" &&
+      mixAfter?.moved === 1 &&
+      mixAfter?.identity_state === "user" &&
+      mixAfter?.user_normal === 1 &&
+      mixAfter?.rel_path.startsWith("Диджей Проверка/") &&
+      inPl &&
+      retryBtn,
+    `before ${mixBefore}, after ${JSON.stringify(mixAfter)}, playlist ${inPl}, retry ${retryBtn}`,
+  );
 
   // T3.20 (FR-UI-006): albums without a cover get a generated placeholder (genre sign / logo
   // letter) instead of the grey note.

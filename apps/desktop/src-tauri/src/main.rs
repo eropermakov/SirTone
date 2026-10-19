@@ -24,6 +24,7 @@ mod search;
 mod settings_store;
 mod storage;
 mod tray;
+mod unknowns;
 mod updates;
 mod wave;
 mod window_chrome;

@@ -6,7 +6,8 @@ use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::{
     analysis, artists, autostart, bootstrap, continuation, duplicates, feedback, hotkeys, library,
-    net, perf, playback, playlists, search, settings_store, storage, updates, wave, window_chrome,
+    net, perf, playback, playlists, search, settings_store, storage, unknowns, updates, wave,
+    window_chrome,
 };
 
 /// Free-form JSON across IPC, exported as TS `unknown`. specta inlines `serde_json::Value`
@@ -38,6 +39,11 @@ pub fn builder() -> Builder<tauri::Wry> {
             playback::queue_play_next,
             playback::queue_append,
             playback::queue_get,
+            unknowns::unknown_accept,
+            unknowns::unknown_assign_artist,
+            unknowns::unknown_normal,
+            unknowns::unknown_release,
+            unknowns::unknown_retry,
             continuation::continuation_preview,
             continuation::continuation_set,
             continuation::continuation_exclude,
