@@ -47,7 +47,7 @@ pub struct VizSource {
 
 impl VizSource {
     pub(crate) fn new(shared: Arc<Shared>) -> Self {
-        shared.viz_on.store(true, Ordering::Release);
+        shared.viz_on.fetch_add(1, Ordering::AcqRel);
         let hann = (0..WINDOW)
             .map(|n| 0.5 - 0.5 * (std::f32::consts::TAU * n as f32 / (WINDOW - 1) as f32).cos())
             .collect();
@@ -164,7 +164,7 @@ impl VizSource {
 
 impl Drop for VizSource {
     fn drop(&mut self) {
-        self.shared.viz_on.store(false, Ordering::Release);
+        self.shared.viz_on.fetch_sub(1, Ordering::AcqRel);
         // The tap goes back for the next visualiser (unless a new device brought its own).
         if let (Some(t), Ok(mut slot)) = (self.tap.take(), self.shared.viz_tap.lock())
             && slot.is_none()
@@ -191,7 +191,7 @@ mod tests {
             },
         ));
         let mut v = VizSource::new(shared.clone());
-        assert!(shared.viz_on.load(Ordering::Relaxed));
+        assert_eq!(shared.viz_on.load(Ordering::Relaxed), 1);
         // 4096 frames: 100 Hz on the left, silence on the right.
         for i in 0..4096 {
             let s = (std::f32::consts::TAU * 100.0 * i as f32 / 48_000.0).sin() * 0.8;
@@ -227,8 +227,35 @@ mod tests {
             band(2)
         );
         drop(v);
-        assert!(!shared.viz_on.load(Ordering::Relaxed));
+        assert_eq!(shared.viz_on.load(Ordering::Relaxed), 0);
         // The next visualiser gets the same tap back.
         assert!(shared.viz_tap.lock().unwrap().is_some());
+    }
+
+    /// A replaced visualiser drops after its successor started: the tap stays on and the
+    /// successor gets the ring (screen re-entry, StrictMode remounts).
+    #[test]
+    fn a_late_drop_of_the_old_source_keeps_the_new_one_fed() {
+        let shared = Shared::new();
+        let (mut prod, cons) = rtrb::RingBuffer::<f32>::new(48_000);
+        *shared.viz_tap.lock().unwrap() = Some((
+            cons,
+            DeviceFormat {
+                rate: 48_000,
+                channels: 2,
+            },
+        ));
+        let mut a = VizSource::new(shared.clone());
+        let mut out = vec![0u8; FRAME];
+        a.frame(&mut out, 0, 0.0, 0.0);
+        let mut b = VizSource::new(shared.clone());
+        drop(a);
+        assert_eq!(shared.viz_on.load(Ordering::Relaxed), 1);
+        for _ in 0..2048 {
+            prod.push(0.5).unwrap();
+            prod.push(0.5).unwrap();
+        }
+        b.frame(&mut out, 0, 0.0, 0.0);
+        assert!(out[32 + WINDOW..32 + 2 * WINDOW].iter().any(|&x| x > 180));
     }
 }

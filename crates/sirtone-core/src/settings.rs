@@ -276,6 +276,8 @@ impl Default for Duck {
 pub struct Viz {
     pub mode: String,
     pub follow_theme_accent: bool,
+    /// The minimalist wave screen (FR-VIZ-010): two colours, no glints.
+    pub minimal: bool,
 }
 
 impl Default for Viz {
@@ -283,6 +285,7 @@ impl Default for Viz {
         Self {
             mode: "waves".into(),
             follow_theme_accent: true,
+            minimal: false,
         }
     }
 }

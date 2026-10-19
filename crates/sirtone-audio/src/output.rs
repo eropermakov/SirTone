@@ -4,7 +4,7 @@
 //! everything it reports goes through atomics in [`Shared`].
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 
@@ -31,8 +31,9 @@ pub struct Shared {
     pub stop: AtomicBool,
     /// Set by the render thread when the device failed (unplugged, invalidated).
     pub failed: AtomicBool,
-    /// A visualiser is open: the render thread copies what it plays into the tap (T4.1).
-    pub viz_on: AtomicBool,
+    /// Live visualiser sources: while above zero, the render thread copies what it plays into
+    /// the tap (T4.1). A counter, not a flag: a replaced source drops after its successor starts.
+    pub viz_on: AtomicUsize,
     /// The tap of the current device, waiting for the visualiser thread to take it. Only the
     /// engine (on open) and the visualiser touch it — never the render thread.
     pub(crate) viz_tap: std::sync::Mutex<Option<crate::viz::Tap>>,
@@ -227,7 +228,7 @@ fn render_loop(
         };
         let mut written = 0usize;
         // The visualiser's copy (T4.1): only copying, no allocation or lock.
-        let viz = shared.viz_on.load(Ordering::Relaxed);
+        let viz = shared.viz_on.load(Ordering::Relaxed) > 0;
         if take > 0
             && let Ok(chunk) = ring.read_chunk(take * ch)
         {

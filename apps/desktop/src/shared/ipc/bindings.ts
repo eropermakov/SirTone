@@ -41,6 +41,11 @@ export const commands = {
 	vizStart: (channel: Channel<unknown>) => __TAURI_INVOKE<void>("viz_start", { channel }),
 	/**  Stops the feed (the visualiser left the screen or the window is hidden). */
 	vizStop: () => __TAURI_INVOKE<void>("viz_stop"),
+	/**
+	 *  The colours for the «Волны» palette of a track (T4.2): its vibe, its cover's palette and the
+	 *  collection colour. Covers are decoded off the IPC thread.
+	 */
+	vizColors: (trackId: number | null, cover: string | null) => typedError<VizColors, AppError>(__TAURI_INVOKE("viz_colors", { trackId, cover })),
 	/**  The recommendations under a playlist (FR-PLS-003): empty with ∞ off or nothing close. */
 	continuationPreview: (playlist: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("continuation_preview", { playlist })),
 	/**  ∞ on/off: a playlist's own, or (no playlist) the one for albums and other lists. */
@@ -701,6 +706,25 @@ export type VibeHit = {
 	chips: string[],
 	tracks: TrackItem[],
 	query: WaveQueryIpc,
+};
+
+/**  What the «Волны» palette is built from (T4.2, `06` §7.2). */
+export type VizColors = {
+	/**  The track's vibe, 0…1 (`None` — not analysed yet). */
+	valence: number | null,
+	arousal: number | null,
+	/**  The cover's dominant colours, the biggest first (empty — no cover). */
+	cover: VizSwatch[],
+	/**  «Цвет вашей музыки» (empty — no covers in the library). */
+	collection: VizSwatch[],
+};
+
+/**  A dominant colour, OKLCH (`h` in degrees), with its share `w`. */
+export type VizSwatch = {
+	l: number | null,
+	c: number | null,
+	h: number | null,
+	w: number | null,
 };
 
 /**

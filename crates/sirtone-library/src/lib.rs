@@ -14,6 +14,7 @@ pub mod feedback;
 pub mod import;
 pub mod layout;
 pub mod online;
+pub mod palette;
 pub mod playlists;
 pub mod popularity;
 pub mod reconcile;

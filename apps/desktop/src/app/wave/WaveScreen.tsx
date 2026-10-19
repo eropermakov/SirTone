@@ -37,6 +37,7 @@ import { PauseIcon, PlayIcon } from "@/shared/ui/TransportIcons";
 import { ForAllButton, type Gathering } from "./ForAllButton";
 import { NoveltySlider } from "./NoveltySlider";
 import { SeasonWaveButton } from "./SeasonWaveButton";
+import { pulseWaves, WavesBackground } from "./WavesBackground";
 
 const NONE: TrackFeedback = { liked: false, neverTrack: false, neverArtist: false };
 
@@ -110,6 +111,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
   const toggleLike = () => {
     const on = !fb.liked;
     setFb((f) => ({ ...f, liked: on }));
+    if (on) pulseWaves("like");
     like(id, on)
       .then(() => notify(t(on ? "wave.liked" : "wave.unliked")))
       .catch(() => {
@@ -219,16 +221,13 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
 
   const PlayPause = playing ? PauseIcon : PlayIcon;
   return (
-    <section className="relative flex h-full min-h-0 flex-col items-center justify-center gap-8">
-      {/* Background stub (T2.5): a soft accent glow — the visualisation replaces it (Stage 4). */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-0 rounded-(--radius-xl) opacity-60"
-        style={{
-          background:
-            "radial-gradient(60% 50% at 50% 35%, color-mix(in oklab, var(--accent-fill) 35%, transparent), transparent 70%)",
-        }}
-      />
+    <section
+      data-theme="dark"
+      data-viz-scope
+      className="relative flex h-full min-h-0 flex-col items-center justify-center gap-8 overflow-hidden rounded-(--radius-xl) text-text-primary"
+    >
+      {/* The visualisation is the screen's background (T4.2, DESIGN.md §9: alabaster text). */}
+      <WavesBackground trackId={id} cover={snap.cover} />
       <Cover
         hash={snap.cover}
         art={snap.title ? snap.art : undefined}

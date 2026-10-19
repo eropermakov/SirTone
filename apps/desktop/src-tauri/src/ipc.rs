@@ -46,6 +46,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             unknowns::unknown_retry,
             viz::viz_start,
             viz::viz_stop,
+            viz::viz_colors,
             continuation::continuation_preview,
             continuation::continuation_set,
             continuation::continuation_exclude,

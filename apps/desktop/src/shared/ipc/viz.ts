@@ -1,5 +1,5 @@
 import { Channel, isTauri } from "@tauri-apps/api/core";
-import { commands } from "./bindings";
+import { commands, type VizColors } from "./bindings";
 
 /**
  * The visualiser feed (T4.1, `04` §9, D-14): 60 frames a second of what is being heard, as raw
@@ -65,4 +65,14 @@ export function startViz(onFrame: (f: VizFrame) => void): () => void {
     alive = false;
     void commands.vizStop();
   };
+}
+
+/** The colours of a track for the «Волны» palette (T4.2); `null` outside Tauri or on error. */
+export async function vizColors(
+  trackId: number | null,
+  cover: string | null,
+): Promise<VizColors | null> {
+  if (!isTauri()) return null;
+  const r = await commands.vizColors(trackId, cover);
+  return r.status === "ok" ? r.data : null;
 }

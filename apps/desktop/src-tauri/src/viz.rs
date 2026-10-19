@@ -7,6 +7,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use serde::Serialize;
+use sirtone_library::palette::{self, Swatch};
+
 use tauri::ipc::{Channel, InvokeResponseBody, IpcResponse};
 use tauri::{AppHandle, Manager, State};
 
@@ -33,6 +36,43 @@ impl specta::Type for VizFrame {
 #[derive(Default)]
 pub struct Viz {
     running: Mutex<Option<Arc<AtomicBool>>>,
+    /// «Цвет вашей музыки» and when it was worked out (recomputed after `COLLECTION_TTL`).
+    collection: Mutex<Option<(Instant, Vec<VizSwatch>)>>,
+}
+
+/// The collection colour follows the library slowly: recomputed at most this often.
+const COLLECTION_TTL: Duration = Duration::from_secs(600);
+
+/// A dominant colour, OKLCH (`h` in degrees), with its share `w`.
+#[derive(Debug, Clone, Copy, Serialize, specta::Type)]
+pub struct VizSwatch {
+    pub l: f64,
+    pub c: f64,
+    pub h: f64,
+    pub w: f64,
+}
+
+impl From<Swatch> for VizSwatch {
+    fn from(s: Swatch) -> Self {
+        Self {
+            l: f64::from(s.l),
+            c: f64::from(s.c),
+            h: f64::from(s.h),
+            w: f64::from(s.w),
+        }
+    }
+}
+
+/// What the «Волны» palette is built from (T4.2, `06` §7.2).
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub struct VizColors {
+    /// The track's vibe, 0…1 (`None` — not analysed yet).
+    pub valence: Option<f64>,
+    pub arousal: Option<f64>,
+    /// The cover's dominant colours, the biggest first (empty — no cover).
+    pub cover: Vec<VizSwatch>,
+    /// «Цвет вашей музыки» (empty — no covers in the library).
+    pub collection: Vec<VizSwatch>,
 }
 
 impl Viz {
@@ -43,6 +83,20 @@ impl Viz {
             flag.store(false, Ordering::Release);
         }
     }
+}
+
+/// A cover's palette: cached in `cover.palette`, else computed from the 64 px variant (decoded
+/// with no lock held) and stored.
+fn palette_of(app: &AppHandle, root: &std::path::Path, hash: &str) -> Vec<Swatch> {
+    let lib = app.state::<Library>();
+    if let Ok(Some(p)) = lib.with_read(|c| palette::cached(c, hash)) {
+        return p;
+    }
+    let Ok(p) = palette::of_cover(root, hash) else {
+        return Vec::new();
+    };
+    let _ = lib.with_write(|c| palette::store(c, hash, &p));
+    p
 }
 
 /// The tempo of a library track (0 — not analysed).
@@ -113,6 +167,83 @@ pub fn viz_start(app: AppHandle, viz: State<'_, Viz>, channel: Channel<VizFrame>
                 }
             }
         });
+}
+
+/// The colours for the «Волны» palette of a track (T4.2): its vibe, its cover's palette and the
+/// collection colour. Covers are decoded off the IPC thread.
+#[tauri::command]
+#[specta::specta]
+pub async fn viz_colors(
+    app: AppHandle,
+    track_id: Option<u32>,
+    cover: Option<String>,
+) -> Result<VizColors, sirtone_core::error::AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let lib = app.state::<Library>();
+        let (valence, arousal) = track_id
+            .and_then(|t| {
+                lib.with_read(|c| {
+                    Ok(c.query_row(
+                        "SELECT valence, arousal FROM track WHERE id = ?1",
+                        [t],
+                        |r| Ok((r.get::<_, Option<f64>>(0)?, r.get::<_, Option<f64>>(1)?)),
+                    )?)
+                })
+                .ok()
+            })
+            .unwrap_or((None, None));
+        let Some(root) = lib.root() else {
+            return VizColors {
+                valence,
+                arousal,
+                cover: Vec::new(),
+                collection: Vec::new(),
+            };
+        };
+        let cover = cover
+            .map(|h| palette_of(&app, &root, &h))
+            .unwrap_or_default()
+            .into_iter()
+            .map(VizSwatch::from)
+            .collect();
+        let viz = app.state::<Viz>();
+        let fresh = viz
+            .collection
+            .lock()
+            .ok()
+            .and_then(|c| c.clone())
+            .filter(|(at, _)| at.elapsed() < COLLECTION_TTL);
+        let collection = match fresh {
+            Some((_, c)) => c,
+            None => {
+                let albums = lib
+                    .with_read(palette::collection_covers)
+                    .unwrap_or_default();
+                let palettes: Vec<(Vec<Swatch>, f32)> = albums
+                    .iter()
+                    .map(|(h, w)| (palette_of(&app, &root, h), *w))
+                    .collect();
+                let c: Vec<VizSwatch> = palette::collection(&palettes)
+                    .into_iter()
+                    .map(VizSwatch::from)
+                    .collect();
+                if let Ok(mut slot) = viz.collection.lock() {
+                    *slot = Some((Instant::now(), c.clone()));
+                }
+                c
+            }
+        };
+        VizColors {
+            valence,
+            arousal,
+            cover,
+            collection,
+        }
+    })
+    .await
+    .map_err(|e| {
+        sirtone_core::error::AppError::new(sirtone_core::error::ErrorCode::Internal).with_details(e)
+    })
 }
 
 /// Stops the feed (the visualiser left the screen or the window is hidden).

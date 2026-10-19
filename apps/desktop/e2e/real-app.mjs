@@ -44,6 +44,8 @@ const env = {
   ...process.env,
   SIRTONE_DATA_DIR: dataDir,
   SIRTONE_NET_FIXTURES: netFixtures,
+  // Analysis runs on battery too (an unplugged laptop must not fail the analysis checks).
+  SIRTONE_SMOKE_AC: "1",
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`,
 };
 
@@ -872,6 +874,62 @@ if (existsSync(corpus)) {
   await sleep(1200);
   const afterSkip = (await invoke("playback_snapshot", {})).trackId;
   check("wave: «Не сейчас» goes to the next track", afterSkip !== nowId, `${nowId} → ${afterSkip}`);
+  // T4.1/T4.2: «Волны» behind the player — frames arrive at 60 Hz with small gaps, the canvas
+  // is drawn (not blank), FPS measured; leaving and coming back keeps the feed alive (viz_on
+  // counter); the palette comes from the cover and the collection.
+  await page.locator('canvas[data-testid="waves"]').waitFor({ timeout: 5000 });
+  await sleep(1500);
+  const vizRead = () =>
+    page.evaluate(() => ({
+      frames: window.__sirtoneVizStats?.frames ?? 0,
+      maxGap: window.__sirtoneVizStats?.maxGapMs ?? 0,
+      fps: window.__sirtoneWaves?.stats.fps ?? 0,
+      drawn: window.__sirtoneWaves?.stats.drawn ?? 0,
+    }));
+  await page.evaluate(() => {
+    if (window.__sirtoneVizStats) window.__sirtoneVizStats.maxGapMs = 0;
+  });
+  const v0 = await vizRead();
+  await sleep(3000);
+  const v1 = await vizRead();
+  const rate = (v1.frames - v0.frames) / 3;
+  check(
+    "viz: frames at ~60 Hz, max gap < 60 ms, waves drawn ≥ 30 FPS (P-12)",
+    rate > 50 && v1.maxGap < 60 && v1.fps >= 30 && v1.drawn > v0.drawn,
+    `${rate.toFixed(1)} frames/s, max gap ${v1.maxGap.toFixed(1)} ms, ${v1.fps.toFixed(1)} FPS`,
+  );
+  await page.evaluate(() => window.__sirtoneWaves?.sample());
+  await sleep(300);
+  const samples = await page.evaluate(() => window.__sirtoneWaves?.stats.samples ?? []);
+  check(
+    "viz: the waves canvas is painted (not blank, not flat)",
+    samples.length === 5 &&
+      samples.some((p) => p[0] + p[1] + p[2] > 30) &&
+      new Set(samples.map((p) => p.join())).size > 1,
+    JSON.stringify(samples),
+  );
+  const vizSnap = await invoke("playback_snapshot", {});
+  const vizCols = await invoke("viz_colors", { trackId: vizSnap.trackId, cover: vizSnap.cover });
+  check(
+    "viz: palette from the cover and the collection",
+    (!vizSnap.cover || vizCols.cover.length > 0) && vizCols.collection.length > 0,
+    `cover ${vizCols.cover.length}, collection ${vizCols.collection.length}`,
+  );
+  if (process.env.SMOKE_SHOTS) {
+    await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "t42-waves.png") });
+  }
+  await page.getByRole("navigation").getByRole("button", { name: "Жанры" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  await page.locator('canvas[data-testid="waves"]').waitFor({ timeout: 5000 });
+  await sleep(1000);
+  const back0 = await vizRead();
+  await sleep(1000);
+  const back1 = await vizRead();
+  check(
+    "viz: back on the wave screen the feed runs again (no stale viz_on)",
+    back1.frames - back0.frames > 40,
+    `${back1.frames - back0.frames} frames/s`,
+  );
   await axeScreen("«Моя волна»");
   // T2.20 / P-01 (DESIGN.md §1, `08` §1): event → the frame that shows the change, measured
   // in the page. Direct actions ≤ 100 ms, a screen change ≤ 400 ms.
