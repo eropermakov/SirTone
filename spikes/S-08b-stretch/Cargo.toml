@@ -1,0 +1,19 @@
+[package]
+name = "s08b-stretch"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "S-08 part B: Signalsmith Stretch (quality, CPU with two decoders) and stratum-dsp beat grids for automix L3"
+
+# Self-contained, outside the app workspace.
+[workspace]
+
+[dependencies]
+stratum-dsp = { version = "=1.0.0", default-features = false }
+
+[build-dependencies]
+cc = "1"
+
+[profile.release]
+opt-level = 3
+debug = false
