@@ -1703,6 +1703,63 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
     `offline ${offlineState} → ${r04b ? `${r04b.identity_state} ${r04b.rel_path}` : "none"}`,
   );
   rmSync(at04Dir, { recursive: true, force: true });
+
+  // T3.16 (FR-SRCH-004/005): a smart query is understood offline — «По смыслу» lists tracks
+  // that really are sad and slow, «Играть этот вайб» starts the wave with those filters;
+  // nothing found → the library's closest artists.
+  const vq = "что-то грустное и медленное";
+  const vr = await invoke("library_search", { query: vq });
+  const vibeIds = (vr.vibe?.tracks ?? []).map((x) => x.id);
+  let vibeOk = true;
+  if (vibeIds.length > 0) {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    try {
+      const st = db.prepare("SELECT mood_bits, bpm FROM track WHERE id = ?");
+      vibeOk = vibeIds.every((id) => {
+        const r = st.get(id);
+        return (r.mood_bits & 8) !== 0 && r.bpm >= 0 && r.bpm <= 90;
+      });
+    } finally {
+      db.close();
+    }
+  }
+  // Too far for the typo correction, close enough to suggest.
+  const sugg = await invoke("library_search", { query: "земфираааааа" });
+  const foundZ =
+    sugg.suggestions.some((a) => a.name === "Земфира") ||
+    sugg.artists.some((a) => a.name === "Земфира");
+  await page.keyboard.press("Control+f");
+  const sf = page.getByLabel("Поиск по медиатеке");
+  await sf.waitFor({ timeout: 3000 });
+  await sf.fill(vq);
+  const vibeBtn = page.getByRole("button", { name: "Играть этот вайб" }).first();
+  const vibeShown = await vibeBtn.waitFor({ timeout: 4000 }).then(
+    () => true,
+    () => false,
+  );
+  if (process.env.SMOKE_SHOTS) {
+    await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "t316-search.png") });
+  }
+  let waveOn = false;
+  if (vibeShown) {
+    await vibeBtn.click();
+    for (let i = 0; i < 20 && !waveOn; i++) {
+      await sleep(250);
+      waveOn = (await invoke("playback_snapshot", {})).inWave;
+    }
+  }
+  check(
+    "T3.16: «что-то грустное и медленное» understood offline; «Играть этот вайб» starts the wave; nothing found → closest artists",
+    JSON.stringify(vr.vibe?.chips) === JSON.stringify(["mood.sad", "tempo.slow"]) &&
+      vibeOk &&
+      vibeShown &&
+      waveOn &&
+      foundZ,
+    `chips ${JSON.stringify(vr.vibe?.chips)}, tracks ${vibeIds.length} ok ${vibeOk}, button ${vibeShown}, wave ${waveOn}, suggestions ${JSON.stringify(sugg.suggestions.map((a) => a.name))} artists ${sugg.artists.length}`,
+  );
+  if ((await invoke("playback_snapshot", {})).state === "playing") {
+    await invoke("playback_toggle", {});
+  }
 }
 
 // T1.22: five default hotkeys configured; each either registered or reported as taken (when the

@@ -19,6 +19,7 @@ pub mod relocate;
 pub mod repo;
 pub mod search;
 pub mod search_text;
+pub mod semantic;
 pub mod smart;
 pub mod stats;
 pub mod watch;

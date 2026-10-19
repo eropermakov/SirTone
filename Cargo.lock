@@ -4794,6 +4794,7 @@ dependencies = [
  "rusqlite",
  "rusqlite_migration",
  "rust-stemmers",
+ "serde",
  "serde_json",
  "sirtone-core",
  "thiserror 2.0.21",
@@ -4808,6 +4809,7 @@ name = "sirtone-net"
 version = "0.1.25"
 dependencies = [
  "reqwest",
+ "serde_json",
  "sirtone-core",
  "thiserror 2.0.21",
 ]
@@ -4835,6 +4837,7 @@ version = "0.1.25"
 dependencies = [
  "encoding_rs",
  "lofty",
+ "serde_json",
  "sirtone-core",
  "strsim",
 ]

@@ -1,4 +1,4 @@
-import { ListMusic, Play, Search, X } from "lucide-react";
+import { AudioWaveform, ListMusic, Play, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type Card, CardGrid } from "@/app/library/CardGrid";
@@ -10,6 +10,7 @@ import {
   artistTracks,
   playTracks,
   type TrackItem,
+  waveStart,
 } from "@/shared/ipc/library";
 import { queueAppend, queuePlayNext } from "@/shared/ipc/playback";
 import { type SearchResults, search } from "@/shared/ipc/search";
@@ -17,7 +18,7 @@ import { Chip } from "@/shared/ui/Chip";
 import { Cover } from "@/shared/ui/Cover";
 import { notify } from "@/shared/ui/notify";
 
-const GROUPS = ["all", "tracks", "artists", "albums", "playlists"] as const;
+const GROUPS = ["all", "tracks", "artists", "albums", "playlists", "vibe"] as const;
 type Group = (typeof GROUPS)[number];
 /** Track rows under «Все» next to the best match (Spotify / Apple Music). */
 const TOP_TRACKS = 5;
@@ -37,7 +38,10 @@ const albumCard = (a: AlbumItem): Card => ({
 
 /**
  * Search (T2.13, FR-SRCH-001/002; `01b` F-17): results as you type, «лучшее совпадение» and
- * groups — tracks, artists, albums, playlists — with filter chips (DESIGN.md §9 Chip).
+ * groups — tracks, artists, albums, playlists — with filter chips (DESIGN.md §9 Chip). T3.16:
+ * a smart query («что-то грустное и медленное») adds «По смыслу» — what was understood, the
+ * tracks and «Играть этот вайб» (the wave with those filters); nothing found → the closest
+ * artists of the library (FR-SRCH-004/005).
  */
 export function SearchScreen({
   playingId,
@@ -139,13 +143,62 @@ export function SearchScreen({
   );
   const albumCards = (res?.albums ?? []).map(albumCard);
   const playlists = res?.playlists ?? [];
+  const vibe = res?.vibe ?? null;
   const empty =
     res !== null &&
     !best &&
     allTracks.length === 0 &&
     artistCards.length === 0 &&
     albumCards.length === 0 &&
-    playlists.length === 0;
+    playlists.length === 0 &&
+    vibe === null;
+  const groups = GROUPS.filter((g) => g !== "vibe" || vibe !== null);
+  const playVibe = () => {
+    if (!vibe) return;
+    waveStart(undefined, vibe.query)
+      .then(() => notify(t("search.vibe.started")))
+      .catch(() => notify(t("search.vibe.failed")));
+  };
+  const vibeBox = vibe && (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="t-caption text-text-secondary">
+          {t("search.vibe.understood")}{" "}
+          <span className="text-text-primary">
+            {vibe.chips.map((c) => t(`search.vibe.chip.${c}`)).join(" · ")}
+          </span>
+        </span>
+        <button
+          type="button"
+          onClick={playVibe}
+          className="t-body-strong flex h-(--button-height) items-center gap-2 rounded-full bg-accent-fill px-5 text-accent-on"
+        >
+          <AudioWaveform size={20} strokeWidth={1.5} />
+          {t("search.vibe.play")}
+        </button>
+      </div>
+      {vibe.tracks.length === 0 ? (
+        <p className="t-body text-text-secondary">{t("search.vibe.none")}</p>
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          <TrackList
+            tracks={vibe.tracks}
+            playingId={playingId}
+            label={t("search.vibe.title")}
+            onPlay={(i) =>
+              playTracks(
+                vibe.tracks.map((x) => x.id),
+                i,
+                "search",
+              )
+            }
+            context="search"
+            onGo={onGo}
+          />
+        </div>
+      )}
+    </div>
+  );
   const artistGrid = grid("artists", artistCards, t("search.artists"));
   const albumGrid = grid("albums", albumCards, t("search.albums"));
   const playAll = (i: number) =>
@@ -205,7 +258,7 @@ export function SearchScreen({
       </div>
       {res && !empty && (
         <div className="flex shrink-0 flex-wrap gap-2">
-          {GROUPS.map((g) => (
+          {groups.map((g) => (
             <Chip key={g} active={group === g} onClick={() => setGroup(g)}>
               {t(`search.group.${g}`)}
             </Chip>
@@ -215,9 +268,23 @@ export function SearchScreen({
       {!res ? (
         <p className="t-body text-text-secondary">{t("search.hint")}</p>
       ) : empty ? (
-        <p role="status" className="t-body text-text-secondary">
-          {t("search.nothing", { query: query.trim() })}
-        </p>
+        <div className="flex flex-col gap-3">
+          <p role="status" className="t-body text-text-secondary">
+            {t("search.nothing", { query: query.trim() })}
+          </p>
+          {res.suggestions.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="t-caption text-text-secondary">{t("search.maybe")}</span>
+              {res.suggestions.map((a) => (
+                <Chip key={a.id} active={false} onClick={() => onGo("artists", a.id, a.name)}>
+                  {a.name}
+                </Chip>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : group === "vibe" && vibeBox ? (
+        vibeBox
       ) : group === "tracks" ? (
         tracksBox(allTracks, false)
       ) : group === "artists" ? (
@@ -228,6 +295,12 @@ export function SearchScreen({
         <PlaylistHits items={playlists} onOpen={onOpenPlaylist} />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto">
+          {vibe && (
+            <div className="flex h-[420px] shrink-0 flex-col gap-2">
+              <h2 className="t-card-title text-text-primary">{t("search.vibe.title")}</h2>
+              {vibeBox}
+            </div>
+          )}
           {(best || res.tracks.length > 0) && (
             <div className="flex shrink-0 gap-6">
               {best && (

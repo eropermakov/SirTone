@@ -388,6 +388,51 @@ pub fn search(conn: &Connection, query: &str) -> Result<Results, LibraryError> {
     })
 }
 
+/// «Ничего не найдено» (FR-SRCH-005, `05` §9.5): the library's artists closest to the query —
+/// by spelling, in any of its forms (layout, transliteration); at most `n`, only close ones.
+pub fn suggest_artists(
+    conn: &Connection,
+    query: &str,
+    n: usize,
+) -> Result<Vec<ArtistRow>, LibraryError> {
+    let forms: Vec<String> = forms(query).into_iter().map(|f| f.text).collect();
+    if forms.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut st = conn.prepare_cached(
+        "SELECT a.id, a.name, a.name_norm, count(t.id), coalesce(max(t.added_at), 0)
+         FROM artist a JOIN track_artist ta ON ta.artist_id = a.id
+         JOIN track t ON t.id = ta.track_id AND t.state = 'ok'
+         GROUP BY a.id",
+    )?;
+    let mut scored: Vec<(f64, ArtistRow)> = st
+        .query_map([], |r| {
+            Ok((
+                ArtistRow {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    tracks: r.get(3)?,
+                    added_at: r.get(4)?,
+                },
+                r.get::<_, String>(2)?,
+            ))
+        })?
+        .filter_map(Result::ok)
+        .filter_map(|(a, name_norm)| {
+            let best = forms
+                .iter()
+                .map(|f| {
+                    let len = f.chars().count().max(name_norm.chars().count()).max(1);
+                    1.0 - dl(f, &name_norm) as f64 / len as f64
+                })
+                .fold(0.0, f64::max);
+            (best >= 0.5).then_some((best, a))
+        })
+        .collect();
+    scored.sort_by(|a, b| b.0.total_cmp(&a.0).then(b.1.tracks.cmp(&a.1.tracks)));
+    Ok(scored.into_iter().take(n).map(|(_, a)| a).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -457,6 +502,15 @@ mod tests {
         assert!(search(&c, "ЗЕМФИРА").unwrap().best.is_some());
         assert!(search(&c, "%").unwrap().best.is_none());
         assert_eq!(search(&c, "   ").unwrap(), Results::default());
+        // FR-SRCH-005: nothing found → the closest artists (spelling, transliteration).
+        let s: Vec<String> = suggest_artists(&c, "земфилра", 5)
+            .unwrap()
+            .into_iter()
+            .map(|a| a.name)
+            .collect();
+        assert_eq!(s, vec!["Земфира".to_string()]);
+        assert_eq!(suggest_artists(&c, "kina", 5).unwrap()[0].name, "Кино");
+        assert!(suggest_artists(&c, "xyzzyq", 5).unwrap().is_empty());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

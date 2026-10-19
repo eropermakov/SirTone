@@ -197,6 +197,13 @@ const FIELDS: &[Field] = &[
         values: &[],
     },
     Field {
+        name: "aggression",
+        kind: Kind::Num,
+        expr: "t.aggression",
+        norm: "",
+        values: &[],
+    },
+    Field {
         name: "valence",
         kind: Kind::Num,
         expr: "t.valence",

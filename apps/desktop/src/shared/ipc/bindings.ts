@@ -567,6 +567,9 @@ export type SearchResults = {
 	artists: ArtistItem[],
 	albums: AlbumItem[],
 	playlists: PlaylistHit[],
+	vibe: VibeHit | null,
+	/**  Nothing found: the library's closest artists. */
+	suggestions: ArtistItem[],
 };
 
 export type StorageInfo = {
@@ -648,6 +651,17 @@ export type UpdateStatus = {
 	/**  Set on the first start after an update (shown once as a toast). */
 	justUpdated: string | null,
 	notes: string | null,
+};
+
+/**
+ *  «По смыслу»: what was understood (i18n keys under `search.vibe`), matching tracks and the
+ *  wave query for «Играть этот вайб».
+ */
+export type VibeHit = {
+	/**  `mood.sad`, `character.calm`, `lang.none`, `activity.sleep`, `tempo.slow` / `tempo.fast`. */
+	chips: string[],
+	tracks: TrackItem[],
+	query: WaveQueryIpc,
 };
 
 /**
