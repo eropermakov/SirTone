@@ -113,8 +113,9 @@ pub fn soak(args: &[String]) -> ExitCode {
         engine.send(EngineCmd::Load {
             path: path(i),
             autoplay: true,
+            gain_db: 0.0,
         });
-        engine.send(EngineCmd::SetNext(Some(path(i + 1))));
+        engine.send(EngineCmd::SetNext(Some((path(i + 1), 0.0))));
     };
     engine.send(EngineCmd::SetVolume(volume));
     let mut idx = 0usize;
@@ -140,7 +141,7 @@ pub fn soak(args: &[String]) -> ExitCode {
                     if last_path.is_some() && s.path.as_ref() == Some(&path(idx + 1)) {
                         idx += 1;
                         tracks += 1;
-                        engine.send(EngineCmd::SetNext(Some(path(idx + 1))));
+                        engine.send(EngineCmd::SetNext(Some((path(idx + 1), 0.0))));
                     }
                     last_path.clone_from(&s.path);
                 }
@@ -279,6 +280,7 @@ pub fn drift(args: &[String]) -> ExitCode {
     engine.send(EngineCmd::Load {
         path: file,
         autoplay: true,
+        gain_db: 0.0,
     });
     let start = Instant::now();
     let end = start + Duration::from_secs_f64(minutes * 60.0);

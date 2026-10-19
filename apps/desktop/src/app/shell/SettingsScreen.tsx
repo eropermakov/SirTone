@@ -134,6 +134,8 @@ export function SettingsScreen({
         </div>
       )}
 
+      <SoundSection />
+
       <NetworkSection />
 
       <PerformanceSection />
@@ -648,6 +650,84 @@ export function SeasonSwitch() {
           patchSettings({ appearance: { seasonal_theme: v } }).catch(() => setOn(!v));
         }}
       />
+    </div>
+  );
+}
+
+/** The three targets (Spotify Quiet / Normal / Loud, `01b` F-02). */
+const TARGETS = [-19, -14, -11] as const;
+
+/**
+ * «Звук» (T4.11, FR-PLAY-008): loudness normalization — on/off, «Тихо / Обычно / Громко»,
+ * album gain while an album plays in order. Applied at once (the engine ramps the gain).
+ */
+function SoundSection() {
+  const { t } = useTranslation("shell");
+  const [n, setN] = useState({ enabled: true, target: -14, album: true });
+  useEffect(() => {
+    getSettings().then((s) => {
+      const v = ((s.playback ?? {}) as { normalization?: Record<string, unknown> }).normalization;
+      setN({
+        enabled: v?.enabled !== false,
+        target: typeof v?.target_lufs === "number" ? v.target_lufs : -14,
+        album: v?.album_mode !== "off",
+      });
+    });
+  }, []);
+  const save = (next: typeof n) => {
+    const prev = n;
+    setN(next);
+    patchSettings({
+      playback: {
+        normalization: {
+          enabled: next.enabled,
+          target_lufs: next.target,
+          album_mode: next.album ? "auto" : "off",
+        },
+      },
+    }).catch(() => setN(prev));
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsSound.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsSound.normalize")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsSound.normalizeHint")}</div>
+          </div>
+          <Switch
+            checked={n.enabled}
+            label={t("settingsSound.normalize")}
+            onChange={(v) => save({ ...n, enabled: v })}
+          />
+        </div>
+        {n.enabled && (
+          <>
+            <fieldset
+              className="m-0 flex flex-wrap gap-2 border-0 p-0"
+              aria-label={t("settingsSound.level")}
+            >
+              {TARGETS.map((v, i) => (
+                <Chip key={v} active={n.target === v} onClick={() => save({ ...n, target: v })}>
+                  {t(`settingsSound.levels.${i}`)}
+                </Chip>
+              ))}
+            </fieldset>
+            <div className="flex items-center gap-4">
+              <div className="min-w-0 flex-1">
+                <div className="t-body text-text-primary">{t("settingsSound.album")}</div>
+                <div className="t-caption text-text-secondary">{t("settingsSound.albumHint")}</div>
+              </div>
+              <Switch
+                checked={n.album}
+                label={t("settingsSound.album")}
+                onChange={(v) => save({ ...n, album: v })}
+              />
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

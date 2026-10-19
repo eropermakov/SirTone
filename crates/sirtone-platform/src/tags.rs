@@ -95,6 +95,7 @@ fn read_shell(path: &Path) -> Option<Tags> {
         mbid_recording: None,
         mbid_release: None,
         mbid_group: None,
+        loudness: Default::default(),
     })
 }
 

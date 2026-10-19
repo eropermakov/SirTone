@@ -60,6 +60,12 @@ pub struct Source {
     valid_left: Option<u64>,
     /// Opus pre-skip (frames) — applied again after every seek.
     pre_skip: u64,
+    /// The file (the engine finds a track's source by it to change its gain).
+    pub path: std::path::PathBuf,
+    /// Normalization gain (T4.11), linear: applied to the decoded samples, ramped on change.
+    gain: f32,
+    gain_target: f32,
+    gain_step: f32,
 }
 
 enum Backend {
@@ -105,6 +111,10 @@ impl Source {
                 drop_left: 0,
                 valid_left: None,
                 pre_skip: 0,
+                path: path.clone(),
+                gain: 1.0,
+                gain_target: 1.0,
+                gain_step: 0.0,
             })
         })
     }
@@ -191,8 +201,45 @@ impl Source {
                 drop_left: trim.map_or(0, |t| t.start),
                 valid_left: trim.and_then(|t| t.valid),
                 pre_skip,
+                path: path_buf.clone(),
+                gain: 1.0,
+                gain_target: 1.0,
+                gain_step: 0.0,
             })
         })
+    }
+
+    /// Sets the normalization gain (linear): at once (`ramp_ms` 0, a track that is not playing
+    /// yet) or ramped over `ramp_ms` of this source's frames (a live change, no click).
+    pub fn set_gain(&mut self, amp: f32, ramp_ms: u32) {
+        self.gain_target = amp;
+        let frames = (u64::from(self.rate) * u64::from(ramp_ms) / 1000).max(1);
+        if ramp_ms == 0 {
+            self.gain = amp;
+            self.gain_step = 0.0;
+        } else {
+            self.gain_step = (amp - self.gain) / frames as f32;
+        }
+    }
+
+    /// Applies the gain to decoded frames (`ch` wide). Unity gain is a true bypass.
+    pub fn apply_gain(&mut self, buf: &mut [f32], ch: usize) {
+        if self.gain == 1.0 && self.gain_target == 1.0 {
+            return;
+        }
+        for frame in buf.chunks_mut(ch.max(1)) {
+            if self.gain != self.gain_target {
+                self.gain += self.gain_step;
+                let passed = (self.gain_step >= 0.0 && self.gain >= self.gain_target)
+                    || (self.gain_step <= 0.0 && self.gain <= self.gain_target);
+                if passed {
+                    self.gain = self.gain_target;
+                }
+            }
+            for s in frame {
+                *s *= self.gain;
+            }
+        }
     }
 
     /// Appends the next packet's frames (interleaved, `self.channels` wide) to `out`.

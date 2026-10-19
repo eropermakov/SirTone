@@ -72,9 +72,12 @@ fn play(files: &[String], volume: f32) -> ExitCode {
     engine.send(EngineCmd::Load {
         path: PathBuf::from(&files[0]),
         autoplay: true,
+        gain_db: 0.0,
     });
     let mut current = 0usize;
-    engine.send(EngineCmd::SetNext(files.get(1).map(PathBuf::from)));
+    engine.send(EngineCmd::SetNext(
+        files.get(1).map(|f| (PathBuf::from(f), 0.0)),
+    ));
     let mut code = ExitCode::SUCCESS;
     loop {
         match rx.recv_timeout(Duration::from_secs(5)) {
@@ -85,7 +88,7 @@ fn play(files: &[String], volume: f32) -> ExitCode {
                     current += 1;
                     println!("\n→ {next}");
                     engine.send(EngineCmd::SetNext(
-                        files.get(current + 1).map(PathBuf::from),
+                        files.get(current + 1).map(|f| (PathBuf::from(f), 0.0)),
                     ));
                 }
                 print!(

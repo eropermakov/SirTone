@@ -26,6 +26,9 @@ export type SettingsPatch = {
   wave?: { learning?: boolean; novelty?: number };
   library?: { organize_external?: "suggest" | "auto" | "never" };
   network?: { offline_mode?: boolean };
+  playback?: {
+    normalization?: { enabled?: boolean; target_lufs?: number; album_mode?: "auto" | "off" };
+  };
   viz?: { mode?: "waves" | "milkdrop" | "video"; follow_theme_accent?: boolean; minimal?: boolean };
 };
 

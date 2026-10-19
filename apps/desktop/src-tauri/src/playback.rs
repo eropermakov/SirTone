@@ -85,6 +85,50 @@ pub struct QueueItem {
     /// Album and primary artist (shuffle spreading); 0 = unknown.
     pub album_key: u64,
     pub artist_key: u64,
+    /// Loudness of the track and its album (T4.11); unknown for files opened directly.
+    pub loud: sirtone_library::loudness::TrackLoudness,
+}
+
+/// Normalization as the player applies it (T4.11, FR-PLAY-008, `04` §5).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Norm {
+    pub enabled: bool,
+    pub target: f32,
+    /// «auto»: album gain while an album plays in order.
+    pub album: bool,
+}
+
+impl Norm {
+    pub fn from_settings(doc: &serde_json::Value) -> Self {
+        let n = &doc["playback"]["normalization"];
+        Self {
+            enabled: n["enabled"].as_bool().unwrap_or(true),
+            target: n["target_lufs"].as_f64().map_or(-14.0, |v| v as f32),
+            album: n["album_mode"].as_str().unwrap_or("auto") == "auto",
+        }
+    }
+
+    /// The gain of `item`, dB: album gain for an album in order (when the whole album is
+    /// known), else track gain; files outside the library — none.
+    pub fn gain_db(&self, item: &QueueItem, shuffled: bool) -> f32 {
+        if !self.enabled || item.track_id.is_none() {
+            return 0.0;
+        }
+        let l = match item.loud.album {
+            Some(a) if self.album && item.source == PlaySource::Album && !shuffled => a,
+            _ => item.loud.track,
+        };
+        sirtone_core::loudness::gain_db(self.target, l)
+    }
+}
+
+fn norm_of(m: &Mutex<Norm>) -> Norm {
+    *m.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// The next track for the engine with its gain.
+fn next_for_engine(q: &Queue<QueueItem>, norm: &Norm) -> Option<(PathBuf, f32)> {
+    handover(q).map(|i| (i.path.clone(), norm.gain_db(i, q.shuffled())))
 }
 
 /// FR-PLAY-007 repeat mode over IPC.
@@ -197,6 +241,8 @@ pub struct Playback {
     muted_from: Mutex<Option<f32>>,
     /// Keeps the media-controls session alive for the app's lifetime.
     _smtc: Option<Arc<Smtc>>,
+    /// Normalization settings (T4.11), shared with the engine's event sink.
+    norm: Arc<Mutex<Norm>>,
 }
 
 /// Mirrors a snapshot into the Windows media controls: the track (with a cover built off the
@@ -293,6 +339,8 @@ impl Playback {
         let app_for_events = app.clone();
         let journal = Arc::new(Journal::start(settings.clone()));
         let sink_journal = journal.clone();
+        let norm = Arc::new(Mutex::new(Norm::from_settings(&settings.get())));
+        let sink_norm = norm.clone();
         let wave_app = app.clone();
         // Media keys, the Windows 11 flyout and widgets (T1.23): buttons go straight to this
         // service, so they work with the window hidden.
@@ -327,7 +375,10 @@ impl Playback {
                 {
                     q.advance();
                     if let Some(h) = sink_handle.get() {
-                        h.send(EngineCmd::SetNext(handover(&q).map(|i| i.path.clone())));
+                        h.send(EngineCmd::SetNext(next_for_engine(
+                            &q,
+                            &norm_of(&sink_norm),
+                        )));
                     }
                 }
                 sink_journal.observe(
@@ -363,11 +414,13 @@ impl Playback {
                     && let Step::Play(next) = q.on_track_end()
                     && let Some(h) = sink_handle.get()
                 {
+                    let norm = norm_of(&sink_norm);
                     h.send(EngineCmd::Load {
+                        gain_db: norm.gain_db(&next, q.shuffled()),
                         path: next.path,
                         autoplay: true,
                     });
-                    h.send(EngineCmd::SetNext(handover(&q).map(|i| i.path.clone())));
+                    h.send(EngineCmd::SetNext(next_for_engine(&q, &norm)));
                     return;
                 }
                 let current = q
@@ -458,6 +511,7 @@ impl Playback {
             journal,
             muted_from: Mutex::new(None),
             _smtc: smtc,
+            norm,
             app: {
                 let cell = OnceLock::new();
                 let _ = cell.set(app_for_events);
@@ -486,6 +540,7 @@ impl Playback {
                     source: PlaySource::External,
                     album_key: 0,
                     artist_key: 0,
+                    loud: Default::default(),
                 };
                 self.play_queue(vec![item], 0);
             }
@@ -506,8 +561,35 @@ impl Playback {
 
     /// Tells the engine what follows the current track, so it continues without a gap.
     fn hand_next(&self) {
-        let next = handover(&self.queue()).map(|i| i.path.clone());
+        let next = next_for_engine(&self.queue(), &norm_of(&self.norm));
         self.engine.send(EngineCmd::SetNext(next));
+    }
+
+    /// Starts `item` with its normalization gain.
+    fn load(&self, item: QueueItem) {
+        let shuffled = self.queue().shuffled();
+        self.engine.send(EngineCmd::Load {
+            gain_db: norm_of(&self.norm).gain_db(&item, shuffled),
+            path: item.path,
+            autoplay: true,
+        });
+    }
+
+    /// The normalization settings or the album context changed (T4.11): new gains for the
+    /// playing and the next track, ramped in the engine.
+    pub fn renormalize(&self) {
+        let norm = Norm::from_settings(&self.settings.get());
+        *self.norm.lock().unwrap_or_else(|p| p.into_inner()) = norm;
+        let gains: Vec<(PathBuf, f32)> = {
+            let q = self.queue();
+            let shuffled = q.shuffled();
+            q.current()
+                .into_iter()
+                .chain(handover(&q))
+                .map(|i| (i.path.clone(), norm.gain_db(i, shuffled)))
+                .collect()
+        };
+        self.engine.send(EngineCmd::SetGain(gains));
     }
 
     /// After a queue edit: the engine gets the new «next», the player bar its flags, the panel
@@ -557,10 +639,7 @@ impl Playback {
     fn start_if_new(&self, step: Step<QueueItem>) {
         if let Step::Play(item) = step {
             self.journal.close(EndReason::Skip);
-            self.engine.send(EngineCmd::Load {
-                path: item.path,
-                autoplay: true,
-            });
+            self.load(item);
         }
     }
 
@@ -714,6 +793,8 @@ impl Playback {
             recent: i.track_id.is_some_and(|t| recent.contains(&i64::from(t))),
         });
         self.queue_edited();
+        // Album gain holds only for an album in order.
+        self.renormalize();
     }
 
     pub fn queue_view(&self) -> QueueView {
@@ -750,11 +831,9 @@ impl Playback {
             c.reset();
         }
         self.journal.close(EndReason::Skip);
-        if let Step::Play(item) = self.queue().replace(items, start) {
-            self.engine.send(EngineCmd::Load {
-                path: item.path,
-                autoplay: true,
-            });
+        let step = self.queue().replace(items, start);
+        if let Step::Play(item) = step {
+            self.load(item);
         }
         self.hand_next();
     }
@@ -772,22 +851,18 @@ impl Playback {
             w.skipped(t);
         }
         self.journal.close(EndReason::Skip);
-        if let Step::Play(item) = self.queue().advance() {
-            self.engine.send(EngineCmd::Load {
-                path: item.path,
-                autoplay: true,
-            });
+        let step = self.queue().advance();
+        if let Step::Play(item) = step {
+            self.load(item);
         }
         self.hand_next();
     }
 
     pub fn prev(&self) {
         self.journal.close(EndReason::Skip);
-        match self.queue().back() {
-            Step::Play(item) => self.engine.send(EngineCmd::Load {
-                path: item.path,
-                autoplay: true,
-            }),
+        let step = self.queue().back();
+        match step {
+            Step::Play(item) => self.load(item),
             Step::Restart => self.engine.send(EngineCmd::Seek(0)),
             Step::End => {}
         }
@@ -942,6 +1017,7 @@ mod tests {
             source: PlaySource::Collection,
             album_key: 0,
             artist_key: 0,
+            loud: Default::default(),
         }
     }
 
@@ -964,6 +1040,7 @@ mod tests {
             album_id: Some(7),
             artist_id: Some(3),
             art: 0x70,
+            loud: Default::default(),
         };
         let moved = [
             fresh(1, "D:\\m\\Исполнитель\\A.mp3"),
@@ -1039,6 +1116,7 @@ fn apply_fresh(q: &mut Queue<QueueItem>, fresh: &[crate::library::Resolved]) -> 
             source: i.source,
             album_key: r.album_id.map_or(0, |v| v as u64),
             artist_key: r.artist_id.map_or(0, |v| v as u64),
+            loud: r.loud,
         };
         if *i == item {
             false
@@ -1077,6 +1155,7 @@ pub(crate) fn items_with_source(
             source,
             album_key: r.album_id.map_or(0, |v| v as u64),
             artist_key: r.artist_id.map_or(0, |v| v as u64),
+            loud: r.loud,
         })
         .collect())
 }

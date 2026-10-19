@@ -1,6 +1,7 @@
 //! The visualiser tap (T4.1, FR-VIZ-001/007, `04` §9, S-04/D-14): the render thread copies the
-//! frames it takes from the ring — after the limiter, before the late multipliers (volume, pause
-//! ramp) — into a lock-free side ring while a visualiser is open (only copying: no allocation,
+//! frames it takes from the ring — after the engine's chain (normalization; the limiter, T4.13,
+//! will sit there too), before the late multipliers (volume, pause ramp) — into a lock-free side
+//! ring while a visualiser is open (only copying: no allocation,
 //! lock or log on the real-time thread). [`VizSource`] drains it on the visualiser's own thread
 //! and builds 60 Hz frames in the S-04 format: a 32-byte header (version, flags, t_audio_ms,
 //! beat_phase, bpm, bands bass/mid/treb) + `u8[1024]` mono, L, R with offset 128 (Butterchurn's

@@ -5,7 +5,7 @@
 //! and the visualiser tap come with T1.5+ and Stage 4.
 
 use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
@@ -23,6 +23,8 @@ pub enum EngineCmd {
     Load {
         path: PathBuf,
         autoplay: bool,
+        /// Normalization gain, dB (T4.11; 0 — none).
+        gain_db: f32,
     },
     Play,
     Pause,
@@ -32,8 +34,11 @@ pub enum EngineCmd {
     /// Slider value 0…1; the engine applies the cubic curve (docs/04 §7).
     SetVolume(f32),
     /// The track to continue with when the current one ends, without a gap (T1.5, docs/04 §3:
-    /// pre-opened and fed into the same ring). `None` clears it.
-    SetNext(Option<PathBuf>),
+    /// pre-opened and fed into the same ring) and its normalization gain, dB. `None` clears it.
+    SetNext(Option<(PathBuf, f32)>),
+    /// New normalization gains (dB) for these files — the playing one and the next one —
+    /// ramped where they already sound (a settings change, shuffle flipping album gain).
+    SetGain(Vec<(PathBuf, f32)>),
     /// FR-PLAY-012: pause when the output device disappears (default on), else follow the new default.
     SetPauseOnDeviceLoss(bool),
     /// From the device watcher: the system default output changed.
@@ -180,7 +185,12 @@ struct Engine {
     default_changed_at: Option<Instant>,
     /// Underruns already reported in the log (diagnostics; the RT thread only counts).
     logged_underruns: u64,
+    /// Normalization gains (linear) by file, latest first: every source opened gets its own.
+    gains: Vec<(PathBuf, f32)>,
 }
+
+/// A live gain change is ramped over this long (no click).
+const GAIN_RAMP_MS: u32 = 30;
 
 impl Engine {
     fn new(events: EventSink, shared: Arc<Shared>) -> Self {
@@ -202,6 +212,7 @@ impl Engine {
             pause_on_device_loss: true,
             default_changed_at: None,
             logged_underruns: 0,
+            gains: Vec::new(),
         }
     }
 
@@ -257,7 +268,12 @@ impl Engine {
 
     fn handle(&mut self, cmd: EngineCmd) {
         match cmd {
-            EngineCmd::Load { path, autoplay } => {
+            EngineCmd::Load {
+                path,
+                autoplay,
+                gain_db,
+            } => {
+                self.remember_gain(&path, gain_db);
                 if let Err(e) = self.load(path.clone(), autoplay) {
                     (self.events)(EngineEvent::Error {
                         error: e,
@@ -279,7 +295,11 @@ impl Engine {
                     .gain_bits
                     .store(self.volume.powi(3).to_bits(), Ordering::Relaxed);
             }
-            EngineCmd::SetNext(path) => {
+            EngineCmd::SetNext(next) => {
+                let path = next.map(|(p, db)| {
+                    self.remember_gain(&p, db);
+                    p
+                });
                 if self.next_path != path {
                     self.next_path = path;
                     self.feeding = None;
@@ -288,6 +308,29 @@ impl Engine {
                     self.next_source = None;
                     if let Some(d) = self.deck.as_mut() {
                         d.chained = None;
+                    }
+                }
+                return;
+            }
+            EngineCmd::SetGain(list) => {
+                for (path, db) in list {
+                    self.remember_gain(&path, db);
+                    let amp = sirtone_core::loudness::amplitude(db);
+                    let mut sources: Vec<&mut Source> = Vec::new();
+                    for d in [self.deck.as_mut(), self.feeding.as_mut()]
+                        .into_iter()
+                        .flatten()
+                    {
+                        sources.push(&mut d.source);
+                        if let Some((c, _)) = d.chained.as_mut() {
+                            sources.push(c);
+                        }
+                    }
+                    if let Some((n, _)) = self.next_source.as_mut() {
+                        sources.push(n);
+                    }
+                    for s in sources.into_iter().filter(|s| s.path == path) {
+                        s.set_gain(amp, GAIN_RAMP_MS);
                     }
                 }
                 return;
@@ -321,8 +364,18 @@ impl Engine {
         Ok(f)
     }
 
+    /// Keeps the gain of `path` for when its source is opened (or reopened after a seek).
+    fn remember_gain(&mut self, path: &Path, db: f32) {
+        self.gains.retain(|(p, _)| p != path);
+        self.gains.insert(
+            0,
+            (path.to_path_buf(), sirtone_core::loudness::amplitude(db)),
+        );
+        self.gains.truncate(8);
+    }
+
     fn load(&mut self, path: PathBuf, autoplay: bool) -> Result<(), AppError> {
-        let source = Source::open(&path)?;
+        let source = open_with_gain(&self.gains, &path)?;
         let fmt = self.ensure_output()?;
         self.flush();
         self.lost_position = None;
@@ -379,7 +432,7 @@ impl Engine {
         let mut source = if old.boundaries.is_empty() {
             old.source
         } else {
-            Source::open(&old.path)?
+            open_with_gain(&self.gains, &old.path)?
         };
         source.seek(ms)?;
         self.flush();
@@ -432,7 +485,7 @@ impl Engine {
             && let Some(path) = self.next_path.clone()
         {
             self.next_attached = true;
-            match Source::open(&path) {
+            match open_with_gain(&self.gains, &path) {
                 Ok(next)
                     if next.rate == deck.source.rate && next.channels == deck.source.channels =>
                 {
@@ -457,7 +510,7 @@ impl Engine {
         {
             let opened = match self.next_source.take() {
                 Some((src, p)) if p == path => Ok(src),
-                _ => Source::open(&path),
+                _ => open_with_gain(&self.gains, &path),
             };
             match opened.and_then(|src| new_deck(src, path.clone(), out.format, 0)) {
                 Ok(mut next) => {
@@ -677,6 +730,7 @@ pub(crate) fn fill(
                 break;
             }
             deck.decoded_in += (deck.decoded.len() / deck.source.channels.max(1)) as u64;
+            let from = deck.pending.len();
             map_channels(
                 &deck.decoded,
                 deck.source.channels,
@@ -684,6 +738,9 @@ pub(crate) fn fill(
                 ch,
                 &mut deck.pending,
             );
+            // Normalization (T4.11) before the resampler: a chained track switches its gain
+            // exactly at its first frame.
+            deck.source.apply_gain(&mut deck.pending[from..], ch);
         }
         let have = deck.pending.len() / ch;
         let at_end = have < need;
@@ -737,6 +794,17 @@ pub(crate) fn fill(
         }
     }
     Ok(())
+}
+
+/// Opens a track with its normalization gain (T4.11), none if unknown.
+fn open_with_gain(gains: &[(PathBuf, f32)], path: &Path) -> Result<Source, AppError> {
+    let mut s = Source::open(path)?;
+    let amp = gains
+        .iter()
+        .find(|(p, _)| p == path)
+        .map_or(1.0, |(_, a)| *a);
+    s.set_gain(amp, 0);
+    Ok(s)
 }
 
 fn internal(e: impl std::fmt::Display) -> AppError {

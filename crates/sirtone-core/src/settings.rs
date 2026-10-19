@@ -599,6 +599,16 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
             "playback.volume must be 0..=1".into(),
         ));
     }
+    if !crate::loudness::TARGETS.contains(&s.playback.normalization.target_lufs) {
+        return Err(SettingsError::Invalid(
+            "playback.normalization.target_lufs must be -19, -14 or -11".into(),
+        ));
+    }
+    if !["auto", "off"].contains(&s.playback.normalization.album_mode.as_str()) {
+        return Err(SettingsError::Invalid(
+            "playback.normalization.album_mode must be auto or off".into(),
+        ));
+    }
     if !["waves", "milkdrop", "video"].contains(&s.viz.mode.as_str()) {
         return Err(SettingsError::Invalid(
             "viz.mode must be waves, milkdrop or video".into(),
