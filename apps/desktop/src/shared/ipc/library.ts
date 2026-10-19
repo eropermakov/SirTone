@@ -7,6 +7,7 @@ import {
   type GenreItem,
   type ImportFinished,
   type ImportProgress,
+  type ImportReport,
   type LibraryStatus,
   type PageCursor,
   type PlayContext,
@@ -16,6 +17,9 @@ import {
   type TrackItem,
   type TrackPage,
   type UnknownItem,
+  type WaveQueryIpc,
+  type WaveStarted,
+  type WhyReason,
 } from "./bindings";
 
 /**
@@ -29,6 +33,7 @@ export type {
   ArtistPage,
   ImportFinished,
   ImportProgress,
+  ImportReport,
   LibraryStatus,
   PageCursor,
   PlayContext,
@@ -96,9 +101,17 @@ export const dismissQuestion = (): void => {
   if (isTauri()) void commands.libraryDismissQuestion();
 };
 
-/** Plays `ids` as one context from `start` (FR-PLAY-006); `context` goes to the journal. */
-export const playTracks = (ids: number[], start: number, context: PlayContext): void => {
-  if (isTauri()) void commands.playTracks(ids, start, context);
+/**
+ * Plays `ids` as one context from `start` (FR-PLAY-006); `context` goes to the journal.
+ * `playlist` — the playlist being played: its ∞ continues it (T3.14).
+ */
+export const playTracks = (
+  ids: number[],
+  start: number,
+  context: PlayContext,
+  playlist: number | null = null,
+): void => {
+  if (isTauri()) void commands.playTracks(ids, start, context, playlist);
 };
 
 type Off = () => void;
@@ -114,12 +127,46 @@ export const onImportFinished = (cb: (p: ImportFinished) => void) =>
 export const onLibraryChanged = (cb: () => void) => listen(events.libraryChanged, () => cb());
 export const onRootNeeded = (cb: () => void) => listen(events.libraryRootNeeded, () => cb());
 
+/** T3.19: files added in Explorer lie elsewhere than the layout rules say. */
+export const onOrganizeSuggested = (cb: (tracks: number) => void) =>
+  listen(events.organizeSuggested, (e) => cb(e.tracks));
+
+/** The import report in full (T3.21). */
+export const importReport = async (batch: number): Promise<ImportReport> =>
+  isTauri()
+    ? unwrap(await commands.importReport(batch))
+    : { added: [], unknown: [], duplicates: [], rejected: [] };
+
+/** «Навести порядок»: the waiting files, or the whole library; returns how many moved. */
+export const organizeLibrary = async (all: boolean): Promise<number> =>
+  isTauri() ? unwrap(await commands.libraryOrganize(all)) : 0;
+
 export const unknownTracks = async (): Promise<TrackItem[]> =>
   isTauri() ? unwrap(await commands.unknownTracks()) : [];
 
 /** «Неизвестные» with reasons (docs/05 §4.7). */
 export const unknownList = async (): Promise<UnknownItem[]> =>
   isTauri() ? unwrap(await commands.unknownList()) : [];
+
+/** «Неизвестные» II (T3.11): a hint in one click, one artist for many, «нормальный», the
+ * quarantine and «Повторить онлайн». */
+export const unknownAccept = async (track: number, index: number): Promise<void> => {
+  if (isTauri()) unwrap(await commands.unknownAccept(track, index));
+};
+
+export const unknownAssignArtist = async (tracks: number[], artist: string): Promise<number> =>
+  isTauri() ? unwrap(await commands.unknownAssignArtist(tracks, artist)) : 0;
+
+export const unknownNormal = async (tracks: number[]): Promise<number> =>
+  isTauri() ? unwrap(await commands.unknownNormal(tracks)) : 0;
+
+export const unknownRelease = async (track: number): Promise<void> => {
+  if (isTauri()) unwrap(await commands.unknownRelease(track));
+};
+
+/** `false` — offline. */
+export const unknownRetry = async (): Promise<boolean> =>
+  isTauri() ? commands.unknownRetry() : false;
 
 /** «Назначить»: who and what the track is; the file moves to its canonical place. */
 export const assignTrack = async (track: number, a: TrackAssignment): Promise<void> => {
@@ -168,4 +215,26 @@ export const allTrackIds = async (): Promise<number[]> => {
     if (!page.next) return ids;
     after = page.next;
   }
+};
+
+/** «Моя волна» (Stage 3): the engine picks and plays; returns how many tracks were queued. */
+export const waveStart = async (
+  profile?: "seasonal" | "for_all",
+  query?: WaveQueryIpc,
+): Promise<WaveStarted> =>
+  isTauri()
+    ? unwrap(await commands.waveStart(profile ?? null, query ?? null))
+    : { queued: 0, relaxed: [], noPopularity: false, few: false };
+
+/** The seasonal card's name key under `wave.season` (FR-SEAS-004). */
+export const waveSeasonCard = async (): Promise<string | null> =>
+  isTauri() ? commands.waveSeasonCard() : null;
+
+/** «Почему этот трек» for a track of the running wave (empty outside the wave). */
+export const waveWhy = async (track: number): Promise<WhyReason[]> =>
+  isTauri() ? commands.waveWhy(track) : [];
+
+/** The slider moved: the upcoming wave tracks are picked again. */
+export const waveRetune = (): void => {
+  if (isTauri()) void commands.waveRetune();
 };

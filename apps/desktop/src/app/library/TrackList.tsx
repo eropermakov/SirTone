@@ -18,6 +18,7 @@ import { type ReactNode, useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type DragTrack, dropId } from "@/app/dnd/dnd";
 import { useAddToPlaylist } from "@/app/playlists/useAddToPlaylist";
+import { useTrackTags } from "@/app/playlists/useTrackTags";
 import { timecode } from "@/app/shell/PlayerBar";
 import { type PlayContext, revealTrack, type TrackItem } from "@/shared/ipc/library";
 import { queueAppend, queuePlayNext } from "@/shared/ipc/playback";
@@ -49,6 +50,7 @@ export function TrackList({
   onSelect,
   onRemoveFromList,
   playlist,
+  footer,
 }: {
   tracks: TrackItem[];
   playingId: number | null;
@@ -62,6 +64,8 @@ export function TrackList({
   onRemoveFromList?: ((index: number) => void) | undefined;
   /** A playlist page: rows reorder by dragging (positions as stored). */
   playlist?: { id: number; positions: number[] } | undefined;
+  /** Below the rows, in the same scroll (the playlist's recommendations, T3.14). */
+  footer?: ReactNode;
 }) {
   const { t } = useTranslation("shell");
   const scroller = useRef<HTMLDivElement>(null);
@@ -70,6 +74,7 @@ export function TrackList({
   const [card, setCard] = useState<{ id: number; confirmDelete: boolean } | null>(null);
   const closeCard = useCallback(() => setCard(null), []);
   const toPlaylist = useAddToPlaylist();
+  const tagsMenu = useTrackTags(menu ? (tracks[menu.index]?.id ?? null) : null);
   const v = useVirtualizer({
     count: tracks.length,
     getScrollElement: () => scroller.current,
@@ -142,6 +147,7 @@ export function TrackList({
           icon: Pencil,
           onSelect: () => setCard({ id: tr.id, confirmDelete: false }),
         },
+        tagsMenu,
         {
           id: "reveal",
           label: t("trackMenu.reveal"),
@@ -278,6 +284,7 @@ export function TrackList({
           );
         })}
       </ul>
+      {footer}
       {menu && menuTrack && (
         <Menu
           items={items(menuTrack, menu.index)}

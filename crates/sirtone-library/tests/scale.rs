@@ -123,6 +123,76 @@ fn pages_of_100_on_100k_tracks() {
         p95(by_title) <= 10.0 && p95(art) <= 10.0 && p95(alb) <= 10.0,
         "P-08 exceeded"
     );
+    // T3.15: search II on the same 100 000 tracks — every form (as typed, layout, translit),
+    // stems, the typo fallback; `05` §9: ≤ 80 ms p95.
+    let queries = [
+        "ночь",
+        "город зв",
+        "звезда",
+        "highway",
+        "thunder dream",
+        "сердце 5",
+        "море ветер",
+        "light 77",
+        "dream 123",
+        "highwy",
+        "thundr",
+        "lihgt",
+        "dreem",
+        "звзеда",
+        "сердцо",
+        "ujhjl",
+        "vjht",
+        "yjxm",
+        "cthlwt",
+        "gorod",
+        "zvezda",
+        "veter",
+        "nochi",
+        "serdtse",
+        "сердца",
+        "звезды",
+        "городе",
+        "ветра",
+        "ночью",
+        "морем",
+        "Ночь 9",
+        "ГОРОД",
+        "dreams",
+        "lights",
+        "thunders",
+        "high",
+        "ве",
+        "з",
+        "highway 9999",
+        "звезда 42",
+    ];
+    let mut search_ms = Vec::new();
+    for _ in 0..5 {
+        for q in queries {
+            let t = Instant::now();
+            let _ = sirtone_library::search::search(&c, q).unwrap();
+            search_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+        }
+    }
+    let mut per: Vec<(f64, &str)> = queries
+        .iter()
+        .enumerate()
+        .map(|(i, q)| {
+            let worst = (0..5)
+                .map(|k| search_ms[k * queries.len() + i])
+                .fold(0.0, f64::max);
+            (worst, *q)
+        })
+        .collect();
+    per.sort_by(|a, b| b.0.total_cmp(&a.0));
+    println!("slowest: {:?}", &per[..8]);
+    println!(
+        "search II p95 {:.1} ms ({} queries)",
+        p95(search_ms.clone()),
+        search_ms.len()
+    );
+    assert!(p95(search_ms) <= 80.0, "search p95 exceeded");
     drop(c);
     let _ = std::fs::remove_dir_all(&dir);
 }

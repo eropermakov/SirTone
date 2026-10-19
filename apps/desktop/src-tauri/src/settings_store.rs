@@ -135,6 +135,9 @@ pub fn settings_patch(
     if changed.iter().any(|k| k == "hotkeys") {
         crate::hotkeys::apply(&app); // FR-WIN-001: applied without a restart
     }
+    if changed.iter().any(|k| k == "network") {
+        crate::net::apply(&app); // T3.1: the offline switch, at once
+    }
     let _ = app.emit("settings://changed", &changed);
     Ok(Json(doc))
 }

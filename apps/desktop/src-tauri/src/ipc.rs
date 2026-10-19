@@ -5,8 +5,9 @@
 use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::{
-    autostart, bootstrap, feedback, hotkeys, library, perf, playback, playlists, search,
-    settings_store, storage, updates, window_chrome,
+    analysis, artists, autostart, bootstrap, continuation, duplicates, feedback, hotkeys, library,
+    net, perf, playback, playlists, search, settings_store, storage, unknowns, updates, wave,
+    window_chrome,
 };
 
 /// Free-form JSON across IPC, exported as TS `unknown`. specta inlines `serde_json::Value`
@@ -38,6 +39,14 @@ pub fn builder() -> Builder<tauri::Wry> {
             playback::queue_play_next,
             playback::queue_append,
             playback::queue_get,
+            unknowns::unknown_accept,
+            unknowns::unknown_assign_artist,
+            unknowns::unknown_normal,
+            unknowns::unknown_release,
+            unknowns::unknown_retry,
+            continuation::continuation_preview,
+            continuation::continuation_set,
+            continuation::continuation_exclude,
             playback::queue_remove,
             playback::queue_move,
             playback::queue_jump,
@@ -78,6 +87,12 @@ pub fn builder() -> Builder<tauri::Wry> {
             playlists::playlist_add,
             playlists::playlist_remove,
             playlists::playlist_move,
+            playlists::smart_create,
+            playlists::smart_set_rules,
+            playlists::smart_rules,
+            playlists::smart_preview,
+            playlists::smart_refresh,
+            playlists::smart_save_as_manual,
             search::library_search,
             perf::perf_hardware,
             feedback::track_feedback,
@@ -86,8 +101,28 @@ pub fn builder() -> Builder<tauri::Wry> {
             feedback::feedback_never,
             feedback::track_primary_artist,
             feedback::never_list,
+            feedback::track_tags,
+            feedback::track_tag_set,
             storage::storage_info,
             storage::storage_clear_logs,
+            wave::wave_start,
+            wave::wave_reset_learning,
+            wave::wave_why,
+            wave::wave_retune,
+            wave::wave_season_card,
+            analysis::analysis_progress,
+            library::library_organize,
+            net::net_status,
+            library::import_report,
+            artists::artist_suggestions,
+            artists::artist_suggestion_dismiss,
+            artists::artists_merge,
+            artists::artists_merge_undo,
+            duplicates::duplicates_list,
+            duplicates::duplicates_count,
+            duplicates::duplicate_keep_both,
+            duplicates::duplicate_merge,
+            duplicates::duplicates_keep_best,
             window_chrome::window_set_theme,
         ])
         .events(collect_events![
@@ -99,7 +134,9 @@ pub fn builder() -> Builder<tauri::Wry> {
             library::LibraryRootNeeded,
             hotkeys::HotkeyConflict,
             playback::QueueChanged,
-            playlists::PlaylistsChanged
+            playlists::PlaylistsChanged,
+            duplicates::DuplicatesFound,
+            library::OrganizeSuggested
         ])
 }
 

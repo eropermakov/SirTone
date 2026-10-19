@@ -3,8 +3,16 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionSummary } from "@/app/library/CollectionScreen";
 import { mb } from "@/app/library/TrackCard";
-import { type NeverEntry, never, neverList } from "@/shared/ipc/feedback";
+import { duplicatesCount } from "@/shared/ipc/duplicates";
+import {
+  analysisProgress,
+  type NeverEntry,
+  never,
+  neverList,
+  resetLearning,
+} from "@/shared/ipc/feedback";
 import type { LibraryStatus } from "@/shared/ipc/library";
+import { organizeLibrary } from "@/shared/ipc/library";
 import { perfHardware } from "@/shared/ipc/perf";
 import { getSettings, patchSettings } from "@/shared/ipc/settings";
 import { clearOldLogs, type StorageInfo, storageInfo } from "@/shared/ipc/storage";
@@ -22,6 +30,7 @@ import { applyPerformance, profile } from "@/shared/theme/performance";
 import { ACCENT_SLUGS, type AccentSource, isPalette, type ThemePref } from "@/shared/theme/theme";
 import { Button } from "@/shared/ui/Button";
 import { Chip } from "@/shared/ui/Chip";
+import { Dialog } from "@/shared/ui/Dialog";
 import { notify } from "@/shared/ui/notify";
 import { Switch } from "@/shared/ui/Switch";
 
@@ -36,6 +45,8 @@ type Props = {
   /** FR-ONB-002/003: the setup and the tips again. */
   onReplaySetup?: () => void;
   onReplayTips?: () => void;
+  /** «Дубли» (T3.5). */
+  onShowDuplicates?: () => void;
 };
 
 const THEMES: { id: ThemePref; key: string }[] = [
@@ -56,6 +67,7 @@ export function SettingsScreen({
   onChooseLibrary,
   onReplaySetup,
   onReplayTips,
+  onShowDuplicates,
 }: Props) {
   const { t } = useTranslation("shell");
 
@@ -107,6 +119,8 @@ export function SettingsScreen({
             </span>
             {library.root && <CollectionSummary status={library} />}
             {library.root && <ServiceData />}
+            {library.root && onShowDuplicates && <DuplicatesLine onShow={onShowDuplicates} />}
+            {library.root && <OrganizeLine />}
             {!library.root && onChooseLibrary && (
               <button
                 type="button"
@@ -120,11 +134,15 @@ export function SettingsScreen({
         </div>
       )}
 
+      <NetworkSection />
+
       <PerformanceSection />
 
       <StartupSection />
 
       <HotkeysSection />
+
+      <WaveLearningSection />
 
       <NeverSection />
 
@@ -623,6 +641,213 @@ export function SeasonSwitch() {
           patchSettings({ appearance: { seasonal_theme: v } }).catch(() => setOn(!v));
         }}
       />
+    </div>
+  );
+}
+
+/** «Моя волна» (FR-LEARN, docs/14 §8.4): learning on/off and «Сбросить обучение». */
+function WaveLearningSection() {
+  const { t } = useTranslation("shell");
+  const { t: tc } = useTranslation("common");
+  const [on, setOn] = useState(true);
+  const [asking, setAsking] = useState(false);
+  useEffect(() => {
+    getSettings().then((s) => {
+      const w = s.wave as { learning?: boolean } | undefined;
+      setOn(w?.learning ?? true);
+    });
+  }, []);
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsWave.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsWave.learning")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsWave.learningHint")}</div>
+          </div>
+          <Switch
+            checked={on}
+            label={t("settingsWave.learning")}
+            onChange={(v) => {
+              setOn(v);
+              patchSettings({ wave: { learning: v } }).catch(() => setOn(!v));
+            }}
+          />
+        </div>
+        <AnalysisLine />
+        <Button variant="ghost" className="self-start text-danger" onClick={() => setAsking(true)}>
+          {t("settingsWave.reset")}
+        </Button>
+      </div>
+      {asking && (
+        <Dialog
+          title={t("settingsWave.reset")}
+          closeLabel={tc("errors.close")}
+          onClose={() => setAsking(false)}
+        >
+          <p className="t-body text-text-primary">{t("settingsWave.resetQuestion")}</p>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="secondary"
+              className="text-danger"
+              onClick={() => {
+                setAsking(false);
+                resetLearning()
+                  .then(() => notify(t("settingsWave.resetDone")))
+                  .catch(() => notify(t("wave.failed")));
+              }}
+            >
+              {t("settingsWave.reset")}
+            </Button>
+            <Button variant="ghost" onClick={() => setAsking(false)}>
+              {t("trackCard.cancel")}
+            </Button>
+          </div>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
+/** «Анализ звука: N из M» — the background analysis (T3.6/T3.10), refreshed every 5 s. */
+function AnalysisLine() {
+  const { t } = useTranslation("shell");
+  const [p, setP] = useState<{ done: number; total: number; paused: boolean } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      analysisProgress()
+        .then((v) => {
+          if (alive) setP(v);
+        })
+        .catch(() => {});
+    void load();
+    const id = window.setInterval(load, 5000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, []);
+  if (!p || p.total === 0) return null;
+  return (
+    <p className="t-caption text-text-secondary">
+      {p.done >= p.total
+        ? t("settingsWave.analysisDone", { count: p.total })
+        : t(p.paused ? "settingsWave.analysisPaused" : "settingsWave.analysis", {
+            done: p.done,
+            total: p.total,
+          })}
+    </p>
+  );
+}
+
+/** «Дубли: N — Показать» (T3.5): pairs by sound waiting for a decision. */
+function DuplicatesLine({ onShow }: { onShow: () => void }) {
+  const { t } = useTranslation("shell");
+  const [n, setN] = useState<number | null>(null);
+  useEffect(() => {
+    duplicatesCount()
+      .then(setN)
+      .catch(() => {});
+  }, []);
+  if (n === null) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <span className="t-body text-text-primary">
+        {n > 0 ? t("dups.pending", { count: n }) : t("dups.none")}
+      </span>
+      <button type="button" onClick={onShow} className="t-body-strong w-fit text-accent-text">
+        {t("dups.show")}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * «Навести порядок» (T3.19, FR-FS-005): files added in Explorer are taken where they are; the
+ * switch moves new ones by the rules at once (otherwise a toast offers it); the button puts the
+ * whole library in order.
+ */
+function OrganizeLine() {
+  const { t } = useTranslation("shell");
+  const [auto, setAuto] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    getSettings()
+      .then((s) => {
+        const l = s.library as { organize_external?: string } | undefined;
+        setAuto(l?.organize_external === "auto");
+      })
+      .catch(() => {});
+  }, []);
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-4">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="t-body text-text-primary">{t("organize.auto")}</span>
+          <span className="t-caption text-text-secondary">{t("organize.autoHint")}</span>
+        </div>
+        <Switch
+          checked={auto}
+          label={t("organize.auto")}
+          onChange={(on) => {
+            setAuto(on);
+            patchSettings({ library: { organize_external: on ? "auto" : "suggest" } }).catch(() =>
+              setAuto(!on),
+            );
+          }}
+        />
+      </div>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          organizeLibrary(true)
+            .then((n) => notify(t("organize.done", { count: n })))
+            .catch(() => notify(t("organize.failed")))
+            .finally(() => setBusy(false));
+        }}
+        className="t-body-strong w-fit text-accent-text disabled:opacity-40"
+      >
+        {t("organize.all")}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * «Сеть» (T3.1, `03` §11): «Работать полностью офлайн» — no request leaves the computer
+ * (recognition, weather, updates); the music, the wave and the search work as before.
+ */
+function NetworkSection() {
+  const { t } = useTranslation("shell");
+  const [off, setOff] = useState(false);
+  useEffect(() => {
+    getSettings()
+      .then((s) =>
+        setOff(Boolean((s.network as { offline_mode?: boolean } | undefined)?.offline_mode)),
+      )
+      .catch(() => {});
+  }, []);
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsNet.title")}</h2>
+      <div className="flex items-center gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="t-body text-text-primary">{t("settingsNet.offline")}</span>
+          <span className="t-caption text-text-secondary">{t("settingsNet.offlineHint")}</span>
+        </div>
+        <Switch
+          checked={off}
+          label={t("settingsNet.offline")}
+          onChange={(on) => {
+            setOff(on);
+            patchSettings({ network: { offline_mode: on } }).catch(() => setOff(!on));
+          }}
+        />
+      </div>
     </div>
   );
 }

@@ -119,6 +119,169 @@ fn play(files: &[String], volume: f32) -> ExitCode {
     code
 }
 
+/// P-11 (`08` §1, «анализ трека ≤ 2 с»): the background pass on files — B0, the fingerprint,
+/// B1 and the tagger (B2/B3) in one decode — with the time each took. The duration that places
+/// the tagger windows comes from the library row in the app; here from a first plain pass
+/// (not timed).
+/// `--no-model` — without the tagger (B0 + fingerprint + B1 only, for comparison).
+fn analyze(files: &[String]) -> ExitCode {
+    if files.first().is_some_and(|f| f == "--no-model") {
+        for f in &files[1..] {
+            let t = std::time::Instant::now();
+            let r = sirtone_analysis::b0::analyze(
+                &sirtone_audio::pcm::PcmFiles,
+                std::path::Path::new(f),
+                None,
+            );
+            println!(
+                "{f}: {:.0} ms, ok {}",
+                t.elapsed().as_secs_f64() * 1e3,
+                r.is_ok()
+            );
+        }
+        return ExitCode::SUCCESS;
+    }
+    let t = std::time::Instant::now();
+    let (tagger, rules) = match (
+        sirtone_analysis::b2::Tagger::builtin(),
+        sirtone_analysis::b3::Rules::builtin(),
+    ) {
+        (Ok(t), Ok(r)) => (t, r),
+        (t, r) => {
+            println!("tagger: {:?} {:?}", t.err(), r.err().map(|e| e.to_string()));
+            return ExitCode::FAILURE;
+        }
+    };
+    println!("tagger loaded in {:.0} ms", t.elapsed().as_secs_f64() * 1e3);
+    // T3.8 «≤ 1 с/трек»: the tagger alone on two 10 s windows at 44.1 kHz.
+    let clip: Vec<f32> = (0..441_000)
+        .map(|i| (i as f32 * 0.0627).sin() * 0.3)
+        .collect();
+    let t = std::time::Instant::now();
+    let _ = tagger.tag(&[clip.clone(), clip], 44_100);
+    println!(
+        "B2 alone, 2 windows: {:.0} ms",
+        t.elapsed().as_secs_f64() * 1e3
+    );
+    let dec = sirtone_audio::pcm::PcmFiles;
+    let mut worst = 0f64;
+    for f in files {
+        let path = std::path::Path::new(f);
+        let duration_ms =
+            sirtone_analysis::b0::analyze(&dec, path, None).map_or(0, |b| b.duration_ms);
+        let deep = sirtone_analysis::b0::Deep {
+            tagger: &tagger,
+            rules: &rules,
+            duration_ms,
+        };
+        let t = std::time::Instant::now();
+        match sirtone_analysis::b0::analyze(&dec, path, Some(deep)) {
+            Ok(b) => {
+                let ms = t.elapsed().as_secs_f64() * 1e3;
+                worst = worst.max(ms);
+                println!(
+                    "{f}: {ms:.0} ms — {:.1} s, LUFS {:?}, BPM {:?}, key {:?}, fingerprint {} B",
+                    b.duration_ms as f64 / 1000.0,
+                    b.lufs_i,
+                    b.bpm,
+                    b.key_camelot,
+                    b.fingerprint.as_ref().map_or(0, Vec::len)
+                );
+                if let Some(v) = b.vibe {
+                    println!(
+                        "    energy {:.2} valence {:.2} arousal {:.2} dance {:.2} acoustic {:.2} vocal {:.2} aggr {:.2} bright {:.2}
+    moods {:.2?}
+    genres {:.2?}",
+                        v.energy, v.valence, v.arousal, v.danceability, v.acousticness, v.vocal,
+                        v.aggression, v.brightness, v.moods, v.genres
+                    );
+                }
+            }
+            Err(e) => println!("{f}: {:?}", e.code),
+        }
+    }
+    println!("worst {worst:.0} ms (P-11: target 2000, limit 4000)");
+    if worst <= 4000.0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
+/// T3.14 calibration: the closeness matrix of files (same vectors as the continuation) and
+/// the stop threshold θ of the first three as a playlist.
+fn similar(files: &[String]) -> ExitCode {
+    let (Ok(tagger), Ok(rules)) = (
+        sirtone_analysis::b2::Tagger::builtin(),
+        sirtone_analysis::b3::Rules::builtin(),
+    ) else {
+        return ExitCode::FAILURE;
+    };
+    let dec = sirtone_audio::pcm::PcmFiles;
+    let mut tracks = Vec::new();
+    for (i, f) in files.iter().enumerate() {
+        let path = std::path::Path::new(f);
+        let duration_ms =
+            sirtone_analysis::b0::analyze(&dec, path, None).map_or(0, |b| b.duration_ms);
+        let deep = sirtone_analysis::b0::Deep {
+            tagger: &tagger,
+            rules: &rules,
+            duration_ms,
+        };
+        let Ok(b) = sirtone_analysis::b0::analyze(&dec, path, Some(deep)) else {
+            println!("{f}: not analysed");
+            continue;
+        };
+        tracks.push(sirtone_core::wave::SimTrack {
+            id: i as i64 + 1,
+            artist_id: i as i64 + 1,
+            play_count: 0,
+            bpm: b.bpm,
+            key_camelot: b.key_camelot,
+            vae: b.vibe.as_ref().map(|v| [v.valence, v.arousal, v.energy]),
+            embedding: b.embedding,
+        });
+        println!("{:>2} {f}", i + 1);
+    }
+    let Ok(cfg) = sirtone_wave::similar::SimConfig::builtin() else {
+        return ExitCode::FAILURE;
+    };
+    let s = sirtone_wave::similar::Similar::build(&tracks, cfg);
+    print!("   ");
+    for t in &tracks {
+        print!("{:>6}", t.id);
+    }
+    println!();
+    for a in &tracks {
+        print!("{:>2} ", a.id);
+        for b in &tracks {
+            match s.pair(a.id, b.id) {
+                Some(c) => print!("{c:>6.2}"),
+                None => print!("{:>6}", "—"),
+            }
+        }
+        println!();
+    }
+    // Playlists: SIRTONE_SEEDS="1,2,3/5,6,7" (default — the first three files).
+    let groups = std::env::var("SIRTONE_SEEDS").unwrap_or_else(|_| "1,2,3".into());
+    for g in groups.split('/') {
+        let seeds: Vec<i64> = g.split(',').filter_map(|v| v.trim().parse().ok()).collect();
+        println!("playlist {seeds:?}: θ {:.2}", s.theta(&seeds));
+        let mut close: Vec<(i64, f32)> = tracks
+            .iter()
+            .filter(|t| !seeds.contains(&t.id))
+            .filter_map(|t| s.closeness(&seeds, t.id).map(|c| (t.id, c)))
+            .collect();
+        close.sort_by(|a, b| b.1.total_cmp(&a.1));
+        let close: Vec<String> = close.iter().map(|(id, c)| format!("{id}:{c:.2}")).collect();
+        println!("  to the centre: {close:?}");
+        let picks = s.continuation(&seeds, &Default::default(), &[], 50);
+        let ids: Vec<i64> = picks.iter().map(|p| p.id).collect();
+        println!("  continuation: {ids:?}");
+    }
+    ExitCode::SUCCESS
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
@@ -172,6 +335,8 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Some("analyze") if args.len() > 1 => analyze(&args[1..]),
+        Some("similar") if args.len() > 1 => similar(&args[1..]),
         Some("render") if args.len() > 1 => soak::render(&args[1..]),
         Some("soak") if args.len() > 1 => soak::soak(&args[1..]),
         Some("latency") if args.len() > 1 => soak::latency(&args[1..]),

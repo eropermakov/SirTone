@@ -136,13 +136,13 @@
 | Громкость | `ebur128` 0.1.10 | MIT | ✅ | последний релиз 2024-10 — стабильный порт libebur128 |
 | Time-stretch | `signalsmith-stretch` 0.1.3 | MIT | ✅ 🧪 S-08 | C++ через `cc` (нужен MSVC — есть) |
 | FFT | `rustfft` 6.4.1 · `realfft` 3.5.0 | MIT OR Apache-2.0 / MIT | ✅ | |
-| BPM/ключ | `stratum-dsp` 1.0.0 | MIT OR Apache-2.0 (GitHub: NOASSERTION — проверить LICENSE) | 🧪 S-08 | запасной вариант — собственная реализация |
+| BPM/ключ | `stratum-dsp` =1.0.0 (без `ml`) | MIT OR Apache-2.0 (в пакете LICENSE-MIT и LICENSE-APACHE, © HLLMR) | ✅ S-08, T3.7 | `rayon` объявлен, но не используется; тянет вторую `symphonia` 0.5 (размер бинарника) |
 | Теги | `lofty` 0.25.4 | MIT OR Apache-2.0 | ✅ | ASF/WMA не поддерживает |
-| Отпечаток | `rusty-chromaprint` 0.3.0 | MIT | 🧪 S-06 | последний релиз 2024-10; сверять с `fpcalc` |
+| Отпечаток | `rusty-chromaprint` =0.3.0 | MIT | ✅ S-06, T3.2 | последний релиз 2024-10; паритет сжатого формата с Chromaprint (ffmpeg) — тест `fingerprint.rs`; в репозитории нет LICENSE → текст MIT в `assets/licenses/rusty-chromaprint.txt`; тянет второй `rubato` 0.16 (предупреждение `cargo deny` о дубликате) |
 | Кодировки | `encoding_rs` 0.8.42 · `chardetng` 1.0.0 | (Apache-2.0 OR MIT) AND BSD-3-Clause / Apache-2.0 OR MIT | ✅ | |
 | Строки/поиск | `strsim` 0.11.1 · `unicode-normalization` 0.1.25 · `deunicode` 1.6.2 · `rust-stemmers` 1.2.0 | MIT / MIT OR Apache / BSD-3 / MIT+BSD-3 | ✅ | `tantivy`, `symspell`, `fst` — не нужны (FTS5 хватает) |
 | БД | `rusqlite` 0.40.2 (bundled, FTS5) · `rusqlite_migration` 2.6.0 | MIT / Apache-2.0 | ✅ | `sqlx` — не берём |
-| ML-инференс | `tract-onnx` 0.23.9 · (`ort` 2.0.0-rc.14 опция) | MIT OR Apache-2.0 | 🧪 S-07 | |
+| ML-инференс | `tract-onnx` =0.23.9 · (`ort` 2.0.0-rc.14 не нужен) | MIT OR Apache-2.0 | ✅ S-07, T3.8 | чистый Rust, без нативных DLL; `cargo deny` чист |
 | Сеть | `reqwest` 0.13.5 (native-tls/SChannel) | MIT OR Apache-2.0 | ✅ | без OpenSSL/NASM |
 | FS | `notify` 8.2.0 · `notify-debouncer-full` 0.7.0 · `jwalk` 0.9.0 · `trash` 5.2.9 · `blake3` 1.8.7 · `memmap2` 0.9.11 | CC0 / MIT OR Apache / MIT / MIT / CC0 OR Apache / MIT OR Apache | ✅ | |
 | Windows | `windows` 0.62.2 | MIT OR Apache-2.0 | ✅ | WinRT, Core Audio, Shell |
@@ -178,7 +178,7 @@
 
 | Ассет | Лицензия | Статус |
 |---|---|---|
-| EfficientAT (репозиторий MIT; веса — в GitHub Releases репозитория, отдельной лицензии нет → считаем MIT, подтвердить у авторов): `mn04_as` 0,98 млн парам. / mAP 43,2; **`mn10_as` 4,88 млн / mAP 47,1**; ONNX-экспорт делаем сами | MIT | кандидат №1 (S-07) |
+| EfficientAT (репозиторий MIT; веса — в GitHub Releases репозитория, отдельной лицензии нет → считаем MIT, подтвердить у авторов): `mn04_as` 0,98 млн парам. / mAP 43,2; **`mn10_as` 4,88 млн / mAP 47,1**; ONNX-экспорт делаем сами | MIT | ✅ **включена** в приложение (S-07, T3.8; `assets/models/MODELS.md`, sha256) |
 | YAMNet — готовые ONNX-конверсии (tf2onnx, веса без изменений; Hugging Face `audiomagic/yamnet-onnx`, `zeropointnine/yamnet-onnx`): 521 класс + эмбеддинг 1024 | Apache-2.0 (апстрим Google) | кандидат №2 (S-07) |
 | **Названия классов AudioSet** (онтология) | **CC BY 4.0** — нужна атрибуция Google в «О программе → Лицензии» | обязательно при любом из двух |
 | PANNs | MIT (код) | резерв |

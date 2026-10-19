@@ -10,6 +10,7 @@ pub mod gapless;
 pub mod latency;
 pub mod mf;
 pub mod output;
+pub mod pcm;
 pub mod probe;
 pub mod render;
 

@@ -17,8 +17,10 @@ import { Button } from "@/shared/ui/Button";
 import { Cover } from "@/shared/ui/Cover";
 import { Menu } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
+import { ArtistMerge } from "./ArtistMerge";
 import { ArtistRemove } from "./ArtistRemove";
 import { type Card, CardGrid } from "./CardGrid";
+import { MergeSuggestion } from "./MergeSuggestion";
 import {
   ALBUM_SORTS,
   type AlbumSort,
@@ -41,6 +43,7 @@ export type Open = {
   title: string;
   subtitle: string;
   cover: string | null;
+  art?: number;
 };
 
 /** «Вся коллекция: N треков · Ч ч М мин · X ГБ» (docs/06 §4, FR-LIB-001). */
@@ -98,6 +101,8 @@ export function CollectionScreen({
   const [tracks, setTracks] = useState<TrackItem[]>([]);
   const [removing, setRemoving] = useState<Card | null>(null);
   const closeRemove = useCallback(() => setRemoving(null), []);
+  const [merging, setMerging] = useState<Card | null>(null);
+  const closeMerge = useCallback(() => setMerging(null), []);
   const go: GoTo = (k, id, title) => onOpen({ kind: k, id, title, subtitle: "", cover: null });
 
   // Lists: all pages (keyset, 200 per call); refetch when the library changes.
@@ -161,7 +166,13 @@ export function CollectionScreen({
         </button>
         <div className="flex items-end gap-6">
           {open.kind === "albums" && (
-            <Cover hash={open.cover} px={184} rounded="md" className="shadow-(--shadow-artwork)" />
+            <Cover
+              hash={open.cover}
+              art={open.art}
+              px={184}
+              rounded="md"
+              className="shadow-(--shadow-artwork)"
+            />
           )}
           <div className="min-w-0 flex-1">
             <h1 className="t-page-title truncate text-primary-text">{open.title}</h1>
@@ -197,6 +208,7 @@ export function CollectionScreen({
           title: a.title,
           subtitle: [a.artist, a.year].filter(Boolean).join(" · "),
           cover: a.cover,
+          art: a.art,
           count: a.tracks,
         }))
       : sortArtists(artists, artistSort).map((a) => ({
@@ -251,6 +263,11 @@ export function CollectionScreen({
           }))}
         />
       )}
+      {kind === "artists" && (
+        <div className="mt-4">
+          <MergeSuggestion version={version} />
+        </div>
+      )}
       <div className="mt-4 flex min-h-0 flex-1 flex-col">
         <CardGrid
           kind={kind}
@@ -263,6 +280,7 @@ export function CollectionScreen({
               title: c.title,
               subtitle: kind === "albums" ? c.subtitle : "",
               cover: c.cover,
+              ...(c.art === undefined ? {} : { art: c.art }),
             })
           }
           onPlay={(c) =>
@@ -294,9 +312,11 @@ export function CollectionScreen({
             })
           }
           onRemove={kind === "artists" ? setRemoving : undefined}
+          onMerge={kind === "artists" ? setMerging : undefined}
         />
       </div>
       {removing && <ArtistRemove artist={removing} onClose={closeRemove} />}
+      {merging && <ArtistMerge artist={merging} artists={artists} onClose={closeMerge} />}
     </section>
   );
 }

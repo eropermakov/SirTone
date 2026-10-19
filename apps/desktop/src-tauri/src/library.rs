@@ -83,6 +83,8 @@ pub struct AlbumItem {
     pub cover: Option<String>,
     /// Newest track, ms (sort «Недавно добавленные»).
     pub added_at: f64,
+    /// Placeholder hint when there is no cover: `genre << 4 | mood` (T3.20, `art.rs`).
+    pub art: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
@@ -123,6 +125,8 @@ pub struct ImportProgress {
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Event)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportFinished {
+    /// For `import_report` (T3.21).
+    pub batch: u32,
     pub added: u32,
     pub unknown: u32,
     pub duplicates: u32,
@@ -136,6 +140,14 @@ pub struct ImportFinished {
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Event)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryChanged {
+    pub tracks: u32,
+}
+
+/// Files added in Explorer lie elsewhere than the layout rules say (T3.19, FR-FS-005): the UI
+/// offers «Навести порядок» (setting `library.organize_external` = `suggest`).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Event)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizeSuggested {
     pub tracks: u32,
 }
 
@@ -166,6 +178,9 @@ enum Job {
     Assign {
         track: i64,
         assignment: sirtone_library::relocate::Assignment,
+        /// Confirmed by MusicBrainz (D-87): recording id, confidence and the release group,
+        /// stamped after the move.
+        online: Option<(String, f64, Option<String>)>,
         reply: mpsc::Sender<Result<String, AppError>>,
     },
     /// FR-DATA-001: remove a track (file to the Recycle Bin, or only from the app).
@@ -173,6 +188,22 @@ enum Job {
         track: i64,
         with_file: bool,
         reply: mpsc::Sender<Result<String, AppError>>,
+    },
+    /// T3.12: merge two artists (database), then put the files in place track by track.
+    MergeArtists {
+        keep: i64,
+        drop: i64,
+        reply: mpsc::Sender<Result<(sirtone_library::artists::MergeRecord, u32), AppError>>,
+    },
+    /// T3.19: «Навести порядок» — the adopted files waiting for it, or the whole library.
+    Organize {
+        all: bool,
+        reply: mpsc::Sender<Result<u32, AppError>>,
+    },
+    /// T3.12: undo a merge of this session, then put the files back.
+    UndoMerge {
+        record: Box<sirtone_library::artists::MergeRecord>,
+        reply: mpsc::Sender<Result<u32, AppError>>,
     },
 }
 
@@ -187,6 +218,8 @@ pub struct Resolved {
     pub album_id: Option<i64>,
     /// Primary artist (shuffle spreading, «К исполнителю»).
     pub artist_id: Option<i64>,
+    /// Placeholder hint (T3.20).
+    pub art: u8,
 }
 
 struct Shared {
@@ -197,6 +230,8 @@ struct Shared {
     offline: bool,
     gone_question: Option<u32>,
     watch: Option<sirtone_library::watch::Watch>,
+    /// Adopted tracks out of place, waiting for «Навести порядок» (T3.19).
+    organize: Vec<i64>,
 }
 
 pub struct Library {
@@ -327,6 +362,7 @@ impl Library {
             offline,
             gone_question: None,
             watch,
+            organize: Vec::new(),
         }));
         let cancel = Arc::new(AtomicBool::new(false));
         let importing = Arc::new(AtomicBool::new(false));
@@ -536,6 +572,50 @@ impl Library {
     }
 
     /// Absolute paths + display data + album cover hash for track ids (in that order).
+    /// The online add-on (D-87): a track confirmed by MusicBrainz moves to its place on the
+    /// import worker, then its identity is stamped «confirmed».
+    pub fn assign_online(
+        &self,
+        track: i64,
+        assignment: sirtone_library::relocate::Assignment,
+        mbid: String,
+        confidence: f64,
+        release_group: Option<String>,
+    ) -> Result<String, AppError> {
+        self.assign_with(track, assignment, Some((mbid, confidence, release_group)))
+    }
+
+    /// An assignment on the import worker (journalled move), optionally confirmed online.
+    pub(crate) fn assign_with(
+        &self,
+        track: i64,
+        assignment: sirtone_library::relocate::Assignment,
+        online: Option<(String, f64, Option<String>)>,
+    ) -> Result<String, AppError> {
+        let (tx, rx) = mpsc::channel();
+        self.jobs
+            .send(Job::Assign {
+                track,
+                assignment,
+                online,
+                reply: tx,
+            })
+            .map_err(|_| AppError::new(ErrorCode::Internal))?;
+        rx.recv_timeout(Duration::from_secs(120))
+            .map_err(|_| AppError::new(ErrorCode::Internal).with_details("assignment timed out"))?
+    }
+
+    /// Playable tracks by id as list rows, in the given order.
+    pub fn track_items(&self, ids: &[u32]) -> Result<Vec<TrackItem>, AppError> {
+        let ids: Vec<i64> = ids.iter().map(|&i| i64::from(i)).collect();
+        self.with_read(|c| {
+            Ok(collection::tracks_by_ids(c, &ids)?
+                .into_iter()
+                .map(track_item)
+                .collect())
+        })
+    }
+
     pub fn resolve(&self, ids: &[u32]) -> Result<Vec<Resolved>, AppError> {
         let root = lock(&self.shared)
             .root
@@ -566,10 +646,16 @@ impl Library {
                         cover: r.get(3)?,
                         album_id: r.get(4)?,
                         artist_id: r.get(5)?,
+                        art: 0,
                     })
                 }) {
                     out.push(r);
                 }
+            }
+            let ids: Vec<i64> = out.iter().map(|r| i64::from(r.id)).collect();
+            let art = sirtone_library::art::track_hints(c, &ids)?;
+            for r in &mut out {
+                r.art = art.get(&i64::from(r.id)).copied().unwrap_or(0x70);
             }
             Ok(out)
         })
@@ -650,19 +736,29 @@ fn import_worker(
         let mut reconcile_pass: Option<bool> = None;
         let mut imports: Vec<PathBuf> = Vec::new();
         let mut assigns = Vec::new();
+        let mut merges = Vec::new();
+        let mut organize = Vec::new();
         for j in jobs {
             match j {
                 Job::Import(p) => imports.extend(p),
                 Job::Assign {
                     track,
                     assignment,
+                    online,
                     reply,
-                } => assigns.push((track, Some(assignment), false, reply)),
+                } => assigns.push((track, Some(assignment), online, false, reply)),
                 Job::Remove {
                     track,
                     with_file,
                     reply,
-                } => assigns.push((track, None, with_file, reply)),
+                } => assigns.push((track, None, None, with_file, reply)),
+                Job::MergeArtists { keep, drop, reply } => {
+                    merges.push((Some((keep, drop)), None, Some(reply), None))
+                }
+                Job::UndoMerge { record, reply } => {
+                    merges.push((None, Some(record), None, Some(reply)))
+                }
+                Job::Organize { all, reply } => organize.push((all, reply)),
                 Job::Reconcile { confirmed } => {
                     reconcile_pass = Some(reconcile_pass.unwrap_or(false) || confirmed);
                 }
@@ -687,11 +783,80 @@ fn import_worker(
         let Some((_, db)) = conn.as_mut() else {
             continue;
         };
+        // Artist merges: the database first, then each track's file on its own (a locked or
+        // playing file stays where it is and moves on the next merge or «навести порядок»).
+        if !merges.is_empty() {
+            for (pair, record, merge_reply, undo_reply) in merges {
+                let relayout = |db: &mut rusqlite::Connection, tracks: &[i64]| -> u32 {
+                    let mut failed = 0;
+                    for &t in tracks {
+                        if sirtone_library::relocate::relayout(db, &root, t, deps.fs.as_ref())
+                            .is_err()
+                        {
+                            failed += 1;
+                        }
+                    }
+                    failed
+                };
+                if let (Some((keep, drop)), Some(reply)) = (pair, merge_reply) {
+                    let r = sirtone_library::artists::merge(db, keep, drop)
+                        .map_err(AppError::from)
+                        .map(|rec| {
+                            let failed = relayout(db, &rec.tracks);
+                            (rec, failed)
+                        });
+                    let _ = reply.send(r);
+                } else if let (Some(rec), Some(reply)) = (record, undo_reply) {
+                    let r = sirtone_library::artists::undo(db, &rec)
+                        .map_err(AppError::from)
+                        .map(|tracks| relayout(db, &tracks));
+                    let _ = reply.send(r);
+                }
+            }
+            emit_changed(&app, &shared);
+            refresh_queue(&app);
+        }
+        for (all, reply) in organize {
+            let tracks: Vec<i64> = if all {
+                db.prepare("SELECT id FROM track WHERE state = 'ok' ORDER BY id")
+                    .and_then(|mut st| {
+                        st.query_map([], |r| r.get(0))?
+                            .collect::<Result<Vec<i64>, _>>()
+                    })
+                    .unwrap_or_default()
+            } else {
+                std::mem::take(&mut lock(&shared).organize)
+            };
+            let moved = tracks
+                .iter()
+                .filter(|&&t| {
+                    sirtone_library::relocate::relayout(db, &root, t, deps.fs.as_ref())
+                        .unwrap_or(false)
+                })
+                .count() as u32;
+            let _ = reply.send(Ok(moved));
+            if moved > 0 {
+                emit_changed(&app, &shared);
+                refresh_queue(&app);
+            }
+        }
         if !assigns.is_empty() {
-            for (track, assignment, with_file, reply) in assigns {
+            for (track, assignment, online, with_file, reply) in assigns {
                 let r = match assignment {
                     Some(a) => {
                         sirtone_library::relocate::assign(db, &root, track, &a, deps.fs.as_ref())
+                            .and_then(|path| {
+                                if let Some((mbid, conf, rg)) = &online {
+                                    sirtone_library::online::confirm(
+                                        db,
+                                        track,
+                                        mbid,
+                                        *conf,
+                                        rg.as_deref(),
+                                    )?;
+                                }
+                                Ok(path)
+                            })
                     }
                     None => sirtone_library::relocate::remove(
                         db,
@@ -709,6 +874,7 @@ fn import_worker(
                 let _ = reply.send(r);
             }
             emit_changed(&app, &shared);
+            refresh_queue(&app);
         }
         let paths = imports;
         if let Err(e) = import::recover(db, &root, deps.fs.as_ref()) {
@@ -771,6 +937,7 @@ fn import_worker(
                     reasons.sort();
                     reasons.dedup();
                     let _ = ImportFinished {
+                        batch: r.batch_id as u32,
                         added: r.added as u32,
                         unknown: r.unknown as u32,
                         duplicates: r.duplicates.len() as u32,
@@ -781,6 +948,10 @@ fn import_worker(
                     }
                     .emit(&app);
                     tracing::info!(target: "sirtone::import", added = r.added, unknown = r.unknown, "batch done");
+                    // New «Неизвестные» are looked up online when there is a network (D-87).
+                    if r.unknown > 0 {
+                        crate::resolve::kick(&app);
+                    }
                 }
                 Err(e) => tracing::error!(target: "sirtone::import", error = %e, "batch failed"),
             }
@@ -819,8 +990,10 @@ fn run_reconcile(
         Ok(Outcome::Offline) => go_offline(app, shared),
         Ok(Outcome::Done(r)) => {
             tracing::info!(target: "sirtone::library", ?r, ms = started.elapsed().as_millis() as u64, "reconcile");
+            organize_adopted(app, shared, db, root, deps, &r.adopted_ids);
             if r != Report::default() {
                 emit_changed(app, shared);
+                refresh_queue(app);
             }
         }
         Ok(Outcome::Question { gone, report }) => {
@@ -833,9 +1006,76 @@ fn run_reconcile(
     }
 }
 
+/// FR-FS-005 (T3.19): files added in Explorer are taken where they are; those the rules would
+/// place elsewhere are moved at once (`organize_external` = `auto`), offered (`suggest`, the
+/// default — never moved silently) or left (`never`).
+fn organize_adopted(
+    app: &AppHandle,
+    shared: &Mutex<Shared>,
+    db: &mut Connection,
+    root: &Path,
+    deps: &ImportDeps,
+    adopted: &[i64],
+) {
+    if adopted.is_empty() {
+        return;
+    }
+    let mode = tauri::Manager::try_state::<Arc<SettingsStore>>(app)
+        .and_then(|s| {
+            s.get()["library"]["organize_external"]
+                .as_str()
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| "suggest".into());
+    if mode == "never" {
+        return;
+    }
+    let off: Vec<i64> = adopted
+        .iter()
+        .copied()
+        .filter(|&t| sirtone_library::relocate::out_of_place(db, t).unwrap_or(false))
+        .collect();
+    if off.is_empty() {
+        return;
+    }
+    if mode == "auto" {
+        for t in off {
+            let _ = sirtone_library::relocate::relayout(db, root, t, deps.fs.as_ref());
+        }
+        return;
+    }
+    let total = {
+        let mut s = lock(shared);
+        for t in off {
+            if !s.organize.contains(&t) {
+                s.organize.push(t);
+            }
+        }
+        s.organize.len() as u32
+    };
+    let _ = OrganizeSuggested { tracks: total }.emit(app);
+}
+
+/// Files moved: queued tracks take their new paths (the playing one keeps its own).
+fn refresh_queue(app: &AppHandle) {
+    if let (Some(pb), Some(lib)) = (
+        tauri::Manager::try_state::<crate::playback::Playback>(app),
+        tauri::Manager::try_state::<Library>(app),
+    ) {
+        pb.refresh_from(&lib);
+    }
+}
+
 /// Lists and counters must refresh. The full counters (163 ms on 100 000 tracks) are only
 /// invalidated here and recomputed lazily by the next `library_status` — never under the lock on
 /// every import tick (deferred from T1.20).
+impl Library {
+    /// The lists refetch (a change made outside the import worker: quarantine, «нормальный»).
+    pub(crate) fn notify_changed(&self, app: &AppHandle) {
+        emit_changed(app, &self.shared);
+    }
+}
+
 fn emit_changed(app: &AppHandle, shared: &Mutex<Shared>) {
     let mut s = lock(shared);
     s.counts = None;
@@ -947,6 +1187,12 @@ pub fn collection_albums(
     });
     lib.with_read(|c| {
         let (rows, next) = collection::albums_page(c, cur.as_ref(), limit.clamp(1, 500))?;
+        let ids: Vec<i64> = rows
+            .iter()
+            .filter(|a| a.cover.is_none())
+            .map(|a| a.id)
+            .collect();
+        let art = sirtone_library::art::album_hints(c, &ids)?;
         Ok(AlbumPage {
             rows: rows
                 .into_iter()
@@ -956,6 +1202,7 @@ pub fn collection_albums(
                     artist: a.artist,
                     year: a.year,
                     tracks: a.tracks,
+                    art: art.get(&a.id).copied().unwrap_or(0x70),
                     cover: a.cover,
                     added_at: a.added_at as f64,
                 })
@@ -1004,21 +1251,54 @@ pub fn collection_artists(
 #[serde(rename_all = "camelCase")]
 pub struct UnknownItem {
     pub track: TrackItem,
-    /// no_metadata | conflict | low_confidence | offline_pending | possible_non_track | needs_review
+    /// no_metadata | conflict | low_confidence | offline_pending | possible_non_track |
+    /// needs_review | quarantined (stopped playing, FR-IMP-008)
     pub reason: Option<String>,
+    /// Hints in one click (T3.11): who it may be, best first.
+    pub candidates: Vec<UnknownCandidate>,
+}
+
+/// A hint for an unknown track (from the online lookup, D-87).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct UnknownCandidate {
+    pub title: String,
+    /// «A, B».
+    pub artists: String,
+    /// From MusicBrainz (accepting it confirms the identity).
+    pub online: bool,
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 pub fn unknown_list(lib: State<'_, Library>) -> Result<Vec<UnknownItem>, AppError> {
     lib.with_read(|c| {
-        Ok(collection::unknown_rows(c, 5000)?
-            .into_iter()
-            .map(|u| UnknownItem {
+        let mut out = Vec::new();
+        for u in collection::unknown_rows(c, 5000)? {
+            let candidates = sirtone_library::unknowns::candidates(c, u.track.id)?
+                .into_iter()
+                .take(3)
+                .map(|k| UnknownCandidate {
+                    title: k.title,
+                    artists: k.artists.join(", "),
+                    online: k.mbid.is_some(),
+                })
+                .collect();
+            out.push(UnknownItem {
                 track: track_item(u.track),
                 reason: u.reason,
-            })
-            .collect())
+                candidates,
+            });
+        }
+        // FR-IMP-008: files that stopped playing wait for the user's word.
+        for t in sirtone_library::unknowns::quarantined(c, 1000)? {
+            out.push(UnknownItem {
+                track: track_item(t),
+                reason: Some("quarantined".into()),
+                candidates: Vec::new(),
+            });
+        }
+        Ok(out)
     })
 }
 
@@ -1054,6 +1334,7 @@ pub fn track_assign(
                 track_no: assignment.track_no,
                 year: assignment.year,
             },
+            online: None,
             reply: tx,
         })
         .map_err(|_| AppError::new(ErrorCode::Internal))?;
@@ -1138,6 +1419,109 @@ pub fn track_details(lib: State<'_, Library>, track: u32) -> Result<TrackDetails
     })
 }
 
+impl Library {
+    /// Artist merge on the import worker (T3.12): the record (for undo) and how many files did
+    /// not move.
+    pub(crate) fn merge_artists(
+        &self,
+        keep: i64,
+        drop: i64,
+    ) -> Result<(sirtone_library::artists::MergeRecord, u32), AppError> {
+        let (tx, rx) = mpsc::channel();
+        self.jobs
+            .send(Job::MergeArtists {
+                keep,
+                drop,
+                reply: tx,
+            })
+            .map_err(|_| AppError::new(ErrorCode::Internal))?;
+        rx.recv_timeout(Duration::from_secs(300))
+            .map_err(|_| AppError::new(ErrorCode::Internal).with_details("merge timed out"))?
+    }
+
+    pub(crate) fn undo_merge(
+        &self,
+        record: sirtone_library::artists::MergeRecord,
+    ) -> Result<u32, AppError> {
+        let (tx, rx) = mpsc::channel();
+        self.jobs
+            .send(Job::UndoMerge {
+                record: Box::new(record),
+                reply: tx,
+            })
+            .map_err(|_| AppError::new(ErrorCode::Internal))?;
+        rx.recv_timeout(Duration::from_secs(300))
+            .map_err(|_| AppError::new(ErrorCode::Internal).with_details("undo timed out"))?
+    }
+
+    /// A track leaves the library through the import worker (journalled): with its file to the
+    /// Recycle Bin or only from the app (FR-DATA-001).
+    pub(crate) fn remove_track(&self, track: i64, with_file: bool) -> Result<(), AppError> {
+        let (tx, rx) = mpsc::channel();
+        self.jobs
+            .send(Job::Remove {
+                track,
+                with_file,
+                reply: tx,
+            })
+            .map_err(|_| AppError::new(ErrorCode::Internal))?;
+        rx.recv_timeout(Duration::from_secs(60))
+            .map_err(|_| AppError::new(ErrorCode::Internal).with_details("removal timed out"))?
+            .map(|_| ())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RejectedItem {
+    pub path: String,
+    /// The reason code (`import.reason.*`).
+    pub reason: String,
+}
+
+/// The import report in full (T3.21, FR-IMP-006): added · «Неизвестные» · exact copies · not
+/// added. Sound duplicates come later, after the analysis («Дубли», D-81).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportReport {
+    pub added: Vec<TrackItem>,
+    pub unknown: Vec<TrackItem>,
+    pub duplicates: Vec<String>,
+    pub rejected: Vec<RejectedItem>,
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+pub fn import_report(lib: State<'_, Library>, batch: u32) -> Result<ImportReport, AppError> {
+    lib.with_read(|c| {
+        let d = sirtone_library::import::batch_details(c, i64::from(batch))?;
+        Ok(ImportReport {
+            added: d.added.into_iter().map(track_item).collect(),
+            unknown: d.unknown.into_iter().map(track_item).collect(),
+            duplicates: d.duplicates,
+            rejected: d
+                .rejected
+                .into_iter()
+                .map(|(path, reason)| RejectedItem { path, reason })
+                .collect(),
+        })
+    })
+}
+
+/// «Навести порядок» (T3.19, FR-FS-005): the adopted files waiting for it (`all` = false) or
+/// every track; files go where the layout rules say, through the journal. Returns how many
+/// moved.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn library_organize(lib: State<'_, Library>, all: bool) -> Result<u32, AppError> {
+    let (tx, rx) = mpsc::channel();
+    lib.jobs
+        .send(Job::Organize { all, reply: tx })
+        .map_err(|_| AppError::new(ErrorCode::Internal))?;
+    rx.recv_timeout(Duration::from_secs(600))
+        .map_err(|_| AppError::new(ErrorCode::Internal).with_details("organize timed out"))?
+}
+
 /// FR-DATA-001: «удалить файл с диска» (to the Recycle Bin) or «только убрать из приложения».
 #[tauri::command(async)]
 #[specta::specta]
@@ -1148,17 +1532,7 @@ pub fn track_remove(
     with_file: bool,
 ) -> Result<(), AppError> {
     pb.forget_tracks(&[track]);
-    let (tx, rx) = mpsc::channel();
-    lib.jobs
-        .send(Job::Remove {
-            track: i64::from(track),
-            with_file,
-            reply: tx,
-        })
-        .map_err(|_| AppError::new(ErrorCode::Internal))?;
-    rx.recv_timeout(Duration::from_secs(60))
-        .map_err(|_| AppError::new(ErrorCode::Internal).with_details("removal timed out"))?
-        .map(|_| ())
+    lib.remove_track(i64::from(track), with_file)
 }
 
 /// FR-DATA-002: what deleting an artist takes away — for the confirmation.

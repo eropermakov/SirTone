@@ -1,5 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionScreen } from "@/app/library/CollectionScreen";
 import { GenresScreen } from "@/app/library/GenresScreen";
@@ -7,6 +7,7 @@ import { RootPanel } from "@/app/library/RootPanel";
 import { UnknownScreen } from "@/app/library/UnknownScreen";
 import { useLibrary } from "@/app/library/useLibrary";
 import { bootstrap } from "@/shared/ipc/bootstrap";
+import { onDuplicatesFound } from "@/shared/ipc/duplicates";
 import {
   cancelImport,
   confirmMissing,
@@ -14,10 +15,12 @@ import {
   type GenreItem,
   importPaths,
   type LibraryStatus,
+  onOrganizeSuggested,
+  organizeLibrary,
   pickFolder,
 } from "@/shared/ipc/library";
 import { next as nextTrack, prev as prevTrack, togglePlay } from "@/shared/ipc/playback";
-import { createPlaylist } from "@/shared/ipc/playlists";
+import { createPlaylist, smartCreate } from "@/shared/ipc/playlists";
 import {
   getSettings,
   migrateLegacyAppearance,
@@ -39,13 +42,16 @@ import {
   resolveTheme,
   type ThemePref,
 } from "@/shared/theme/theme";
-import { notify, onNotify } from "@/shared/ui/notify";
+import { type Notice, notify, onNotify } from "@/shared/ui/notify";
 import { Toast } from "@/shared/ui/Toast";
 import { DndRoot } from "./dnd/dnd";
 import type { Open } from "./library/CollectionScreen";
+import { DuplicatesDialog } from "./library/DuplicatesDialog";
+import { ImportReportDialog } from "./library/ImportReportDialog";
 import type { GoTo } from "./library/TrackList";
 import { Onboarding, Tips } from "./onboarding/Onboarding";
 import { PlaylistScreen } from "./playlists/PlaylistScreen";
+import { blankDraft, SmartEditor } from "./playlists/SmartEditor";
 import { nextName, usePlaylists } from "./playlists/usePlaylists";
 import { SearchScreen } from "./search/SearchScreen";
 import { EmptyScreen } from "./shell/EmptyScreen";
@@ -143,7 +149,33 @@ export function App() {
   const [queueOpen, setQueueOpen] = useState(false);
   const [onboard, setOnboard] = useState<"setup" | "tips" | null>(null);
   const [coverSlug, setCoverSlug] = useState<AccentSlug>("sirkov");
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<Notice | null>(null);
+  // «Дубли» (T3.5): found in the background after the analysis — a toast at most every
+  // 10 minutes (the first pass over a big library finds many), the dialog on «Показать».
+  const [dupsFound, setDupsFound] = useState<number | null>(null);
+  const [dupsOpen, setDupsOpen] = useState(false);
+  const [reportBatch, setReportBatch] = useState<number | null>(null);
+  // «Навести порядок» (T3.19): files added in Explorer, not where the rules say.
+  const [organize, setOrganize] = useState<number | null>(null);
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    void onOrganizeSuggested(setOrganize).then((f) => {
+      off = f;
+    });
+    return () => off?.();
+  }, []);
+  const dupsShownAt = useRef(0);
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    void onDuplicatesFound((n) => {
+      if (Date.now() - dupsShownAt.current < 10 * 60_000) return;
+      dupsShownAt.current = Date.now();
+      setDupsFound(n);
+    }).then((f) => {
+      off = f;
+    });
+    return () => off?.();
+  }, []);
   useEffect(() => onNotify(setToast), []);
   // «Сиртон обновлён до X» once, on the first start of a new version (D-76).
   const [updated, setUpdated] = useState<UpdateStatus | null>(null);
@@ -161,6 +193,9 @@ export function App() {
       .then((id) => openPlaylist(id, true))
       .catch(() => notify(t("playlists.failed")));
   };
+  // «Новый умный плейлист» (T3.13): the rules first, then the playlist (Apple).
+  const [smartName, setSmartName] = useState<string | null>(null);
+  const newSmart = () => setSmartName(nextName(playlists, (n) => t("smart.defaultName", { n })));
   const goTo: GoTo = (kind, id, title) =>
     push({ screen: kind, open: { kind, id, title, subtitle: "", cover: null } });
 
@@ -309,6 +344,7 @@ export function App() {
             playingPlaylist={null}
             onOpenPlaylist={(id) => openPlaylist(id)}
             onNewPlaylist={lib.status.tracks > 0 ? newPlaylist : undefined}
+            onNewSmart={lib.status.tracks > 0 ? newSmart : undefined}
           />
           <main className="flex min-w-0 flex-1 flex-col overflow-auto rounded-tl-(--radius-xl) bg-bg-layer p-6">
             {lib.rootNeeded && <RootPanel status={lib.status} onDone={rootChosen} />}
@@ -322,6 +358,7 @@ export function App() {
                 onChooseLibrary={() => lib.setRootNeeded(true)}
                 onReplaySetup={() => setOnboard("setup")}
                 onReplayTips={() => setOnboard("tips")}
+                onShowDuplicates={() => setDupsOpen(true)}
               />
             ) : screen === "wave" && hasMusic ? (
               <WaveScreen snap={snap} onGo={goTo} />
@@ -349,6 +386,7 @@ export function App() {
                 playingId={snap.trackId}
                 editName={here.fresh ?? false}
                 onGo={goTo}
+                onOpen={(id) => openPlaylist(id)}
                 onDeleted={() =>
                   setStack((st) => {
                     const left = st.filter((e) => e.playlist !== here.playlist);
@@ -414,13 +452,60 @@ export function App() {
             onClose={() => setUpdated(null)}
           />
         )}
+        {dupsFound !== null && !dupsOpen && !error && !report && (
+          <Toast
+            tone="info"
+            heading={t("dups.foundTitle")}
+            message={t("dups.found", { count: dupsFound })}
+            closeLabel={tc("errors.close")}
+            timeoutMs={12000}
+            action={{
+              label: t("dups.show"),
+              onClick: () => {
+                setDupsFound(null);
+                setDupsOpen(true);
+              },
+            }}
+            onClose={() => setDupsFound(null)}
+          />
+        )}
+        {organize !== null && !error && !report && (
+          <Toast
+            tone="info"
+            heading={t("organize.title")}
+            message={t("organize.found", { count: organize })}
+            closeLabel={tc("errors.close")}
+            timeoutMs={15000}
+            action={{
+              label: t("organize.do"),
+              onClick: () => {
+                setOrganize(null);
+                organizeLibrary(false)
+                  .then((n) => notify(t("organize.done", { count: n })))
+                  .catch(() => notify(t("organize.failed")));
+              },
+            }}
+            onClose={() => setOrganize(null)}
+          />
+        )}
         {toast && !error && !report && (
           <Toast
             tone="info"
-            heading={toast}
+            heading={toast.text}
             message=""
             closeLabel={tc("errors.close")}
-            timeoutMs={3000}
+            timeoutMs={toast.action ? 8000 : 3000}
+            action={
+              toast.action
+                ? {
+                    label: toast.action.label,
+                    onClick: () => {
+                      toast.action?.onClick();
+                      setToast(null);
+                    },
+                  }
+                : undefined
+            }
             onClose={() => setToast(null)}
           />
         )}
@@ -446,6 +531,13 @@ export function App() {
               .join(" · ")}
             closeLabel={tc("errors.close")}
             timeoutMs={10000}
+            action={{
+              label: t("importReport.more"),
+              onClick: () => {
+                setReportBatch(report.batch);
+                lib.clearReport();
+              },
+            }}
             onClose={lib.clearReport}
           />
         )}
@@ -485,6 +577,36 @@ export function App() {
           />
         )}
         {onboard === "tips" && <Tips onClose={() => setOnboard(null)} />}
+        {dupsOpen && <DuplicatesDialog onClose={() => setDupsOpen(false)} />}
+        {reportBatch !== null && (
+          <ImportReportDialog
+            batch={reportBatch}
+            onClose={() => setReportBatch(null)}
+            onUnknown={() => {
+              setReportBatch(null);
+              setScreen("unknown");
+            }}
+            onDuplicates={() => {
+              setReportBatch(null);
+              setDupsOpen(true);
+            }}
+          />
+        )}
+        {smartName !== null && (
+          <SmartEditor
+            initial={blankDraft()}
+            name={smartName}
+            onName={setSmartName}
+            onClose={() => setSmartName(null)}
+            onSave={(json) => {
+              const name = smartName.trim() || t("smart.defaultName", { n: 1 });
+              setSmartName(null);
+              smartCreate(name, json)
+                .then((id) => openPlaylist(id))
+                .catch(() => notify(t("smart.invalid")));
+            }}
+          />
+        )}
       </div>
     </DndRoot>
   );

@@ -107,7 +107,7 @@ export function PlayerBar({
   return (
     <footer className="flex h-(--player-height) shrink-0 items-center gap-4 border-t border-separator bg-bg-base px-4">
       <div className="flex w-72 min-w-0 items-center gap-3">
-        <Cover hash={snap.cover} px={56} />
+        <Cover hash={snap.cover} px={56} art={snap.title ? snap.art : undefined} />
         <div className="min-w-0">
           <div className="t-body-strong truncate text-text-primary" title={snap.title ?? undefined}>
             {snap.title ?? t("player.nothing")}

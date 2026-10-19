@@ -90,7 +90,7 @@ export function Menu({ items, at, label, onClose, onChosen }: Props) {
   const subItems = sub ? items[sub.index] : undefined;
 
   return (
-    <div className="fixed inset-0 z-(--z-overlay)" style={{ pointerEvents: "none" }}>
+    <div className="fixed inset-0 z-(--z-menu)" style={{ pointerEvents: "none" }}>
       <div
         ref={ref}
         role="menu"

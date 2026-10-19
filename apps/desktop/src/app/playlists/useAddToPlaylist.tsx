@@ -24,6 +24,7 @@ export function useAddToPlaylist(): {
   const { t } = useTranslation("shell");
   const { t: tc } = useTranslation("common");
   const lists = usePlaylists();
+  const manual = lists.filter((p) => !p.smart);
   const [pending, setPending] = useState<Pending | null>(null);
   const close = useCallback(() => setPending(null), []);
 
@@ -54,8 +55,9 @@ export function useAddToPlaylist(): {
           .catch(() => notify(t("playlists.failed")));
       },
     },
-    ...(lists.length > 0 ? ([{ separator: true }] as MenuItem[]) : []),
-    ...lists.map(
+    ...(manual.length > 0 ? ([{ separator: true }] as MenuItem[]) : []),
+    // Smart playlists are read-only (Apple): not offered.
+    ...manual.map(
       (p): MenuItem => ({
         id: `pl-${p.id}`,
         label: p.name,

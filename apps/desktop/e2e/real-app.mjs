@@ -18,6 +18,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -35,9 +36,14 @@ const dataDir = mkdtempSync(join(tmpdir(), "sirtone-smoke-"));
 const libDir = join(dataDir, "Music", "SirTone");
 const corpus = join(fixtures, "import500");
 const PORT = Number(process.env.SMOKE_PORT ?? 9335);
+// Recorded MusicBrainz answers (AT-04): the isolated instance never calls the real service.
+const netFixtures = join(dataDir, "net-fixtures");
+mkdirSync(netFixtures, { recursive: true });
+writeFileSync(join(netFixtures, "index.json"), "[]");
 const env = {
   ...process.env,
   SIRTONE_DATA_DIR: dataDir,
+  SIRTONE_NET_FIXTURES: netFixtures,
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`,
 };
 
@@ -323,6 +329,19 @@ if (existsSync(corpus)) {
     /Добавлено 438/.test(text) && /Дубли 10/.test(text) && /Не добавлено 52/.test(text),
     text,
   );
+  // T3.21: «Подробнее» — the report in four sections.
+  await report.getByRole("button", { name: "Подробнее" }).click();
+  const full = page.getByRole("dialog", { name: "Итоги импорта" });
+  await full.getByText(/Добавлено — 4\d\d/).waitFor({ timeout: 5000 });
+  const fullText = (await full.textContent()) ?? "";
+  check(
+    "import report in full: added · «Неизвестные» · already there · not added",
+    /Добавлено — \d+/.test(fullText) &&
+      /Уже есть в медиатеке — 10/.test(fullText) &&
+      /Не добавлено — 52/.test(fullText),
+    fullText.slice(0, 160),
+  );
+  await page.keyboard.press("Escape");
   const st = await invoke("library_status", {});
   check(
     "library counters",
@@ -531,6 +550,30 @@ if (existsSync(corpus)) {
     after === before - 1 && existsSync(movedDir),
     `${before} → ${after}, folder ${existsSync(movedDir)}`,
   );
+  // The assigned track was queued right after the playing one: its queue item follows the
+  // file, so skipping to it plays it from the new place.
+  const queuedMoved = (await invoke("queue_get", {})).items[1];
+  const movedRel = (() => {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    try {
+      return db.prepare("SELECT rel_path FROM track WHERE id = ?").get(queuedMoved?.trackId)
+        ?.rel_path;
+    } finally {
+      db.close();
+    }
+  })();
+  await invoke("playback_next", {});
+  await sleep(1500);
+  const skipped = await invoke("playback_snapshot", {});
+  check(
+    "a queued track moved by «Назначить» plays from its new path",
+    skipped.state === "playing" &&
+      skipped.trackId === queuedMoved?.trackId &&
+      skipped.positionMs > 0 &&
+      queuedMoved?.title === "Проверочная песня" &&
+      /^Проверочный исполнитель\//.test(movedRel ?? ""),
+    `${skipped.state} #${skipped.trackId} at ${skipped.positionMs} ms, queued «${queuedMoved?.title}» #${queuedMoved?.trackId}, ${movedRel}`,
+  );
   // T2.10: track card through «Ещё ›», then «только убрать из приложения» keeps the file.
   await unknownRows.nth(2).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Ещё" }).click();
@@ -697,6 +740,63 @@ if (existsSync(corpus)) {
     opened && asked && unknownAfter === unknownBefore - 1,
     `${dragged}: opened ${opened}, asked ${asked}, unknown ${unknownBefore} → ${unknownAfter}; ${assignToast}; ${assignQuestion}; ${consoleErrors.join(" ")}`,
   );
+  // T3.13: smart playlist from the sidebar — rules in the editor («Название содержит …»), the
+  // live count, the page lists the matches; read-only; «Сохранить как обычный»; a hostile value
+  // is plain text.
+  const smartWord = (plListed ?? "").split(/\s+/).find((w) => w.length >= 3) ?? plListed ?? "";
+  await page.getByRole("button", { name: "Новый умный плейлист" }).click();
+  const smartDialog = page.getByRole("dialog", { name: "Правила умного плейлиста" });
+  await smartDialog.waitFor({ timeout: 5000 });
+  await smartDialog.getByLabel("Название плейлиста").fill("Умный тест");
+  await smartDialog.getByLabel("Значение").fill(smartWord);
+  await smartDialog.getByText(/Подходит \d+/).waitFor({ timeout: 5000 });
+  const smartCount = (await smartDialog.getByRole("status").textContent())?.trim();
+  // For a look at the editor (not checked): %TEMP%/sirtone-smart-editor.png.
+  await smartDialog.screenshot({ path: join(tmpdir(), "sirtone-smart-editor.png") });
+  await smartDialog.getByRole("button", { name: "Сохранить" }).click();
+  const smartRows = page.getByRole("list", { name: "Треки" }).locator("li");
+  await smartRows.first().waitFor({ timeout: 5000 });
+  const smartList = (await invoke("playlists_list", {})).find((p) => p.name === "Умный тест");
+  const smartTracks = await invoke("playlist_tracks", { id: smartList?.id ?? 0 });
+  const allMatch = smartTracks.every((e) =>
+    e.track.title
+      .toLowerCase()
+      .replaceAll("ё", "е")
+      .includes(smartWord.toLowerCase().replaceAll("ё", "е")),
+  );
+  check(
+    "smart playlist: built in the editor, live count, the page lists the matches",
+    smartList?.smart === true &&
+      smartTracks.length > 0 &&
+      allMatch &&
+      (await smartRows.count()) === smartTracks.length,
+    `«${smartWord}»: ${smartCount}, ${smartTracks.length} tracks`,
+  );
+  const refused = await page.evaluate(
+    (id) =>
+      window.__TAURI_INTERNALS__.invoke("playlist_add", { id, tracks: [1] }).then(
+        () => "accepted",
+        (e) => String(e?.code ?? JSON.stringify(e)),
+      ),
+    smartList?.id ?? 0,
+  );
+  const tracksNow = (await invoke("library_status", {})).tracks;
+  const hostile = await invoke("smart_preview", {
+    rules: JSON.stringify({ all: [{ is: { title: "'); DROP TABLE track;--" } }] }),
+  });
+  await page.getByRole("main").getByRole("button", { name: "Ещё" }).first().click();
+  await page.getByRole("menuitem", { name: "Сохранить как обычный" }).click();
+  await sleep(1200);
+  const copy = (await invoke("playlists_list", {})).find((p) => p.name === "Умный тест — копия");
+  check(
+    "smart playlist: read-only, «Сохранить как обычный», hostile value is text",
+    refused === "InvalidArgument" &&
+      copy?.smart === false &&
+      copy?.tracks === smartTracks.length &&
+      hostile === 0 &&
+      (await invoke("library_status", {})).tracks === tracksNow,
+    `add ${refused}, copy ${JSON.stringify(copy && { smart: copy.smart, tracks: copy.tracks })}, hostile ${hostile}`,
+  );
   // T2.13: Ctrl+F opens search; results as you type, the exact artist is the best match.
   await page.keyboard.press("Control+f");
   const searchField = page.getByLabel("Поиск по медиатеке");
@@ -844,7 +944,135 @@ if (existsSync(corpus)) {
     neverListed && neverLeft.length === 0,
     `listed ${neverListed}, left ${neverLeft.length}`,
   );
+  // Stage 3: with an album playing, «Моя волна» offers «Слушать волну»; the engine queues 5,
+  // refills as they run out; a not-yet-played track marked «никогда» never comes.
+  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  const startBtn = page.getByRole("main").getByRole("button", { name: "Слушать волну" });
+  const offered = await startBtn.waitFor({ timeout: 3000 }).then(
+    () => true,
+    () => false,
+  );
+  if (offered) await startBtn.click();
+  await sleep(1500);
+  const q0 = await invoke("queue_get", {});
+  const inWave = (await invoke("playback_snapshot", {})).inWave;
+  const unplayed = q0.items[q0.items.length - 1]?.trackId;
+  await invoke("feedback_never", { scope: "track", id: unplayed, on: true });
+  await invoke("wave_start", {});
+  const fresh = await invoke("queue_get", {});
+  for (let i = 0; i < 4; i++) {
+    await invoke("playback_next", {});
+    await sleep(700);
+  }
+  await sleep(1500);
+  const q1 = await invoke("queue_get", {});
+  const ids = [...fresh.items, ...q1.items].map((it) => it.trackId);
+  check(
+    "wave: «Слушать волну» from a playing album, 5 → refilled, «никогда» excluded",
+    offered && inWave && q0.items.length === 5 && q1.items.length > 5 && !ids.includes(unplayed),
+    `offered ${offered}, inWave ${inWave}, queue ${q0.items.length} → ${q1.items.length}`,
+  );
+  await invoke("feedback_never", { scope: "track", id: unplayed, on: false });
+  // T3.29: «Почему этот трек» — 1–2 reasons for a track of the running wave; «Метки ›» saves.
+  await invoke("wave_start", {});
+  await sleep(800);
+  const waveTrack = (await invoke("playback_snapshot", {})).trackId;
+  const reasons = await invoke("wave_why", { track: waveTrack });
+  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  await page.getByRole("main").getByRole("button", { name: "Ещё" }).click();
+  await page.getByRole("menuitem", { name: "Метки" }).click();
+  await page.getByRole("menuitem", { name: "Для сна" }).click();
+  await sleep(600);
+  const tags = await invoke("track_tags", { track: waveTrack });
+  check(
+    "why: 1–2 reasons; «Метки › Для сна» is saved",
+    reasons.length >= 1 && reasons.length <= 2 && tags.includes("sleep"),
+    `${reasons.map((r) => r.kind).join(", ")}; tags ${tags.join(",")}`,
+  );
+  // T3.31: «Знакомое ↔ Неожиданное» — the upcoming wave tracks are picked again at once.
+  const qBefore = await invoke("queue_get", {});
+  const upBefore = qBefore.items
+    .slice(qBefore.position + 1)
+    .map((i) => i.trackId)
+    .join(",");
+  const slider = page.getByRole("slider", { name: "Знакомое или неожиданное" });
+  const box = await slider.boundingBox();
+  await page.mouse.click(box.x + 2, box.y + box.height / 2);
+  for (let i = 0; i < 15 && (settings().wave?.novelty ?? 50) > 10; i++) await sleep(200);
+  await sleep(1500);
+  const qAfter = await invoke("queue_get", {});
+  const upAfter = qAfter.items
+    .slice(qAfter.position + 1)
+    .map((i) => i.trackId)
+    .join(",");
+  check(
+    "slider: saved and the upcoming wave tracks re-picked",
+    (settings().wave?.novelty ?? 50) <= 10 && upAfter !== upBefore && upAfter !== "",
+    `novelty ${settings().wave?.novelty}`,
+  );
+  // T3.30: «Сезонная волна» — named by the calendar; started by its button while «Моя волна»
+  // plays, and «Слушать волну» leads back.
+  const seasonKey = await invoke("wave_season_card", {});
+  const shellRu = JSON.parse(
+    readFileSync(new URL("../../../assets/i18n/ru/shell.json", import.meta.url), "utf8"),
+  );
+  const seasonLabel = shellRu.wave.season[seasonKey];
+  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  await page.getByRole("main").getByRole("button", { name: seasonLabel }).click();
+  let seasonSnap = await invoke("playback_snapshot", {});
+  for (let i = 0; i < 20 && seasonSnap.waveProfile !== "seasonal"; i++) {
+    await sleep(200);
+    seasonSnap = await invoke("playback_snapshot", {});
+  }
+  const sq = await invoke("queue_get", {});
+  const back = await page
+    .getByRole("main")
+    .getByRole("button", { name: "Слушать волну" })
+    .isVisible();
+  check(
+    "seasonal wave: named by the calendar, started by its button, «Моя волна» offered back",
+    ["autumn", "earlyAutumn", "preWinter", "earlyWinter", "winter"].includes(seasonKey) &&
+      seasonSnap.waveProfile === "seasonal" &&
+      sq.items.length === 5 &&
+      back,
+    `${seasonKey} «${seasonLabel}», profile ${seasonSnap.waveProfile}, queue ${sq.items.length}, back ${back}`,
+  );
+  // T3.18: «Настроить волну» — a mood needs deep analysis (not yet): the wave relaxes it and
+  // still plays; frequency «любимые» + Russian hold or relax in order; a bad key is refused.
+  const moodStart = await invoke("wave_start", { query: { mood: ["happy"] } });
+  // The rejection is caught in the page: the AppError object does not survive page.evaluate.
+  const bad = await page.evaluate(() =>
+    window.__TAURI_INTERNALS__.invoke("wave_start", { query: { mood: ["sunny"] } }).then(
+      () => "accepted",
+      (e) => String(e?.code ?? JSON.stringify(e)),
+    ),
+  );
+  const freqStart = await invoke("wave_start", {
+    query: { frequency: ["often"], language: ["ru", "foreign"] },
+  });
+  check(
+    "wave query: unanalysed mood relaxed, the wave still plays; bad key refused",
+    moodStart.queued === 5 &&
+      moodStart.relaxed.includes("mood") &&
+      freqStart.queued > 0 &&
+      bad.includes("InvalidArgument"),
+    `mood ${JSON.stringify(moodStart)}, often ${JSON.stringify(freqStart)}, bad ${bad}`,
+  );
+  // T3.28: learning off freezes the models (the wave still plays); «Сбросить обучение» works.
+  await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
+  await page.getByRole("switch", { name: "Учиться на прослушиваниях" }).click();
+  for (let i = 0; i < 15 && settings().wave?.learning !== false; i++) await sleep(200);
+  const frozenStart = await invoke("wave_start", {});
+  await invoke("wave_reset_learning", {});
+  await page.getByRole("switch", { name: "Учиться на прослушиваниях" }).click();
+  for (let i = 0; i < 15 && settings().wave?.learning !== true; i++) await sleep(200);
+  check(
+    "learning off: the wave still plays; reset works; the switch is saved",
+    frozenStart.queued === 5 && settings().wave?.learning === true,
+    `start ${frozenStart.queued}, learning ${settings().wave?.learning}`,
+  );
   // T2.14: «Хранилище» shows the service data next to the library.
+  await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
   const storageInfo = await invoke("storage_info", {});
   check(
     "storage shows the database and the cover cache",
@@ -873,6 +1101,50 @@ if (existsSync(corpus)) {
     axeCritical.length === 0,
     axeCritical.join("; ") || "none",
   );
+  // T3.6/T3.10: background analysis B0 runs on its own (newest first) and stores loudness.
+  let prog = await invoke("analysis_progress", {});
+  for (let i = 0; i < 30 && prog.done === 0; i++) {
+    await sleep(1000);
+    prog = await invoke("analysis_progress", {});
+  }
+  // T3.2: the same pass stores fingerprints (Chromaprint, compressed).
+  let fps = 0;
+  for (let i = 0; i < 30 && fps === 0; i++) {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    fps = db.prepare("SELECT count(*) AS n FROM track WHERE fingerprint IS NOT NULL").get().n;
+    db.close();
+    if (fps === 0) await sleep(1000);
+  }
+  check("fingerprints are stored by the analysis", fps > 0, `${fps} tracks`);
+  check(
+    "background analysis B0 is running",
+    prog.done > 0 && prog.total > 0,
+    `${prog.done} of ${prog.total}, paused ${prog.paused}`,
+  );
+  // T3.10 acceptance: analysis (B0 + fingerprint + B1) in the background causes no underrun and
+  // no UI stall — 20 s of playback while tracks are still being analysed.
+  await invoke("wave_start", {});
+  await sleep(1000);
+  const under0 = (await invoke("playback_snapshot", {})).underruns;
+  const progA = await invoke("analysis_progress", {});
+  let worstIpc = 0;
+  for (let i = 0; i < 20; i++) {
+    const t0 = performance.now();
+    await invoke("library_status", {});
+    worstIpc = Math.max(worstIpc, performance.now() - t0);
+    await sleep(1000);
+  }
+  const snapA = await invoke("playback_snapshot", {});
+  const progB = await invoke("analysis_progress", {});
+  check(
+    "analysis in the background: no underrun, IPC ≤ 100 ms while playing (T3.10)",
+    snapA.state === "playing" &&
+      snapA.underruns === under0 &&
+      worstIpc <= 100 &&
+      progB.done > progA.done,
+    `underruns ${under0} → ${snapA.underruns}, worst IPC ${worstIpc.toFixed(1)} ms, analysed ${progA.done} → ${progB.done}`,
+  );
+  await invoke("playback_toggle", {});
   // T2.4: auto-detect — hardware + WebGL benchmark → a level, saved like a manual choice.
   await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
   await page.getByRole("button", { name: "Определить автоматически" }).click();
@@ -927,13 +1199,382 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
     }
     return [n, Date.now() - t0];
   };
+  // T3.13: a live smart playlist «путь содержит Снаружи» follows the folder — rows and header.
+  await invoke("smart_create", {
+    name: "Снаружи",
+    rules: JSON.stringify({ all: [{ contains: { path: "Снаружи" } }] }),
+  });
+  await page.getByRole("navigation").getByRole("button", { name: "Снаружи" }).click();
+  const outsideRows = page.getByRole("list", { name: "Треки" }).locator("li");
   const before = await tracks();
   mkdirSync(join(libDir, "Снаружи"), { recursive: true });
   const added = join(libDir, "Снаружи", "Искала.flac");
   copyFileSync(join(root, "fixtures", "generated", "tags", "cyrillic-ok.flac"), added);
   const [n1, ms1] = await waitTracks(before + 1, 5000);
   check("file added in Explorer appears ≤ 2 s", n1 === before + 1 && ms1 <= 2000, `${ms1} ms`);
-  rmSync(added);
+  // T3.19: it is taken where it is, and «Навести порядок» is offered (never moved silently).
+  const organizeOffered = await page
+    .getByText("Новые файлы в папке медиатеки")
+    .waitFor({ timeout: 5000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  const keptInPlace = existsSync(added);
+  const outsideHeader = page.getByRole("main").getByText(/^1 трек ·/);
+  const live = await outsideHeader.waitFor({ timeout: 3000 }).then(
+    () => true,
+    () => false,
+  );
+  check(
+    "live smart playlist follows the folder: the row and «1 трек» in the header",
+    live && (await outsideRows.count()) === 1,
+    `rows ${await outsideRows.count()}, header ${live}`,
+  );
+  // T3.5 / AT-05: the same melody as FLAC and MP3 under other names comes in through Explorer;
+  // the analysis fingerprints it and finds «тот же звук»; the old one gets a ♡ and a playlist
+  // place; «Заменить старый новым» in the «Дубли» dialog moves them and sends the old file to
+  // the Recycle Bin.
+  const dupDir = join(libDir, "Дубли");
+  mkdirSync(dupDir, { recursive: true });
+  const dupSrc = join(root, "fixtures", "generated", "dups");
+  copyFileSync(join(dupSrc, "Утро.flac"), join(dupDir, "Утро.flac"));
+  await sleep(1500);
+  copyFileSync(join(dupSrc, "Рассвет.mp3"), join(dupDir, "Рассвет.mp3"));
+  copyFileSync(join(dupSrc, "Вечер.flac"), join(dupDir, "Вечер.flac"));
+  const dupIds = () => {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    const rows = db
+      .prepare("SELECT id, rel_path FROM track WHERE rel_path LIKE 'Дубли/%' ORDER BY id")
+      .all();
+    db.close();
+    return Object.fromEntries(rows.map((r) => [r.rel_path.split("/")[1], r.id]));
+  };
+  let dupCount = 0;
+  for (let i = 0; i < 90 && dupCount === 0; i++) {
+    await sleep(1000);
+    dupCount = await invoke("duplicates_count", {});
+  }
+  const dupMap = dupIds();
+  // T3.7: the same analysis pass measured tempo and key (B1) of these 25 s melodies.
+  const b1db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+  const b1 = b1db
+    .prepare("SELECT bpm, key_camelot FROM track WHERE rel_path LIKE 'Дубли/%' AND bpm IS NOT NULL")
+    .all();
+  // T3.8/T3.9: the built-in tagger in the same pass — vibe columns, embedding, wave vector.
+  const deep = b1db
+    .prepare(
+      `SELECT t.energy, t.vocal, length(t.embedding) AS emb, length(tf.vec) AS vec, tf.conf,
+              t.activity_json AS acts
+       FROM track t JOIN track_features tf ON tf.track_id = t.id
+       WHERE t.rel_path LIKE 'Дубли/%'`,
+    )
+    .all();
+  b1db.close();
+  check(
+    "B2/B3: offline tagger stored the vibe, the embedding and the wave vector",
+    deep.length >= 2 &&
+      deep.every(
+        (r) =>
+          r.energy >= 0 &&
+          r.energy <= 1 &&
+          r.vocal >= 0 &&
+          r.emb === 68 &&
+          r.vec === 128 &&
+          r.conf > 0 &&
+          JSON.parse(r.acts).party !== undefined,
+      ),
+    JSON.stringify(deep),
+  );
+  check(
+    "B1: tempo (70–180) and Camelot key stored by the analysis",
+    b1.length >= 2 &&
+      b1.every((r) => r.bpm >= 70 && r.bpm <= 180 && /^\d{1,2}[AB]$/.test(r.key_camelot)),
+    JSON.stringify(b1),
+  );
+  const roadPl = (await invoke("playlists_list", {})).find((p) => p.name === "Дорога");
+  const oldId = dupMap["Утро.flac"];
+  const newId = dupMap["Рассвет.mp3"];
+  await invoke("feedback_like", { track: oldId, on: true });
+  await invoke("playlist_add", { id: roadPl.id, tracks: [oldId] });
+  await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
+  await page
+    .getByText(/^Дубли: /)
+    .locator("..")
+    .getByRole("button", { name: "Показать" })
+    .click();
+  const dupDialog = page.getByRole("dialog", { name: "Дубли" });
+  await dupDialog.waitFor({ timeout: 5000 });
+  // The list loads after the dialog opens.
+  const sameHeader = await dupDialog
+    .getByText(/Тот же звук/)
+    .waitFor({ timeout: 5000 })
+    .then(
+      () => 1,
+      () => 0,
+    );
+  const dupListed = await invoke("duplicates_list", {});
+  await dupDialog
+    .getByRole("listitem")
+    .filter({ hasText: "Рассвет (копия)" })
+    .getByRole("button", { name: "Заменить старый новым" })
+    .click();
+  await sleep(2500);
+  const dupDb = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+  const liked = dupDb
+    .prepare("SELECT count(*) AS n FROM feedback WHERE track_id = ? AND kind = 'like'")
+    .get(newId).n;
+  const inRoad = dupDb
+    .prepare("SELECT count(*) AS n FROM playlist_item WHERE playlist_id = ? AND track_id = ?")
+    .get(roadPl.id, newId).n;
+  const oldRow = dupDb.prepare("SELECT count(*) AS n FROM track WHERE id = ?").get(oldId).n;
+  const eveningPairs = dupDb
+    .prepare("SELECT count(*) AS n FROM duplicate_pair WHERE a = ? OR b = ?")
+    .get(dupMap["Вечер.flac"], dupMap["Вечер.flac"]).n;
+  dupDb.close();
+  await page.keyboard.press("Escape");
+  check(
+    "AT-05: «тот же звук» under other names found; «Заменить» moves ♡ and playlist, old file → Recycle Bin",
+    dupCount >= 1 &&
+      sameHeader === 1 &&
+      liked === 1 &&
+      inRoad === 1 &&
+      oldRow === 0 &&
+      !existsSync(join(dupDir, "Утро.flac")) &&
+      eveningPairs === 0,
+    `header ${sameHeader}, pairs ${dupCount} (${dupListed.pairs.map((p) => `${p.class} ${p.a.track.title}↔${p.b.track.title}`).join("; ")}), ♡ ${liked}, playlist ${inRoad}, old row ${oldRow}, file ${existsSync(join(dupDir, "Утро.flac"))}, «Вечер» pairs ${eveningPairs}`,
+  );
+  // The rest of the fixtures leave (the later checks count tracks).
+  rmSync(dupDir, { recursive: true, force: true });
+  await waitTracks(before + 1, 8000);
+  // T3.12 / AT-06: one artist in two scripts comes in through Explorer → the suggestion banner
+  // → «Объединить» moves the files under the kept artist → «Отменить» brings them back → after
+  // merging again, a new file under the old spelling lands with the kept artist (the alias).
+  const mergeDir = join(libDir, "Слияние");
+  mkdirSync(mergeDir, { recursive: true });
+  const mergeSrc = join(root, "fixtures", "generated", "merge");
+  copyFileSync(join(mergeSrc, "bi2-cyr.mp3"), join(mergeDir, "bi2-cyr.mp3"));
+  copyFileSync(join(mergeSrc, "bi2-lat.mp3"), join(mergeDir, "bi2-lat.mp3"));
+  await waitTracks(before + 3, 8000);
+  const mergeRows = (sql, ...args) => {
+    const mdb = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    const rows = mdb.prepare(sql).all(...args);
+    mdb.close();
+    return rows;
+  };
+  const pathOf = (title) =>
+    mergeRows("SELECT rel_path FROM track WHERE title = ?", title)[0]?.rel_path ?? "";
+  const mergedInto = (id) =>
+    mergeRows("SELECT merged_into FROM artist WHERE id = ?", id)[0]?.merged_into ?? null;
+  const pair = (await invoke("artist_suggestions", {})).find((s) =>
+    [s.keep.name, s.drop.name].includes("Bi-2"),
+  );
+  await page.getByRole("navigation").getByRole("button", { name: "Исполнители" }).click();
+  const banner = page.getByRole("status").filter({ hasText: "Похоже, это один исполнитель" });
+  const bannerShown = await banner.waitFor({ timeout: 8000 }).then(
+    () => true,
+    () => false,
+  );
+  if (bannerShown) await banner.getByRole("button", { name: "Объединить" }).click();
+  for (let i = 0; i < 50 && pair && mergedInto(pair.drop.id) === null; i++) await sleep(200);
+  const merged = pair ? mergedInto(pair.drop.id) === pair.keep.id : false;
+  const dropTitle = pair?.drop.name === "Bi-2" ? "Molitva" : "Серебро";
+  // The files move after the database merge, track by track.
+  let movedTo = pathOf(dropTitle);
+  for (let i = 0; i < 50 && pair && !movedTo.startsWith(`${pair.keep.name}/`); i++) {
+    await sleep(200);
+    movedTo = pathOf(dropTitle);
+  }
+  await page.getByRole("button", { name: "Отменить" }).click();
+  for (let i = 0; i < 50 && pair && mergedInto(pair.drop.id) !== null; i++) await sleep(200);
+  const undone = pair ? mergedInto(pair.drop.id) === null : false;
+  let backTo = pathOf(dropTitle);
+  for (let i = 0; i < 50 && backTo === movedTo; i++) {
+    await sleep(200);
+    backTo = pathOf(dropTitle);
+  }
+  // Merge again, then a file under the dropped spelling arrives.
+  if (pair) await invoke("artists_merge", { keep: pair.keep.id, drop: pair.drop.id });
+  copyFileSync(join(mergeSrc, "bi2-lat2.mp3"), join(mergeDir, "bi2-lat2.mp3"));
+  await waitTracks(before + 4, 8000);
+  const lateArtist = mergeRows(
+    `SELECT ta.artist_id AS a FROM track t JOIN track_artist ta ON ta.track_id = t.id
+     WHERE t.title = 'Varvara' AND ta.role = 'primary'`,
+  )[0]?.a;
+  check(
+    "AT-06: two spellings suggested, merged by the banner (files move), undone, alias remembered",
+    !!pair &&
+      bannerShown &&
+      merged &&
+      movedTo.startsWith(`${pair.keep.name}/`) &&
+      undone &&
+      backTo !== movedTo &&
+      lateArtist === pair.keep.id,
+    `pair ${pair?.keep.name}←${pair?.drop.name}, banner ${bannerShown}, merged ${merged} → ${movedTo}, undone ${undone} → ${backTo}, late → ${lateArtist}`,
+  );
+  // The fixtures leave (later checks count tracks).
+  for (const title of ["Серебро", "Molitva", "Varvara"]) {
+    const rel = pathOf(title);
+    if (rel) rmSync(join(libDir, ...rel.split("/")), { force: true });
+  }
+  rmSync(mergeDir, { recursive: true, force: true });
+  await waitTracks(before + 1, 8000);
+  // AT-07 (T3.14): a playlist of three analysed tracks → similar ones under the divider, «−»
+  // never comes back, «+» moves a track into the playlist, ∞ continues the queue with
+  // recommendations (journal source «hybrid»), ∞ off ends it. The stop when nothing is close
+  // enough is proven on constructed vectors (`sirtone-wave` similar::tests).
+  const analysed = async () => {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    try {
+      return db
+        .prepare("SELECT id FROM track WHERE state = 'ok' AND embedding IS NOT NULL ORDER BY id")
+        .all()
+        .map((r) => r.id);
+    } finally {
+      db.close();
+    }
+  };
+  let withEmb = await analysed();
+  for (let i = 0; i < 120 && withEmb.length < 8; i++) {
+    await sleep(1000);
+    withEmb = await analysed();
+  }
+  const at07 = await invoke("playlist_create", { name: "AT-07" });
+  const seeds07 = withEmb.slice(0, 3);
+  await invoke("playlist_add", { id: at07, tracks: seeds07 });
+  const pre1 = await invoke("continuation_preview", { playlist: at07 });
+  const recIds = pre1.map((x) => x.id);
+  const minusId = recIds[0];
+  const plusId = recIds[1];
+  if (minusId !== undefined) {
+    await invoke("continuation_exclude", { playlist: at07, track: minusId });
+  }
+  if (plusId !== undefined) await invoke("playlist_add", { id: at07, tracks: [plusId] });
+  const pre2 = (await invoke("continuation_preview", { playlist: at07 })).map((x) => x.id);
+  const inList = (await invoke("playlist_tracks", { id: at07 })).map((e) => e.track.id);
+  check(
+    "AT-07: similar tracks under the divider; «−» never returns; «+» moves into the playlist",
+    recIds.length >= 2 &&
+      recIds.every((x) => !seeds07.includes(x)) &&
+      !pre2.includes(minusId) &&
+      !pre2.includes(plusId) &&
+      inList.includes(plusId),
+    `analysed ${withEmb.length}, preview ${JSON.stringify(recIds)} → ${JSON.stringify(pre2)}, playlist ${JSON.stringify(inList)}`,
+  );
+  // The page: the divider with ∞ and the rows with «+»/«−» in the same scroll.
+  await page.getByRole("navigation").getByRole("button", { name: "AT-07" }).click();
+  const recSection = page.getByRole("region", { name: "Рекомендовано из вашей медиатеки" });
+  await recSection.waitFor({ timeout: 5000 }).catch(() => {});
+  const recRows = recSection.locator("[data-recommended]");
+  for (let i = 0; i < 20 && (await recRows.count()) === 0; i++) await sleep(250);
+  const rowsBefore = await recRows.count();
+  const infPressed = await recSection
+    .getByRole("button", { name: "Продолжать похожими (∞)" })
+    .getAttribute("aria-pressed");
+  if (process.env.SMOKE_SHOTS) {
+    await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "at07-playlist.png") });
+  }
+  const firstRec = await recRows.first().getAttribute("data-recommended");
+  await recRows.first().hover();
+  await recRows.first().getByRole("button", { name: "Не предлагать" }).click();
+  let rowsAfter = await recRows.count();
+  for (let i = 0; i < 10 && rowsAfter === rowsBefore; i++) {
+    await sleep(200);
+    rowsAfter = await recRows.count();
+  }
+  const preUi = (await invoke("continuation_preview", { playlist: at07 })).map((x) => x.id);
+  check(
+    "AT-07 UI: «Рекомендовано из вашей медиатеки» with ∞ on; «−» on a row removes it for good",
+    rowsBefore >= 2 &&
+      infPressed === "true" &&
+      rowsAfter === rowsBefore - 1 &&
+      !preUi.includes(Number(firstRec)),
+    `rows ${rowsBefore} → ${rowsAfter}, ∞ ${infPressed}, removed ${firstRec}`,
+  );
+  // Play the playlist from its last track: ∞ appends recommendations behind it.
+  await invoke("play_tracks", {
+    ids: inList,
+    start: inList.length - 1,
+    context: "playlist",
+    playlist: at07,
+  });
+  let q07 = await invoke("queue_get", {});
+  for (let i = 0; i < 40 && !q07.items.some((x) => x.recommended); i++) {
+    await sleep(250);
+    q07 = await invoke("queue_get", {});
+  }
+  const recQueued = q07.items.filter((x) => x.recommended).map((x) => x.trackId);
+  check(
+    "AT-07: ∞ continues the playlist with recommendations (not «−», not the playlist's own)",
+    q07.autoplay === true &&
+      q07.playlist === at07 &&
+      recQueued.length >= 1 &&
+      q07.items.findIndex((x) => x.recommended) === inList.length &&
+      recQueued.every((x) => x !== minusId && !inList.includes(x)),
+    `autoplay ${q07.autoplay}, queue ${JSON.stringify(q07.items.map((x) => [x.trackId, x.recommended]))}`,
+  );
+  // Into the first recommendation and on: its play is journalled as «hybrid».
+  await invoke("playback_next", {});
+  await sleep(1500);
+  await invoke("playback_next", {});
+  let hybridPlays = [];
+  for (let i = 0; i < 20 && hybridPlays.length === 0; i++) {
+    await sleep(250);
+    hybridPlays = readJournal().filter((r) => r.source === "hybrid");
+  }
+  // ∞ off: the queued recommendations go, the queue ends after the playlist.
+  await invoke("continuation_set", { playlist: at07, on: false });
+  const qOff = await invoke("queue_get", {});
+  const pos = qOff.position;
+  check(
+    "AT-07: a recommendation plays as «hybrid»; ∞ off drops the upcoming ones",
+    hybridPlays.length >= 1 &&
+      qOff.autoplay === false &&
+      !qOff.items.slice(pos + 1).some((x) => x.recommended),
+    `hybrid plays ${hybridPlays.length}, after off ${JSON.stringify(qOff.items.slice(pos).map((x) => x.recommended))}`,
+  );
+  const snap07 = await invoke("playback_snapshot", {});
+  if (snap07.state === "playing") await invoke("playback_toggle", {});
+  // T3.1: «Работать полностью офлайн» — the switch reaches the network layer at once.
+  await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
+  await page.getByRole("switch", { name: "Работать полностью офлайн" }).click();
+  let netOn = await invoke("net_status", {});
+  for (let i = 0; i < 15 && !netOn.forced; i++) {
+    await sleep(200);
+    netOn = await invoke("net_status", {});
+  }
+  await page.getByRole("switch", { name: "Работать полностью офлайн" }).click();
+  let netOff = await invoke("net_status", {});
+  for (let i = 0; i < 15 && netOff.forced; i++) {
+    await sleep(200);
+    netOff = await invoke("net_status", {});
+  }
+  check(
+    "offline switch: every request blocked while on, back when off",
+    netOn.forced && netOn.offline && !netOff.forced && settings().network?.offline_mode === false,
+    `on ${JSON.stringify(netOn)}, off ${JSON.stringify(netOff)}`,
+  );
+  // T3.19: «Навести порядок во всей медиатеке» puts the Explorer file where the rules say.
+  await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
+  await page.getByRole("button", { name: "Навести порядок во всей медиатеке" }).click();
+  const relOf = (title) => {
+    const odb = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    const r = odb.prepare("SELECT rel_path FROM track WHERE title = ?").get(title);
+    odb.close();
+    return r?.rel_path ?? "";
+  };
+  let organized = relOf("Искала");
+  for (let i = 0; i < 50 && organized.startsWith("Снаружи/"); i++) {
+    await sleep(200);
+    organized = relOf("Искала");
+  }
+  check(
+    "T3.19: Explorer file kept in place, «Навести порядок» offered, then laid out by the rules",
+    organizeOffered && keptInPlace && organized !== "" && !organized.startsWith("Снаружи/"),
+    `offered ${organizeOffered}, kept ${keptInPlace}, now ${organized}`,
+  );
+  rmSync(join(libDir, ...organized.split("/")), { force: true });
+  rmSync(added, { force: true });
   const [n2, ms2] = await waitTracks(before, 5000);
   check("deleted file leaves the lists", n2 === before, `${ms2} ms`);
   // Restart with the folder renamed: offline, nothing recreated at the old path.
@@ -959,6 +1600,385 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
     "folder back → online, all tracks there",
     !back.offline && back.tracks === before,
     `${Date.now() - t0} ms, ${back.tracks}/${before}`,
+  );
+  // AT-04 (FR-REC-006, D-87): offline, an untagged «Артист - Название» file waits in
+  // «Неизвестные» and import is not blocked; the network comes back → MusicBrainz (recorded
+  // answers) confirms artist, title and length → the file moves to its place.
+  await invoke("settings_patch", { patch: { network: { offline_mode: true } } });
+  const at04Dir = join(dataDir, "at04-src");
+  mkdirSync(at04Dir, { recursive: true });
+  {
+    // 5 s of a 523 Hz tone, 22.05 kHz mono 16-bit PCM, no tags.
+    const rate = 22050;
+    const n = rate * 5;
+    const buf = Buffer.alloc(44 + n * 2);
+    buf.write("RIFF", 0);
+    buf.writeUInt32LE(36 + n * 2, 4);
+    buf.write("WAVEfmt ", 8);
+    buf.writeUInt32LE(16, 16);
+    buf.writeUInt16LE(1, 20);
+    buf.writeUInt16LE(1, 22);
+    buf.writeUInt32LE(rate, 24);
+    buf.writeUInt32LE(rate * 2, 28);
+    buf.writeUInt16LE(2, 32);
+    buf.writeUInt16LE(16, 34);
+    buf.write("data", 36);
+    buf.writeUInt32LE(n * 2, 40);
+    for (let i = 0; i < n; i++) {
+      buf.writeInt16LE(Math.round(8000 * Math.sin((2 * Math.PI * 523 * i) / rate)), 44 + i * 2);
+    }
+    writeFileSync(join(at04Dir, "Сплин - Романс.wav"), buf);
+  }
+  await invoke("import_paths", { paths: [at04Dir] });
+  const at04Row = () => {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    try {
+      return db
+        .prepare(
+          "SELECT id, rel_path, identity_state, unknown_reason, mbid_recording, duration_ms FROM track WHERE rel_path LIKE '%Романс%'",
+        )
+        .get();
+    } finally {
+      db.close();
+    }
+  };
+  let r04 = at04Row();
+  for (let i = 0; i < 40 && !r04; i++) {
+    await sleep(250);
+    r04 = at04Row();
+  }
+  const offlineState = r04 ? `${r04.identity_state}/${r04.unknown_reason} ${r04.rel_path}` : "none";
+  // The recorded answer: «Сплин — Романс», the file's own length, an official album of 1998.
+  const rg04 = "a1b2c3d4-0000-4000-8000-000000000098";
+  writeFileSync(
+    join(netFixtures, "at04-search.json"),
+    JSON.stringify({
+      count: 1,
+      recordings: [
+        {
+          id: "f00dbabe-0000-4000-8000-000000000004",
+          score: "100",
+          title: "Романс",
+          length: r04?.duration_ms ?? 5000,
+          "artist-credit": [{ name: "Сплин" }],
+          releases: [
+            {
+              title: "Гранатовый альбом",
+              status: "Official",
+              date: "1998-03-01",
+              "release-group": { id: rg04, "primary-type": "Album" },
+              media: [{ track: [{ number: "7" }] }],
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  // T3.3: the Cover Art Archive answers with a front cover for the release group — a picture
+  // of its own (a library cover would be stored once, under its first source).
+  {
+    const { deflateSync, crc32 } = require("node:zlib");
+    const chunk = (type, data) => {
+      const len = Buffer.alloc(4);
+      len.writeUInt32BE(data.length);
+      const td = Buffer.concat([Buffer.from(type), data]);
+      const crc = Buffer.alloc(4);
+      crc.writeUInt32BE(crc32(td) >>> 0);
+      return Buffer.concat([len, td, crc]);
+    };
+    const w = 64;
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(w, 0);
+    ihdr.writeUInt32BE(w, 4);
+    ihdr[8] = 8;
+    ihdr[9] = 2;
+    const raw = Buffer.alloc((w * 3 + 1) * w);
+    for (let y = 0; y < w; y++) {
+      raw[y * (w * 3 + 1)] = 0;
+      for (let x = 0; x < w; x++) {
+        const o = y * (w * 3 + 1) + 1 + x * 3;
+        raw[o] = (x * 4) & 255;
+        raw[o + 1] = (y * 4) & 255;
+        raw[o + 2] = 137;
+      }
+    }
+    writeFileSync(
+      join(netFixtures, "at04-cover.jpg"),
+      Buffer.concat([
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        chunk("IHDR", ihdr),
+        chunk("IDAT", deflateSync(raw)),
+        chunk("IEND", Buffer.alloc(0)),
+      ]),
+    );
+  }
+  writeFileSync(
+    join(netFixtures, "at04-rg.json"),
+    JSON.stringify({ id: rg04, "first-release-date": "1998-03-01" }),
+  );
+  writeFileSync(
+    join(netFixtures, "index.json"),
+    JSON.stringify([
+      // «романс», form-encoded.
+      { contains: "%D1%80%D0%BE%D0%BC%D0%B0%D0%BD%D1%81", file: "at04-search.json" },
+      { contains: `release-group/${rg04}/front`, file: "at04-cover.jpg" },
+      { contains: `release-group/${rg04}`, file: "at04-rg.json" },
+    ]),
+  );
+  await invoke("settings_patch", { patch: { network: { offline_mode: false } } });
+  let r04b = at04Row();
+  for (let i = 0; i < 60 && r04b?.identity_state !== "confirmed"; i++) {
+    await sleep(250);
+    r04b = at04Row();
+  }
+  check(
+    "AT-04: offline → «Неизвестные», import not blocked; network back → confirmed online and moved into place",
+    r04?.identity_state === "unknown" &&
+      r04b?.identity_state === "confirmed" &&
+      r04b.mbid_recording === "f00dbabe-0000-4000-8000-000000000004" &&
+      r04b.rel_path.startsWith("Сплин/") &&
+      r04b.rel_path.includes("Гранатовый альбом") &&
+      existsSync(join(libDir, ...r04b.rel_path.split("/"))),
+    `offline ${offlineState} → ${r04b ? `${r04b.identity_state} ${r04b.rel_path}` : "none"}`,
+  );
+  // T3.3 (FR-REC-009): the album placed online gets its cover from the Cover Art Archive.
+  const coverOf = () => {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    try {
+      return db
+        .prepare(
+          "SELECT al.mbid_group, cv.source FROM track t JOIN album al ON al.id = t.album_id LEFT JOIN cover cv ON cv.id = al.cover_id WHERE t.rel_path LIKE '%Романс%'",
+        )
+        .get();
+    } finally {
+      db.close();
+    }
+  };
+  let cov = coverOf();
+  for (let i = 0; i < 40 && cov?.source !== "caa"; i++) {
+    await sleep(250);
+    cov = coverOf();
+  }
+  check(
+    "T3.3: the album confirmed online gets its cover from the Cover Art Archive",
+    cov?.mbid_group === rg04 && cov?.source === "caa",
+    JSON.stringify(cov),
+  );
+  rmSync(at04Dir, { recursive: true, force: true });
+
+  // T3.16 (FR-SRCH-004/005): a smart query is understood offline — «По смыслу» lists tracks
+  // that really are sad and slow, «Играть этот вайб» starts the wave with those filters;
+  // nothing found → the library's closest artists.
+  const vq = "что-то грустное и медленное";
+  const vr = await invoke("library_search", { query: vq });
+  const vibeIds = (vr.vibe?.tracks ?? []).map((x) => x.id);
+  let vibeOk = true;
+  if (vibeIds.length > 0) {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    try {
+      const st = db.prepare("SELECT mood_bits, bpm FROM track WHERE id = ?");
+      vibeOk = vibeIds.every((id) => {
+        const r = st.get(id);
+        return (r.mood_bits & 8) !== 0 && r.bpm >= 0 && r.bpm <= 90;
+      });
+    } finally {
+      db.close();
+    }
+  }
+  // Too far for the typo correction, close enough to suggest.
+  const sugg = await invoke("library_search", { query: "земфираааааа" });
+  const foundZ =
+    sugg.suggestions.some((a) => a.name === "Земфира") ||
+    sugg.artists.some((a) => a.name === "Земфира");
+  await page.keyboard.press("Control+f");
+  const sf = page.getByLabel("Поиск по медиатеке");
+  await sf.waitFor({ timeout: 3000 });
+  await sf.fill(vq);
+  const vibeBtn = page.getByRole("button", { name: "Играть этот вайб" }).first();
+  const vibeShown = await vibeBtn.waitFor({ timeout: 4000 }).then(
+    () => true,
+    () => false,
+  );
+  if (process.env.SMOKE_SHOTS) {
+    await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "t316-search.png") });
+  }
+  let waveOn = false;
+  if (vibeShown) {
+    await vibeBtn.click();
+    for (let i = 0; i < 20 && !waveOn; i++) {
+      await sleep(250);
+      waveOn = (await invoke("playback_snapshot", {})).inWave;
+    }
+  }
+  check(
+    "T3.16: «что-то грустное и медленное» understood offline; «Играть этот вайб» starts the wave; nothing found → closest artists",
+    JSON.stringify(vr.vibe?.chips) === JSON.stringify(["mood.sad", "tempo.slow"]) &&
+      vibeOk &&
+      vibeShown &&
+      waveOn &&
+      foundZ,
+    `chips ${JSON.stringify(vr.vibe?.chips)}, tracks ${vibeIds.length} ok ${vibeOk}, button ${vibeShown}, wave ${waveOn}, suggestions ${JSON.stringify(sugg.suggestions.map((a) => a.name))} artists ${sugg.artists.length}`,
+  );
+  if ((await invoke("playback_snapshot", {})).state === "playing") {
+    await invoke("playback_toggle", {});
+  }
+
+  // D-92 / AT-21 in the app: «вперёд» on a wave track re-picks the upcoming wave tracks at
+  // once (the skip repels its vibe; whether a track is sad is judged in `sirtone-wave` tests).
+  await invoke("wave_start", { profile: null, query: null });
+  const upcoming = async () => {
+    const q = await invoke("queue_get", {});
+    return q.items.slice(q.position + 1).map((x) => x.trackId);
+  };
+  const upBefore = await upcoming();
+  await invoke("playback_next", {});
+  let upAfter = await upcoming();
+  for (let i = 0; i < 20 && JSON.stringify(upAfter) === JSON.stringify(upBefore.slice(1)); i++) {
+    await sleep(150);
+    upAfter = await upcoming();
+  }
+  check(
+    "D-92: a skip in the wave re-picks the upcoming wave tracks",
+    upBefore.length >= 2 && JSON.stringify(upAfter) !== JSON.stringify(upBefore.slice(1)),
+    `before ${JSON.stringify(upBefore)} → after ${JSON.stringify(upAfter)}`,
+  );
+  if ((await invoke("playback_snapshot", {})).state === "playing") {
+    await invoke("playback_toggle", {});
+  }
+
+  // AT-20 (T3.32): «Для всех» — a track «не для компании» never comes, nothing sad or gloomy
+  // is queued, and without popularity data the caption says so. (The guests' model leaving the
+  // owner's models untouched is checked bit for bit in `sirtone-wave` tests.)
+  const anal = (() => {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    try {
+      return db
+        .prepare(
+          "SELECT t.id, t.mood_bits FROM track t JOIN track_features tf ON tf.track_id = t.id WHERE t.state = 'ok' ORDER BY t.id",
+        )
+        .all();
+    } finally {
+      db.close();
+    }
+  })();
+  const bannedId = anal[0]?.id;
+  if (bannedId !== undefined) {
+    await invoke("track_tag_set", { track: bannedId, tag: "not_for_company", on: true });
+  }
+  const fa = await invoke("wave_start", { profile: "for_all", query: null });
+  const faQueue = (await invoke("queue_get", {})).items.map((x) => x.trackId);
+  const bitsOf = new Map(anal.map((r) => [r.id, r.mood_bits]));
+  const gloomy = faQueue.filter((id) => ((bitsOf.get(id) ?? 0) & (8 | 32)) !== 0);
+  // The player's snapshot follows the engine's next tick.
+  let faSnap = await invoke("playback_snapshot", {});
+  for (let i = 0; i < 20 && faSnap.waveProfile !== "for_all"; i++) {
+    await sleep(150);
+    faSnap = await invoke("playback_snapshot", {});
+  }
+  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  const faBtn = await page
+    .getByRole("button", { name: "Для всех" })
+    .first()
+    .waitFor({ timeout: 3000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  check(
+    "AT-20: «Для всех» — no «не для компании», nothing sad or gloomy, honest caption without popularity",
+    fa.queued > 0 &&
+      faSnap.waveProfile === "for_all" &&
+      !faQueue.includes(bannedId) &&
+      gloomy.length === 0 &&
+      fa.noPopularity === true &&
+      faBtn,
+    `queued ${fa.queued} few ${fa.few} noPop ${fa.noPopularity}, profile ${faSnap.waveProfile}, banned ${bannedId} in ${faQueue.includes(bannedId)}, gloomy ${gloomy.length}, button ${faBtn}`,
+  );
+  if ((await invoke("playback_snapshot", {})).state === "playing") {
+    await invoke("playback_toggle", {});
+  }
+
+  // AT-12 (T3.11, FR-IMP-007): a 3-hour mix lands in «Неизвестные» as «возможно, не трек»;
+  // «нормальный» + an artist for it (the bulk action) moves it, and it goes into a playlist.
+  await invoke("import_paths", { paths: [join(fixtures, "long", "mix-3h.mp3")] });
+  const mixRow = () => {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    try {
+      return db
+        .prepare(
+          "SELECT id, rel_path, identity_state, unknown_reason, user_normal FROM track WHERE rel_path LIKE '%mix-3h%' AND state = 'ok'",
+        )
+        .get();
+    } finally {
+      db.close();
+    }
+  };
+  let mix = mixRow();
+  for (let i = 0; i < 60 && !mix; i++) {
+    await sleep(250);
+    mix = mixRow();
+  }
+  const mixBefore = mix ? `${mix.identity_state}/${mix.unknown_reason}` : "none";
+  let mixAfter = null;
+  let inPl = false;
+  if (mix) {
+    await invoke("unknown_normal", { tracks: [mix.id] });
+    const normalReason = mixRow()?.unknown_reason;
+    const moved = await invoke("unknown_assign_artist", {
+      tracks: [mix.id],
+      artist: "Диджей Проверка",
+    });
+    mixAfter = { ...mixRow(), normalReason, moved };
+    const roadPl12 = (await invoke("playlists_list", {})).find((p) => p.name === "Дорога");
+    if (roadPl12) {
+      await invoke("playlist_add", { id: roadPl12.id, tracks: [mix.id] });
+      inPl = (await invoke("playlist_tracks", { id: roadPl12.id })).some(
+        (e) => e.track.id === mix.id,
+      );
+    }
+  }
+  await page.getByRole("button", { name: "Неизвестные" }).click();
+  const retryBtn = await page
+    .getByRole("button", { name: "Повторить онлайн" })
+    .waitFor({ timeout: 3000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  check(
+    "AT-12: 3-hour mix «возможно, не трек» → «нормальный» + artist (bulk) → moved, in a playlist; «Повторить онлайн» offered",
+    mixBefore === "unknown/possible_non_track" &&
+      mixAfter?.normalReason === "needs_review" &&
+      mixAfter?.moved === 1 &&
+      mixAfter?.identity_state === "user" &&
+      mixAfter?.user_normal === 1 &&
+      mixAfter?.rel_path.startsWith("Диджей Проверка/") &&
+      inPl &&
+      retryBtn,
+    `before ${mixBefore}, after ${JSON.stringify(mixAfter)}, playlist ${inPl}, retry ${retryBtn}`,
+  );
+
+  // T3.20 (FR-UI-006): albums without a cover get a generated placeholder (genre sign / logo
+  // letter) instead of the grey note.
+  const albumsNow = (await invoke("collection_albums", { after: null, limit: 500 })).rows;
+  const bare = albumsNow.filter((a) => a.cover === null);
+  await page.getByRole("navigation").getByRole("button", { name: "Альбомы" }).click();
+  const placeholders = page.locator("[data-art]");
+  for (let i = 0; i < 20 && (await placeholders.count()) === 0; i++) await sleep(150);
+  const shown = await placeholders.count();
+  if (process.env.SMOKE_SHOTS) {
+    await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "t320-albums.png") });
+  }
+  const genres = new Set(bare.map((a) => a.art >> 4));
+  check(
+    "T3.20: albums without a cover show a generated placeholder (genre / mood / logo)",
+    bare.length > 0 &&
+      bare.every((a) => typeof a.art === "number") &&
+      shown > 0 &&
+      // Fixture tracks carry no genre tags and synthetic sound: the base placeholder (genre 7);
+      // the genre/mood variants are unit-tested (`art.rs`).
+      [...genres].every((g) => g <= 7),
+    `bare ${bare.length}, placeholders ${shown}, genres ${JSON.stringify([...genres])}`,
   );
 }
 

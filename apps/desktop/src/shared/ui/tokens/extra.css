@@ -5,6 +5,8 @@
   --z-overlay: 10;
   --z-modal: 20;
   --z-toast: 30;
+  /* A menu the user opened sits above toasts: its items stay clickable (T3.29). */
+  --z-menu: 40;
   --skeleton-pulse: 1.6s;
 }
 

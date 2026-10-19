@@ -26,6 +26,8 @@ struct Open {
     heard: Duration,
     playing_since: Option<Instant>,
     context: ContextSnapshot,
+    /// The wave profile the play came from (`my_wave`, `seasonal`), for wave plays.
+    profile: Option<String>,
 }
 
 impl Open {
@@ -48,6 +50,8 @@ pub struct Journal {
     writer: Mutex<Option<std::thread::JoinHandle<()>>>,
     clock: Arc<dyn Clock>,
     context: ContextBuilder,
+    /// The running wave's profile, stamped on wave plays as they open.
+    wave_profile: Mutex<Option<String>>,
 }
 
 impl Journal {
@@ -75,7 +79,21 @@ impl Journal {
             writer: Mutex::new(writer),
             clock,
             context: ContextBuilder::default(),
+            wave_profile: Mutex::new(None),
         }
+    }
+
+    /// The running wave's profile (`my_wave`, `seasonal`), if a wave was started.
+    pub fn wave_profile(&self) -> Option<String> {
+        self.wave_profile
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+    }
+
+    /// The wave started with this profile (learning knows where its plays came from, §8.4).
+    pub fn set_wave_profile(&self, id: &str) {
+        *self.wave_profile.lock().unwrap_or_else(|p| p.into_inner()) = Some(id.to_owned());
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Option<Open>> {
@@ -90,7 +108,7 @@ impl Journal {
             duration_ms: open.duration_ms,
             end_reason: reason,
             source: open.source,
-            profile: None,
+            profile: open.profile,
             context: open.context,
             event_id: None,
             novelty: None,
@@ -158,6 +176,14 @@ impl Journal {
                 heard: Duration::ZERO,
                 playing_since: Some(Instant::now()),
                 context: self.context.snapshot_at(self.clock.as_ref(), now),
+                profile: (item.source == PlaySource::Wave)
+                    .then(|| {
+                        self.wave_profile
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner())
+                            .clone()
+                    })
+                    .flatten(),
             });
         }
     }
@@ -251,6 +277,7 @@ mod tests {
             writer: Mutex::new(None),
             clock: Arc::new(FixedClock::local(2026, 11, 22, 19, 0, 180)),
             context: ContextBuilder::default(),
+            wave_profile: Mutex::new(None),
         };
         (j, rx)
     }
@@ -280,6 +307,25 @@ mod tests {
         j.observe(&snap(PlayState::Playing, "d"), Some(item("d", 4)));
         j.shutdown();
         assert_eq!(rx.try_recv().unwrap().end_reason, EndReason::Quit);
+    }
+
+    #[test]
+    fn wave_plays_carry_the_profile() {
+        let (j, rx) = journal();
+        j.set_wave_profile("seasonal");
+        let wave = |p: &'static str, id| Item {
+            path: Path::new(p),
+            track_id: Some(id),
+            source: PlaySource::Wave,
+        };
+        j.observe(&snap(PlayState::Playing, "w"), Some(wave("w", 5)));
+        // A new wave starts: the open play keeps the profile it began with.
+        j.set_wave_profile("my_wave");
+        j.observe(&snap(PlayState::Playing, "a"), Some(item("a", 1)));
+        let w = rx.try_recv().unwrap();
+        assert_eq!(w.profile.as_deref(), Some("seasonal"));
+        j.close(EndReason::Skip);
+        assert_eq!(rx.try_recv().unwrap().profile, None, "not a wave play");
     }
 
     #[test]

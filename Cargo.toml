@@ -5,7 +5,7 @@ members = ["crates/*", "apps/desktop/src-tauri"]
 exclude = ["spikes/*"]
 
 [workspace.package]
-version = "0.1.22"
+version = "0.1.25"
 edition = "2024"
 rust-version = "1.95"
 license = "UNLICENSED"       # until OWN-01
@@ -15,11 +15,13 @@ authors = ["Sir.kov Studio"]
 [workspace.dependencies]     # versions checked 2026-10-15 (docs/08 §5.1)
 sirtone-core = { path = "crates/sirtone-core" }
 sirtone-audio = { path = "crates/sirtone-audio" }
+sirtone-analysis = { path = "crates/sirtone-analysis" }
 sirtone-platform = { path = "crates/sirtone-platform" }
 sirtone-library = { path = "crates/sirtone-library" }
 sirtone-recognize = { path = "crates/sirtone-recognize" }
 sirtone-playback = { path = "crates/sirtone-playback" }
 sirtone-wave = { path = "crates/sirtone-wave" }
+sirtone-net = { path = "crates/sirtone-net" }
 tauri = { version = "2.12", features = [] }
 tauri-build = "2.7"
 tauri-plugin-single-instance = "2.5"
@@ -36,13 +38,18 @@ wasapi = "0.26"
 rubato = "5.0"
 rtrb = "0.4"
 ebur128 = "0.1.10"
+rusty-chromaprint = "=0.3.0"
 lofty = "0.25"
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled", "functions"] }
 rusqlite_migration = "2.6"
 windows = { version = "0.62", features = [] }
 tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+rust-stemmers = "=1.2.0"
+stratum-dsp = { version = "=1.0.0", default-features = false }
+tract-onnx = "=0.23.9"
+rustfft = "6"
 unicode-normalization = "0.1.25"
 thiserror = "2"
 anyhow = "1"
@@ -64,7 +71,7 @@ crossbeam-channel = "0.5"
 parking_lot = "0.12"
 arc-swap = "1.9"
 rayon = "1.12"
-reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "gzip"] }
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "gzip", "blocking"] }
 proptest = "1.12"
 insta = "1.49"
 criterion = "0.8"

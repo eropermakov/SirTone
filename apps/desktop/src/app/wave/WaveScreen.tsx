@@ -3,18 +3,21 @@ import {
   CircleSlash,
   Disc3,
   Heart,
+  HelpCircle,
   ListPlus,
   MicVocal,
   MoreHorizontal,
   Pencil,
   Shuffle,
   Trash2,
+  Waves,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { TrackCard } from "@/app/library/TrackCard";
 import type { GoTo } from "@/app/library/TrackList";
 import { useAddToPlaylist } from "@/app/playlists/useAddToPlaylist";
+import { useTrackTags } from "@/app/playlists/useTrackTags";
 import {
   like,
   never,
@@ -23,7 +26,7 @@ import {
   type TrackFeedback,
   trackFeedback,
 } from "@/shared/ipc/feedback";
-import { allTrackIds, playTracks, trackDetails } from "@/shared/ipc/library";
+import { allTrackIds, playTracks, trackDetails, waveStart, waveWhy } from "@/shared/ipc/library";
 import { type PlaybackSnapshot, setShuffle, togglePlay } from "@/shared/ipc/playback";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/Button";
@@ -31,6 +34,9 @@ import { Cover } from "@/shared/ui/Cover";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
 import { PauseIcon, PlayIcon } from "@/shared/ui/TransportIcons";
+import { ForAllButton, type Gathering } from "./ForAllButton";
+import { NoveltySlider } from "./NoveltySlider";
+import { SeasonWaveButton } from "./SeasonWaveButton";
 
 const NONE: TrackFeedback = { liked: false, neverTrack: false, neverArtist: false };
 
@@ -38,7 +44,8 @@ const NONE: TrackFeedback = { liked: false, neverTrack: false, neverArtist: fals
  * «Моя волна» as the player (T2.5, FR-WAVE-001; `06` §3 layout): background gradient stub, big
  * cover, title and artist, ♡ / «не сейчас» / «⋯» (T2.19, FR-LEARN-003), a big Play. The
  * timeline, transport and volume stay in the PlayerBar below (one set of controls, `06` §12).
- * Wave chips, «Состав» and the familiar↔new slider come with the engine (Stage 3).
+ * «Слушать волну» runs the engine (Stage 3): it picks by taste, statistics and the signals and
+ * adds more as the queue runs out. Chips, «Состав» and the slider UI come next.
  */
 export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo }) {
   const { t } = useTranslation("shell");
@@ -48,6 +55,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
   const [card, setCard] = useState<{ id: number; confirmDelete: boolean } | null>(null);
   const closeCard = useCallback(() => setCard(null), []);
   const toPlaylist = useAddToPlaylist();
+  const tagsMenu = useTrackTags(id);
   const playing = snap.state === "playing";
 
   useEffect(() => {
@@ -58,6 +66,18 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       .catch(() => {});
   }, [id]);
 
+  const startWave = (profile?: "seasonal" | "for_all", gathering?: Gathering | null) =>
+    waveStart(profile, gathering ? { gathering } : undefined)
+      .then((r) => {
+        if (r.queued === 0) notify(t("wave.empty"));
+        // «Для всех» is honest about its data (FR-ALL-005).
+        else if (r.few) notify(t("wave.forAll.few"));
+        else if (r.noPopularity) notify(t("wave.forAll.noPopularity"));
+        // «Настроить волну» found too few tracks (FR-WAVE-006).
+        else if (r.relaxed.length > 0) notify(t("wave.relaxed"));
+      })
+      .catch(() => notify(t("wave.failed")));
+  const forAll = (g: Gathering | null) => void startWave("for_all", g);
   const shuffleAll = () =>
     allTrackIds().then((ids) => {
       if (ids.length === 0) return;
@@ -70,10 +90,18 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       <section className="flex h-full flex-col items-center justify-center gap-4 text-center">
         <h1 className="t-page-title text-primary-text">{t("wave.title")}</h1>
         <p className="t-body max-w-md text-text-secondary">{t("wave.idle")}</p>
-        <Button variant="primary" onClick={() => void shuffleAll()}>
-          <Shuffle size={16} strokeWidth={1.5} />
-          {t("wave.shuffleAll")}
-        </Button>
+        <div className="flex flex-wrap justify-center gap-3">
+          <Button variant="primary" onClick={() => void startWave()}>
+            <Waves size={16} strokeWidth={1.5} />
+            {t("wave.start")}
+          </Button>
+          <SeasonWaveButton onStart={() => void startWave("seasonal")} />
+          <ForAllButton onStart={forAll} />
+          <Button variant="secondary" onClick={() => void shuffleAll()}>
+            <Shuffle size={16} strokeWidth={1.5} />
+            {t("wave.shuffleAll")}
+          </Button>
+        </div>
       </section>
     );
   }
@@ -102,7 +130,28 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       })
       .catch(() => notify(t("wave.failed")));
 
+  const why = () =>
+    waveWhy(id)
+      .then((rs) => {
+        const days = t("wave.daypart", { returnObjects: true }) as unknown as string[];
+        const genres = t("wave.genres", { returnObjects: true }) as unknown as string[];
+        const seasons = t("wave.seasonName", { returnObjects: true }) as unknown as string[];
+        const text = rs
+          .map((r) =>
+            t(`wave.why.${r.kind}`, {
+              daypart: days[r.arg ?? 0] ?? "",
+              genre: genres[r.arg ?? 0] ?? "",
+              season: seasons[r.arg ?? 0] ?? "",
+            }),
+          )
+          .join(" · ");
+        notify(text || t("wave.why.none"));
+      })
+      .catch(() => notify(t("wave.failed")));
   const items: MenuItem[] = [
+    ...(snap.inWave
+      ? [{ id: "why", label: t("wave.whyMenu"), icon: HelpCircle, onSelect: () => void why() }]
+      : []),
     {
       id: "playlist",
       label: t("trackMenu.addToPlaylist"),
@@ -140,6 +189,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       icon: Pencil,
       onSelect: () => setCard({ id, confirmDelete: false }),
     },
+    tagsMenu,
     {
       id: "never",
       label: t("wave.never"),
@@ -181,6 +231,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       />
       <Cover
         hash={snap.cover}
+        art={snap.title ? snap.art : undefined}
         px={280}
         rounded="md"
         className="relative rounded-(--radius-lg) shadow-(--shadow-artwork)"
@@ -198,6 +249,19 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
         >
           {snap.artists}
         </button>
+      </div>
+      {/* Which wave plays; the other one starts from here (FR-SEAS-003). */}
+      <div className="relative flex flex-wrap justify-center gap-3">
+        {snap.waveProfile !== "my_wave" && (
+          <Button variant="secondary" onClick={() => void startWave()} className="relative">
+            <Waves size={16} strokeWidth={1.5} />
+            {t("wave.start")}
+          </Button>
+        )}
+        {snap.waveProfile !== "seasonal" && (
+          <SeasonWaveButton onStart={() => void startWave("seasonal")} />
+        )}
+        <ForAllButton onStart={forAll} />
       </div>
       <div className="relative flex items-center gap-4">
         <button
@@ -241,6 +305,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
           <MoreHorizontal size={24} strokeWidth={1.5} />
         </button>
       </div>
+      <NoveltySlider />
       {menu && (
         <Menu items={items} at={menu} label={t("trackMenu.label")} onClose={() => setMenu(null)} />
       )}

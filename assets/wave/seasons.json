@@ -1,5 +1,40 @@
 {
   "schema": "sirtone.seasons/1",
   "blend_days": 21,
-  "weather_cap": 0.3
+  "weather_cap": 0.3,
+  "_note_aff": "Track seasonality from four sources (docs/14 §10.2): a tag decides; otherwise sound · words · history weighted. Sound counts only with deep analysis (weight × conf), so an unanalysed track is never given a season by library means.",
+  "words_weight": 0.3,
+  "words_fields": { "title": 1.0, "album": 0.7, "artist": 0.3 },
+  "history_max": 0.5,
+  "history_full_days": 365,
+  "history_min_plays": 3,
+  "history_skip_days": 90,
+  "_note_sound": "Targets on the feature vector (§4.1); a criterion met scores 1, missed — falls to 0 over «tol». Temporary values until calibration (OWN-08).",
+  "tol": 0.25,
+  "sound": {
+    "winter": [
+      { "f": "energy", "max": 0.45 },
+      { "f": "tempo", "max": 0.45 },
+      { "f": "acousticness", "min": 0.5 },
+      { "f": "brightness", "max": 0.45 }
+    ],
+    "spring": [
+      { "f": "valence", "min": 0.5 },
+      { "f": "energy", "min": 0.5 },
+      { "f": "brightness", "min": 0.55 }
+    ],
+    "summer": [
+      { "f": "valence", "min": 0.6 },
+      { "f": "energy", "min": 0.6 },
+      { "f": "danceability", "min": 0.6 },
+      { "f": "brightness", "min": 0.6 },
+      { "f": "mode", "min": 0.5 }
+    ],
+    "autumn": [
+      { "f": "valence", "max": 0.5 },
+      { "f": "tempo", "min": 0.3, "max": 0.6 },
+      { "f": "acousticness", "min": 0.5 },
+      { "f": "mode", "max": 0.5 }
+    ]
+  }
 }

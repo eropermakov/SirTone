@@ -1,0 +1,8 @@
+AudioSet ontology — class names (assets/models/audioset_labels.csv)
+
+Source: Google, AudioSet ontology, https://research.google.com/audioset/
+Licence: Creative Commons Attribution 4.0 International (CC BY 4.0),
+https://creativecommons.org/licenses/by/4.0/
+
+The class names are used unchanged as identifiers of the built-in tagger's outputs
+(EfficientAT mn10_as). Attribution: «AudioSet ontology by Google, CC BY 4.0».

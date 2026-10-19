@@ -13,3 +13,11 @@ workspace = true
 
 [dependencies]
 sirtone-core.workspace = true
+ebur128.workspace = true
+rusty-chromaprint.workspace = true
+stratum-dsp.workspace = true
+tract-onnx.workspace = true
+rustfft.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

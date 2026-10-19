@@ -1,5 +1,11 @@
 import { isTauri } from "@tauri-apps/api/core";
-import { commands, events, type PlaylistEntry, type PlaylistItem } from "./bindings";
+import {
+  commands,
+  events,
+  type PlaylistEntry,
+  type PlaylistItem,
+  type TrackItem,
+} from "./bindings";
 
 export type { PlaylistEntry, PlaylistItem };
 
@@ -45,6 +51,50 @@ export const removeFromPlaylist = async (id: number, positions: number[]): Promi
 
 export const movePlaylistItem = async (id: number, from: number, to: number): Promise<void> => {
   if (isTauri()) unwrap(await commands.playlistMove(id, from, to));
+};
+
+/** Smart playlists (T3.13): rules are the `05` §8.1 JSON; Rust validates them. */
+export const smartCreate = async (name: string, rules: string): Promise<number> => {
+  if (!isTauri()) throw new Error("no library outside Tauri");
+  return unwrap(await commands.smartCreate(name, rules));
+};
+
+export const smartSetRules = async (id: number, rules: string): Promise<void> => {
+  if (isTauri()) unwrap(await commands.smartSetRules(id, rules));
+};
+
+export const smartRules = async (id: number): Promise<string | null> =>
+  isTauri() ? unwrap(await commands.smartRules(id)) : null;
+
+/** «Подходит N треков»; rejects bad rules. */
+export const smartPreview = async (rules: string): Promise<number> =>
+  isTauri() ? unwrap(await commands.smartPreview(rules)) : 0;
+
+export const smartRefresh = async (id: number): Promise<void> => {
+  if (isTauri()) unwrap(await commands.smartRefresh(id));
+};
+
+export const smartSaveAsManual = async (id: number, name: string): Promise<number> => {
+  if (!isTauri()) throw new Error("no library outside Tauri");
+  return unwrap(await commands.smartSaveAsManual(id, name));
+};
+
+/**
+ * Playlist continuation ∞ (T3.14, FR-PLS-003/005): the recommended tracks under a playlist,
+ * the switch (a playlist's own, or `null` — albums and other lists) and «−».
+ */
+export const continuationPreview = async (playlist: number): Promise<TrackItem[]> =>
+  isTauri() ? unwrap(await commands.continuationPreview(playlist)) : [];
+
+export const continuationSet = async (playlist: number | null, on: boolean): Promise<void> => {
+  if (isTauri()) unwrap(await commands.continuationSet(playlist, on));
+};
+
+export const continuationExclude = async (
+  playlist: number | null,
+  track: number,
+): Promise<void> => {
+  if (isTauri()) unwrap(await commands.continuationExclude(playlist, track));
 };
 
 export const onPlaylistsChanged = async (cb: (id: number) => void): Promise<() => void> =>

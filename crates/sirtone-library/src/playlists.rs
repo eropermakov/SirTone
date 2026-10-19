@@ -2,6 +2,10 @@
 //! an item never touches the track or its file. Items are addressed by position (a track may be
 //! in a playlist twice, Spotify «Add anyway»); positions stay dense `0..n` after every edit.
 //! Tracks whose file is missing keep their row (they come back with the file) but are not listed.
+//!
+//! Smart playlists (T3.13, `smart.rs`) share the list and the page: «live» ones are evaluated
+//! when read; with a refresh delay or «manual» the result is a snapshot in `playlist_item`,
+//! refreshed by [`refresh`]. They are read-only (Apple): add / remove / move refuse them.
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
@@ -9,6 +13,7 @@ use crate::collection::{TRACK_COLS, track_row};
 use crate::db::now_ms;
 use crate::error::LibraryError;
 use crate::repo::{TrackId, TrackRow};
+use crate::smart::{self, Refresh, Rules};
 
 pub type PlaylistId = i64;
 
@@ -24,6 +29,10 @@ pub struct PlaylistRow {
     /// Four different album covers of the first tracks → a 2×2 mosaic; otherwise at most one
     /// (Spotify, `01b` F-13).
     pub covers: Vec<String>,
+    /// A smart playlist (rules, read-only).
+    pub smart: bool,
+    /// ∞: continues with similar tracks from the library after its own end (FR-PLS-003/005).
+    pub hybrid: bool,
 }
 
 /// An item of a playlist page: its position (the address for remove / move) and the track.
@@ -41,6 +50,7 @@ fn clean_name(name: &str) -> Result<String, LibraryError> {
     Ok(n.chars().take(200).collect())
 }
 
+/// A manual playlist (what add / remove / move accept).
 fn exists(conn: &Connection, id: PlaylistId) -> Result<(), LibraryError> {
     conn.query_row(
         "SELECT 1 FROM playlist WHERE id = ?1 AND kind = 'manual'",
@@ -48,7 +58,115 @@ fn exists(conn: &Connection, id: PlaylistId) -> Result<(), LibraryError> {
         |_| Ok(()),
     )
     .optional()?
-    .ok_or_else(|| LibraryError::Invalid(format!("no playlist {id}")))
+    .ok_or_else(|| LibraryError::Invalid(format!("no manual playlist {id}")))
+}
+
+/// Any playlist (rename, delete).
+fn exists_any(conn: &Connection, id: PlaylistId) -> Result<(), LibraryError> {
+    conn.query_row("SELECT 1 FROM playlist WHERE id = ?1", [id], |_| Ok(()))
+        .optional()?
+        .ok_or_else(|| LibraryError::Invalid(format!("no playlist {id}")))
+}
+
+/// The stored rules of a smart playlist (`None` for a manual one); validated again on load.
+pub fn rules(conn: &Connection, id: PlaylistId) -> Result<Option<Rules>, LibraryError> {
+    let row: Option<(String, Option<String>)> = conn
+        .query_row(
+            "SELECT kind, rules_json FROM playlist WHERE id = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    match row {
+        None => Err(LibraryError::Invalid(format!("no playlist {id}"))),
+        Some((k, Some(json))) if k == "smart" => Rules::parse(&json).map(Some),
+        Some(_) => Ok(None),
+    }
+}
+
+/// Parses the rules and checks that `inPlaylist` names manual playlists (a smart playlist
+/// inside another could form a cycle). Returns the canonical JSON.
+fn validated(conn: &Connection, json: &str) -> Result<(Rules, String), LibraryError> {
+    let r = Rules::parse(json)?;
+    for p in r.playlist_refs() {
+        exists(conn, p)?;
+    }
+    let canon = r.to_json();
+    Ok((r, canon))
+}
+
+/// A new smart playlist (FR-PLS-002).
+pub fn create_smart(
+    conn: &Connection,
+    name: &str,
+    rules_json: &str,
+) -> Result<PlaylistId, LibraryError> {
+    let name = clean_name(name)?;
+    let (_, canon) = validated(conn, rules_json)?;
+    let now = now_ms();
+    conn.execute(
+        "INSERT INTO playlist(uid, name, kind, rules_json, sort_order, created_at, updated_at)
+         VALUES (?1, ?2, 'smart', ?3, (SELECT coalesce(max(sort_order), 0) + 1 FROM playlist), ?4, 0)",
+        params![uuid::Uuid::now_v7().to_string(), name, canon, now],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// New rules for a smart playlist; a snapshot is due at once.
+pub fn set_rules(conn: &Connection, id: PlaylistId, rules_json: &str) -> Result<(), LibraryError> {
+    if rules(conn, id)?.is_none() {
+        return Err(LibraryError::Invalid(format!("playlist {id} is not smart")));
+    }
+    let (_, canon) = validated(conn, rules_json)?;
+    conn.execute(
+        "UPDATE playlist SET rules_json = ?2, updated_at = 0 WHERE id = ?1",
+        params![id, canon],
+    )?;
+    Ok(())
+}
+
+/// A smart playlist with a delay whose snapshot is older than its delay (or never made).
+pub fn refresh_due(conn: &Connection, id: PlaylistId, now: i64) -> Result<bool, LibraryError> {
+    let Some(r) = rules(conn, id)? else {
+        return Ok(false);
+    };
+    let at: i64 = conn.query_row("SELECT updated_at FROM playlist WHERE id = ?1", [id], |r| {
+        r.get(0)
+    })?;
+    Ok(match r.refresh {
+        Refresh::Live => false,
+        Refresh::Manual => at == 0,
+        Refresh::Hours(h) => at == 0 || now - at >= i64::from(h) * 3_600_000,
+    })
+}
+
+/// Evaluates a smart playlist into its snapshot (`playlist_item`), «Обновить».
+pub fn refresh(conn: &mut Connection, id: PlaylistId, now: i64) -> Result<(), LibraryError> {
+    let Some(r) = rules(conn, id)? else {
+        return Err(LibraryError::Invalid(format!("playlist {id} is not smart")));
+    };
+    let rows = smart::evaluate(conn, &r, now)?;
+    let tx = conn.transaction()?;
+    let items: Vec<Item> = rows.iter().map(|t| (0, t.id, now)).collect();
+    rewrite(&tx, id, &items)?;
+    tx.execute(
+        "UPDATE playlist SET updated_at = ?2 WHERE id = ?1",
+        params![id, now],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// «Сохранить как обычный» (`05` §8.1): a manual playlist with the current tracks.
+pub fn save_as_manual(
+    conn: &mut Connection,
+    id: PlaylistId,
+    name: &str,
+) -> Result<PlaylistId, LibraryError> {
+    let ids: Vec<TrackId> = tracks(conn, id)?.into_iter().map(|t| t.track.id).collect();
+    let new = create(conn, name)?;
+    add(conn, new, &ids)?;
+    Ok(new)
 }
 
 fn touch(tx: &Transaction<'_>, id: PlaylistId) -> Result<(), LibraryError> {
@@ -91,8 +209,8 @@ pub fn create(conn: &Connection, name: &str) -> Result<PlaylistId, LibraryError>
     let name = clean_name(name)?;
     let now = now_ms();
     conn.execute(
-        "INSERT INTO playlist(uid, name, kind, sort_order, created_at, updated_at)
-         VALUES (?1, ?2, 'manual', (SELECT coalesce(max(sort_order), 0) + 1 FROM playlist), ?3, ?3)",
+        "INSERT INTO playlist(uid, name, kind, hybrid, sort_order, created_at, updated_at)
+         VALUES (?1, ?2, 'manual', 1, (SELECT coalesce(max(sort_order), 0) + 1 FROM playlist), ?3, ?3)",
         params![uuid::Uuid::now_v7().to_string(), name, now],
     )?;
     Ok(conn.last_insert_rowid())
@@ -100,9 +218,11 @@ pub fn create(conn: &Connection, name: &str) -> Result<PlaylistId, LibraryError>
 
 pub fn rename(conn: &Connection, id: PlaylistId, name: &str) -> Result<(), LibraryError> {
     let name = clean_name(name)?;
-    exists(conn, id)?;
+    exists_any(conn, id)?;
     conn.execute(
-        "UPDATE playlist SET name = ?2, updated_at = ?3 WHERE id = ?1",
+        // A smart playlist's updated_at is its snapshot time: renaming must not delay a refresh.
+        "UPDATE playlist SET name = ?2,
+           updated_at = CASE kind WHEN 'smart' THEN updated_at ELSE ?3 END WHERE id = ?1",
         params![id, name, now_ms()],
     )?;
     Ok(())
@@ -110,12 +230,13 @@ pub fn rename(conn: &Connection, id: PlaylistId, name: &str) -> Result<(), Libra
 
 /// The playlist goes; its tracks stay (FR-PLS-004).
 pub fn delete(conn: &Connection, id: PlaylistId) -> Result<(), LibraryError> {
-    exists(conn, id)?;
+    exists_any(conn, id)?;
     conn.execute("DELETE FROM playlist WHERE id = ?1", [id])?;
     Ok(())
 }
 
-/// Manual playlists in creation order (`sort_order`), with what the sidebar shows.
+/// Playlists in creation order (`sort_order`), with what the sidebar shows; live smart ones
+/// are evaluated now.
 pub fn list(conn: &Connection) -> Result<Vec<PlaylistRow>, LibraryError> {
     let mut st = conn.prepare_cached(
         "SELECT p.id, p.name,
@@ -124,8 +245,9 @@ pub fn list(conn: &Connection) -> Result<Vec<PlaylistRow>, LibraryError> {
                 (SELECT coalesce(sum(t.duration_ms), 0) FROM playlist_item i JOIN track t ON t.id = i.track_id
                  WHERE i.playlist_id = p.id AND t.state = 'ok'),
                 (SELECT coalesce(sum(t.size_bytes), 0) FROM playlist_item i JOIN track t ON t.id = i.track_id
-                 WHERE i.playlist_id = p.id AND t.state = 'ok')
-         FROM playlist p WHERE p.kind = 'manual' ORDER BY p.sort_order, p.id",
+                 WHERE i.playlist_id = p.id AND t.state = 'ok'),
+                p.hybrid = 1 AND p.kind = 'manual'
+         FROM playlist p ORDER BY p.sort_order, p.id",
     )?;
     let mut rows: Vec<PlaylistRow> = st
         .query_map([], |r| {
@@ -136,15 +258,30 @@ pub fn list(conn: &Connection) -> Result<Vec<PlaylistRow>, LibraryError> {
                 duration_ms: r.get::<_, i64>(3)? as u64,
                 bytes: r.get::<_, i64>(4)? as u64,
                 covers: Vec::new(),
+                smart: false,
+                hybrid: r.get(5)?,
             })
         })?
         .collect::<Result<_, _>>()?;
+    let now = now_ms();
+    for row in &mut rows {
+        if let Some(r) = rules(conn, row.id)? {
+            row.smart = true;
+            if r.refresh == Refresh::Live {
+                let st = smart::stats(conn, &r, now)?;
+                row.tracks = st.tracks;
+                row.duration_ms = st.duration_ms;
+                row.bytes = st.bytes;
+                row.covers = live_covers(conn, &st.albums)?;
+            }
+        }
+    }
     let mut covers = conn.prepare_cached(
         "SELECT cv.hash FROM playlist_item i JOIN track t ON t.id = i.track_id
          JOIN album al ON al.id = t.album_id JOIN cover cv ON cv.id = al.cover_id
          WHERE i.playlist_id = ?1 AND t.state = 'ok' ORDER BY i.position LIMIT 64",
     )?;
-    for row in &mut rows {
+    for row in rows.iter_mut().filter(|r| r.covers.is_empty()) {
         let mut seen: Vec<String> = Vec::with_capacity(4);
         let mut q = covers.query([row.id])?;
         while let Some(r) = q.next()? {
@@ -162,8 +299,41 @@ pub fn list(conn: &Connection) -> Result<Vec<PlaylistRow>, LibraryError> {
     Ok(rows)
 }
 
-/// The playlist page: playable items in order with their positions.
+/// Four different covers of the first tracks → mosaic, else one (as for manual playlists).
+fn live_covers(conn: &Connection, albums: &[i64]) -> Result<Vec<String>, LibraryError> {
+    let mut st = conn.prepare_cached(
+        "SELECT cv.hash FROM album al JOIN cover cv ON cv.id = al.cover_id WHERE al.id = ?1",
+    )?;
+    let mut seen: Vec<String> = Vec::with_capacity(4);
+    for a in albums {
+        if let Some(h) = st.query_row([a], |r| r.get::<_, String>(0)).optional()?
+            && !seen.contains(&h)
+        {
+            seen.push(h);
+            if seen.len() == 4 {
+                break;
+            }
+        }
+    }
+    seen.truncate(if seen.len() == 4 { 4 } else { 1 });
+    Ok(seen)
+}
+
+/// The playlist page: playable items in order with their positions (a live smart playlist —
+/// evaluated now, positions are its order).
 pub fn tracks(conn: &Connection, id: PlaylistId) -> Result<Vec<PlaylistTrack>, LibraryError> {
+    if let Some(r) = rules(conn, id)?
+        && r.refresh == Refresh::Live
+    {
+        return Ok(smart::evaluate(conn, &r, now_ms())?
+            .into_iter()
+            .enumerate()
+            .map(|(i, track)| PlaylistTrack {
+                position: i as i64,
+                track,
+            })
+            .collect());
+    }
     let mut st = conn.prepare_cached(&format!(
         "SELECT {TRACK_COLS}, i.position FROM playlist_item i JOIN track t ON t.id = i.track_id
          LEFT JOIN album al ON al.id = t.album_id
@@ -186,6 +356,7 @@ pub fn already_in(
     id: PlaylistId,
     tracks: &[TrackId],
 ) -> Result<Vec<TrackId>, LibraryError> {
+    exists(conn, id)?;
     let mut st = conn.prepare_cached(
         "SELECT 1 FROM playlist_item WHERE playlist_id = ?1 AND track_id = ?2 LIMIT 1",
     )?;
@@ -405,6 +576,54 @@ mod tests {
         remove(&mut c, p, &[t3]).unwrap();
         assert_eq!(titles(&c, p), ["T4"]);
         assert!(move_item(&mut c, p, 7, 0).is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn smart_playlists_are_read_only_listed_and_snapshotted() {
+        let (root, mut c) = lib("smart");
+        let ids: Vec<_> = (1..=4).map(|n| track(&mut c, n)).collect();
+        let s = create_smart(
+            &c,
+            "Умный",
+            r#"{"all":[{"startsWith":{"title":"t"}}],"sort":"-title","limit":3}"#,
+        )
+        .unwrap();
+        // Live: evaluated when read, in the rule's order.
+        assert_eq!(titles(&c, s), ["T4", "T3", "T2"]);
+        let row = list(&c).unwrap().into_iter().find(|r| r.id == s).unwrap();
+        assert!(row.smart);
+        assert_eq!((row.tracks, row.duration_ms), (3, 3000));
+        // Read-only (Apple): add / remove / move / «уже в плейлисте» refuse it; rename works.
+        assert!(add(&mut c, s, &ids).is_err());
+        assert!(remove(&mut c, s, &[0]).is_err());
+        assert!(move_item(&mut c, s, 0, 1).is_err());
+        assert!(already_in(&c, s, &ids).is_err());
+        rename(&c, s, "Умный 2").unwrap();
+        // Bad rules are refused; a smart playlist cannot be inside another (cycles).
+        assert!(set_rules(&c, s, r#"{"all":[{"gt":{"title":1}}]}"#).is_err());
+        let s2 = create_smart(&c, "Второй", r#"{"all":[],"refresh":"manual"}"#).unwrap();
+        let inside = format!(r#"{{"all":[{{"inPlaylist":{{"id":{s2}}}}}]}}"#);
+        assert!(set_rules(&c, s, &inside).is_err());
+        // A manual-refresh playlist is a snapshot: due at first, then refreshed only on demand.
+        assert!(refresh_due(&c, s2, 1_000).unwrap());
+        refresh(&mut c, s2, 1_000).unwrap();
+        assert!(!refresh_due(&c, s2, 9_999_999_999).unwrap());
+        assert_eq!(titles(&c, s2).len(), 4);
+        track(&mut c, 5);
+        assert_eq!(
+            titles(&c, s2).len(),
+            4,
+            "a snapshot does not follow the library"
+        );
+        refresh(&mut c, s2, 2_000).unwrap();
+        assert_eq!(titles(&c, s2).len(), 5);
+        // «Сохранить как обычный».
+        let m = save_as_manual(&mut c, s, "Снимок").unwrap();
+        assert_eq!(titles(&c, m), ["T5", "T4", "T3"]);
+        assert!(rules(&c, m).unwrap().is_none());
+        delete(&c, s).unwrap();
+        delete(&c, s2).unwrap();
         let _ = std::fs::remove_dir_all(&root);
     }
 }

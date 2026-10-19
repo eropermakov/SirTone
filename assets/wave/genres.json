@@ -1,0 +1,67 @@
+{
+  "schema": "sirtone.genres/1",
+  "_note": "Genre tag words → the six groups of the feature vector (docs/14 §4.1, features 26–31): pop/dance · rock/metal · electronic · hip-hop/R&B · classical/jazz/ambient · folk/other. Matched on normalised words; first hit wins.",
+  "groups": [
+    ["pop", "dance", "disco", "поп", "эстрада", "k-pop", "kpop", "j-pop", "schlager"],
+    [
+      "rock",
+      "metal",
+      "punk",
+      "grunge",
+      "рок",
+      "метал",
+      "панк",
+      "alternative",
+      "indie",
+      "hardcore",
+      "emo"
+    ],
+    [
+      "electronic",
+      "electro",
+      "techno",
+      "house",
+      "trance",
+      "edm",
+      "dubstep",
+      "drum",
+      "dnb",
+      "synth",
+      "электрон",
+      "idm",
+      "garage",
+      "breakbeat"
+    ],
+    ["hip", "hop", "rap", "r&b", "rnb", "soul", "funk", "trap", "рэп", "хип", "grime"],
+    [
+      "classical",
+      "jazz",
+      "ambient",
+      "blues",
+      "орган",
+      "классик",
+      "джаз",
+      "эмбиент",
+      "new age",
+      "soundtrack",
+      "score",
+      "lounge",
+      "chill"
+    ],
+    [
+      "folk",
+      "country",
+      "reggae",
+      "latin",
+      "world",
+      "фолк",
+      "шансон",
+      "бард",
+      "кантри",
+      "регги",
+      "ska",
+      "acoustic",
+      "singer"
+    ]
+  ]
+}

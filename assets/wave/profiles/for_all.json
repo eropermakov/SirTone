@@ -1,0 +1,38 @@
+{
+  "schema": "sirtone.wave-profile/1",
+  "_note": "«Для всех» (FR-ALL-001…006, docs/14 §16, D-90): universality leads, the owner's taste weighs 0.05 (FR-ALL-004); exclusions and «Хит для всех» from assets/wave/universal.json. Learning: the separate `guests` model only — the owner's models do not change (AT-20). Calibration: OWN-08.",
+  "id": "for_all",
+  "name_key": "wave.profile.for_all",
+  "weights": {
+    "taste": 0.05,
+    "session": 0.05,
+    "context": 0.1,
+    "season": 0.0,
+    "event": 0.0,
+    "curve": 0.0,
+    "novelty": 0.0,
+    "universal": 0.7,
+    "filters": 0.1
+  },
+  "company": true,
+  "novelty": {
+    "mode": "slider"
+  },
+  "learning_policy": "guests",
+  "sequencing": {
+    "artist_spacing": 5,
+    "repeat_window_h": 24,
+    "max_energy_jump": 0.35,
+    "transition_bonus": true
+  },
+  "relax_order": [
+    "filters.atmosphere",
+    "filters.activity",
+    "filters.character",
+    "filters.mood",
+    "tempo",
+    "energy",
+    "language",
+    "frequency"
+  ]
+}

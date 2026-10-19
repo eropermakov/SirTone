@@ -1,4 +1,4 @@
-import { MoreHorizontal, Play, Trash2 } from "lucide-react";
+import { Copy, ListFilter, MoreHorizontal, Play, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { mb } from "@/app/library/TrackCard";
@@ -11,12 +11,18 @@ import {
   playlistTracks,
   removeFromPlaylist,
   renamePlaylist,
+  smartRefresh,
+  smartRules,
+  smartSaveAsManual,
+  smartSetRules,
 } from "@/shared/ipc/playlists";
 import { Button } from "@/shared/ui/Button";
 import { Dialog } from "@/shared/ui/Dialog";
 import { Menu } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
 import { Mosaic } from "./Mosaic";
+import { Recommended } from "./Recommended";
+import { jsonToDraft, type SmartDraft, SmartEditor } from "./SmartEditor";
 import { usePlaylists } from "./usePlaylists";
 
 /**
@@ -31,6 +37,7 @@ export function PlaylistScreen({
   editName,
   onGo,
   onDeleted,
+  onOpen,
 }: {
   id: number;
   /** LibraryChanged counter: removed tracks leave the page. */
@@ -40,6 +47,8 @@ export function PlaylistScreen({
   editName?: boolean;
   onGo?: GoTo | undefined;
   onDeleted: () => void;
+  /** Opens another playlist («Сохранить как обычный»). */
+  onOpen?: (id: number) => void;
 }) {
   const { t } = useTranslation("shell");
   const { t: tc } = useTranslation("common");
@@ -49,12 +58,18 @@ export function PlaylistScreen({
   const [draft, setDraft] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [asking, setAsking] = useState(false);
+  const smart = meta?.smart ?? false;
+  const [rules, setRules] = useState<string | null>(null);
+  const [editingRules, setEditingRules] = useState<SmartDraft | null>(null);
   const input = useRef<HTMLInputElement>(null);
 
   const load = useCallback(() => {
     playlistTracks(id)
       .then(setEntries)
       .catch(() => setEntries([]));
+    smartRules(id)
+      .then(setRules)
+      .catch(() => setRules(null));
   }, [id]);
 
   useEffect(() => {
@@ -109,7 +124,9 @@ export function PlaylistScreen({
       <div className="flex items-end gap-6">
         <Mosaic covers={meta?.covers ?? []} px={184} className="shadow-(--shadow-artwork)" />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="t-caption text-text-secondary">{t("playlists.kind")}</span>
+          <span className="t-caption text-text-secondary">
+            {t(smart ? "smart.kind" : "playlists.kind")}
+          </span>
           {editing ? (
             <input
               ref={input}
@@ -155,7 +172,7 @@ export function PlaylistScreen({
         <button
           type="button"
           disabled={ids.length === 0}
-          onClick={() => playTracks(ids, 0, "playlist")}
+          onClick={() => playTracks(ids, 0, "playlist", id)}
           className="t-body-strong flex h-(--button-height) shrink-0 items-center gap-2 rounded-full bg-accent-fill px-5 text-accent-on disabled:opacity-40"
         >
           <Play size={20} fill="currentColor" strokeWidth={1.5} />
@@ -169,11 +186,16 @@ export function PlaylistScreen({
           tracks={tracks}
           playingId={playingId}
           label={t("collection.trackList")}
-          onPlay={(i) => playTracks(ids, i, "playlist")}
+          onPlay={(i) => playTracks(ids, i, "playlist", id)}
           context="playlist"
           onGo={onGo}
-          onRemoveFromList={unlist}
-          playlist={{ id, positions: entries.map((e) => e.position) }}
+          {...(smart
+            ? {}
+            : {
+                onRemoveFromList: unlist,
+                playlist: { id, positions: entries.map((e) => e.position) },
+                footer: <Recommended playlist={id} on={meta?.hybrid ?? false} version={version} />,
+              })}
         />
       )}
       {menu && (
@@ -182,6 +204,42 @@ export function PlaylistScreen({
           label={t("playlists.kind")}
           onClose={() => setMenu(null)}
           items={[
+            ...(smart
+              ? [
+                  {
+                    id: "rules",
+                    label: t("smart.edit"),
+                    icon: ListFilter,
+                    onSelect: () => setEditingRules(jsonToDraft(rules ?? "{}")),
+                  },
+                  ...(rules && !rules.includes('"refresh":"live"')
+                    ? [
+                        {
+                          id: "refresh",
+                          label: t("smart.refreshNow"),
+                          icon: RefreshCw,
+                          onSelect: () =>
+                            void smartRefresh(id).catch(() => notify(t("playlists.failed"))),
+                        },
+                      ]
+                    : []),
+                  {
+                    id: "snapshot",
+                    label: t("smart.saveAsManual"),
+                    icon: Copy,
+                    onSelect: () =>
+                      void smartSaveAsManual(
+                        id,
+                        t("smart.snapshotName", { name: meta?.name ?? "" }),
+                      )
+                        .then((n) => {
+                          notify(t("smart.saved"));
+                          onOpen?.(n);
+                        })
+                        .catch(() => notify(t("playlists.failed"))),
+                  },
+                ]
+              : []),
             {
               id: "delete",
               label: t("playlists.delete"),
@@ -190,6 +248,18 @@ export function PlaylistScreen({
               onSelect: () => setAsking(true),
             },
           ]}
+        />
+      )}
+      {editingRules && (
+        <SmartEditor
+          initial={editingRules}
+          onClose={() => setEditingRules(null)}
+          onSave={(json) => {
+            setEditingRules(null);
+            smartSetRules(id, json)
+              .then(load)
+              .catch(() => notify(t("smart.invalid")));
+          }}
         />
       )}
       {asking && (

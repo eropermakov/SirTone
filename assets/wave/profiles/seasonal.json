@@ -1,0 +1,38 @@
+{
+  "schema": "sirtone.wave-profile/1",
+  "_note": "«Сезонная волна» (FR-SEAS-003): weights from the owner's table (docs/14 §5.2). Tracks marked «убрать из сезонной» and clearly of another season (score below season_floor: a title or album word of another season; an artist name alone is weak evidence and stays) are left out. Calibration: OWN-08.",
+  "id": "seasonal",
+  "name_key": "wave.profile.seasonal",
+  "weights": {
+    "taste": 0.3,
+    "session": 0.05,
+    "context": 0.1,
+    "season": 0.45,
+    "event": 0.05,
+    "curve": 0.0,
+    "novelty": 0.0,
+    "universal": 0.0,
+    "filters": 0.05
+  },
+  "season_floor": 0.3,
+  "novelty": {
+    "mode": "slider"
+  },
+  "learning_policy": "full",
+  "sequencing": {
+    "artist_spacing": 5,
+    "repeat_window_h": 24,
+    "max_energy_jump": 0.35,
+    "transition_bonus": true
+  },
+  "relax_order": [
+    "filters.atmosphere",
+    "filters.activity",
+    "filters.character",
+    "filters.mood",
+    "tempo",
+    "energy",
+    "language",
+    "frequency"
+  ]
+}

@@ -18,12 +18,31 @@ export const commands = {
 	playbackNext: () => __TAURI_INVOKE<void>("playback_next"),
 	playbackPrev: () => __TAURI_INVOKE<void>("playback_prev"),
 	/**  Plays library tracks `ids` as one context starting at `start` (double-click in a list). */
-	playTracks: (ids: number[], start: number, context: PlayContext) => typedError<null, AppError>(__TAURI_INVOKE("play_tracks", { ids, start, context })),
+	playTracks: (ids: number[], start: number, context: PlayContext, playlist: number | null) => typedError<null, AppError>(__TAURI_INVOKE("play_tracks", { ids, start, context, playlist })),
 	/**  «Воспроизвести далее» (FR-PLAY-006). */
 	queuePlayNext: (ids: number[], context: PlayContext) => typedError<null, AppError>(__TAURI_INVOKE("queue_play_next", { ids, context })),
 	/**  «В конец очереди». */
 	queueAppend: (ids: number[], context: PlayContext) => typedError<null, AppError>(__TAURI_INVOKE("queue_append", { ids, context })),
 	queueGet: () => __TAURI_INVOKE<QueueView>("queue_get"),
+	/**
+	 *  «Принять подсказку»: the hint `index` (best first) becomes the identity; an online hint
+	 *  confirms it (`confirmed` + its recording id).
+	 */
+	unknownAccept: (track: number, index: number) => typedError<null, AppError>(__TAURI_INVOKE("unknown_accept", { track, index })),
+	/**  One artist for many unknown tracks at once (titles and albums stay); returns how many moved. */
+	unknownAssignArtist: (tracks: number[], artist: string) => typedError<number, AppError>(__TAURI_INVOKE("unknown_assign_artist", { tracks, artist })),
+	/**  «Нормальный» (FR-IMP-007): long files are music after all. */
+	unknownNormal: (tracks: number[]) => typedError<number, AppError>(__TAURI_INVOKE("unknown_normal", { tracks })),
+	/**  «Вернуть» from the quarantine: the track is back and analysed again. */
+	unknownRelease: (track: number) => typedError<null, AppError>(__TAURI_INVOKE("unknown_release", { track })),
+	/**  «Повторить онлайн»: the lookup starts over from the first unknown track now. */
+	unknownRetry: () => __TAURI_INVOKE<boolean>("unknown_retry"),
+	/**  The recommendations under a playlist (FR-PLS-003): empty with ∞ off or nothing close. */
+	continuationPreview: (playlist: number) => typedError<TrackItem[], AppError>(__TAURI_INVOKE("continuation_preview", { playlist })),
+	/**  ∞ on/off: a playlist's own, or (no playlist) the one for albums and other lists. */
+	continuationSet: (playlist: number | null, on: boolean) => typedError<null, AppError>(__TAURI_INVOKE("continuation_set", { playlist, on })),
+	/**  «−» on a recommended track. */
+	continuationExclude: (playlist: number | null, track: number) => typedError<null, AppError>(__TAURI_INVOKE("continuation_exclude", { playlist, track })),
 	queueRemove: (index: number) => __TAURI_INVOKE<void>("queue_remove", { index }),
 	queueMove: (from: number, to: number) => __TAURI_INVOKE<void>("queue_move", { from, to }),
 	queueJump: (index: number) => __TAURI_INVOKE<void>("queue_jump", { index }),
@@ -89,6 +108,18 @@ export const commands = {
 	/**  «Убрать из плейлиста»: the items go, the tracks stay (FR-PLS-004). */
 	playlistRemove: (id: number, positions: number[]) => typedError<null, AppError>(__TAURI_INVOKE("playlist_remove", { id, positions })),
 	playlistMove: (id: number, from: number, to: number) => typedError<null, AppError>(__TAURI_INVOKE("playlist_move", { id, from, to })),
+	/**  A new smart playlist from rules (`05` §8.1 JSON; validated, stored canonical). */
+	smartCreate: (name: string, rules: string) => typedError<number, AppError>(__TAURI_INVOKE("smart_create", { name, rules })),
+	/**  New rules for a smart playlist. */
+	smartSetRules: (id: number, rules: string) => typedError<null, AppError>(__TAURI_INVOKE("smart_set_rules", { id, rules })),
+	/**  The rules of a smart playlist (canonical JSON), `None` for a manual one. */
+	smartRules: (id: number) => typedError<string | null, AppError>(__TAURI_INVOKE("smart_rules", { id })),
+	/**  «Подходит N треков» for rules being edited (before the limit); bad rules → InvalidArgument. */
+	smartPreview: (rules: string) => typedError<number, AppError>(__TAURI_INVOKE("smart_preview", { rules })),
+	/**  «Обновить»: a smart playlist with a delay or manual refresh is evaluated again. */
+	smartRefresh: (id: number) => typedError<null, AppError>(__TAURI_INVOKE("smart_refresh", { id })),
+	/**  «Сохранить как обычный»: a manual playlist with the smart playlist's current tracks. */
+	smartSaveAsManual: (id: number, name: string) => typedError<number, AppError>(__TAURI_INVOKE("smart_save_as_manual", { id, name })),
 	librarySearch: (query: string) => typedError<SearchResults, AppError>(__TAURI_INVOKE("library_search", { query })),
 	perfHardware: () => __TAURI_INVOKE<HardwareInfo>("perf_hardware"),
 	trackFeedback: (track: number) => typedError<TrackFeedback, AppError>(__TAURI_INVOKE("track_feedback", { track })),
@@ -99,20 +130,97 @@ export const commands = {
 	/**  The primary artist of a track («Никогда в волне» → исполнитель). */
 	trackPrimaryArtist: (track: number) => typedError<number, AppError>(__TAURI_INVOKE("track_primary_artist", { track })),
 	neverList: () => typedError<NeverEntry[], AppError>(__TAURI_INVOKE("never_list")),
+	/**  Manual tags of a track (FR-LEARN-013). */
+	trackTags: (track: number) => typedError<string[], AppError>(__TAURI_INVOKE("track_tags", { track })),
+	trackTagSet: (track: number, tag: string, on: boolean) => typedError<null, AppError>(__TAURI_INVOKE("track_tag_set", { track, tag, on })),
 	storageInfo: () => __TAURI_INVOKE<StorageInfo>("storage_info"),
 	/**  «Удалить старые журналы»: diagnostic logs of earlier days (the app's own files, not music). */
 	storageClearLogs: () => typedError<number, AppError>(__TAURI_INVOKE("storage_clear_logs")),
+	/**
+	 *  «Моя волна» or another built-in profile (`seasonal` — «Сезонная волна», FR-SEAS-003) with
+	 *  optional «Настроить волну» filters: the engine picks and plays.
+	 */
+	waveStart: (profile: string | null, query: {
+	/**  happy · upbeat · calm · sad · positive · negative */
+	mood?: string[],
+	/**  energetic · aggressive · calm */
+	character?: string[],
+	/**  ru · foreign · none */
+	language?: string[],
+	/**  loved · often · forgotten */
+	frequency?: string[],
+	/**  workout · sleep · work · road · rest · party */
+	activity?: string[],
+	/**  light · medium · intense */
+	workoutTempo?: string | null,
+	/**  Daypart code 0…5 (manual atmosphere). */
+	daypart?: number | null,
+	/**  Weather class 0…5 (manual atmosphere). */
+	weather?: number | null,
+	/**  auto · winter · spring · summer · autumn · off */
+	season?: string | null,
+	/**  Influence of season, context, events: 0…2 each. */
+	influence?: [(number | null), (number | null), (number | null)] | null,
+	energy?: [(number | null), (number | null)] | null,
+	/**  BPM. */
+	tempo?: [(number | null), (number | null)] | null,
+	/**  «Для всех» atmospheres (FR-ALL-003): background · company · party. */
+	gathering?: string | null,
+} | null) => typedError<WaveStarted, AppError>(__TAURI_INVOKE("wave_start", { profile, query })),
+	/**  «Сбросить обучение» (docs/14 §8.4): the models start over from now; the journal stays. */
+	waveResetLearning: () => typedError<null, AppError>(__TAURI_INVOKE("wave_reset_learning")),
+	/**  «Почему этот трек» for a track of the running wave (empty outside the wave). */
+	waveWhy: (track: number) => __TAURI_INVOKE<WhyReason[]>("wave_why", { track }),
+	/**  «Знакомое ↔ Неожиданное» moved (docs/14 §9): the upcoming wave tracks follow at once. */
+	waveRetune: () => __TAURI_INVOKE<void>("wave_retune"),
+	/**
+	 *  The seasonal card's name (FR-SEAS-004, docs/14 §10.3) as an i18n key under `wave.season`:
+	 *  the season or, in a transition window, the mix («Предзимье»).
+	 */
+	waveSeasonCard: () => __TAURI_INVOKE<string>("wave_season_card"),
+	analysisProgress: () => typedError<AnalysisProgress, AppError>(__TAURI_INVOKE("analysis_progress")),
+	/**
+	 *  «Навести порядок» (T3.19, FR-FS-005): the adopted files waiting for it (`all` = false) or
+	 *  every track; files go where the layout rules say, through the journal. Returns how many
+	 *  moved.
+	 */
+	libraryOrganize: (all: boolean) => typedError<number, AppError>(__TAURI_INVOKE("library_organize", { all })),
+	netStatus: () => __TAURI_INVOKE<NetStatus>("net_status"),
+	importReport: (batch: number) => typedError<ImportReport, AppError>(__TAURI_INVOKE("import_report", { batch })),
+	artistSuggestions: () => typedError<ArtistSuggestion[], AppError>(__TAURI_INVOKE("artist_suggestions")),
+	/**  «Не предлагать». */
+	artistSuggestionDismiss: (a: number, b: number) => typedError<null, AppError>(__TAURI_INVOKE("artist_suggestion_dismiss", { a, b })),
+	/**  `drop` joins `keep`: its tracks, albums, ♡ / «никогда»; its name becomes an alias. */
+	artistsMerge: (keep: number, drop: number) => typedError<MergeDone, AppError>(__TAURI_INVOKE("artists_merge", { keep, drop })),
+	/**  «Отменить» a merge of this session. */
+	artistsMergeUndo: (token: number) => typedError<number, AppError>(__TAURI_INVOKE("artists_merge_undo", { token })),
+	duplicatesList: () => typedError<DuplicatesView, AppError>(__TAURI_INVOKE("duplicates_list")),
+	duplicatesCount: () => typedError<number, AppError>(__TAURI_INVOKE("duplicates_count")),
+	/**  «Оставить оба». */
+	duplicateKeepBoth: (a: number, b: number) => typedError<null, AppError>(__TAURI_INVOKE("duplicate_keep_both", { a, b })),
+	/**
+	 *  «Заменить старый новым» (`keep` = new, `drop` = old) or «Убрать новый» (the other way):
+	 *  `keep` takes `drop`'s history, `drop`'s file goes to the Recycle Bin.
+	 */
+	duplicateMerge: (keep: number, drop: number) => typedError<null, AppError>(__TAURI_INVOKE("duplicate_merge", { keep, drop })),
+	/**
+	 *  The mass action: every «тот же звук» pair keeps the better file (FR-DUP-003). Returns how
+	 *  many files went to the Recycle Bin.
+	 */
+	duplicatesKeepBest: () => typedError<number, AppError>(__TAURI_INVOKE("duplicates_keep_best")),
 	/**  `palette`: an owner palette (D-74) paints the caption in its own `bg-base`. */
 	windowSetTheme: (dark: boolean, palette: string | null) => __TAURI_INVOKE<void>("window_set_theme", { dark, palette }),
 };
 
 /** Events */
 export const events = {
+	duplicatesFound: makeEvent<DuplicatesFound>("duplicates-found"),
 	hotkeyConflict: makeEvent<HotkeyConflict>("hotkey-conflict"),
 	importFinished: makeEvent<ImportFinished>("import-finished"),
 	importProgress: makeEvent<ImportProgress>("import-progress"),
 	libraryChanged: makeEvent<LibraryChanged>("library-changed"),
 	libraryRootNeeded: makeEvent<LibraryRootNeeded>("library-root-needed"),
+	organizeSuggested: makeEvent<OrganizeSuggested>("organize-suggested"),
 	playbackError: makeEvent<PlaybackError>("playback-error"),
 	playbackSnapshot: makeEvent<PlaybackSnapshot>("playback-snapshot"),
 	playlistsChanged: makeEvent<PlaylistsChanged>("playlists-changed"),
@@ -130,11 +238,20 @@ export type AlbumItem = {
 	cover: string | null,
 	/**  Newest track, ms (sort «Недавно добавленные»). */
 	addedAt: number | null,
+	/**  Placeholder hint when there is no cover: `genre << 4 | mood` (T3.20, `art.rs`). */
+	art: number,
 };
 
 export type AlbumPage = {
 	rows: AlbumItem[],
 	next: PageCursor | null,
+};
+
+export type AnalysisProgress = {
+	done: number,
+	total: number,
+	/**  Waiting for power, a game or idle time. */
+	paused: boolean,
 };
 
 export type AppError = {
@@ -157,6 +274,18 @@ export type ArtistPage = {
 	next: PageCursor | null,
 };
 
+export type ArtistRef = {
+	id: number,
+	name: string,
+	tracks: number,
+};
+
+export type ArtistSuggestion = {
+	/**  More tracks — kept by default. */
+	keep: ArtistRef,
+	drop: ArtistRef,
+};
+
 export type BestMatch = { kind: "track"; item: TrackItem } | { kind: "artist"; item: ArtistItem } | { kind: "album"; item: AlbumItem };
 
 export type Bootstrap = {
@@ -164,6 +293,38 @@ export type Bootstrap = {
 	settings: unknown,
 	playback: PlaybackSnapshot | null,
 	library: LibraryStatus | null,
+};
+
+export type DupPair = {
+	/**  same_sound · similar */
+	class: string,
+	similarity: number | null,
+	/**  The earlier track. */
+	a: DupSide,
+	/**  The later one («новый»). */
+	b: DupSide,
+};
+
+export type DupSide = {
+	track: TrackItem,
+	codec: string,
+	lossless: boolean,
+	bitrateKbps: number | null,
+	sizeBytes: number | null,
+	plays: number,
+	/**  The better file of the two (lossless > lossy > bitrate > size). */
+	better: boolean,
+};
+
+/**  New pairs were found (the analysis thread); `pending` — how many wait for a decision. */
+export type DuplicatesFound = {
+	pending: number,
+};
+
+export type DuplicatesView = {
+	pairs: DupPair[],
+	/**  Exact copies the imports did not add (source paths, latest first). */
+	exact: string[],
 };
 
 export type ErrorCode = "FileNotFound" | "UnsupportedFormat" | "DecodeFailed" | "PathTooLong" | "DiskFull" | "PermissionDenied" | "DeviceUnavailable" | "DeviceBusy" | "NetworkOffline" | "RateLimited" | "RemoteError" | "DbBusy" | "DbCorrupt" | "Cancelled" | "InvalidArgument" | "LibraryOffline" | 
@@ -204,6 +365,8 @@ export type HotkeyStatus = {
 
 /**  Batch report (docs/05 §3.2): «Добавлено · Неизвестные · Дубли · Не добавлено». */
 export type ImportFinished = {
+	/**  For `import_report` (T3.21). */
+	batch: number,
 	added: number,
 	unknown: number,
 	duplicates: number,
@@ -219,6 +382,17 @@ export type ImportProgress = {
 	total: number,
 	/**  All source files copied and verified: the medium can be removed (docs/05 §3.2). */
 	sourcesReleased: boolean,
+};
+
+/**
+ *  The import report in full (T3.21, FR-IMP-006): added · «Неизвестные» · exact copies · not
+ *  added. Sound duplicates come later, after the analysis («Дубли», D-81).
+ */
+export type ImportReport = {
+	added: TrackItem[],
+	unknown: TrackItem[],
+	duplicates: string[],
+	rejected: RejectedItem[],
 };
 
 export type ImportStart = "started" | "rootNeeded";
@@ -254,6 +428,20 @@ export type LibraryStatus = {
 	goneQuestion: number | null,
 };
 
+export type MergeDone = {
+	/**  For `artists_merge_undo`. */
+	token: number,
+	/**  Files that could not move now (locked or playing) — they stay valid where they are. */
+	failed: number,
+};
+
+export type NetStatus = {
+	/**  No request goes out now. */
+	offline: boolean,
+	/**  Because of the «Работать полностью офлайн» switch. */
+	forced: boolean,
+};
+
 /**  A «Никогда в волне» row in Settings. */
 export type NeverEntry = {
 	scope: NeverScope,
@@ -265,13 +453,21 @@ export type NeverEntry = {
 
 export type NeverScope = "track" | "artist";
 
+/**
+ *  Files added in Explorer lie elsewhere than the layout rules say (T3.19, FR-FS-005): the UI
+ *  offers «Навести порядок» (setting `library.organize_external` = `suggest`).
+ */
+export type OrganizeSuggested = {
+	tracks: number,
+};
+
 export type PageCursor = {
 	key: string,
 	id: number,
 };
 
 /**  The screen a list was played from (`play_event.source`). */
-export type PlayContext = "album" | "artist" | "collection" | "playlist" | "search";
+export type PlayContext = "album" | "artist" | "collection" | "playlist" | "search" | "wave";
 
 /**  A track or device error; the UI shows `errors.<code>` in a toast (DESIGN.md §9). */
 export type PlaybackError = {
@@ -287,10 +483,16 @@ export type PlaybackSnapshot = {
 	artists: string | null,
 	/**  Library track id when playing from the collection. */
 	trackId: number | null,
+	/**  The current track comes from «Моя волна» (the screen offers to start it otherwise). */
+	inWave: boolean,
+	/**  The running wave's profile (`my_wave`, `seasonal`) while a wave track plays. */
+	waveProfile: string | null,
 	hasNext: boolean,
 	hasPrev: boolean,
 	/**  Album cover hash of the current track. */
 	cover: string | null,
+	/**  Placeholder hint when there is no cover (T3.20). */
+	art: number,
 	repeat: RepeatMode,
 	shuffle: boolean,
 	/**  Output underruns since start (diagnostics, P-13). */
@@ -323,6 +525,10 @@ export type PlaylistItem = {
 	bytes: number | null,
 	/**  Four hashes → a 2×2 mosaic, one → a single cover, none → placeholder. */
 	covers: string[],
+	/**  A smart playlist: rules, read-only (no add / remove / move). */
+	smart: boolean,
+	/**  ∞: continues with similar tracks from the library (FR-PLS-003/005). */
+	hybrid: boolean,
 };
 
 /**  Playlists were created, renamed, deleted or edited. */
@@ -342,6 +548,10 @@ export type QueueEntry = {
 	artists: string | null,
 	trackId: number | null,
 	cover: string | null,
+	/**  Placeholder hint (T3.20). */
+	art: number,
+	/**  Added by ∞ (shown under «Рекомендовано из вашей медиатеки» with «+»/«−»). */
+	recommended: boolean,
 };
 
 /**  The queue panel (FR-PLAY-006): everything, the playing position and the modes. */
@@ -350,6 +560,16 @@ export type QueueView = {
 	position: number,
 	repeat: RepeatMode,
 	shuffle: boolean,
+	/**  ∞ of the playing context (FR-PLS-005); `None` — not applicable (the wave, files). */
+	autoplay: boolean | null,
+	/**  The playlist that is playing («+» adds there, ∞ is its own). */
+	playlist: number | null,
+};
+
+export type RejectedItem = {
+	path: string,
+	/**  The reason code (`import.reason.*`). */
+	reason: string,
 };
 
 /**  FR-DATA-002: what deleting an artist takes away — for the confirmation. */
@@ -368,6 +588,9 @@ export type SearchResults = {
 	artists: ArtistItem[],
 	albums: AlbumItem[],
 	playlists: PlaylistHit[],
+	vibe: VibeHit | null,
+	/**  Nothing found: the library's closest artists. */
+	suggestions: ArtistItem[],
 };
 
 export type StorageInfo = {
@@ -436,11 +659,25 @@ export type TrackPage = {
 	next: PageCursor | null,
 };
 
+/**  A hint for an unknown track (from the online lookup, D-87). */
+export type UnknownCandidate = {
+	title: string,
+	/**  «A, B». */
+	artists: string,
+	/**  From MusicBrainz (accepting it confirms the identity). */
+	online: boolean,
+};
+
 /**  A track in «Неизвестные» with its reason (docs/05 §4.7). */
 export type UnknownItem = {
 	track: TrackItem,
-	/**  no_metadata | conflict | low_confidence | offline_pending | possible_non_track | needs_review */
+	/**
+	 *  no_metadata | conflict | low_confidence | offline_pending | possible_non_track |
+	 *  needs_review | quarantined (stopped playing, FR-IMP-008)
+	 */
 	reason: string | null,
+	/**  Hints in one click (T3.11): who it may be, best first. */
+	candidates: UnknownCandidate[],
 };
 
 /**  What the UI needs: the running version and, once, «just updated». */
@@ -449,6 +686,71 @@ export type UpdateStatus = {
 	/**  Set on the first start after an update (shown once as a toast). */
 	justUpdated: string | null,
 	notes: string | null,
+};
+
+/**
+ *  «По смыслу»: what was understood (i18n keys under `search.vibe`), matching tracks and the
+ *  wave query for «Играть этот вайб».
+ */
+export type VibeHit = {
+	/**  `mood.sad`, `character.calm`, `lang.none`, `activity.sleep`, `tempo.slow` / `tempo.fast`. */
+	chips: string[],
+	tracks: TrackItem[],
+	query: WaveQueryIpc,
+};
+
+/**
+ *  «Настроить волну» (T3.18, docs/05 §10.1) as the UI sends it: chip keys per block; empty or
+ *  absent — no filter.
+ */
+export type WaveQueryIpc = {
+	/**  happy · upbeat · calm · sad · positive · negative */
+	mood?: string[],
+	/**  energetic · aggressive · calm */
+	character?: string[],
+	/**  ru · foreign · none */
+	language?: string[],
+	/**  loved · often · forgotten */
+	frequency?: string[],
+	/**  workout · sleep · work · road · rest · party */
+	activity?: string[],
+	/**  light · medium · intense */
+	workoutTempo?: string | null,
+	/**  Daypart code 0…5 (manual atmosphere). */
+	daypart?: number | null,
+	/**  Weather class 0…5 (manual atmosphere). */
+	weather?: number | null,
+	/**  auto · winter · spring · summer · autumn · off */
+	season?: string | null,
+	/**  Influence of season, context, events: 0…2 each. */
+	influence?: [(number | null), (number | null), (number | null)] | null,
+	energy?: [(number | null), (number | null)] | null,
+	/**  BPM. */
+	tempo?: [(number | null), (number | null)] | null,
+	/**  «Для всех» atmospheres (FR-ALL-003): background · company · party. */
+	gathering?: string | null,
+};
+
+/**
+ *  What `wave_start` did: tracks queued and the relaxation steps of «Настроить волну»
+ *  (not empty → «Мало треков — расширил подбор», FR-WAVE-006).
+ */
+export type WaveStarted = {
+	queued: number,
+	/**  mood · character · activity · tempo · energy · language · frequency */
+	relaxed: string[],
+	/**  «Для всех»: «подборка без данных о популярности» (FR-ALL-005). */
+	noPopularity: boolean,
+	/**  «Для всех»: fewer than 30 suitable tracks — the honest caption. */
+	few: boolean,
+};
+
+/**  One reason of «Почему этот трек» (§17); the UI words it as `wave.why.<kind>`. */
+export type WhyReason = {
+	/**  liked · genre · taste · context · session · new · forgotten · season */
+	kind: string,
+	/**  Genre group (0…5), daypart code or season (0 winter … 3 autumn). */
+	arg: number | null,
 };
 
 /* Tauri Specta runtime */

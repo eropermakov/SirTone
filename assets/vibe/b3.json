@@ -1,0 +1,252 @@
+{
+  "schema": "sirtone.b3/1",
+  "_note": "B3 (docs/04 §10, T3.9): the vibe from the AudioSet classes of B2 (EfficientAT mn10_as). Classes by display name (assets/models/audioset_labels.csv). «ratio»: (Σ pos·w + a) / (Σ pos·w + Σ neg·w + a + b) — competing evidence, so the small absolute probabilities of sub-classes do not squash everything to the mean. Moods 18–25 — relative to the strongest mood (but not below «floor»); genres 26–31 — shares that sum to 1. TEMPORARY weights (D-85) until calibration on open labelled sets and the owner's golden set (OWN-08).",
+  "scalars": {
+    "vocal": {
+      "pos": {
+        "Singing": 1,
+        "Male singing": 1,
+        "Female singing": 1,
+        "Child singing": 1,
+        "Choir": 1,
+        "Rapping": 1,
+        "Vocal music": 0.6,
+        "A capella": 1,
+        "Speech": 0.3
+      },
+      "neg": {
+        "Synthesizer": 0.3,
+        "Guitar": 0.3,
+        "Piano": 0.3,
+        "Drum kit": 0.2,
+        "Orchestra": 0.3,
+        "Ambient music": 0.5,
+        "Electronic music": 0.2,
+        "Classical music": 0.4
+      },
+      "a": 0.01,
+      "b": 0.02
+    },
+    "acousticness": {
+      "pos": {
+        "Acoustic guitar": 1,
+        "Piano": 0.8,
+        "Violin, fiddle": 1,
+        "Cello": 1,
+        "Orchestra": 1,
+        "String section": 1,
+        "Harp": 1,
+        "Plucked string instrument": 0.5,
+        "Bowed string instrument": 1,
+        "Folk music": 0.8,
+        "Classical music": 1,
+        "Jazz": 0.5,
+        "A capella": 1,
+        "Country": 0.5,
+        "Bluegrass": 0.8
+      },
+      "neg": {
+        "Electric guitar": 1,
+        "Synthesizer": 1,
+        "Distortion": 1,
+        "Drum machine": 1,
+        "Electronic music": 1,
+        "Dubstep": 1,
+        "Techno": 1,
+        "House music": 1,
+        "Electronic dance music": 1,
+        "Heavy metal": 0.6,
+        "Hip hop music": 0.5
+      },
+      "a": 0.02,
+      "b": 0.02
+    },
+    "aggression": {
+      "pos": {
+        "Angry music": 1,
+        "Heavy metal": 1,
+        "Punk rock": 1,
+        "Grunge": 0.8,
+        "Distortion": 0.8,
+        "Scary music": 0.4,
+        "Dubstep": 0.5
+      },
+      "neg": {
+        "Tender music": 1,
+        "Happy music": 0.6,
+        "Lullaby": 1,
+        "Ambient music": 1,
+        "Classical music": 0.6,
+        "Sad music": 0.3,
+        "Pop music": 0.3,
+        "New-age music": 1
+      },
+      "a": 0.005,
+      "b": 0.08
+    },
+    "energy": {
+      "pos": {
+        "Exciting music": 1,
+        "Drum kit": 0.6,
+        "Drum": 0.4,
+        "Electronic dance music": 1,
+        "Heavy metal": 1,
+        "Rock music": 0.6,
+        "Punk rock": 1,
+        "Drum and bass": 1,
+        "Techno": 1,
+        "Angry music": 1,
+        "Dance music": 0.8,
+        "Trance music": 0.8
+      },
+      "neg": {
+        "Tender music": 1,
+        "Ambient music": 1,
+        "Lullaby": 1,
+        "Sad music": 0.8,
+        "New-age music": 1,
+        "Classical music": 0.4,
+        "Piano": 0.3,
+        "Acoustic guitar": 0.3
+      },
+      "a": 0.02,
+      "b": 0.02
+    },
+    "danceability": {
+      "pos": {
+        "Dance music": 1,
+        "Disco": 1,
+        "House music": 1,
+        "Techno": 1,
+        "Electronic dance music": 1,
+        "Funk": 1,
+        "Hip hop music": 0.7,
+        "Drum machine": 0.6,
+        "Salsa music": 1,
+        "Reggae": 0.6,
+        "Pop music": 0.5,
+        "Trance music": 0.8,
+        "Music of Latin America": 0.5
+      },
+      "neg": {
+        "Ambient music": 1,
+        "Classical music": 1,
+        "Tender music": 0.8,
+        "Sad music": 0.6,
+        "Lullaby": 1,
+        "Opera": 1,
+        "Heavy metal": 0.3,
+        "New-age music": 1,
+        "Orchestra": 0.6
+      },
+      "a": 0.02,
+      "b": 0.02
+    },
+    "valence": {
+      "pos": {
+        "Happy music": 1,
+        "Funny music": 1,
+        "Christmas music": 0.8,
+        "Wedding music": 0.8,
+        "Exciting music": 0.4,
+        "Tender music": 0.3,
+        "Music for children": 0.8,
+        "Dance music": 0.2
+      },
+      "neg": { "Sad music": 1, "Angry music": 1, "Scary music": 1 },
+      "a": 0.02,
+      "b": 0.02
+    },
+    "arousal": {
+      "pos": {
+        "Exciting music": 1,
+        "Angry music": 1,
+        "Happy music": 0.4,
+        "Drum kit": 0.4,
+        "Electronic dance music": 0.6,
+        "Heavy metal": 0.5,
+        "Punk rock": 0.5
+      },
+      "neg": {
+        "Tender music": 1,
+        "Sad music": 0.6,
+        "Ambient music": 1,
+        "Lullaby": 1,
+        "New-age music": 1
+      },
+      "a": 0.02,
+      "b": 0.02
+    }
+  },
+  "moods": {
+    "_order": "весёлое, бодрое, спокойное, грустное, агрессивное, нежное, мрачное, праздничное (docs/14 §4.1, 18–25)",
+    "classes": [
+      { "Happy music": 1, "Funny music": 1 },
+      { "Exciting music": 1 },
+      { "Ambient music": 1, "New-age music": 1, "Lullaby": 0.5, "Tender music": 0.3 },
+      { "Sad music": 1 },
+      { "Angry music": 1 },
+      { "Tender music": 1, "Lullaby": 0.5 },
+      { "Scary music": 1 },
+      { "Christmas music": 1, "Wedding music": 0.6 }
+    ],
+    "floor": 0.05
+  },
+  "genres": {
+    "_order": "поп/танцевальное · рок/метал · электроника · хип-хоп/R&B · классика/джаз/эмбиент · фолк/прочее (docs/14 §4.1, 26–31)",
+    "classes": [
+      { "Pop music": 1, "Disco": 1, "Dance music": 0.7 },
+      {
+        "Rock music": 1,
+        "Heavy metal": 1,
+        "Punk rock": 1,
+        "Grunge": 1,
+        "Progressive rock": 1,
+        "Rock and roll": 1,
+        "Psychedelic rock": 1
+      },
+      {
+        "Electronic music": 1,
+        "House music": 1,
+        "Techno": 1,
+        "Dubstep": 1,
+        "Drum and bass": 1,
+        "Electronica": 1,
+        "Electronic dance music": 1,
+        "Trance music": 1
+      },
+      { "Hip hop music": 1, "Rhythm and blues": 1, "Soul music": 1, "Funk": 1, "Reggae": 0.6 },
+      {
+        "Classical music": 1,
+        "Opera": 1,
+        "Jazz": 1,
+        "Ambient music": 1,
+        "New-age music": 1,
+        "Swing music": 1,
+        "Blues": 0.6
+      },
+      {
+        "Folk music": 1,
+        "Country": 1,
+        "Bluegrass": 1,
+        "Traditional music": 1,
+        "Music of Latin America": 1,
+        "Middle Eastern music": 1,
+        "Music of Africa": 1,
+        "Music of Asia": 1,
+        "Flamenco": 1,
+        "Ska": 0.6,
+        "Christian music": 0.6,
+        "Gospel music": 0.6
+      }
+    ]
+  },
+  "brightness": {
+    "_note": "Spectral centroid (§4.1 №10): log2(centroid / lo_hz) / log2(hi_hz / lo_hz), clamped.",
+    "lo_hz": 1000,
+    "hi_hz": 12000
+  },
+  "instrumental_below": 0.2,
+  "music_class": "Music",
+  "conf": { "two_windows": 1.0, "one_window": 0.8 }
+}

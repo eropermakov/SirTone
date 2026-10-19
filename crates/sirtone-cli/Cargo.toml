@@ -14,6 +14,7 @@ workspace = true
 [dependencies]
 sirtone-core.workspace = true
 sirtone-audio.workspace = true
+sirtone-analysis.workspace = true
 sirtone-library.workspace = true
 sirtone-recognize.workspace = true
 sirtone-platform.workspace = true

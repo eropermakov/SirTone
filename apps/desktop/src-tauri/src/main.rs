@@ -2,22 +2,32 @@
 // No console window in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod analysis;
+mod artists;
 mod autostart;
 mod bootstrap;
+mod continuation;
+mod covers_online;
 mod diagnostics;
+mod duplicates;
 mod feedback;
 mod hotkeys;
 mod ipc;
 mod journal;
 mod library;
+mod net;
 mod perf;
 mod playback;
 mod playlists;
+mod popularity;
+mod resolve;
 mod search;
 mod settings_store;
 mod storage;
 mod tray;
+mod unknowns;
 mod updates;
+mod wave;
 mod window_chrome;
 
 use std::sync::Arc;
@@ -71,6 +81,10 @@ fn main() {
         .plugin(hotkeys::plugin())
         .plugin(updates::plugin())
         .manage(updates::Updates::default())
+        .manage(continuation::Continuation::default())
+        .manage(resolve::Resolver::default())
+        .manage(popularity::Popularity::default())
+        .manage(covers_online::CoversOnline::default())
         .manage(hotkeys::Hotkeys::default())
         // Covers without IPC (docs/03 §5.6); work off the main thread.
         .register_asynchronous_uri_scheme_protocol("sirtone-cover", |ctx, request, responder| {
@@ -108,6 +122,12 @@ fn main() {
             autostart::sync(app.handle(), &store);
             updates::start(app.handle());
             app.manage(library::Library::start(app.handle().clone(), store.clone()));
+            app.manage(wave::Wave::start(app.handle().clone()));
+            app.manage(artists::Merges::default());
+            let net_state = net::start(app.handle());
+            app.manage(net_state);
+            analysis::start(app.handle().clone());
+            resolve::start(app.handle().clone());
             match playback::Playback::start(app.handle().clone(), store) {
                 Ok(pb) => {
                     let args: Vec<String> = std::env::args().collect();

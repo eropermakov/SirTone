@@ -3,7 +3,15 @@ import { commands, type SearchResults } from "./bindings";
 
 export type { SearchResults };
 
-const EMPTY: SearchResults = { best: null, tracks: [], artists: [], albums: [], playlists: [] };
+const EMPTY: SearchResults = {
+  best: null,
+  tracks: [],
+  artists: [],
+  albums: [],
+  playlists: [],
+  vibe: null,
+  suggestions: [],
+};
 
 /** Lexical search (T2.13): «лучшее совпадение» + groups. Outside Tauri — nothing. */
 export const search = async (query: string): Promise<SearchResults> => {

@@ -1,5 +1,11 @@
 import { isTauri } from "@tauri-apps/api/core";
-import { commands, type NeverEntry, type NeverScope, type TrackFeedback } from "./bindings";
+import {
+  type AnalysisProgress,
+  commands,
+  type NeverEntry,
+  type NeverScope,
+  type TrackFeedback,
+} from "./bindings";
 
 export type { NeverEntry, NeverScope, TrackFeedback };
 
@@ -34,3 +40,20 @@ export const primaryArtist = async (track: number): Promise<number> => {
 
 export const neverList = async (): Promise<NeverEntry[]> =>
   isTauri() ? unwrap(await commands.neverList()) : [];
+
+/** «Сбросить обучение» (docs/14 §8.4): the wave learns again from now; the journal stays. */
+export const resetLearning = async (): Promise<void> => {
+  if (isTauri()) unwrap(await commands.waveResetLearning());
+};
+
+/** Manual tags of a track (FR-LEARN-013). */
+export const trackTags = async (track: number): Promise<string[]> =>
+  isTauri() ? unwrap(await commands.trackTags(track)) : [];
+
+export const setTag = async (track: number, tag: string, on: boolean): Promise<void> => {
+  if (isTauri()) unwrap(await commands.trackTagSet(track, tag, on));
+};
+
+/** Background analysis progress (T3.6/T3.10). */
+export const analysisProgress = async (): Promise<AnalysisProgress | null> =>
+  isTauri() ? unwrap(await commands.analysisProgress()) : null;

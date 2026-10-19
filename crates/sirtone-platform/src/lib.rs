@@ -5,5 +5,6 @@ pub mod clock;
 pub mod files;
 pub mod hardware;
 pub mod idle;
+pub mod power;
 pub mod smtc;
 pub mod tags;

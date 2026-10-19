@@ -1,0 +1,51 @@
+{
+  "schema": "sirtone.dict/1",
+  "_note": "Season words for track titles, albums and artists (docs/14 §10.2). Matched on norm() words; «*» — word starts with. Ambiguous words (fall, march, may, spring as a verb) are left out or only in safe forms.",
+  "seasons": {
+    "winter": [
+      "winter",
+      "winters",
+      "wintertime",
+      "wintry",
+      "snow",
+      "snows",
+      "snowy",
+      "snowfall",
+      "snowflake*",
+      "snowman",
+      "frost",
+      "frosty",
+      "frozen",
+      "blizzard",
+      "sleigh",
+      "december",
+      "january",
+      "february",
+      "christmas",
+      "xmas",
+      "mistletoe",
+      "yuletide"
+    ],
+    "spring": [
+      "spring",
+      "springtime",
+      "april",
+      "blossom",
+      "blossoms",
+      "bloom",
+      "blooming",
+      "vernal"
+    ],
+    "summer": [
+      "summer",
+      "summers",
+      "summertime",
+      "summery",
+      "june",
+      "july",
+      "heatwave",
+      "midsummer"
+    ],
+    "autumn": ["autumn", "autumnal", "september", "october", "november", "harvest", "fall leaves"]
+  }
+}

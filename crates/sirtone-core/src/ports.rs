@@ -38,6 +38,16 @@ pub struct Tags {
     pub disc_total: Option<u32>,
     pub year: Option<i32>,
     pub genre: Option<String>,
+    /// MusicBrainz recording id (Picard writes it): popularity for «Для всех» (T3.32).
+    pub mbid_recording: Option<String>,
+    /// MusicBrainz release and release group ids: covers from the Cover Art Archive (T3.3).
+    pub mbid_release: Option<String>,
+    pub mbid_group: Option<String>,
+}
+
+/// A MusicBrainz id: 36 characters, hex digits and dashes.
+pub fn valid_mbid(s: &str) -> bool {
+    s.len() == 36 && s.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
 }
 
 pub trait TagReader: Send + Sync {
@@ -136,6 +146,8 @@ pub trait VolumeInfo: Send + Sync {
 pub enum CoverSource {
     Embedded,
     Folder,
+    /// Cover Art Archive (FR-REC-009, online).
+    Caa,
 }
 
 impl CoverSource {
@@ -143,6 +155,7 @@ impl CoverSource {
         match self {
             Self::Embedded => "embedded",
             Self::Folder => "folder",
+            Self::Caa => "caa",
         }
     }
 }
@@ -157,4 +170,22 @@ pub trait CoverReader: Send + Sync {
         file: &std::path::Path,
         source_dir: Option<&std::path::Path>,
     ) -> Option<(Vec<u8>, CoverSource)>;
+}
+
+/// Streaming PCM for analysis (T3.6): decodes a file packet by packet and hands interleaved
+/// `f32` frames to `sink(frames, channels, rate)`; `false` from the sink stops early. Never
+/// the whole track in memory. Implemented by `sirtone-audio`.
+pub trait PcmDecoder: Send + Sync {
+    fn decode(
+        &self,
+        path: &std::path::Path,
+        sink: &mut dyn FnMut(&[f32], usize, u32) -> bool,
+    ) -> Result<(), crate::error::AppError>;
+}
+
+/// Cached HTTP responses (T3.1, `03` §11): `sirtone-net` reads and writes, the library keeps
+/// them (`http_cache`). Keys are full URLs; stale entries are not returned.
+pub trait HttpCache: Send + Sync {
+    fn get(&self, key: &str, now_ms: i64) -> Option<Vec<u8>>;
+    fn put(&self, key: &str, body: &[u8], now_ms: i64, ttl_s: i64);
 }

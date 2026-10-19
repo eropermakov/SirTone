@@ -1,0 +1,23 @@
+{
+  "schema": "sirtone.activities/1",
+  "_note": "Activities as trapezoids on the features (docs/04 §10.2): inside [min, max] — 1, falling to 0 over «soft» outside. bpm in beats per minute, the rest 0–1. Heuristics until calibration (OWN-08). Workout tempo (Яндекс): light 110–130, medium 130–160, intense 160–185 BPM.",
+  "soft": 0.1,
+  "soft_bpm": 10,
+  "activities": {
+    "workout": [{ "f": "bpm", "min": 120, "max": 180 }, { "f": "energy", "min": 0.6 }],
+    "sleep": [
+      { "f": "bpm", "max": 90 },
+      { "f": "energy", "max": 0.3 },
+      { "f": "vocal", "max": 0.5 }
+    ],
+    "work": [{ "f": "arousal", "min": 0.25, "max": 0.6 }, { "f": "vocal", "max": 0.35 }],
+    "road": [{ "f": "bpm", "min": 90, "max": 140 }, { "f": "valence", "min": 0.45 }],
+    "rest": [{ "f": "energy", "max": 0.45 }, { "f": "arousal", "max": 0.45 }],
+    "party": [{ "f": "danceability", "min": 0.65 }, { "f": "energy", "min": 0.7 }]
+  },
+  "workout_tempo": {
+    "light": [110, 130],
+    "medium": [130, 160],
+    "intense": [160, 185]
+  }
+}

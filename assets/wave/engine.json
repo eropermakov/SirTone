@@ -1,0 +1,68 @@
+{
+  "schema": "sirtone.wave-engine/1",
+  "_note": "Sequencer and learning constants (docs/14 §7, §8.1, §9). Values from the spec and the S-17 prototype; calibration on the owner's library (OWN-08).",
+  "quotas": [
+    {
+      "at": 0.0,
+      "groups": [0.9, 0.1, 0.0]
+    },
+    {
+      "at": 0.25,
+      "groups": [0.7, 0.15, 0.15]
+    },
+    {
+      "at": 0.5,
+      "groups": [0.5, 0.2, 0.3]
+    },
+    {
+      "at": 0.75,
+      "groups": [0.3, 0.2, 0.5]
+    },
+    {
+      "at": 1.0,
+      "groups": [0.15, 0.15, 0.7]
+    }
+  ],
+  "top_k": 64,
+  "top_sample": 20,
+  "temperature": 0.05,
+  "explore_base": 0.1,
+  "explore_slope": 0.3,
+  "taste_sigma": 0.3,
+  "novelty_pull": 0.15,
+  "cold_conf_floor": 0.8,
+  "familiarity": {
+    "loved_plays": 8,
+    "loved_mean": 0.7,
+    "forgotten_plays": 3,
+    "forgotten_days": 60,
+    "new_days": 30,
+    "new_max_plays": 2,
+    "never_return_mean": 0.2
+  },
+  "repeat_soft_days": 7,
+  "signals": {
+    "like": 1.0,
+    "never": 0.5,
+    "skip_early": 0.8,
+    "skip_mid": 0.3,
+    "skip_late": 0.1,
+    "manual": 0.5,
+    "not_now": 0.5,
+    "finished": 0.2,
+    "finished_new": 0.4
+  },
+  "beta_half_life_days": 90,
+  "context_prior_n": 20,
+  "session": {
+    "half_life_min": 10,
+    "window_min": 40,
+    "skip_step": 0.15,
+    "like_step": 0.1,
+    "_repel": "Pandora 👎 «rebuilds the station» (01c W-01, D-92): the last skips of the session push away tracks close to them by vibe (energy, valence, arousal, danceability, the 8 moods); penalty = repel · min(1, Σ decay·exp(−d²/2σ²)), d² — mean squared difference on those features.",
+    "repel": 0.8,
+    "repel_sigma": 0.15,
+    "repel_last": 5
+  },
+  "min_candidates": 30
+}

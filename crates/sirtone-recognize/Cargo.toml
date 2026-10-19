@@ -16,5 +16,6 @@ sirtone-core.workspace = true
 lofty.workspace = true
 encoding_rs.workspace = true
 strsim.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]

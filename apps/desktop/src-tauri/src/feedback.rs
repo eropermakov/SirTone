@@ -51,8 +51,23 @@ pub fn track_feedback(lib: State<'_, Library>, track: u32) -> Result<TrackFeedba
 
 #[tauri::command(async)]
 #[specta::specta]
-pub fn feedback_like(lib: State<'_, Library>, track: u32, on: bool) -> Result<(), AppError> {
-    lib.with_write(|c| feedback::set_like(c, i64::from(track), on))
+pub fn feedback_like(
+    lib: State<'_, Library>,
+    pb: State<'_, Playback>,
+    track: u32,
+    on: bool,
+) -> Result<(), AppError> {
+    let profile = wave_profile_of(&pb, track);
+    lib.with_write(|c| feedback::set_like_in(c, i64::from(track), on, profile.as_deref()))
+}
+
+/// The wave profile a signal about the playing track is given in (`None` outside the wave):
+/// «Для всех» teaches the guests' model only (AT-20).
+fn wave_profile_of(pb: &Playback, track: u32) -> Option<String> {
+    let s = pb.snapshot();
+    (s.in_wave && s.track_id == Some(track))
+        .then_some(s.wave_profile)
+        .flatten()
 }
 
 /// «Не сейчас»: a minus in this context bucket only (D-77), and on to the next track.
@@ -74,13 +89,18 @@ pub fn feedback_not_now(
 #[specta::specta]
 pub fn feedback_never(
     lib: State<'_, Library>,
+    pb: State<'_, Playback>,
     scope: NeverScope,
     id: u32,
     on: bool,
 ) -> Result<(), AppError> {
+    let profile = match scope {
+        NeverScope::Track => wave_profile_of(&pb, id),
+        NeverScope::Artist => None,
+    };
     let id = i64::from(id);
     lib.with_write(|c| match scope {
-        NeverScope::Track => feedback::set_never_track(c, id, on),
+        NeverScope::Track => feedback::set_never_track_in(c, id, on, profile.as_deref()),
         NeverScope::Artist => feedback::set_never_artist(c, id, on),
     })
 }
@@ -115,4 +135,22 @@ pub fn never_list(lib: State<'_, Library>) -> Result<Vec<NeverEntry>, AppError> 
             },
         })
         .collect())
+}
+
+/// Manual tags of a track (FR-LEARN-013).
+#[tauri::command(async)]
+#[specta::specta]
+pub fn track_tags(lib: State<'_, Library>, track: u32) -> Result<Vec<String>, AppError> {
+    lib.with_read(|c| feedback::track_tags(c, i64::from(track)))
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+pub fn track_tag_set(
+    lib: State<'_, Library>,
+    track: u32,
+    tag: String,
+    on: bool,
+) -> Result<(), AppError> {
+    lib.with_write(|c| feedback::set_tag(c, i64::from(track), &tag, on))
 }
