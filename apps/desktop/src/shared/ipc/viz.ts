@@ -1,5 +1,5 @@
 import { Channel, isTauri } from "@tauri-apps/api/core";
-import { commands, type VizColors } from "./bindings";
+import { commands, events, type VizColors, type VizPower } from "./bindings";
 
 /**
  * The visualiser feed (T4.1, `04` §9, D-14): 60 frames a second of what is being heard, as raw
@@ -75,4 +75,9 @@ export async function vizColors(
   if (!isTauri()) return null;
   const r = await commands.vizColors(trackId, cover);
   return r.status === "ok" ? r.data : null;
+}
+
+/** Pause / battery for the visualiser (T4.6): sent by the feed thread when it changes. */
+export async function onVizPower(cb: (p: VizPower) => void): Promise<() => void> {
+  return isTauri() ? events.vizPower.listen((e) => cb(e.payload)) : () => {};
 }

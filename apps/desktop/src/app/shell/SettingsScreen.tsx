@@ -375,6 +375,12 @@ export function PerformanceSection() {
     { key: "ui_animations", label: t("settingsPerf.uiAnimations"), on: eff.uiAnimations },
     { key: "list_animations", label: t("settingsPerf.listAnimations"), on: eff.listAnimations },
     { key: "blur", label: t("settingsPerf.blur"), on: eff.blur },
+    // FR-VIZ-008: pause when unseen, lower on battery — on unless switched off.
+    {
+      key: "viz_power",
+      label: t("settingsPerf.vizPower"),
+      on: overrides.viz_power !== false,
+    },
   ];
   return (
     <div className="flex flex-col gap-2">

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getSettings, onSettingsChanged, type SettingsDoc } from "@/shared/ipc/settings";
-import { startViz, vizColors } from "@/shared/ipc/viz";
+import { onVizPower, startViz, vizColors } from "@/shared/ipc/viz";
 import { fallbackColors, lookOf, type PaletteInput, WAVES } from "@/shared/viz/palette";
 import { WavesEngine, wavesStats } from "@/shared/viz/waves";
 
@@ -44,6 +44,9 @@ export function WavesBackground({
   const [failed, setFailed] = useState(false);
   const [input, setInput] = useState<PaletteInput | null>(null);
   const [reduced, setReduced] = useState(() => window.matchMedia(REDUCED).matches);
+  const [power, setPower] = useState({ paused: false, battery: false });
+  const pausedRef = useRef(false);
+  pausedRef.current = power.paused;
 
   useEffect(() => {
     const m = window.matchMedia(REDUCED);
@@ -53,6 +56,11 @@ export function WavesBackground({
     let unlisten: (() => void) | undefined;
     const load = () => getSettings().then((d) => alive && setPrefs(prefsOf(d)));
     load();
+    let unPower: (() => void) | undefined;
+    onVizPower((p) => alive && setPower(p)).then((u) => {
+      if (alive) unPower = u;
+      else u();
+    });
     onSettingsChanged(load).then((u) => {
       if (alive) unlisten = u;
       else u();
@@ -61,6 +69,7 @@ export function WavesBackground({
       alive = false;
       m.removeEventListener("change", on);
       unlisten?.();
+      unPower?.();
     };
   }, []);
 
@@ -82,7 +91,9 @@ export function WavesBackground({
   }, [trackId, cover, prefs]);
 
   const gl = !!prefs && prefs.level > 0 && !failed;
-  const quality = WAVES.quality[String(Math.max(1, prefs?.level ?? 3)) as "1" | "2" | "3" | "4"];
+  // On battery one level lower (FR-VIZ-008), never below 1.
+  const level = Math.max(1, (prefs?.level ?? 3) - (power.battery ? 1 : 0));
+  const quality = WAVES.quality[String(level) as "1" | "2" | "3" | "4"];
   const minimal = !!prefs && (prefs.minimal || quality.minimal);
   // What a newly created engine starts with.
   const latest = useRef({ quality, minimal, input });
@@ -117,7 +128,7 @@ export function WavesBackground({
         return;
       }
       if (!reduced && !stop) stop = startViz((f) => e.setAudioFrame(f));
-      e.resume();
+      if (!pausedRef.current) e.resume();
     };
     run();
     document.addEventListener("visibilitychange", run);
@@ -148,6 +159,14 @@ export function WavesBackground({
   useEffect(() => {
     engine.current?.setQuality({ ...quality, minimal });
   }, [quality, minimal]);
+
+  // Not seen (minimised, covered, a full-screen game): no drawing; the feed idles in Rust.
+  useEffect(() => {
+    const e = engine.current;
+    if (!e) return;
+    if (power.paused) e.pause();
+    else if (!document.hidden) e.resume();
+  }, [power.paused]);
 
   useEffect(() => {
     if (!input) return;

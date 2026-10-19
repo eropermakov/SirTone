@@ -139,6 +139,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             playback::QueueChanged,
             playlists::PlaylistsChanged,
             duplicates::DuplicatesFound,
+            viz::VizPower,
             library::OrganizeSuggested
         ])
 }

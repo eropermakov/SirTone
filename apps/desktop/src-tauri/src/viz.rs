@@ -7,8 +7,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sirtone_library::palette::{self, Swatch};
+use tauri_specta::Event;
 
 use tauri::ipc::{Channel, InvokeResponseBody, IpcResponse};
 use tauri::{AppHandle, Manager, State};
@@ -38,6 +39,49 @@ pub struct Viz {
     running: Mutex<Option<Arc<AtomicBool>>>,
     /// «Цвет вашей музыки» and when it was worked out (recomputed after `COLLECTION_TTL`).
     collection: Mutex<Option<(Instant, Vec<VizSwatch>)>>,
+}
+
+/// Whether the visualiser should run (T4.6, FR-VIZ-008, `06` §7.6 — copy of Wallpaper Engine /
+/// Lively, `01a` §B.3): paused while the window is minimised or ≥ 95 % covered, or a full-screen
+/// game or presentation runs; one level lower on battery. Sent when it changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type, Event)]
+#[serde(rename_all = "camelCase")]
+pub struct VizPower {
+    pub paused: bool,
+    pub battery: bool,
+}
+
+/// Lively's threshold.
+const COVERED: f32 = 0.95;
+/// How often the window and power are looked at (frames).
+const CHECK_EVERY: u32 = 15;
+
+/// The power rules are on unless the user switched them off (`performance.overrides.viz_power`).
+fn power_rules_on(app: &AppHandle) -> bool {
+    app.try_state::<Arc<crate::settings_store::SettingsStore>>()
+        .and_then(|s| s.get()["performance"]["overrides"]["viz_power"].as_bool())
+        .unwrap_or(true)
+}
+
+fn power_now(app: &AppHandle) -> VizPower {
+    if !power_rules_on(app) {
+        return VizPower {
+            paused: false,
+            battery: false,
+        };
+    }
+    let hidden = app
+        .get_webview_window("main")
+        .and_then(|w| w.hwnd().ok())
+        .is_some_and(|h| {
+            let h = h.0 as isize;
+            sirtone_platform::occlusion::minimized(h)
+                || sirtone_platform::occlusion::covered(h) >= COVERED
+        });
+    VizPower {
+        paused: hidden || sirtone_platform::power::fullscreen_busy(),
+        battery: sirtone_platform::power::on_battery() && !crate::analysis::battery_ignored(),
+    }
 }
 
 /// The collection colour follows the library slowly: recomputed at most this often.
@@ -136,7 +180,24 @@ pub fn viz_start(app: AppHandle, viz: State<'_, Viz>, channel: Channel<VizFrame>
             let mut anchor = (u64::MAX, Instant::now());
             let mut track = None;
             let mut bpm = 0f32;
+            let mut n = 0u32;
+            let mut power: Option<VizPower> = None;
             while flag.load(Ordering::Acquire) {
+                if n.is_multiple_of(CHECK_EVERY) {
+                    let now = power_now(&app);
+                    if power != Some(now) {
+                        let _ = now.emit(&app);
+                        power = Some(now);
+                    }
+                }
+                n = n.wrapping_add(1);
+                if power.is_some_and(|p| p.paused) {
+                    // Not seen: no frames, the window is looked at 4 times a second.
+                    n = 0;
+                    std::thread::sleep(Duration::from_millis(250));
+                    next = Instant::now();
+                    continue;
+                }
                 let s = pb.snapshot();
                 if s.track_id != track {
                     track = s.track_id;

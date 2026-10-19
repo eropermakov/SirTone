@@ -234,6 +234,7 @@ export const events = {
 	playbackSnapshot: makeEvent<PlaybackSnapshot>("playback-snapshot"),
 	playlistsChanged: makeEvent<PlaylistsChanged>("playlists-changed"),
 	queueChanged: makeEvent<QueueChanged>("queue-changed"),
+	vizPower: makeEvent<VizPower>("viz-power"),
 };
 
 /* Types */
@@ -722,6 +723,16 @@ export type VizColors = {
 	cover: VizSwatch[],
 	/**  «Цвет вашей музыки» (empty — no covers in the library). */
 	collection: VizSwatch[],
+};
+
+/**
+ *  Whether the visualiser should run (T4.6, FR-VIZ-008, `06` §7.6 — copy of Wallpaper Engine /
+ *  Lively, `01a` §B.3): paused while the window is minimised or ≥ 95 % covered, or a full-screen
+ *  game or presentation runs; one level lower on battery. Sent when it changes.
+ */
+export type VizPower = {
+	paused: boolean,
+	battery: boolean,
 };
 
 /**  A dominant colour, OKLCH (`h` in degrees), with its share `w`. */

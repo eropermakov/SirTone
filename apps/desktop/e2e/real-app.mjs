@@ -933,6 +933,29 @@ if (existsSync(corpus)) {
     back1.frames - back0.frames > 40,
     `${back1.frames - back0.frames} frames/s`,
   );
+  // T4.6: minimised (only this isolated app's window, by its pid) → the feed stops; restored →
+  // it runs again.
+  const showWindow = (cmd) =>
+    spawnSync("powershell", [
+      "-NoProfile",
+      "-Command",
+      `Add-Type -Name W -Namespace U -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr h, int c);'; [void][U.W]::ShowWindow((Get-Process -Id ${app.pid}).MainWindowHandle, ${cmd})`,
+    ]);
+  showWindow(6);
+  await sleep(1500);
+  const min0 = await vizRead();
+  await sleep(1500);
+  const min1 = await vizRead();
+  showWindow(9);
+  await sleep(1500);
+  const res0 = await vizRead();
+  await sleep(1000);
+  const res1 = await vizRead();
+  check(
+    "viz: minimised → no frames; restored → frames again (FR-VIZ-008)",
+    min1.frames - min0.frames < 5 && res1.frames - res0.frames > 40,
+    `minimised ${min1.frames - min0.frames} in 1.5 s, restored ${res1.frames - res0.frames}/s`,
+  );
   await axeScreen("«Моя волна»");
   // T2.20 / P-01 (DESIGN.md §1, `08` §1): event → the frame that shows the change, measured
   // in the page. Direct actions ≤ 100 ms, a screen change ≤ 400 ms.
