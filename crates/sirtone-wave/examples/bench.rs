@@ -56,6 +56,10 @@ fn main() -> ExitCode {
     e.reload(&tracks, &history, now);
     let reload_q_ms = t2.elapsed().as_secs_f64() * 1e3;
     e.set_query(WaveQuery::default(), now);
+    // The worst case of the session repel (D-92): the last 5 skips are analysed tracks.
+    for t in tracks.iter().filter(|t| t.features.is_some()).take(5) {
+        e.skipped(t.id, now - 60_000);
+    }
     let mut ms: Vec<f64> = (0..320)
         .map(|i| {
             let t = Instant::now();

@@ -817,6 +817,16 @@ fn place(
         "UPDATE track SET import_batch_id = ?2 WHERE id = ?1",
         params![id, batch],
     )?;
+    // Picard's release ids: covers from the Cover Art Archive (T3.3), the album keeps the first.
+    if let Some(album) = album_id
+        && (tags.mbid_release.is_some() || tags.mbid_group.is_some())
+    {
+        tx.execute(
+            "UPDATE album SET mbid_release = coalesce(mbid_release, ?2),
+                    mbid_group = coalesce(mbid_group, ?3) WHERE id = ?1",
+            params![album, tags.mbid_release, tags.mbid_group],
+        )?;
+    }
     // Picard's recording id: popularity for «Для всех» without an online lookup (T3.32).
     if let Some(m) = tags
         .mbid_recording

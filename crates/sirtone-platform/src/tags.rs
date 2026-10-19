@@ -93,6 +93,8 @@ fn read_shell(path: &Path) -> Option<Tags> {
         year: number(&store, &PKEY_Media_Year).and_then(|y| i32::try_from(y).ok()),
         genre: text(&store, &PKEY_Music_Genre),
         mbid_recording: None,
+        mbid_release: None,
+        mbid_group: None,
     })
 }
 

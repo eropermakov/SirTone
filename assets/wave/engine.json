@@ -60,8 +60,8 @@
     "skip_step": 0.15,
     "like_step": 0.1,
     "_repel": "Pandora 👎 «rebuilds the station» (01c W-01, D-92): the last skips of the session push away tracks close to them by vibe (energy, valence, arousal, danceability, the 8 moods); penalty = repel · min(1, Σ decay·exp(−d²/2σ²)), d² — mean squared difference on those features.",
-    "repel": 0.6,
-    "repel_sigma": 0.12,
+    "repel": 0.8,
+    "repel_sigma": 0.15,
     "repel_last": 5
   },
   "min_candidates": 30

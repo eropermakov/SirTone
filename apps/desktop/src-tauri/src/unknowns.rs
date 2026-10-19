@@ -47,7 +47,10 @@ pub fn unknown_accept(lib: State<'_, Library>, track: u32, index: u32) -> Result
         track_no: None,
         year: None,
     };
-    let online = h.mbid.clone().map(|m| (m, (1.0 - h.d).clamp(0.0, 1.0)));
+    let online = h
+        .mbid
+        .clone()
+        .map(|m| (m, (1.0 - h.d).clamp(0.0, 1.0), None));
     lib.assign_with(id, assignment, online).map(|_| ())
 }
 

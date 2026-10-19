@@ -178,8 +178,9 @@ enum Job {
     Assign {
         track: i64,
         assignment: sirtone_library::relocate::Assignment,
-        /// Confirmed by MusicBrainz (D-87): recording id and confidence, stamped after the move.
-        online: Option<(String, f64)>,
+        /// Confirmed by MusicBrainz (D-87): recording id, confidence and the release group,
+        /// stamped after the move.
+        online: Option<(String, f64, Option<String>)>,
         reply: mpsc::Sender<Result<String, AppError>>,
     },
     /// FR-DATA-001: remove a track (file to the Recycle Bin, or only from the app).
@@ -579,8 +580,9 @@ impl Library {
         assignment: sirtone_library::relocate::Assignment,
         mbid: String,
         confidence: f64,
+        release_group: Option<String>,
     ) -> Result<String, AppError> {
-        self.assign_with(track, assignment, Some((mbid, confidence)))
+        self.assign_with(track, assignment, Some((mbid, confidence, release_group)))
     }
 
     /// An assignment on the import worker (journalled move), optionally confirmed online.
@@ -588,7 +590,7 @@ impl Library {
         &self,
         track: i64,
         assignment: sirtone_library::relocate::Assignment,
-        online: Option<(String, f64)>,
+        online: Option<(String, f64, Option<String>)>,
     ) -> Result<String, AppError> {
         let (tx, rx) = mpsc::channel();
         self.jobs
@@ -844,8 +846,14 @@ fn import_worker(
                     Some(a) => {
                         sirtone_library::relocate::assign(db, &root, track, &a, deps.fs.as_ref())
                             .and_then(|path| {
-                                if let Some((mbid, conf)) = &online {
-                                    sirtone_library::online::confirm(db, track, mbid, *conf)?;
+                                if let Some((mbid, conf, rg)) = &online {
+                                    sirtone_library::online::confirm(
+                                        db,
+                                        track,
+                                        mbid,
+                                        *conf,
+                                        rg.as_deref(),
+                                    )?;
                                 }
                                 Ok(path)
                             })

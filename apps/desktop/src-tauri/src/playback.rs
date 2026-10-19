@@ -760,6 +760,17 @@ impl Playback {
     }
 
     pub fn next(&self) {
+        // A skipped wave track turns the wave away from its vibe at once (D-92, AT-21).
+        let skipped = self
+            .queue()
+            .current()
+            .filter(|c| c.source == PlaySource::Wave)
+            .and_then(|c| c.track_id);
+        if let (Some(t), Some(app)) = (skipped, self.app.get())
+            && let Some(w) = app.try_state::<crate::wave::Wave>()
+        {
+            w.skipped(t);
+        }
         self.journal.close(EndReason::Skip);
         if let Step::Play(item) = self.queue().advance() {
             self.engine.send(EngineCmd::Load {

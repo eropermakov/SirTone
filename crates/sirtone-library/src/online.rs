@@ -65,13 +65,39 @@ pub fn confirm(
     track: TrackId,
     mbid: &str,
     confidence: f64,
+    release_group: Option<&str>,
 ) -> Result<(), LibraryError> {
     conn.execute(
         "UPDATE track SET identity_state = 'confirmed', identity_conf = ?2, mbid_recording = ?3,
                 unknown_reason = NULL, candidates_json = NULL WHERE id = ?1",
         params![track, confidence.clamp(0.0, 1.0), mbid],
     )?;
+    // The album learns its release group (a cover from the Cover Art Archive, T3.3).
+    if let Some(rg) = release_group.filter(|g| sirtone_core::ports::valid_mbid(g)) {
+        conn.execute(
+            "UPDATE album SET mbid_group = coalesce(mbid_group, ?2)
+             WHERE id = (SELECT album_id FROM track WHERE id = ?1)",
+            params![track, rg],
+        )?;
+    }
     Ok(())
+}
+
+/// An album waiting for a Cover Art Archive cover: id, release, release group.
+pub type CaaAlbum = (i64, Option<String>, Option<String>);
+
+/// Albums without a cover (and not locked by the user) that know a release or release group.
+pub fn albums_for_caa(conn: &Connection, limit: u32) -> Result<Vec<CaaAlbum>, LibraryError> {
+    let mut st = conn.prepare_cached(
+        "SELECT id, mbid_release, mbid_group FROM album
+         WHERE cover_id IS NULL AND cover_locked = 0
+           AND (mbid_release IS NOT NULL OR mbid_group IS NOT NULL)
+         ORDER BY id LIMIT ?1",
+    )?;
+    let rows = st
+        .query_map([limit], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
 }
 
 /// Hints for «Неизвестные» (`None` clears them); an unchanged value is not written again.
@@ -141,7 +167,7 @@ mod tests {
         assert_eq!(r[0].artist.as_deref(), Some("Кино"));
         assert!(resolvable(&c, a, 10).unwrap().is_empty());
         set_candidates(&c, a, Some("[]")).unwrap();
-        confirm(&c, a, "mbid-1", 0.97).unwrap();
+        confirm(&c, a, "mbid-1", 0.97, None).unwrap();
         let (state, mbid, cand): (String, String, Option<String>) = c
             .query_row(
                 "SELECT identity_state, mbid_recording, candidates_json FROM track WHERE id = ?1",

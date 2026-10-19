@@ -1674,6 +1674,44 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
       ],
     }),
   );
+  // T3.3: the Cover Art Archive answers with a front cover for the release group — a picture
+  // of its own (a library cover would be stored once, under its first source).
+  {
+    const { deflateSync, crc32 } = require("node:zlib");
+    const chunk = (type, data) => {
+      const len = Buffer.alloc(4);
+      len.writeUInt32BE(data.length);
+      const td = Buffer.concat([Buffer.from(type), data]);
+      const crc = Buffer.alloc(4);
+      crc.writeUInt32BE(crc32(td) >>> 0);
+      return Buffer.concat([len, td, crc]);
+    };
+    const w = 64;
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(w, 0);
+    ihdr.writeUInt32BE(w, 4);
+    ihdr[8] = 8;
+    ihdr[9] = 2;
+    const raw = Buffer.alloc((w * 3 + 1) * w);
+    for (let y = 0; y < w; y++) {
+      raw[y * (w * 3 + 1)] = 0;
+      for (let x = 0; x < w; x++) {
+        const o = y * (w * 3 + 1) + 1 + x * 3;
+        raw[o] = (x * 4) & 255;
+        raw[o + 1] = (y * 4) & 255;
+        raw[o + 2] = 137;
+      }
+    }
+    writeFileSync(
+      join(netFixtures, "at04-cover.jpg"),
+      Buffer.concat([
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        chunk("IHDR", ihdr),
+        chunk("IDAT", deflateSync(raw)),
+        chunk("IEND", Buffer.alloc(0)),
+      ]),
+    );
+  }
   writeFileSync(
     join(netFixtures, "at04-rg.json"),
     JSON.stringify({ id: rg04, "first-release-date": "1998-03-01" }),
@@ -1683,6 +1721,7 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
     JSON.stringify([
       // «романс», form-encoded.
       { contains: "%D1%80%D0%BE%D0%BC%D0%B0%D0%BD%D1%81", file: "at04-search.json" },
+      { contains: `release-group/${rg04}/front`, file: "at04-cover.jpg" },
       { contains: `release-group/${rg04}`, file: "at04-rg.json" },
     ]),
   );
@@ -1701,6 +1740,29 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
       r04b.rel_path.includes("Гранатовый альбом") &&
       existsSync(join(libDir, ...r04b.rel_path.split("/"))),
     `offline ${offlineState} → ${r04b ? `${r04b.identity_state} ${r04b.rel_path}` : "none"}`,
+  );
+  // T3.3 (FR-REC-009): the album placed online gets its cover from the Cover Art Archive.
+  const coverOf = () => {
+    const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+    try {
+      return db
+        .prepare(
+          "SELECT al.mbid_group, cv.source FROM track t JOIN album al ON al.id = t.album_id LEFT JOIN cover cv ON cv.id = al.cover_id WHERE t.rel_path LIKE '%Романс%'",
+        )
+        .get();
+    } finally {
+      db.close();
+    }
+  };
+  let cov = coverOf();
+  for (let i = 0; i < 40 && cov?.source !== "caa"; i++) {
+    await sleep(250);
+    cov = coverOf();
+  }
+  check(
+    "T3.3: the album confirmed online gets its cover from the Cover Art Archive",
+    cov?.mbid_group === rg04 && cov?.source === "caa",
+    JSON.stringify(cov),
   );
   rmSync(at04Dir, { recursive: true, force: true });
 
@@ -1756,6 +1818,29 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
       waveOn &&
       foundZ,
     `chips ${JSON.stringify(vr.vibe?.chips)}, tracks ${vibeIds.length} ok ${vibeOk}, button ${vibeShown}, wave ${waveOn}, suggestions ${JSON.stringify(sugg.suggestions.map((a) => a.name))} artists ${sugg.artists.length}`,
+  );
+  if ((await invoke("playback_snapshot", {})).state === "playing") {
+    await invoke("playback_toggle", {});
+  }
+
+  // D-92 / AT-21 in the app: «вперёд» on a wave track re-picks the upcoming wave tracks at
+  // once (the skip repels its vibe; whether a track is sad is judged in `sirtone-wave` tests).
+  await invoke("wave_start", { profile: null, query: null });
+  const upcoming = async () => {
+    const q = await invoke("queue_get", {});
+    return q.items.slice(q.position + 1).map((x) => x.trackId);
+  };
+  const upBefore = await upcoming();
+  await invoke("playback_next", {});
+  let upAfter = await upcoming();
+  for (let i = 0; i < 20 && JSON.stringify(upAfter) === JSON.stringify(upBefore.slice(1)); i++) {
+    await sleep(150);
+    upAfter = await upcoming();
+  }
+  check(
+    "D-92: a skip in the wave re-picks the upcoming wave tracks",
+    upBefore.length >= 2 && JSON.stringify(upAfter) !== JSON.stringify(upBefore.slice(1)),
+    `before ${JSON.stringify(upBefore)} → after ${JSON.stringify(upAfter)}`,
   );
   if ((await invoke("playback_snapshot", {})).state === "playing") {
     await invoke("playback_toggle", {});

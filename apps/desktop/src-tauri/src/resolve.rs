@@ -48,6 +48,8 @@ pub fn start(app: AppHandle) {
                 kick(&app);
                 // «Для всех»: ListenBrainz popularity, monthly per track (T3.32).
                 crate::popularity::kick(&app);
+                // Covers from the Cover Art Archive for albums without one (T3.3).
+                crate::covers_online::kick(&app);
                 std::thread::sleep(EVERY);
             }
         })
@@ -87,6 +89,10 @@ pub fn kick(app: &AppHandle) {
             let (looked, moved) = run(&app, &me);
             if looked > 0 {
                 tracing::info!(target: "sirtone::resolve", looked, moved, "online lookup");
+            }
+            // Albums placed just now may know their release group: their covers.
+            if moved > 0 {
+                crate::covers_online::kick(&app);
             }
             me.running.store(false, Ordering::Release);
         });
@@ -179,7 +185,13 @@ fn resolve(app: &AppHandle, me: &Resolver, r: &Resolvable) -> Result<bool, Stop>
             track_no: m.album.as_ref().and(m.track_no),
             year,
         };
-        return match lib.assign_online(r.id, assignment, m.mbid.clone(), m.confidence) {
+        return match lib.assign_online(
+            r.id,
+            assignment,
+            m.mbid.clone(),
+            m.confidence,
+            m.release_group.clone(),
+        ) {
             Ok(_) => Ok(true),
             Err(e) => {
                 tracing::warn!(target: "sirtone::resolve", track = r.id, code = ?e.code, "move failed");

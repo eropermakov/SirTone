@@ -178,7 +178,11 @@ pub fn replay(cfg: &Config, cat: &Catalog, h: &History, now_ms: i64) -> Models {
                 };
                 apply(&mut m, i, 0.0, w, ev.ts, Some(&lv));
                 if let Some(k) = sess_decay(ev.ts) {
-                    m.skips.push((i, k));
+                    // Only an analysed track says what «такое» is: unanalysed ones all carry
+                    // the library's means (D-92).
+                    if cat.conf[i] > 0.0 {
+                        m.skips.push((i, k));
+                    }
                     for ((sv, xv), cv) in m
                         .session
                         .iter_mut()

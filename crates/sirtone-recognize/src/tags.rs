@@ -32,12 +32,17 @@ impl TagReader for LoftyTags {
                 .map(|d| i32::from(d.year))
                 .filter(|y| (1900..=2100).contains(y)),
             genre: text(tag.genre()),
-            mbid_recording: tag
-                .get_string(ItemKey::MusicBrainzRecordingId)
-                .map(|s| s.trim().to_ascii_lowercase())
-                .filter(|s| sirtone_core::ports::valid_mbid(s)),
+            mbid_recording: mbid(tag.get_string(ItemKey::MusicBrainzRecordingId)),
+            mbid_release: mbid(tag.get_string(ItemKey::MusicBrainzReleaseId)),
+            mbid_group: mbid(tag.get_string(ItemKey::MusicBrainzReleaseGroupId)),
         }
     }
+}
+
+/// A MusicBrainz id as written by Picard (lower case, 36 characters).
+fn mbid(v: Option<&str>) -> Option<String> {
+    v.map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| sirtone_core::ports::valid_mbid(s))
 }
 
 /// Trims, repairs mojibake and drops junk (docs/05 §4.2). `None` = no value.

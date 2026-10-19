@@ -685,3 +685,61 @@ fn three_sad_skips_turn_the_wave_away_from_sad() {
     let mean10 = (0..8).map(|k| next10(100 + k)).sum::<usize>() as f32 / 8.0;
     assert!(mean10 <= 1.0, "sad in the next 10: {mean10}");
 }
+
+/// D-92: a skip reported live repels too (the journal writes later), and a skipped track
+/// without analysis repels nothing (its features are the library's means).
+#[test]
+fn live_skips_repel_and_unanalysed_ones_do_not() {
+    use sirtone_wave::query::{Mood, Vibe};
+    let tracks = synth::library(5_000, NOW, 0.6, 91);
+    let history = synth::history(&tracks, NOW);
+    let vibe = Vibe::builtin().expect("vibe");
+    let sad = |id: i64| {
+        tracks
+            .iter()
+            .find(|t| t.id == id)
+            .and_then(|t| t.features)
+            .is_some_and(|(x, _)| vibe.excluded(&x, &[Mood::Sad], &[]))
+    };
+    let picks = |skips: &[i64], seed: u64| {
+        let mut e = Engine::new(
+            Config::builtin().expect("assets"),
+            &tracks,
+            &history,
+            NOW,
+            seed,
+        );
+        for (k, id) in skips.iter().enumerate() {
+            e.skipped(*id, NOW - 60_000 * (skips.len() - k) as i64);
+        }
+        let mut ids = e.next(&ctx(Daypart::Evening), &[], 0.5, 5, NOW);
+        ids.extend(e.next(&ctx(Daypart::Evening), &[], 0.5, 5, NOW + 60_000));
+        ids
+    };
+    // An unanalysed skip: the very same picks.
+    let unanalysed = tracks
+        .iter()
+        .find(|t| t.features.is_none())
+        .expect("one")
+        .id;
+    for seed in 0..4 {
+        assert_eq!(picks(&[], 300 + seed), picks(&[unanalysed], 300 + seed));
+    }
+    // Three sad skips reported live: ≤ 1 sad in the next 10 (mean over seeds).
+    let sad_ids: Vec<i64> = tracks
+        .iter()
+        .map(|t| t.id)
+        .filter(|id| sad(*id))
+        .take(3)
+        .collect();
+    let mean: f32 = (0..8)
+        .map(|k| {
+            picks(&sad_ids, 400 + k)
+                .iter()
+                .filter(|id| sad(**id))
+                .count() as f32
+        })
+        .sum::<f32>()
+        / 8.0;
+    assert!(mean <= 1.0, "sad in the next 10: {mean}");
+}

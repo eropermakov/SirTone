@@ -904,7 +904,11 @@ pub struct Engine {
     taste: Taste,
     context: std::collections::HashMap<String, (Taste, u32)>,
     session_vec: [f32; D],
-    /// Features and decay of the last session skips (D-92).
+    /// The last session skips from the journal: catalog index and decay (D-92).
+    model_skips: Vec<(usize, f32)>,
+    /// Skips reported by the app as they happen (the journal writes later): id and time.
+    live_skips: Vec<(i64, i64)>,
+    /// What repels in this rebuild: features and weight.
     repel: Vec<([f32; D], f32)>,
     /// The last rebuild, for «Почему этот трек» (§17).
     last: Explained,
@@ -930,7 +934,7 @@ impl Engine {
     ) -> Self {
         let mut words = std::collections::HashMap::with_capacity(tracks.len());
         let (cat, models) = Self::learnt(&cfg, tracks, history, &mut words, now_ms);
-        let repel = Self::repel_of(&cat, &models);
+        let model_skips = models.skips.clone();
         let n = cat.len();
         let query = WaveQuery::default();
         let qs = Self::evaluate(&cfg, &cat, &query, now_ms);
@@ -947,7 +951,9 @@ impl Engine {
             taste: models.taste,
             context: models.context,
             session_vec: models.session,
-            repel,
+            model_skips,
+            live_skips: Vec::new(),
+            repel: Vec::new(),
             last: Explained::default(),
             session: Session::default(),
             rng: Rng::new(seed),
@@ -995,7 +1001,7 @@ impl Engine {
     /// what was already queued and the group counts carry on.
     pub fn reload(&mut self, tracks: &[WaveTrack], history: &History, now_ms: i64) {
         let (cat, models) = Self::learnt(&self.cfg, tracks, history, &mut self.words, now_ms);
-        self.repel = Self::repel_of(&cat, &models);
+        self.model_skips = models.skips.clone();
         self.blocked = vec![false; cat.len()];
         self.cat = cat;
         self.taste = models.taste;
@@ -1021,12 +1027,40 @@ impl Engine {
         (cat, models)
     }
 
-    fn repel_of(cat: &Catalog, models: &Models) -> Vec<([f32; D], f32)> {
-        models
-            .skips
-            .iter()
-            .map(|&(i, w)| (cat.feat[i], w))
-            .collect()
+    /// A wave track was skipped just now (the app reports it at once; the journal writes the
+    /// play later): it repels its vibe from the next picks (D-92, AT-21).
+    pub fn skipped(&mut self, id: i64, now_ms: i64) {
+        self.live_skips.retain(|(i, _)| *i != id);
+        self.live_skips.push((id, now_ms));
+        let keep = self.cfg.engine.session.repel_last;
+        if self.live_skips.len() > keep {
+            self.live_skips.drain(..self.live_skips.len() - keep);
+        }
+    }
+
+    /// The repel set of this moment: the journal's skips and the live ones (no track twice),
+    /// analysed tracks only, the last `repel_last`.
+    fn repel_now(&mut self, now_ms: i64) {
+        let s = &self.cfg.engine.session;
+        let decay = |ts: i64| {
+            let age = (now_ms - ts).max(0) as f32 / 60_000.0;
+            (age <= s.window_min).then(|| 2f32.powf(-age / s.half_life_min))
+        };
+        let mut set: Vec<(usize, f32)> = self.model_skips.clone();
+        for &(id, ts) in &self.live_skips {
+            if let (Some(i), Some(k)) = (self.cat.idx(id), decay(ts))
+                && self.cat.conf[i] > 0.0
+                && !set.iter().any(|(j, _)| *j == i)
+            {
+                set.push((i, k));
+            }
+        }
+        if set.len() > s.repel_last {
+            set.drain(..set.len() - s.repel_last);
+        }
+        self.repel.clear();
+        self.repel
+            .extend(set.into_iter().map(|(i, w)| (self.cat.feat[i], w)));
     }
 
     pub fn catalog(&self) -> &Catalog {
@@ -1099,6 +1133,7 @@ impl Engine {
 
     /// Stage 1: every track → top K per familiarity group.
     fn rebuild(&mut self, ctx: &ContextSnapshot, not_now: &[NotNowRow], novelty: f32, now_ms: i64) {
+        self.repel_now(now_ms);
         let cfg = &self.cfg;
         let e = &cfg.engine;
         let pw = &cfg.profile.weights;
@@ -1221,7 +1256,7 @@ impl Engine {
                 s += e.novelty_pull * novelty * (d2 / D as f32).sqrt();
             }
             // The session's skips push away the same vibe (D-92).
-            if !repel.is_empty() {
+            if !repel.is_empty() && cat.conf[t] > 0.0 {
                 let mut p = 0f32;
                 for (y, w) in repel {
                     let mut d2 = 0f32;

@@ -31,6 +31,9 @@ enum Cmd {
     Why(i64, Sender<Vec<WhyReason>>),
     /// The slider moved: the upcoming wave tracks are picked again.
     Retune,
+    /// A wave track was skipped: its vibe repels and the upcoming tracks are picked again
+    /// (D-92, AT-21).
+    Skipped(i64),
 }
 
 /// One reason of «Почему этот трек» (§17); the UI words it as `wave.why.<kind>`.
@@ -204,6 +207,11 @@ impl Wave {
             .spawn(move || worker(&app, &rx, &worker_pending))
             .ok();
         Self { tx, pending }
+    }
+
+    /// A wave track was skipped by the user (the player's «вперёд»).
+    pub fn skipped(&self, track: u32) {
+        let _ = self.tx.send(Cmd::Skipped(i64::from(track)));
     }
 
     /// More tracks for a wave that is running out (from the playback sink; never blocks).
@@ -394,28 +402,15 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                 });
                 let _ = reply.send(reasons);
             }
+            Cmd::Skipped(id) => {
+                if let Some(e) = engine.as_mut() {
+                    e.skipped(id, SystemClock.now_utc_ms());
+                    retune(app, &mut slot, &mut engine, &profile, &query);
+                }
+            }
             Cmd::Retune => {
                 if engine.is_some() {
-                    let pb = app.state::<Playback>();
-                    let dropped = pb.drop_upcoming_wave();
-                    if dropped > 0 {
-                        match next_ids(
-                            app,
-                            &mut slot,
-                            &mut engine,
-                            &profile,
-                            &query,
-                            dropped.max(MORE),
-                        )
-                        .and_then(|ids| items_for(&app.state::<Library>(), &ids, PlayContext::Wave))
-                        {
-                            Ok(items) if !items.is_empty() => pb.append(items),
-                            Ok(_) => {}
-                            Err(e) => {
-                                tracing::warn!(target: "sirtone::wave", code = ?e.code, "retune failed");
-                            }
-                        }
-                    }
+                    retune(app, &mut slot, &mut engine, &profile, &query);
                 }
             }
             Cmd::More => {
@@ -432,6 +427,30 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                 }
                 pending.store(false, Ordering::Release);
             }
+        }
+    }
+}
+
+/// The upcoming wave tracks picked again (the slider moved, a wave track was skipped).
+fn retune(
+    app: &AppHandle,
+    slot: &mut Conn,
+    engine: &mut Option<Engine>,
+    profile: &str,
+    query: &WaveQuery,
+) {
+    let pb = app.state::<Playback>();
+    let dropped = pb.drop_upcoming_wave();
+    if dropped == 0 {
+        return;
+    }
+    match next_ids(app, slot, engine, profile, query, dropped.max(MORE))
+        .and_then(|ids| items_for(&app.state::<Library>(), &ids, PlayContext::Wave))
+    {
+        Ok(items) if !items.is_empty() => pb.append(items),
+        Ok(_) => {}
+        Err(e) => {
+            tracing::warn!(target: "sirtone::wave", code = ?e.code, "retune failed");
         }
     }
 }

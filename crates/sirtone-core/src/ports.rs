@@ -40,6 +40,9 @@ pub struct Tags {
     pub genre: Option<String>,
     /// MusicBrainz recording id (Picard writes it): popularity for «Для всех» (T3.32).
     pub mbid_recording: Option<String>,
+    /// MusicBrainz release and release group ids: covers from the Cover Art Archive (T3.3).
+    pub mbid_release: Option<String>,
+    pub mbid_group: Option<String>,
 }
 
 /// A MusicBrainz id: 36 characters, hex digits and dashes.
@@ -143,6 +146,8 @@ pub trait VolumeInfo: Send + Sync {
 pub enum CoverSource {
     Embedded,
     Folder,
+    /// Cover Art Archive (FR-REC-009, online).
+    Caa,
 }
 
 impl CoverSource {
@@ -150,6 +155,7 @@ impl CoverSource {
         match self {
             Self::Embedded => "embedded",
             Self::Folder => "folder",
+            Self::Caa => "caa",
         }
     }
 }
