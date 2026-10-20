@@ -10,6 +10,10 @@ export type VizPrefs = {
   mode: VizMode;
   followAccent: boolean;
   minimal: boolean;
+  /** MilkDrop 🔒 — the locked preset (D-105). */
+  milkdropLock: string | null;
+  /** MilkDrop «Только мои пресеты». */
+  favoritesOnly: boolean;
 };
 
 const prefsOf = (doc: SettingsDoc): VizPrefs => {
@@ -18,12 +22,16 @@ const prefsOf = (doc: SettingsDoc): VizPrefs => {
     mode?: VizMode;
     follow_theme_accent?: boolean;
     minimal?: boolean;
+    milkdrop_lock?: string | null;
+    milkdrop_favorites_only?: boolean;
   };
   return {
     level: perf.level ?? 3,
     mode: viz.mode ?? "waves",
     followAccent: viz.follow_theme_accent ?? true,
     minimal: viz.minimal ?? false,
+    milkdropLock: viz.milkdrop_lock ?? null,
+    favoritesOnly: viz.milkdrop_favorites_only ?? false,
   };
 };
 

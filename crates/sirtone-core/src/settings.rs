@@ -283,6 +283,10 @@ pub struct Viz {
     pub follow_theme_accent: bool,
     /// The minimalist wave screen (FR-VIZ-010): two colours, no glints.
     pub minimal: bool,
+    /// MilkDrop 🔒: this preset stays on screen — across tracks, mode switches and restarts.
+    pub milkdrop_lock: Option<String>,
+    /// MilkDrop «Только мои пресеты»: rotation among the ♥ ones only (owner, 2026-10-20).
+    pub milkdrop_favorites_only: bool,
 }
 
 impl Default for Viz {
@@ -291,6 +295,8 @@ impl Default for Viz {
             mode: "waves".into(),
             follow_theme_accent: true,
             minimal: false,
+            milkdrop_lock: None,
+            milkdrop_favorites_only: false,
         }
     }
 }
@@ -695,6 +701,15 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
     if !["waves", "milkdrop", "video"].contains(&s.viz.mode.as_str()) {
         return Err(SettingsError::Invalid(
             "viz.mode must be waves, milkdrop or video".into(),
+        ));
+    }
+    if s.viz
+        .milkdrop_lock
+        .as_ref()
+        .is_some_and(|n| n.is_empty() || n.len() > 300)
+    {
+        return Err(SettingsError::Invalid(
+            "viz.milkdrop_lock: a preset name".into(),
         ));
     }
     if s.wave.novelty > 100 {

@@ -85,7 +85,15 @@ void main() {
 type Pointer = { x: number; y: number; born: number; strength: number };
 
 /** Diagnostics for the smoke test: frames drawn, measured FPS, sampled pixels. */
-export const wavesStats = { drawn: 0, fps: 0, samples: [] as number[][], lost: 0 };
+export const wavesStats = {
+  drawn: 0,
+  fps: 0,
+  samples: [] as number[][],
+  lost: 0,
+  /** The warp now and the largest frame-to-frame change lately (smoothness check). */
+  warp: 0,
+  warpStep: 0,
+};
 
 /** A mode's slow-down (`06` §7.8): the sleep timer sets ×0.4 → ×0.2 (T4.22); 1 — normal. */
 export const wavesMood = { speed: 1 };
@@ -103,6 +111,10 @@ export class WavesEngine {
   private queue: VizFrame[] = [];
   private frame: VizFrame | null = null;
   private bands: [number, number, number] = [0, 0, 0];
+  /** The warp the field shows: the beat and bass target glides here (`warp.smooth_s`), so the
+   * field breathes with the music instead of jumping on every beat (owner, 2026-10-20). */
+  private warpNow = -1;
+  private warpAt = 0;
   private from: Look | null = null;
   private to: Look | null = null;
   private lookAt = 0;
@@ -321,8 +333,16 @@ export class WavesEngine {
     const f = this.frame;
     const beat =
       !reduced && f?.playing && f.bpm > 0 ? Math.exp(-f.beatPhase * c.warp.beat_decay) : 0;
-    const warp =
+    const target =
       m.warpBase + (reduced ? 0 : this.bands[0] * c.warp.bass + beat * c.warp.beat * m.beatGain);
+    const dt = this.warpAt ? Math.min(0.1, (now - this.warpAt) / 1000) : 0;
+    this.warpAt = now;
+    if (this.warpNow < 0 || dt === 0) this.warpNow = target;
+    else this.warpNow += (target - this.warpNow) * (1 - Math.exp(-dt / c.warp.smooth_s));
+    const step = Math.abs(this.warpNow - (wavesStats.warp || this.warpNow));
+    wavesStats.warpStep = Math.max(wavesStats.warpStep * 0.995, step);
+    wavesStats.warp = this.warpNow;
+    const warp = this.warpNow;
     const sparkle =
       this.q.minimal || reduced
         ? 0

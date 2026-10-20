@@ -62,7 +62,13 @@ export type SettingsPatch = {
       skip_albums?: boolean;
     };
   };
-  viz?: { mode?: "waves" | "milkdrop" | "video"; follow_theme_accent?: boolean; minimal?: boolean };
+  viz?: {
+    mode?: "waves" | "milkdrop" | "video";
+    follow_theme_accent?: boolean;
+    minimal?: boolean;
+    milkdrop_lock?: string | null;
+    milkdrop_favorites_only?: boolean;
+  };
 };
 
 const WEB_KEY = "sirtone.web.settings";

@@ -65,4 +65,14 @@ describe("MilkDrop preset pick (T4.3, 06 §7.3)", () => {
       null,
     );
   });
+
+  it("«Только мои»: only the ♥ ones, even off the vibe and recently shown; none liked — all", () => {
+    const liked = new Map([["hot-red", 1]]);
+    for (let i = 0; i < 20; i++) {
+      expect(pick(ranked, sad, { recent: ["hot-red"], ratings: liked, onlyLiked: true })).toBe(
+        "hot-red",
+      );
+    }
+    expect(pick(ranked, sad, { recent: [], ratings: new Map(), onlyLiked: true })).not.toBe(null);
+  });
 });
