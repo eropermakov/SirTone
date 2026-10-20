@@ -134,7 +134,7 @@
 | Вывод (запас) | `cpal` 0.18.2 | Apache-2.0 | запас | нет exclusive |
 | Ресемплер / кольцо | `rubato` 5.0.1 · `rtrb` 0.4.0 (`ringbuf` 0.5.3 — альтернатива) | MIT OR Apache-2.0 | ✅ | |
 | Громкость | `ebur128` 0.1.10 | MIT | ✅ | последний релиз 2024-10 — стабильный порт libebur128 |
-| Time-stretch | `signalsmith-stretch` 0.1.3 | MIT | ✅ 🧪 S-08 | C++ через `cc` (нужен MSVC — есть) |
+| Time-stretch | Signalsmith Stretch + signalsmith-linear (C++, Signalsmith Audio) и C-обёртка из пакета `signalsmith-stretch` 0.1.3 (Colin Marc) — **исходники взяты в `crates/sirtone-audio/vendor/signalsmith`**, собираются через `cc` (сборочная зависимость), FFI вручную (D-100); сам пакет не используется (его `bindgen` требует libclang) | MIT | ✅ S-08 B | `cargo deny` вложенный C++ не видит — учёт здесь; тексты лицензий — `assets/licenses/signalsmith-stretch.txt` |
 | FFT | `rustfft` 6.4.1 · `realfft` 3.5.0 | MIT OR Apache-2.0 / MIT | ✅ | |
 | BPM/ключ | `stratum-dsp` =1.0.0 (без `ml`) | MIT OR Apache-2.0 (в пакете LICENSE-MIT и LICENSE-APACHE, © HLLMR) | ✅ S-08, T3.7 | `rayon` объявлен, но не используется; тянет вторую `symphonia` 0.5 (размер бинарника) |
 | Теги | `lofty` 0.25.4 | MIT OR Apache-2.0 | ✅ | ASF/WMA не поддерживает |

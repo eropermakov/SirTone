@@ -164,6 +164,50 @@ try {
       ev2.at(-1)?.end_reason === "mixed_out",
     `mixed ${mixed}, now ${afterMix}, ${JSON.stringify(ev2.slice(-3))}`,
   );
+  // T4.9c: beatmatch (L3) on two click tracks, 120 → 128 BPM, «Как диджей»: the grids are
+  // measured in the background, the plan becomes L3 (a stretch in the log), no silence.
+  copyFileSync(join(sig, "click-120.wav"), join(src, "03 clicks 120.wav"));
+  copyFileSync(join(sig, "click-128.wav"), join(src, "04 clicks 128.wav"));
+  await invoke("import_paths", { paths: [src] });
+  let clicks = [];
+  for (let i = 0; i < 240; i++) {
+    clicks = db("SELECT id, title, bpm FROM track WHERE title LIKE 'clicks%' ORDER BY title");
+    if (clicks.length === 2 && clicks.every((r) => r.bpm)) break;
+    await sleep(1000);
+  }
+  await invoke("settings_patch", {
+    patch: { playback: { automix: { mode: "smart", intensity: "dj" } } },
+  });
+  const [c1, c2] = clicks;
+  await invoke("play_tracks", {
+    ids: [c1.id, c2.id],
+    start: 0,
+    context: "collection",
+    playlist: null,
+  });
+  await sleep(4000); // grids measured, the plan redone
+  await invoke("playback_seek", { positionMs: 20000 });
+  const under0 = (await invoke("playback_snapshot", {})).underruns;
+  const capL3 = existsSync(loopback)
+    ? spawnSync(loopback, ["--capture-pid", String(app.pid), "--seconds", "9"]).stdout.toString()
+    : "";
+  const ml = capL3.match(/discontinuity flags: (\d+)/);
+  const under1 = (await invoke("playback_snapshot", {})).underruns;
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const logDir = join(dataDir, "logs");
+  const log = readdirSync(logDir)
+    .map((f) => readFileSync(join(logDir, f), "utf8"))
+    .join(" ");
+  const stretch = [...log.matchAll(/stretch=([\d.]+)/g)].map((m) => Number(m[1])).at(-1);
+  check(
+    "beatmatch (L3): clicks 120 → 128 mixed with a stretch, no underrun (NFR-AUD-001)",
+    clicks.length === 2 &&
+      stretch > 1.03 &&
+      stretch < 1.1 &&
+      under1 === under0 &&
+      (!ml || ml[1] === "0"),
+    `bpm ${clicks.map((c) => c.bpm).join("/")}, stretch ${stretch}, underruns ${under0}→${under1}, ${ml ? ml[0] : "-"}`,
+  );
 } catch (e) {
   check("run", false, String(e).slice(0, 300));
 }

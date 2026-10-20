@@ -6,6 +6,7 @@ mod analysis;
 mod artists;
 mod autostart;
 mod backgrounds;
+mod beatgrid;
 mod bootstrap;
 mod continuation;
 mod covers_online;
@@ -91,6 +92,7 @@ fn main() {
         .manage(covers_online::CoversOnline::default())
         .manage(viz::Viz::default())
         .manage(night::Night::default())
+        .manage(beatgrid::Grids::default())
         .manage(presets::Presets::open(&data_dir))
         .manage(hotkeys::Hotkeys::default())
         // «Видео» clips with HTTP ranges (T4.4); off the main thread.

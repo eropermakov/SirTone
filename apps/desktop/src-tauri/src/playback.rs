@@ -273,13 +273,27 @@ fn plan_for(
             && cur.album_key != 0
             && cur.album_key == next.album_key,
     };
-    let p = plan(&mix_track(a?), &mix_track(b?), ctx, cfg, mix_params()?);
+    let (mut ta, mut tb) = (mix_track(a?), mix_track(b?));
+    // Beat grids for L3 (T4.9c): measured lazily; until then the plan is L2 and it is redone.
+    if let Mode::Automix(_) = cfg.mode
+        && let Some(g) = app.and_then(|a| a.try_state::<crate::beatgrid::Grids>())
+        && let Some(app) = app
+    {
+        let ea = g.get_or_request(app, ia, &cur.path, ta.bpm);
+        let eb = g.get_or_request(app, ib, &next.path, tb.bpm);
+        ta.tail_grid = ea.and_then(|e| e.1);
+        tb.head_grid = eb.and_then(|e| e.0);
+    }
+    let p = plan(&ta, &tb, ctx, cfg, mix_params()?);
     (p.level != Level::L0).then_some(sirtone_audio::engine::MixSpec {
         a_out_ms: p.a_out_ms,
         a_stop_ms: p.a_stop_ms,
         b_start_ms: p.b_start_ms,
         a_fade: p.a_curve == Curve::EqualPower,
         b_fade: p.b_curve == Curve::EqualPower,
+        out_ms: p.out_ms,
+        rate: p.rate,
+        ramp_ms: p.ramp_ms,
     })
 }
 
@@ -757,6 +771,12 @@ impl Playback {
         self.engine.send(EngineCmd::SetNext(next));
     }
 
+    /// Plans the handover again (beat grids arrived, T4.9c); the engine takes it until the
+    /// overlap begins.
+    pub fn replan(&self) {
+        self.hand_next();
+    }
+
     /// Starts `item` with its normalization gain.
     fn load(&self, item: QueueItem) {
         self.load_with(item, None);
@@ -821,13 +841,13 @@ impl Playback {
             .send(EngineCmd::SetNext(Some(sirtone_audio::engine::NextTrack {
                 path: item.path,
                 gain_db,
-                mix: Some(sirtone_audio::engine::MixSpec {
-                    a_out_ms: a_out,
-                    a_stop_ms: a_out + ov,
-                    b_start_ms: b_start,
-                    a_fade: true,
-                    b_fade: true,
-                }),
+                mix: Some(sirtone_audio::engine::MixSpec::plain(
+                    a_out,
+                    a_out + ov,
+                    b_start,
+                    true,
+                    true,
+                )),
             })));
         true
     }

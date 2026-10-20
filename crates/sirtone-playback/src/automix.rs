@@ -293,8 +293,8 @@ fn tempo_ratio(a: f32, b: f32) -> f32 {
         .unwrap_or(r)
 }
 
-/// Can A and B be beatmatched (`04` §4.3 L3)? Grids steady, tempi within the tolerance, keys
-/// compatible.
+/// Can A and B be beatmatched (`04` §4.3 L3)? Grids steady, tempi within the tolerance. (Keys
+/// only shape the style: clashing ones keep the overlap short, ≤ 4 s.)
 pub fn beatmatch_ok(a: &MixTrack, b: &MixTrack, tolerance: f32, p: &MixParams) -> bool {
     let (Some(ga), Some(gb)) = (a.tail_grid.as_ref(), b.head_grid.as_ref()) else {
         return false;
@@ -307,11 +307,15 @@ pub fn beatmatch_ok(a: &MixTrack, b: &MixTrack, tolerance: f32, p: &MixParams) -
     {
         return false;
     }
-    let keys = match (a.camelot.as_deref(), b.camelot.as_deref()) {
+    (tempo_ratio(ga.bpm, gb.bpm) - 1.0).abs() <= tolerance
+}
+
+/// Keys that blend (Camelot ≤ 1); unknown — not.
+fn keys_blend(a: &MixTrack, b: &MixTrack, p: &MixParams) -> bool {
+    match (a.camelot.as_deref(), b.camelot.as_deref()) {
         (Some(x), Some(y)) => camelot_distance(x, y).is_some_and(|d| d <= p.beatmatch.camelot_max),
         _ => false,
-    };
-    keys && (tempo_ratio(ga.bpm, gb.bpm) - 1.0).abs() <= tolerance
+    }
 }
 
 /// The plan for A → B.
@@ -441,7 +445,14 @@ fn beatmatch(a: &MixTrack, b: &MixTrack, l2: &Plan, p: &MixParams) -> Option<Pla
     let end = a.audio_end_ms() as f64;
     let bars = (l2.out_ms as f64 / pb / 4.0).round() as u32;
     let (lo, hi) = (p.beatmatch.beats_min, p.beatmatch.beats_max);
-    let beats = (bars * 4).clamp(lo, hi);
+    let mut beats = (bars * 4).clamp(lo, hi);
+    // Clashing (or unknown) keys: «Fade ≤ 4 s» (`04` §4.3) — whole bars that fit, at least the
+    // minimum.
+    if !keys_blend(a, b, p) {
+        while beats > lo && f64::from(beats) * pb > 4_000.0 {
+            beats -= 4;
+        }
+    }
     let out = f64::from(beats) * pb;
     let ramp = (4.0 * pb).min(out / 2.0);
     // A enters on its last beat that still lets the overlap end with A's sound.
@@ -692,10 +703,12 @@ mod tests {
         assert_eq!(plan(&a, &b, MixCtx::default(), &smart, &p).level, Level::L2);
         let dj = cfg(Mode::Automix(Intensity::Dj));
         assert_eq!(plan(&a, &b, MixCtx::default(), &dj, &p).level, Level::L3);
-        // Clashing keys → L2; «Мягко» never beatmatches.
+        // Clashing keys → still L3, but short (≤ 4 s); «Мягко» never beatmatches.
         set(&mut b, grid(128.0, 0.9));
         b.camelot = Some("3B".into());
-        assert_eq!(plan(&a, &b, MixCtx::default(), &smart, &p).level, Level::L2);
+        let clash = plan(&a, &b, MixCtx::default(), &dj, &p);
+        assert_eq!(clash.level, Level::L3);
+        assert!(clash.out_ms <= 4_000, "{}", clash.out_ms);
         b.camelot = Some("8B".into());
         assert_eq!(plan(&a, &b, MixCtx::default(), &smart, &p).level, Level::L3);
         let soft = cfg(Mode::Automix(Intensity::Soft));

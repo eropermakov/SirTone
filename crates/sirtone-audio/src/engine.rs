@@ -77,7 +77,7 @@ impl NextTrack {
 }
 
 /// A planned handover (`sirtone_playback::automix::Plan` in engine terms, T4.9).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MixSpec {
     /// In A: B starts here …
     pub a_out_ms: u64,
@@ -87,6 +87,33 @@ pub struct MixSpec {
     pub b_start_ms: u64,
     pub a_fade: bool,
     pub b_fade: bool,
+    /// How long the overlap sounds (output ms); with a stretch it differs from `a_stop − a_out`.
+    pub out_ms: u64,
+    /// L3: A's rate held after the ramp (input per output; 1 — no stretch) and the ramp length.
+    pub rate: f64,
+    pub ramp_ms: u64,
+}
+
+impl MixSpec {
+    /// A plain overlap (no stretch): it sounds as long as it is in A.
+    pub fn plain(
+        a_out_ms: u64,
+        a_stop_ms: u64,
+        b_start_ms: u64,
+        a_fade: bool,
+        b_fade: bool,
+    ) -> Self {
+        Self {
+            a_out_ms,
+            a_stop_ms,
+            b_start_ms,
+            a_fade,
+            b_fade,
+            out_ms: a_stop_ms.saturating_sub(a_out_ms),
+            rate: 1.0,
+            ramp_ms: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -215,6 +242,42 @@ pub(crate) struct Deck {
     pub(crate) stop_frame: Option<u64>,
     /// Production reached `stop_frame`.
     pub(crate) stopped: bool,
+    /// The last written frames before the DSP chain (a ring of `HISTORY` frames): the L3
+    /// stretcher is primed with them (T4.9c).
+    hist: Vec<f32>,
+    hist_pos: usize,
+    hist_len: usize,
+}
+
+/// Frames of history kept per deck (≈ 85 ms at 48 kHz; the stretcher needs ≥ its input latency).
+const HISTORY: usize = 4096;
+
+impl Deck {
+    fn remember(&mut self, frames: &[f32], ch: usize) {
+        let cap = HISTORY * ch;
+        if self.hist.len() != cap {
+            self.hist = vec![0.0; cap];
+            self.hist_pos = 0;
+            self.hist_len = 0;
+        }
+        for chunk in frames.chunks(ch) {
+            let at = self.hist_pos * ch;
+            self.hist[at..at + chunk.len()].copy_from_slice(chunk);
+            self.hist_pos = (self.hist_pos + 1) % HISTORY;
+            self.hist_len = (self.hist_len + 1).min(HISTORY);
+        }
+    }
+
+    /// The history, oldest first.
+    fn history(&self, ch: usize) -> Vec<f32> {
+        let mut out = Vec::with_capacity(self.hist_len * ch);
+        let start = (self.hist_pos + HISTORY - self.hist_len) % HISTORY;
+        for i in 0..self.hist_len {
+            let at = ((start + i) % HISTORY) * ch;
+            out.extend_from_slice(&self.hist[at..at + ch]);
+        }
+        out
+    }
 }
 
 struct Boundary {
@@ -271,6 +334,88 @@ pub(crate) struct Mixing {
     /// B's fade-in length (frames); 0 — the whole overlap.
     pub(crate) b_in: u64,
     buf: Vec<f32>,
+    /// L3: A goes through the stretcher (T4.9c).
+    pub(crate) st: Option<StretchRun>,
+}
+
+/// A stretched through the overlap (T4.9c, D-100): primed with A's history, warmed up at rate 1
+/// until its output reaches the entry point, then ramped 1 → `rate` over `ramp` output frames
+/// and held.
+pub(crate) struct StretchRun {
+    st: crate::stretch::Stretch,
+    rate: f64,
+    ramp: f64,
+    /// Output frames still to drop (the warm-up).
+    warm: usize,
+    /// Overlap output frames produced (after the warm-up).
+    produced: u64,
+    acc: f64,
+    out: Vec<f32>,
+    /// Stretched A frames not yet mixed.
+    ready: Vec<f32>,
+}
+
+const STRETCH_BLOCK: usize = 256;
+
+impl StretchRun {
+    /// `None` — the history is too short to prime (the overlap then plays without a stretch).
+    pub(crate) fn start(a: &Deck, fmt: DeviceFormat, rate: f64, ramp_frames: u64) -> Option<Self> {
+        let ch = fmt.channels.max(1);
+        let mut st = crate::stretch::Stretch::new(ch, fmt.rate)?;
+        let (li, lo) = (st.input_latency(), st.output_latency());
+        let hist = a.history(ch);
+        let h = hist.len() / ch;
+        if h < li {
+            return None;
+        }
+        let mut pre = hist[..li * ch].to_vec();
+        st.seek(&mut pre, 1.0);
+        let mut rest = hist[li * ch..].to_vec();
+        let mut dropped = vec![0f32; rest.len()];
+        st.process(&mut rest, &mut dropped);
+        Some(Self {
+            st,
+            rate,
+            ramp: ramp_frames.max(1) as f64,
+            warm: li + lo,
+            produced: 0,
+            acc: 0.0,
+            out: vec![0f32; STRETCH_BLOCK * ch],
+            ready: Vec::new(),
+        })
+    }
+
+    /// Stretches A until `want` frames are ready (A past its end is silence).
+    fn fill(&mut self, a: &mut Deck, fmt: DeviceFormat, want: usize) -> Result<(), AppError> {
+        let ch = fmt.channels.max(1);
+        while self.ready.len() / ch < want {
+            let s = if self.warm > 0 {
+                1.0
+            } else {
+                1.0 + (self.rate - 1.0) * (self.produced as f64 / self.ramp).min(1.0)
+            };
+            let n_in = if self.warm > 0 {
+                STRETCH_BLOCK
+            } else {
+                self.acc += STRETCH_BLOCK as f64 * s;
+                let k = self.acc.floor();
+                self.acc -= k;
+                k as usize
+            };
+            while a.ready.len() / ch < n_in && !a.eof {
+                produce(a, fmt)?;
+            }
+            let take = (a.ready.len() / ch).min(n_in);
+            let mut input: Vec<f32> = a.ready.drain(..take * ch).collect();
+            input.resize(n_in * ch, 0.0);
+            self.st.process(&mut input, &mut self.out);
+            let skip = self.warm.min(STRETCH_BLOCK);
+            self.warm -= skip;
+            self.ready.extend_from_slice(&self.out[skip * ch..]);
+            self.produced += (STRETCH_BLOCK - skip) as u64;
+        }
+        Ok(())
+    }
 }
 
 impl Mixing {
@@ -283,6 +428,7 @@ impl Mixing {
             b_fade,
             b_in: 0,
             buf: Vec::new(),
+            st: None,
         }
     }
 }
@@ -778,20 +924,28 @@ impl Engine {
                     let unwritten = (deck.ready.len() / ch) as u64;
                     let at = deck.base_frames + deck.pushed - unwritten;
                     let stop = (m.a_stop_ms * rate / 1000).max(at);
+                    let out = m.out_ms * rate / 1000;
                     b.base_consumed = deck.base_consumed + deck.pushed - unwritten;
                     let Some(mut a) = self.deck.take() else {
                         return Ok(());
                     };
-                    a.stop_frame = Some(stop);
+                    let st = (m.rate != 1.0)
+                        .then(|| StretchRun::start(&a, fmt, m.rate, m.ramp_ms * rate / 1000))
+                        .flatten();
+                    // A stretched reads past the stop (the stretcher's lookahead): no stop then.
+                    a.stop_frame = if st.is_some() { None } else { Some(stop) };
                     a.stopped = false;
-                    self.mixing = Some(Mixing::new(a, stop - at, m.a_fade, m.b_fade));
+                    let overlap = if st.is_some() { out } else { stop - at };
+                    let mut mix = Mixing::new(a, overlap, m.a_fade, m.b_fade);
+                    mix.st = st;
+                    self.mixing = Some(mix);
                     self.deck = Some(b);
                     self.next_mix = None;
                     self.next_path = None;
                     self.next_attached = false;
                     self.next_source = None;
                     self.next_failed = false;
-                    tracing::info!(target: "sirtone::audio", overlap_ms = (stop - at) * 1000 / rate, "mix");
+                    tracing::info!(target: "sirtone::audio", out_ms = m.out_ms, stretch = m.rate, "mix");
                     self.emit_snapshot();
                 }
                 Err(error) => {
@@ -1045,6 +1199,8 @@ pub(crate) fn fill(
         if n == 0 {
             break;
         }
+        let written = deck.ready[..n * ch].to_vec();
+        deck.remember(&written, ch);
         // The DSP chain (EQ, limiter) at the device rate, before the ring.
         if let Some(e) = eq.as_deref_mut() {
             e.process(&mut deck.ready[..n * ch]);
@@ -1076,8 +1232,13 @@ pub(crate) fn mix_fill(
         if m.mixed >= m.overlap {
             return Ok(true);
         }
-        let a_can = writable(&m.a, ch);
-        let a_done = a_can == 0 && !wants_more(&m.a, ch);
+        let stretched = m.st.is_some();
+        let a_can = if stretched {
+            usize::MAX
+        } else {
+            writable(&m.a, ch)
+        };
+        let a_done = !stretched && a_can == 0 && !wants_more(&m.a, ch);
         if a_can == 0 && !a_done {
             produce(&mut m.a, fmt)?;
             continue;
@@ -1091,12 +1252,16 @@ pub(crate) fn mix_fill(
         }
         let room = prod.slots() / ch;
         let a_have = if a_done { usize::MAX } else { a_can };
-        let n = room
+        let mut n = room
             .min(a_have)
             .min(b.ready.len() / ch)
             .min((m.overlap - m.mixed) as usize);
         if n == 0 {
             return Ok(false);
+        }
+        if let Some(sr) = m.st.as_mut() {
+            sr.fill(&mut m.a, fmt, n)?;
+            n = n.min(sr.ready.len() / ch);
         }
         m.buf.clear();
         m.buf.extend_from_slice(&b.ready[..n * ch]);
@@ -1110,7 +1275,11 @@ pub(crate) fn mix_fill(
             );
             for c in 0..ch {
                 let i = f * ch + c;
-                let a = if a_done { 0.0 } else { m.a.ready[i] };
+                let a = match m.st.as_ref() {
+                    Some(sr) => sr.ready[i],
+                    None if a_done => 0.0,
+                    None => m.a.ready[i],
+                };
                 m.buf[i] = a * ga + m.buf[i] * gb;
             }
         }
@@ -1120,7 +1289,9 @@ pub(crate) fn mix_fill(
         if let Ok(chunk) = prod.write_chunk_uninit(n * ch) {
             chunk.fill_from_iter(m.buf.iter().copied());
         }
-        if !a_done {
+        if let Some(sr) = m.st.as_mut() {
+            sr.ready.drain(..n * ch);
+        } else if !a_done {
             m.a.ready.drain(..n * ch);
         }
         b.ready.drain(..n * ch);
@@ -1293,6 +1464,9 @@ pub(crate) fn new_deck(
         ready: Vec::with_capacity(out_max * ch),
         stop_frame: None,
         stopped: false,
+        hist: Vec::new(),
+        hist_pos: 0,
+        hist_len: 0,
     })
 }
 
