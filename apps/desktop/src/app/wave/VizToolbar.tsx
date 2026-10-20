@@ -1,4 +1,4 @@
-import { Check, Heart, Lock, LockOpen, SkipForward, Sparkles, X } from "lucide-react";
+import { Check, Heart, ListMusic, Lock, LockOpen, SkipForward, Sparkles, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { patchSettings } from "@/shared/ipc/settings";
@@ -7,6 +7,7 @@ import { videoClips, videoRemove, videoSetMood } from "@/shared/ipc/viz";
 import { cn } from "@/shared/lib/utils";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
 import { milkdropControl, useMilkdropControl } from "./milkdropControl";
+import { PresetsDialog } from "./PresetsDialog";
 import { useVizEnv, type VizMode } from "./useVizEnv";
 import { useVideoControl, videoControl } from "./videoControl";
 
@@ -26,6 +27,7 @@ export function VizToolbar() {
   const md = useMilkdropControl();
   const vc = useVideoControl();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [presets, setPresets] = useState(false);
   const mode = prefs?.mode ?? "waves";
   const items: MenuItem[] = MODES.map((m) => ({
     id: m,
@@ -36,6 +38,17 @@ export function VizToolbar() {
       void patchSettings({ viz: { mode: m } }).catch(() => {});
     },
   }));
+  if (mode === "milkdrop") {
+    items.push(
+      { separator: true },
+      {
+        id: "presets",
+        label: t("viz.presets.open"),
+        icon: ListMusic,
+        onSelect: () => setPresets(true),
+      },
+    );
+  }
   if (mode === "video") {
     const clip = vc.clips.find((c) => c.id === vc.current);
     const refresh = () => videoClips().then((clips) => videoControl.set({ clips }));
@@ -125,6 +138,7 @@ export function VizToolbar() {
       {menu && (
         <Menu items={items} at={menu} label={t("viz.modeMenu")} onClose={() => setMenu(null)} />
       )}
+      {presets && <PresetsDialog onClose={() => setPresets(false)} />}
     </div>
   );
 }

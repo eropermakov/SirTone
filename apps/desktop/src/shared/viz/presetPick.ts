@@ -86,12 +86,20 @@ export function distance(p: Ranked, t: Target, c: MilkdropConfig = MILKDROP): nu
 export function pick(
   ranked: Ranked[],
   t: Target,
-  opts: { recent: string[]; ratings: Map<string, number>; rand?: () => number },
+  opts: {
+    recent: string[];
+    ratings: Map<string, number>;
+    rand?: () => number;
+    /** «Только мои пресеты»: only the ♥ ones (if there are any). */
+    onlyLiked?: boolean;
+  },
   c: MilkdropConfig = MILKDROP,
 ): string | null {
   const recent = new Set(opts.recent.slice(-c.recent));
+  const liked = (p: Ranked) => (opts.ratings.get(p.name) ?? 0) > 0;
+  const onlyLiked = !!opts.onlyLiked && ranked.some(liked);
   const cands = ranked
-    .filter((p) => (opts.ratings.get(p.name) ?? 0) >= 0)
+    .filter((p) => (opts.ratings.get(p.name) ?? 0) >= 0 && (!onlyLiked || liked(p)))
     .map((p) => ({
       name: p.name,
       d: distance(p, t, c) * ((opts.ratings.get(p.name) ?? 0) > 0 ? c.like : 1),

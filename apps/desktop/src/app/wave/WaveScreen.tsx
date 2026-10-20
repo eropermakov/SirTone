@@ -5,6 +5,7 @@ import {
   Heart,
   HelpCircle,
   ListPlus,
+  Maximize2,
   MicVocal,
   Moon,
   MoreHorizontal,
@@ -29,7 +30,7 @@ import {
   trackFeedback,
 } from "@/shared/ipc/feedback";
 import { allTrackIds, playTracks, trackDetails, waveStart, waveWhy } from "@/shared/ipc/library";
-import { type PlaybackSnapshot, setShuffle, togglePlay } from "@/shared/ipc/playback";
+import { next, type PlaybackSnapshot, prev, setShuffle, togglePlay } from "@/shared/ipc/playback";
 import { sleepStart } from "@/shared/ipc/sleep";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/Button";
@@ -61,7 +62,8 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
   const id = snap.trackId ?? null;
   const [fb, setFb] = useState<TrackFeedback>(NONE);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const [night, setNight] = useState(false);
+  // «Ночной вайб» or «Полный экран» (the same screen with the player's controls).
+  const [night, setNight] = useState<false | "vibe" | "player">(false);
   const leaveNight = useCallback(() => setNight(false), []);
   const [card, setCard] = useState<{ id: number; confirmDelete: boolean } | null>(null);
   const closeCard = useCallback(() => setCard(null), []);
@@ -245,6 +247,18 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
           title={snap.title}
           artists={snap.artists}
           onExit={leaveNight}
+          player={
+            night === "player"
+              ? {
+                  playing,
+                  liked: fb.liked,
+                  onLike: toggleLike,
+                  onToggle: togglePlay,
+                  onPrev: prev,
+                  onNext: next,
+                }
+              : undefined
+          }
         />
       ) : (
         <VizBackground trackId={id} cover={snap.cover} />
@@ -323,9 +337,18 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
         />
         <button
           type="button"
+          aria-label={t("wave.full")}
+          title={t("wave.full")}
+          onClick={() => setNight("player")}
+          className="flex size-12 items-center justify-center rounded-full text-icon hover:bg-bg-hover"
+        >
+          <Maximize2 size={24} strokeWidth={1.5} />
+        </button>
+        <button
+          type="button"
           aria-label={t("wave.night")}
           title={t("wave.night")}
-          onClick={() => setNight(true)}
+          onClick={() => setNight("vibe")}
           className="flex size-12 items-center justify-center rounded-full text-icon hover:bg-bg-hover"
         >
           <Moon size={24} strokeWidth={1.5} />

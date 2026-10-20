@@ -17,7 +17,7 @@ export type WavesConfig = {
   lightness: Range;
   mix: { collection: number; accent: number; cover: number };
   speed: Range;
-  warp: { bass: number; beat: number; beat_decay: number };
+  warp: { bass: number; beat: number; beat_decay: number; smooth_s: number };
   sparkle: { treble: number; max: number; density: number };
   pulse: { like_ms: number; click_ms: number; lift: number; min_gap_ms: number };
   pointer: { radius: number; decay_ms: number; strength: number; max: number; move_gap_ms: number };

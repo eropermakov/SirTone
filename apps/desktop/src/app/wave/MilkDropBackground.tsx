@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { patchSettings } from "@/shared/ipc/settings";
 import { presetRate, presetRatings, startViz, vizColors } from "@/shared/ipc/viz";
 import { MilkDropEngine, milkdropStats } from "@/shared/viz/milkdrop";
 import { MILKDROP, type PresetDesc, pick, rank, targetOf } from "@/shared/viz/presetPick";
@@ -28,7 +29,12 @@ export function MilkDropBackground({
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const engine = useRef<MilkDropEngine | null>(null);
-  const { pausedRef, power, effectiveLevel } = useVizEnv();
+  const { prefs, pausedRef, power, effectiveLevel } = useVizEnv();
+  // The lock and «только мои» as refs: `next` stays stable for the whole mount.
+  const lockRef = useRef<string | null>(null);
+  const onlyRef = useRef(false);
+  lockRef.current = prefs?.milkdropLock ?? null;
+  onlyRef.current = prefs?.favoritesOnly ?? false;
   const [ready, setReady] = useState(false);
   const target = useRef(targetOf(null));
   const recent = useRef<string[]>([]);
@@ -46,6 +52,7 @@ export function MilkDropBackground({
       const name = pick(RANKED, target.current, {
         recent: recent.current,
         ratings: ratings.current,
+        onlyLiked: onlyRef.current,
       });
       if (!name) return;
       recent.current = [...recent.current, name].slice(-MILKDROP.recent);
@@ -59,6 +66,27 @@ export function MilkDropBackground({
       return;
     }
   }, []);
+
+  /** A preset by name (the lock, «показать сейчас»); `false` — it does not load. */
+  const showName = useCallback((name: string) => {
+    const e = engine.current;
+    if (!e) return false;
+    try {
+      e.show(name);
+    } catch {
+      return false;
+    }
+    recent.current = [...recent.current, name].slice(-MILKDROP.recent);
+    milkdropControl.set({ preset: name, rating: ratings.current.get(name) ?? 0 });
+    return true;
+  }, []);
+
+  /** The locked preset if there is one, else one by the vibe. */
+  const lockedOrNext = useCallback(() => {
+    const lock = lockRef.current;
+    if (lock && engine.current?.names().includes(lock) && showName(lock)) return;
+    next();
+  }, [next, showName]);
 
   // The engine and the feed.
   useEffect(() => {
@@ -94,7 +122,7 @@ export function MilkDropBackground({
       for (const r of await presetRatings()) ratings.current.set(r.name, r.rating);
       e.resize();
       ro.observe(el);
-      next();
+      lockedOrNext();
       run();
       setReady(true);
     });
@@ -106,10 +134,30 @@ export function MilkDropBackground({
         ratings.current.set(name, rating);
         void presetRate(name, rating);
         milkdropControl.set({ rating });
-        // ✕ — away with it now.
-        if (rating < 0) next();
+        // ✕ — away with it now (and the lock with it).
+        if (rating < 0) {
+          if (lockRef.current === name) milkdropControl.toggleLock();
+          next();
+        }
       },
-      skip: next,
+      skip: () => {
+        // «Следующий» on a locked preset: the lock moves to the new one.
+        const locked = !!lockRef.current;
+        next();
+        const now = milkdropControl.get().preset;
+        if (locked && now) void patchSettings({ viz: { milkdrop_lock: now } }).catch(() => {});
+      },
+      rateName: (name, rating) => {
+        ratings.current.set(name, rating);
+        void presetRate(name, rating);
+        if (milkdropControl.get().preset === name) milkdropControl.set({ rating });
+      },
+      show: (name) => {
+        if (showName(name) && lockRef.current) {
+          void patchSettings({ viz: { milkdrop_lock: name } }).catch(() => {});
+        }
+      },
+      list: () => RANKED.map((p) => ({ name: p.name, rating: ratings.current.get(p.name) ?? 0 })),
     });
     return () => {
       alive = false;
@@ -120,7 +168,14 @@ export function MilkDropBackground({
       engine.current = null;
       milkdropControl.bind(null);
     };
-  }, [next, pausedRef]);
+  }, [next, showName, lockedOrNext, pausedRef]);
+
+  // The lock follows the setting (the toolbar, another window, a restart).
+  const lock = prefs?.milkdropLock ?? null;
+  useEffect(() => {
+    milkdropControl.set({ locked: !!lock });
+    if (ready && lock && milkdropControl.get().preset !== lock) showName(lock);
+  }, [lock, ready, showName]);
 
   useEffect(() => {
     if (!ready) return;
@@ -141,7 +196,8 @@ export function MilkDropBackground({
     vizColors(trackId, cover).then((c) => {
       if (!alive) return;
       target.current = targetOf(c);
-      if (ready) next();
+      // A locked preset stays through track changes.
+      if (ready && !lockRef.current) next();
     });
     return () => {
       alive = false;
@@ -152,7 +208,7 @@ export function MilkDropBackground({
   useEffect(() => {
     if (!ready) return;
     const id = window.setInterval(() => {
-      if (!milkdropControl.get().locked && !power.paused) next();
+      if (!lockRef.current && !power.paused) next();
     }, MILKDROP.preset_s * 1000);
     return () => window.clearInterval(id);
   }, [ready, power.paused, next]);

@@ -54,7 +54,8 @@ export function VizBackground({
   }, [clips]);
   if (!prefs) return null;
   let bg: React.ReactNode;
-  if (mode === "milkdrop" && prefs.level > 0 && !reduced && !failed) {
+  const milkdrop = mode === "milkdrop" && prefs.level > 0 && !reduced && !failed;
+  if (milkdrop) {
     bg = (
       <MilkDropBackground
         trackId={trackId}
@@ -80,7 +81,9 @@ export function VizBackground({
   return (
     <>
       {bg}
-      <FxLayer />
+      {/* Not over MilkDrop: its presets are scenes of their own, particles only clutter them
+          (owner, 2026-10-20, D-105). */}
+      {!milkdrop && <FxLayer />}
       {/* The sleep timer (FR-SLEEP-005, `06` §7.8): dimmer while it fades. */}
       <div
         aria-hidden
