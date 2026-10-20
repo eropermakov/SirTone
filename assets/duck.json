@@ -16,7 +16,5 @@
       "onset_ms": 500
     }
   },
-  "builtin_ignore": [
-    "s01-output.exe"
-  ]
+  "builtin_ignore": ["s01-output.exe"]
 }

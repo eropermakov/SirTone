@@ -49,10 +49,15 @@ export function parseFrame(buf: ArrayBuffer): VizFrame | null {
   };
 }
 
-/** Starts the feed; returns the stop function. Outside Tauri — nothing comes. */
-export function startViz(onFrame: (f: VizFrame) => void): () => void {
-  if (!isTauri()) return () => {};
+const listeners = new Set<(f: VizFrame) => void>();
+let stopFeed: (() => void) | null = null;
+let latest: VizFrame | null = null;
+/** The open feed's number: a closing older feed must not clear a newer one's frame. */
+let feedNo = 0;
+
+function openFeed(): () => void {
   let alive = true;
+  const no = ++feedNo;
   let last = 0;
   const ch = new Channel<unknown>();
   ch.onmessage = (msg) => {
@@ -65,15 +70,41 @@ export function startViz(onFrame: (f: VizFrame) => void): () => void {
     last = now;
     vizStats.frames += 1;
     const f = parseFrame(msg);
-    if (f) onFrame(f);
+    if (!f) return;
+    latest = f;
+    for (const l of listeners) l(f);
   };
   // The session number: a stop names it, so a late stop never ends a newer feed.
   const session = commands.vizStart(ch);
   (window as unknown as { __sirtoneVizStats?: typeof vizStats }).__sirtoneVizStats = vizStats;
   return () => {
     alive = false;
+    if (feedNo === no) latest = null;
     void session.then((id) => commands.vizStop(id));
   };
+}
+
+/**
+ * Subscribes to the feed; returns the unsubscribe. One channel serves every subscriber (the
+ * visualiser and the effects layer, T4.20): it opens with the first and stops with the last.
+ * Outside Tauri — nothing comes.
+ */
+export function startViz(onFrame: (f: VizFrame) => void): () => void {
+  if (!isTauri()) return () => {};
+  listeners.add(onFrame);
+  if (!stopFeed) stopFeed = openFeed();
+  return () => {
+    if (!listeners.delete(onFrame)) return;
+    if (listeners.size === 0 && stopFeed) {
+      stopFeed();
+      stopFeed = null;
+    }
+  };
+}
+
+/** The last frame heard (`null` — no feed): for readers that draw on their own clock. */
+export function latestVizFrame(): VizFrame | null {
+  return latest;
 }
 
 /** The colours of a track for the «Волны» palette (T4.2); `null` outside Tauri or on error. */

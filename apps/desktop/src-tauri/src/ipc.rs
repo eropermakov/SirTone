@@ -122,6 +122,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             wave::wave_retune,
             wave::wave_season_card,
             wave::theme_state,
+            wave::fx_season_effect,
             analysis::analysis_progress,
             library::library_organize,
             net::net_status,

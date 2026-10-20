@@ -210,6 +210,12 @@ export const commands = {
 	 */
 	waveSeasonCard: () => __TAURI_INVOKE<string>("wave_season_card"),
 	themeState: () => __TAURI_INVOKE<ThemeStateDto>("theme_state"),
+	/**
+	 *  The effect «По сезону» right now (T4.20, `14` §13.1, supplement §31): the season's, with the
+	 *  summer night's fireflies by the clock's daypart (time only from `Clock`). The weather
+	 *  (T5.15) will come before it; until then «По реальной погоде» falls back to this (AT-16).
+	 */
+	fxSeasonEffect: () => __TAURI_INVOKE<string>("fx_season_effect"),
 	analysisProgress: () => typedError<AnalysisProgress, AppError>(__TAURI_INVOKE("analysis_progress")),
 	/**
 	 *  «Навести порядок» (T3.19, FR-FS-005): the adopted files waiting for it (`all` = false) or

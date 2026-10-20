@@ -38,6 +38,7 @@ import { Dialog } from "@/shared/ui/Dialog";
 import { notify } from "@/shared/ui/notify";
 import { Slider } from "@/shared/ui/Slider";
 import { Switch } from "@/shared/ui/Switch";
+import { FX_TYPES, type FxType, isFxType } from "@/shared/viz/fxPlan";
 import EQ_PRESETS_JSON from "../../../../../assets/eq/presets.json";
 
 type Props = {
@@ -169,6 +170,8 @@ export function SettingsScreen({
 
       <WaveLearningSection />
       <VizSection />
+
+      <FxSection />
 
       <NeverSection />
 
@@ -935,9 +938,9 @@ function EqSection() {
             </fieldset>
             <div className="flex flex-col gap-1">
               {[
-                { key: "pre", label: t("settingsEq.preamp"), value: eq.preamp },
+                { key: 0, label: t("settingsEq.preamp"), value: eq.preamp },
                 ...EQ_PRESETS.bands_hz.map((f, i) => ({
-                  key: String(f),
+                  key: f,
                   label: hz(f),
                   value: eq.bands[i] ?? 0,
                 })),
@@ -1328,6 +1331,79 @@ function VizSection() {
             <Switch checked={viz[r.key]} label={t(r.label)} onChange={(v) => toggle(r.key, v)} />
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+const FX_MODES = ["weather", "season", "manual", "off"] as const;
+
+/**
+ * «Живые эффекты» (T4.20, FR-FX-001/007, supplement §31): the mode (by the real weather — the
+ * default; by the season; by hand; off), the manual pick and the still version for weak PCs.
+ */
+function FxSection() {
+  const { t } = useTranslation("shell");
+  const [fx, setFx] = useState<{
+    mode: (typeof FX_MODES)[number];
+    manual: FxType;
+    static_when_weak: boolean;
+  }>({ mode: "weather", manual: "snow", static_when_weak: false });
+  useEffect(() => {
+    getSettings().then((s) => {
+      const f = s.fx as
+        | { mode?: (typeof FX_MODES)[number]; manual?: string | null; static_when_weak?: boolean }
+        | undefined;
+      setFx({
+        mode: f?.mode ?? "weather",
+        manual: isFxType(f?.manual) ? f.manual : "snow",
+        static_when_weak: f?.static_when_weak ?? false,
+      });
+    });
+  }, []);
+  const save = (next: typeof fx) => {
+    const prev = fx;
+    setFx(next);
+    patchSettings({ fx: next }).catch(() => setFx(prev));
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsFx.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <fieldset
+          className="m-0 flex flex-wrap gap-2 border-0 p-0"
+          aria-label={t("settingsFx.title")}
+        >
+          {FX_MODES.map((m) => (
+            <Chip key={m} active={fx.mode === m} onClick={() => save({ ...fx, mode: m })}>
+              {t(`settingsFx.mode.${m}`)}
+            </Chip>
+          ))}
+        </fieldset>
+        <div className="t-caption text-text-secondary">{t(`settingsFx.hint.${fx.mode}`)}</div>
+        {fx.mode === "manual" && (
+          <fieldset
+            className="m-0 flex flex-wrap gap-2 border-0 p-0"
+            aria-label={t("settingsFx.pick")}
+          >
+            {FX_TYPES.map((k) => (
+              <Chip key={k} active={fx.manual === k} onClick={() => save({ ...fx, manual: k })}>
+                {t(`settingsFx.type.${k}`)}
+              </Chip>
+            ))}
+          </fieldset>
+        )}
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsFx.static")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsFx.staticHint")}</div>
+          </div>
+          <Switch
+            checked={fx.static_when_weak}
+            label={t("settingsFx.static")}
+            onChange={(v) => save({ ...fx, static_when_weak: v })}
+          />
+        </div>
       </div>
     </div>
   );

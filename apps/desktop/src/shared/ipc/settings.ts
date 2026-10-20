@@ -43,6 +43,7 @@ export type SettingsPatch = {
   library?: { organize_external?: "suggest" | "auto" | "never" };
   network?: { offline_mode?: boolean };
   sfx?: { enabled?: boolean; volume?: number };
+  fx?: { mode?: string; manual?: string | null; static_when_weak?: boolean };
   playback?: {
     normalization?: { enabled?: boolean; target_lufs?: number; album_mode?: "auto" | "off" };
     eq?: { enabled?: boolean; preset?: string; preamp_db?: number; bands_db?: number[] };

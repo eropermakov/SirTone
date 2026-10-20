@@ -6,9 +6,15 @@
   "intensity": {
     "soft": { "min_ms": 0, "max_ms": 3000, "tempo_tolerance": 0.0 },
     "smart": { "min_ms": 2500, "max_ms": 8000, "tempo_tolerance": 0.06 },
-    "dj": { "min_ms": 4000, "max_ms": 12000, "tempo_tolerance": 0.10 }
+    "dj": { "min_ms": 4000, "max_ms": 12000, "tempo_tolerance": 0.1 }
   },
-  "beatmatch": { "grid_min": 0.8, "camelot_max": 1, "beats_min": 8, "beats_max": 32, "blend_energy": 0.7 },
+  "beatmatch": {
+    "grid_min": 0.8,
+    "camelot_max": 1,
+    "beats_min": 8,
+    "beats_max": 32,
+    "blend_energy": 0.7
+  },
   "manual": { "fade_out_ms": 300, "fade_in_ms": 100 },
   "mix_now": { "min_lead_ms": 1500 },
   "genre_blacklist_words": {

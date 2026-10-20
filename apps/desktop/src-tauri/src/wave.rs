@@ -549,3 +549,23 @@ pub fn theme_state() -> ThemeStateDto {
         effect: s.effect,
     }
 }
+
+/// The effect «По сезону» right now (T4.20, `14` §13.1, supplement §31): the season's, with the
+/// summer night's fireflies by the clock's daypart (time only from `Clock`). The weather
+/// (T5.15) will come before it; until then «По реальной погоде» falls back to this (AT-16).
+#[tauri::command]
+#[specta::specta]
+pub fn fx_season_effect() -> String {
+    use sirtone_core::wave::Daypart;
+    use sirtone_wave::theme::{ThemesConfig, season_effect};
+    let ctx = ContextBuilder::default().snapshot(&SystemClock);
+    let daypart = match ctx.daypart {
+        Daypart::Dawn => "dawn",
+        Daypart::Morning => "morning",
+        Daypart::Day => "day",
+        Daypart::Evening => "evening",
+        Daypart::Dusk => "dusk",
+        Daypart::Night => "night",
+    };
+    season_effect(&ThemesConfig::default(), &ctx.season_w, daypart)
+}

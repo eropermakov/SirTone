@@ -47,6 +47,8 @@ async function mockTauri(page: Page) {
             return {
               version: "0.1.2",
               settings,
+              // A test that needs a collection sets `__mockLibrary` before the page loads.
+              library: w.__mockLibrary ?? null,
               playback: {
                 state: "playing",
                 title: "Mock track",
@@ -75,6 +77,23 @@ async function mockTauri(page: Page) {
             return false;
           case "wave_season_card":
             return "preWinter";
+          case "viz_start":
+            return 1;
+          case "viz_stop":
+            return null;
+          case "track_tags":
+            return [];
+          // Screens with a collection ask; without data the UI shows its fallbacks.
+          case "track_feedback":
+          case "viz_colors":
+          case "artist_suggestions":
+          case "collection_artists":
+          case "collection_albums":
+          case "storage_info":
+          case "duplicates_count":
+            throw { code: "NotFound", retryable: false, details: null };
+          case "fx_season_effect":
+            return "snow";
           case "theme_state":
             return {
               id: "autumn",
@@ -190,4 +209,48 @@ test("commands go out, events come back, errors become a toast", async ({ page }
     patch: { appearance: { theme: string } };
   };
   expect(patch.patch.appearance.theme).toBe("light");
+});
+
+test("live effects only behind «Моя волна» (T4.20, FR-FX-006)", async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 12,
+      artists: 3,
+      albums: 2,
+      unknown: 0,
+      durationSec: 3000,
+      bytes: 1,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await expect(page.locator("footer").getByText("Mock track")).toBeVisible();
+  await emit(page, "playback-snapshot", {
+    state: "playing",
+    trackId: 7,
+    title: "Mock track",
+    positionMs: 62000,
+    durationMs: 200000,
+    volume: 0.5,
+  });
+  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await expect(page.getByTestId("fx")).toHaveCount(1);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __sirtoneFx?: { stats: { type: string } } }).__sirtoneFx?.stats
+            .type,
+      ),
+    )
+    .toBe("snow");
+  for (const name of ["Исполнители", "Альбомы", "Настройки"]) {
+    await page.getByRole("button", { name, exact: true }).first().click();
+    await expect(page.getByTestId("fx")).toHaveCount(0);
+  }
 });

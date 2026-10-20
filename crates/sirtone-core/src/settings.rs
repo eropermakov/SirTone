@@ -581,6 +581,19 @@ impl Default for Playback {
     }
 }
 
+/// The live effects (supplement §31, `06` §7.7) a person may pick by hand.
+pub const FX_TYPES: [&str; 9] = [
+    "snow",
+    "rain",
+    "fog",
+    "storm",
+    "clouds",
+    "motes",
+    "fireflies",
+    "leaves",
+    "petals",
+];
+
 fn validate(s: &Settings) -> Result<(), SettingsError> {
     validate_accent(&s.appearance.accent)?;
     for (id, a) in &s.appearance.theme_accents {
@@ -640,6 +653,18 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
         return Err(SettingsError::Invalid(
             "playback.normalization.album_mode must be auto or off".into(),
         ));
+    }
+    if !["weather", "season", "manual", "off"].contains(&s.fx.mode.as_str()) {
+        return Err(SettingsError::Invalid(
+            "fx.mode must be weather, season, manual or off".into(),
+        ));
+    }
+    if s.fx
+        .manual
+        .as_deref()
+        .is_some_and(|m| !FX_TYPES.contains(&m))
+    {
+        return Err(SettingsError::Invalid("unknown fx.manual effect".into()));
     }
     if !["waves", "milkdrop", "video"].contains(&s.viz.mode.as_str()) {
         return Err(SettingsError::Invalid(
@@ -760,6 +785,15 @@ mod tests {
         assert!(apply_patch(&doc, &json!({ "performance": { "level": 9 } })).is_err());
         assert!(apply_patch(&doc, &json!({ "appearance": { "theme": "neon" } })).is_err());
         assert!(apply_patch(&doc, &json!({ "settings_version": 7 })).is_err());
+    }
+
+    #[test]
+    fn fx_mode_and_manual_pick_are_checked() {
+        let (doc, _) = normalize(&json!({})).unwrap();
+        let ok = json!({ "fx": { "mode": "manual", "manual": "leaves" } });
+        assert!(apply_patch(&doc, &ok).is_ok());
+        assert!(apply_patch(&doc, &json!({ "fx": { "mode": "rainbow" } })).is_err());
+        assert!(apply_patch(&doc, &json!({ "fx": { "manual": "confetti" } })).is_err());
     }
 
     #[test]

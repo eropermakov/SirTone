@@ -18,11 +18,17 @@ pub struct ThemeDef {
     pub accent: String,
     pub viz: Vec<String>,
     pub effect: String,
+    /// The effect at night, if different (a summer night — fireflies).
+    #[serde(default)]
+    pub night_effect: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ThemesConfig {
     schema: String,
+    /// Dayparts of the clock that count as night for `night_effect`.
+    #[serde(default)]
+    pub night_dayparts: Vec<String>,
     pub seasons: BTreeMap<String, ThemeDef>,
     pub events: BTreeMap<String, ThemeDef>,
 }
@@ -146,6 +152,19 @@ pub fn resolve(cfg: &ThemesConfig, season_w: &[f32; 4], event: Option<&str>) -> 
     }
 }
 
+/// The «По сезону» effect (supplement §31, `14` §13.1): the dominant season's, its night variant
+/// in the night dayparts (`daypart` — the clock daypart's name, `context.json`).
+pub fn season_effect(cfg: &ThemesConfig, season_w: &[f32; 4], daypart: &str) -> String {
+    let Some(def) = cfg.seasons.get(SEASONS[dominant(season_w)]) else {
+        return String::new();
+    };
+    let night = cfg.night_dayparts.iter().any(|d| d == daypart);
+    match (&def.night_effect, night) {
+        (Some(n), true) => n.clone(),
+        _ => def.effect.clone(),
+    }
+}
+
 fn parse_hex(s: &str) -> Option<[f64; 3]> {
     let h = s.strip_prefix('#')?;
     if h.len() != 6 || !h.is_ascii() {
@@ -256,7 +275,7 @@ mod tests {
         assert_eq!(s.viz, ["#f2725c", "#f6c445", "#2ec4b6"]);
         assert_eq!(
             (s.source, s.effect.as_str()),
-            (ThemeSource::Season, "sunlight")
+            (ThemeSource::Season, "motes")
         );
         assert_eq!(at(2026, 1, 15).seed, "#5aa9e6");
     }
@@ -307,6 +326,17 @@ mod tests {
         }
         // Four transition windows of 42 days change every day; the rest stays put.
         assert!((150..=180).contains(&changes), "{changes} daily changes");
+    }
+
+    #[test]
+    fn season_effects_follow_the_season_and_a_summer_night() {
+        let cfg = ThemesConfig::default();
+        let w = |y, m, d| season_weights(days_from_civil(y, m, d), false, 21);
+        assert_eq!(season_effect(&cfg, &w(2026, 1, 15), "night"), "snow");
+        assert_eq!(season_effect(&cfg, &w(2026, 4, 15), "day"), "petals");
+        assert_eq!(season_effect(&cfg, &w(2026, 7, 15), "day"), "motes");
+        assert_eq!(season_effect(&cfg, &w(2026, 7, 15), "dusk"), "fireflies");
+        assert_eq!(season_effect(&cfg, &w(2026, 10, 20), "night"), "leaves");
     }
 
     #[test]
