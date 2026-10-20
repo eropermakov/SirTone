@@ -1,0 +1,5008 @@
+{
+ "_doc": "MilkDrop presets kept by tools/preset-indexer (T4.3): descriptors measured headless with synthetic sound. hue°, sat/bright/motion/react/chaos ≈ 0…1 scale of the measurement; all kept presets have 0 flashes (WCAG 2.3.1).",
+ "source": "butterchurn-presets 2.4.7 (MIT)",
+ "measured": 1754,
+ "kept": 500,
+ "presets": [
+  {
+   "name": "_Che + Geiss - Escape (Psychedelic Mix)",
+   "author": "Che + Geiss",
+   "hue": 267.378,
+   "sat": 0.827,
+   "bright": 0.039,
+   "motion": 0.008,
+   "react": 0.004,
+   "chaos": 0.005
+  },
+  {
+   "name": "_Eo.S. - glowsticks v2 02 - Geiss HPF",
+   "author": "Eo.S.",
+   "hue": 154.933,
+   "sat": 0.313,
+   "bright": 0.113,
+   "motion": 0.017,
+   "react": -0.01,
+   "chaos": 0.006
+  },
+  {
+   "name": "_Eo.S. + Zylot - skylight (Stained Glass Majesty mix)",
+   "author": "Eo.S. + Zylot",
+   "hue": 287.109,
+   "sat": 0.121,
+   "bright": 0.211,
+   "motion": 0.007,
+   "react": 0.04,
+   "chaos": 0.002
+  },
+  {
+   "name": "_Flexi + Geiss - mindblob [where it′s at now] (broth mix)",
+   "author": "Flexi + Geiss",
+   "hue": 24.359,
+   "sat": 0.386,
+   "bright": 0.19,
+   "motion": 0.028,
+   "react": 0.003,
+   "chaos": 0.019
+  },
+  {
+   "name": "_Geiss - Artifact 01",
+   "author": "Geiss",
+   "hue": 36.271,
+   "sat": 0.196,
+   "bright": 0.388,
+   "motion": 0.034,
+   "react": 0.017,
+   "chaos": 0.008
+  },
+  {
+   "name": "_Geiss - Artifact 02",
+   "author": "Geiss",
+   "hue": 106.618,
+   "sat": 0.839,
+   "bright": 0.4,
+   "motion": 0.03,
+   "react": 0.01,
+   "chaos": 0.015
+  },
+  {
+   "name": "_Geiss - Artifact 03",
+   "author": "Geiss",
+   "hue": 293.619,
+   "sat": 0.09,
+   "bright": 0.177,
+   "motion": 0.012,
+   "react": 0.007,
+   "chaos": 0.004
+  },
+  {
+   "name": "_Geiss - Artifact 04",
+   "author": "Geiss",
+   "hue": 24.594,
+   "sat": 0.037,
+   "bright": 0.052,
+   "motion": 0.005,
+   "react": -0.002,
+   "chaos": 0.003
+  },
+  {
+   "name": "_Geiss - Artifact 06",
+   "author": "Geiss",
+   "hue": 43.158,
+   "sat": 0.077,
+   "bright": 0.02,
+   "motion": 0.005,
+   "react": 0.012,
+   "chaos": 0.003
+  },
+  {
+   "name": "_Geiss - beetle bore - color invert mirror Animated",
+   "author": "Geiss",
+   "hue": 118.782,
+   "sat": 0.059,
+   "bright": 0.191,
+   "motion": 0.023,
+   "react": 0.018,
+   "chaos": 0.007
+  },
+  {
+   "name": "_Geiss - Brain Zoom 3 (Color Emboss Mix)",
+   "author": "Geiss",
+   "hue": 60.218,
+   "sat": 0.271,
+   "bright": 0.143,
+   "motion": 0.04,
+   "react": -0.006,
+   "chaos": 0.006
+  },
+  {
+   "name": "_Geiss - Explosion Mod 2b",
+   "author": "Geiss",
+   "hue": 46.601,
+   "sat": 0.739,
+   "bright": 0.089,
+   "motion": 0.003,
+   "react": 0,
+   "chaos": 0
+  },
+  {
+   "name": "_Geiss - Myriad Mosaics --TEST--",
+   "author": "Geiss",
+   "hue": 170.88,
+   "sat": 0.311,
+   "bright": 0.16,
+   "motion": 0.029,
+   "react": -0.007,
+   "chaos": 0.015
+  },
+  {
+   "name": "_Geiss - Reaction Diffusion (Relief Mix)",
+   "author": "Geiss",
+   "hue": 330.532,
+   "sat": 0.357,
+   "bright": 0.159,
+   "motion": 0.092,
+   "react": 0,
+   "chaos": 0.009
+  },
+  {
+   "name": "_Geiss - Skin Dots Multi-layer 3 (mashup 2)",
+   "author": "Geiss",
+   "hue": 0,
+   "sat": 0,
+   "bright": 0.027,
+   "motion": 0.002,
+   "react": 0.03,
+   "chaos": 0
+  },
+  {
+   "name": "_Geiss - Smoke Trail 2",
+   "author": "Geiss",
+   "hue": 198.184,
+   "sat": 0.218,
+   "bright": 0.186,
+   "motion": 0.016,
+   "react": 0.003,
+   "chaos": 0.003
+  },
+  {
+   "name": "_Krash + Eo.S. - Photographic Sentinel",
+   "author": "Krash + Eo.S.",
+   "hue": 298.118,
+   "sat": 0.201,
+   "bright": 0.078,
+   "motion": 0.009,
+   "react": 0.004,
+   "chaos": 0.007
+  },
+  {
+   "name": "_Martin - wire dance (geiss warp shader mix)",
+   "author": "Martin",
+   "hue": 54.515,
+   "sat": 0.988,
+   "bright": 0.436,
+   "motion": 0.023,
+   "react": 0.015,
+   "chaos": 0.023
+  },
+  {
+   "name": "_Mig_008",
+   "author": "Mig_008",
+   "hue": 172.73,
+   "sat": 0.02,
+   "bright": 0.029,
+   "motion": 0.004,
+   "react": 0.004,
+   "chaos": 0.001
+  },
+  {
+   "name": "_Mig_022_version2",
+   "author": "Mig_022_version2",
+   "hue": 306.309,
+   "sat": 0.557,
+   "bright": 0.074,
+   "motion": 0.01,
+   "react": 0.004,
+   "chaos": 0.002
+  },
+  {
+   "name": "_Mig_036_version5",
+   "author": "Mig_036_version5",
+   "hue": 29.004,
+   "sat": 0.168,
+   "bright": 0.069,
+   "motion": 0.01,
+   "react": -0.004,
+   "chaos": 0.005
+  },
+  {
+   "name": "_Mig_059",
+   "author": "Mig_059",
+   "hue": 0,
+   "sat": 0.916,
+   "bright": 0.116,
+   "motion": 0.013,
+   "react": 0.039,
+   "chaos": 0.004
+  },
+  {
+   "name": "_Mig_061",
+   "author": "Mig_061",
+   "hue": 215.736,
+   "sat": 0.285,
+   "bright": 0.449,
+   "motion": 0.069,
+   "react": 0.014,
+   "chaos": 0.025
+  },
+  {
+   "name": "_Mig_079",
+   "author": "Mig_079",
+   "hue": 73.369,
+   "sat": 0.083,
+   "bright": 0.071,
+   "motion": 0.031,
+   "react": 0.016,
+   "chaos": 0.011
+  },
+  {
+   "name": "_Mig_146",
+   "author": "Mig_146",
+   "hue": 300,
+   "sat": 0,
+   "bright": 0.103,
+   "motion": 0.003,
+   "react": 0.001,
+   "chaos": 0.001
+  },
+  {
+   "name": "_Mig_304 - geiss remix 2",
+   "author": "Mig_304",
+   "hue": 262.092,
+   "sat": 0.665,
+   "bright": 0.052,
+   "motion": 0.003,
+   "react": 0.033,
+   "chaos": 0.001
+  },
+  {
+   "name": "_Mig_Oscilloscope_010",
+   "author": "Mig_Oscilloscope_010",
+   "hue": 51.183,
+   "sat": 0.248,
+   "bright": 0.278,
+   "motion": 0.035,
+   "react": 0.006,
+   "chaos": 0.004
+  },
+  {
+   "name": "_Mig_Oscilloscope002",
+   "author": "Mig_Oscilloscope002",
+   "hue": 203.889,
+   "sat": 0.072,
+   "bright": 0.106,
+   "motion": 0.002,
+   "react": -0.001,
+   "chaos": 0.001
+  },
+  {
+   "name": "_Vovan + Geiss - Bass With Flover (Feedback Mix 2b)",
+   "author": "Vovan + Geiss",
+   "hue": 54.572,
+   "sat": 0.519,
+   "bright": 0.149,
+   "motion": 0.04,
+   "react": 0.006,
+   "chaos": 0.045
+  },
+  {
+   "name": "_Vovan + Geiss - Bass With Flover (Feedback Mix) 3",
+   "author": "Vovan + Geiss",
+   "hue": 55.625,
+   "sat": 0.832,
+   "bright": 0.639,
+   "motion": 0.02,
+   "react": 0.002,
+   "chaos": 0.009
+  },
+  {
+   "name": "!!!---flexi + amandio c - organic12-3d-2",
+   "author": "flexi + amandio c",
+   "hue": 0,
+   "sat": 0,
+   "bright": 0.215,
+   "motion": 0.022,
+   "react": -0.014,
+   "chaos": 0.001
+  },
+  {
+   "name": "$$$ Royal - Mashup (307)",
+   "author": "Royal",
+   "hue": 217.042,
+   "sat": 0.313,
+   "bright": 0.043,
+   "motion": 0.009,
+   "react": -0.008,
+   "chaos": 0.002
+  },
+  {
+   "name": "11",
+   "author": "11",
+   "hue": 23.09,
+   "sat": 0.599,
+   "bright": 0.188,
+   "motion": 0.047,
+   "react": -0.002,
+   "chaos": 0.028
+  },
+  {
+   "name": "158",
+   "author": "158",
+   "hue": 258.359,
+   "sat": 0.906,
+   "bright": 0.101,
+   "motion": 0.009,
+   "react": -0.007,
+   "chaos": 0.007
+  },
+  {
+   "name": "185",
+   "author": "185",
+   "hue": 49.775,
+   "sat": 0.295,
+   "bright": 0.655,
+   "motion": 0.04,
+   "react": -0.012,
+   "chaos": 0.006
+  },
+  {
+   "name": "27_super_goats - neon country frequent flier program",
+   "author": "27_super_goats",
+   "hue": 322.928,
+   "sat": 0.373,
+   "bright": 0.074,
+   "motion": 0.008,
+   "react": 0.002,
+   "chaos": 0.001
+  },
+  {
+   "name": "3dRaGoNs & Unchained - Dragon Science",
+   "author": "3dRaGoNs & Unchained",
+   "hue": 11.435,
+   "sat": 0.349,
+   "bright": 0.111,
+   "motion": 0.028,
+   "react": 0.014,
+   "chaos": 0.022
+  },
+  {
+   "name": "a crappy reality = you did well",
+   "author": "a crappy reality = you did well",
+   "hue": 358.771,
+   "sat": 0.603,
+   "bright": 0.226,
+   "motion": 0.036,
+   "react": 0.015,
+   "chaos": 0.006
+  },
+  {
+   "name": "A Tribute to Martin - bombyx mori - Ft Flexi - AdamFX - StahlRegen - Krash - Rovastar -  Hd in Milk T",
+   "author": "A Tribute to Martin",
+   "hue": 189.831,
+   "sat": 0.926,
+   "bright": 0.276,
+   "motion": 0.018,
+   "react": 0.024,
+   "chaos": 0.014
+  },
+  {
+   "name": "Adam Eatit Mashup FX 2 martin - disco mix + Lodus + Geiss + Ludicrous speed + Baked Ft another AdamFX Mashup 7_1",
+   "author": "Adam Eatit Mashup FX 2 martin",
+   "hue": 216.549,
+   "sat": 0.303,
+   "bright": 0.049,
+   "motion": 0.004,
+   "react": -0.002,
+   "chaos": 0.003
+  },
+  {
+   "name": "Adam Fx 2 Zylot - Age of Science Fierceness Starburst 5 - mash0000",
+   "author": "Adam Fx 2 Zylot",
+   "hue": 240,
+   "sat": 0.058,
+   "bright": 0.218,
+   "motion": 0.101,
+   "react": 0.016,
+   "chaos": 0.029
+  },
+  {
+   "name": "Aderrasi - Airhandler (Kali Mix)",
+   "author": "Aderrasi",
+   "hue": 355.366,
+   "sat": 0.03,
+   "bright": 0.031,
+   "motion": 0.004,
+   "react": 0.008,
+   "chaos": 0.002
+  },
+  {
+   "name": "Aderrasi - Airhandler (Last Breath - Eden)",
+   "author": "Aderrasi",
+   "hue": 199.681,
+   "sat": 0.29,
+   "bright": 0.419,
+   "motion": 0.041,
+   "react": 0.008,
+   "chaos": 0.012
+  },
+  {
+   "name": "Aderrasi - Bitterfeld (Crystal Border Mix)",
+   "author": "Aderrasi",
+   "hue": 305.721,
+   "sat": 0.677,
+   "bright": 0.205,
+   "motion": 0.012,
+   "react": -0.013,
+   "chaos": 0.005
+  },
+  {
+   "name": "Aderrasi - Brakefreak-bitcore tweak",
+   "author": "Aderrasi",
+   "hue": 78.373,
+   "sat": 0.446,
+   "bright": 0.062,
+   "motion": 0.004,
+   "react": 0.001,
+   "chaos": 0.002
+  },
+  {
+   "name": "Aderrasi - Can Itself - mash0000 - rotating piss clams",
+   "author": "Aderrasi",
+   "hue": 116.134,
+   "sat": 0.235,
+   "bright": 0.031,
+   "motion": 0.004,
+   "react": -0.006,
+   "chaos": 0.003
+  },
+  {
+   "name": "Aderrasi - Curse of the Mirror Emu",
+   "author": "Aderrasi",
+   "hue": 259.564,
+   "sat": 0.462,
+   "bright": 0.031,
+   "motion": 0.011,
+   "react": -0.001,
+   "chaos": 0.008
+  },
+  {
+   "name": "Aderrasi - Ert (Wary Mix)",
+   "author": "Aderrasi",
+   "hue": 15.565,
+   "sat": 0.35,
+   "bright": 0.141,
+   "motion": 0.038,
+   "react": 0.027,
+   "chaos": 0.019
+  },
+  {
+   "name": "Aderrasi - Ghast (Full Circle Mix)",
+   "author": "Aderrasi",
+   "hue": 287.766,
+   "sat": 0.014,
+   "bright": 0.064,
+   "motion": 0.025,
+   "react": 0.022,
+   "chaos": 0.015
+  },
+  {
+   "name": "Aderrasi - Halls Of Centrifuge",
+   "author": "Aderrasi",
+   "hue": 118.606,
+   "sat": 0.15,
+   "bright": 0.126,
+   "motion": 0.018,
+   "react": -0.008,
+   "chaos": 0.013
+  },
+  {
+   "name": "Aderrasi - Hard Drink (Half-Infinitea)",
+   "author": "Aderrasi",
+   "hue": 267.095,
+   "sat": 0.766,
+   "bright": 0.169,
+   "motion": 0.03,
+   "react": 0.032,
+   "chaos": 0.015
+  },
+  {
+   "name": "Aderrasi - Horvath′s Holistic Abyss",
+   "author": "Aderrasi",
+   "hue": 4.792,
+   "sat": 0.072,
+   "bright": 0.268,
+   "motion": 0.037,
+   "react": -0.048,
+   "chaos": 0.034
+  },
+  {
+   "name": "Aderrasi - Kevlar Abyss",
+   "author": "Aderrasi",
+   "hue": 193.224,
+   "sat": 0.532,
+   "bright": 0.05,
+   "motion": 0.008,
+   "react": -0.009,
+   "chaos": 0.003
+  },
+  {
+   "name": "Aderrasi - Party Mutant",
+   "author": "Aderrasi",
+   "hue": 7.798,
+   "sat": 0.283,
+   "bright": 0.054,
+   "motion": 0.023,
+   "react": 0.001,
+   "chaos": 0.008
+  },
+  {
+   "name": "Aderrasi - See",
+   "author": "Aderrasi",
+   "hue": 45.663,
+   "sat": 0.229,
+   "bright": 0.131,
+   "motion": 0.026,
+   "react": 0.007,
+   "chaos": 0.012
+  },
+  {
+   "name": "Aderrasi - Storm of the Eye (Thunder) - mash0000 - quasi pseudo meta concentrics",
+   "author": "Aderrasi",
+   "hue": 321.882,
+   "sat": 0.549,
+   "bright": 0.07,
+   "motion": 0.048,
+   "react": -0.004,
+   "chaos": 0.018
+  },
+  {
+   "name": "Aderrasi - Variants Of Eternity",
+   "author": "Aderrasi",
+   "hue": 346.929,
+   "sat": 0.181,
+   "bright": 0.023,
+   "motion": 0.01,
+   "react": 0.005,
+   "chaos": 0.002
+  },
+  {
+   "name": "Aderrasi - Veil of Steel (Steel Storm) - mash0000 - bob ross finally loses it",
+   "author": "Aderrasi",
+   "hue": 68.996,
+   "sat": 0.834,
+   "bright": 0.265,
+   "motion": 0.05,
+   "react": -0.001,
+   "chaos": 0.016
+  },
+  {
+   "name": "Aderrasi - Visitor",
+   "author": "Aderrasi",
+   "hue": 226.997,
+   "sat": 0.582,
+   "bright": 0.1,
+   "motion": 0.015,
+   "react": 0.012,
+   "chaos": 0.007
+  },
+  {
+   "name": "Aderrasi + Flexi - Airhandler (Last Breath - Calm) [moebius morbid vision edit]",
+   "author": "Aderrasi + Flexi",
+   "hue": 121.078,
+   "sat": 0.604,
+   "bright": 0.242,
+   "motion": 0.019,
+   "react": -0.007,
+   "chaos": 0.007
+  },
+  {
+   "name": "Aderrasi + Geiss - Airhandler (Kali Mix) - Canvas Mix",
+   "author": "Aderrasi + Geiss",
+   "hue": 343.732,
+   "sat": 0.515,
+   "bright": 0.134,
+   "motion": 0.009,
+   "react": 0.008,
+   "chaos": 0.001
+  },
+  {
+   "name": "Aderrasi + Geiss - Airhandler (Kali Mix) - Painterly Kaleidoscope 2",
+   "author": "Aderrasi + Geiss",
+   "hue": 143.421,
+   "sat": 0.187,
+   "bright": 0.027,
+   "motion": 0.017,
+   "react": 0.006,
+   "chaos": 0.018
+  },
+  {
+   "name": "Aderrasi + Geiss - Airhandler (Painterly Relief Mix)",
+   "author": "Aderrasi + Geiss",
+   "hue": 86.633,
+   "sat": 0.03,
+   "bright": 0.069,
+   "motion": 0.011,
+   "react": 0.021,
+   "chaos": 0.004
+  },
+  {
+   "name": "Aderrasi + Geiss - Airhandler (Square Mix)",
+   "author": "Aderrasi + Geiss",
+   "hue": 7.399,
+   "sat": 0.027,
+   "bright": 0.041,
+   "motion": 0.005,
+   "react": 0.009,
+   "chaos": 0.002
+  },
+  {
+   "name": "amandio c - flashy thing",
+   "author": "amandio c",
+   "hue": 344.4,
+   "sat": 0.542,
+   "bright": 0.046,
+   "motion": 0.017,
+   "react": 0.017,
+   "chaos": 0.013
+  },
+  {
+   "name": "amandio c - fume",
+   "author": "amandio c",
+   "hue": 39.964,
+   "sat": 0.824,
+   "bright": 0.054,
+   "motion": 0.004,
+   "react": 0,
+   "chaos": 0
+  },
+  {
+   "name": "amandio c - salty beats - spiral",
+   "author": "amandio c",
+   "hue": 354.816,
+   "sat": 0.176,
+   "bright": 0.132,
+   "motion": 0.059,
+   "react": 0.036,
+   "chaos": 0.016
+  },
+  {
+   "name": "Anandmide _ Shifter - Fractical_Dancer_MTM_mix (Stahlregen′s Geiss Chaos Tile edit + random color)",
+   "author": "Anandmide _ Shifter",
+   "hue": 73.82,
+   "sat": 0.993,
+   "bright": 0.568,
+   "motion": 0.031,
+   "react": 0.037,
+   "chaos": 0.012
+  },
+  {
+   "name": "baked - mushroom rainbows[acid Storm]",
+   "author": "baked",
+   "hue": 258.257,
+   "sat": 0.749,
+   "bright": 0.084,
+   "motion": 0.015,
+   "react": 0.003,
+   "chaos": 0.003
+  },
+  {
+   "name": "baked - River of Illusion (InfecteD acid mix)",
+   "author": "baked",
+   "hue": 281.942,
+   "sat": 0.798,
+   "bright": 0.093,
+   "motion": 0.013,
+   "react": -0.003,
+   "chaos": 0.002
+  },
+  {
+   "name": "bdrv + al Eo.s. - Sarc Gbdrv2 mx_Phat_RedEye_FractalView_v2",
+   "author": "bdrv + al Eo.s.",
+   "hue": 31.787,
+   "sat": 0.993,
+   "bright": 0.291,
+   "motion": 0.016,
+   "react": 0.007,
+   "chaos": 0.011
+  },
+  {
+   "name": "bdrv + al Eo.S.+Phat - intergalactic conquest flag2b",
+   "author": "bdrv + al Eo.S.+Phat",
+   "hue": 180,
+   "sat": 0.628,
+   "bright": 0.047,
+   "motion": 0.003,
+   "react": -0.006,
+   "chaos": 0
+  },
+  {
+   "name": "bdrv + al Phat and Eo.S. _ shapes are cool_slow_colour_melting_edit BDRV et  AL  rmxmix32",
+   "author": "bdrv + al Phat and Eo.S. _ shapes are cool_slow_colour_melting_edit BDRV et  AL  rmxmix32",
+   "hue": 325.389,
+   "sat": 0.712,
+   "bright": 0.087,
+   "motion": 0.022,
+   "react": 0.007,
+   "chaos": 0.013
+  },
+  {
+   "name": "Bdrv Eo.S. - pulsecube BDRV et  AL  rmxmixx",
+   "author": "Bdrv Eo.S.",
+   "hue": 329.095,
+   "sat": 0.523,
+   "bright": 0.167,
+   "motion": 0.039,
+   "react": 0.033,
+   "chaos": 0.012
+  },
+  {
+   "name": "bdrv, flexi + martin - ultramix #380 [shiny tunnel derivative mix]",
+   "author": "bdrv, flexi + martin",
+   "hue": 233.425,
+   "sat": 0.531,
+   "bright": 0.041,
+   "motion": 0.012,
+   "react": 0.016,
+   "chaos": 0.005
+  },
+  {
+   "name": "Benjam & Zylot - Dust on the Lens (Light of the Ancient Ones mix)",
+   "author": "Benjam & Zylot",
+   "hue": 270.061,
+   "sat": 0.97,
+   "bright": 0.118,
+   "motion": 0.006,
+   "react": -0.003,
+   "chaos": 0.005
+  },
+  {
+   "name": "Benjam and Zylot - Tie-Dye Supernova (Sunspots Mix) flx mrt - maybe go to the beach - drizzle′",
+   "author": "Benjam and Zylot",
+   "hue": 155.63,
+   "sat": 0.807,
+   "bright": 0.75,
+   "motion": 0.016,
+   "react": 0.013,
+   "chaos": 0.009
+  },
+  {
+   "name": "beta106 River of Illusion Dillusion [Bubble]",
+   "author": "beta106 River of Illusion Dillusion [Bubble]",
+   "hue": 253.368,
+   "sat": 0.752,
+   "bright": 0.084,
+   "motion": 0.014,
+   "react": -0.002,
+   "chaos": 0.004
+  },
+  {
+   "name": "beta106.S. + Phat - sentinel linearity b nz+ mbinistre ov mbajiq",
+   "author": "beta106.S. + Phat",
+   "hue": 19.638,
+   "sat": 0.463,
+   "bright": 0.181,
+   "motion": 0.009,
+   "react": -0.002,
+   "chaos": 0.003
+  },
+  {
+   "name": "beta106i - Airhandler (Radial Dreamers) - mash0000 - unload stones into black market torture houses",
+   "author": "beta106i",
+   "hue": 261.04,
+   "sat": 0.742,
+   "bright": 0.227,
+   "motion": 0.007,
+   "react": 0.004,
+   "chaos": 0.004
+  },
+  {
+   "name": "beta106i - Brilliance (Space-Time Breaking) - mash0000 - it′s 2009 and you haven′t replaced your analog tv with digital",
+   "author": "beta106i",
+   "hue": 39.497,
+   "sat": 0.745,
+   "bright": 0.206,
+   "motion": 0.082,
+   "react": 0.014,
+   "chaos": 0.013
+  },
+  {
+   "name": "beta106i - Potion of Ink",
+   "author": "beta106i",
+   "hue": 265.546,
+   "sat": 0.328,
+   "bright": 0.09,
+   "motion": 0.002,
+   "react": 0.003,
+   "chaos": 0.001
+  },
+  {
+   "name": "beta106i - Potion of Ink - mrt cope n777",
+   "author": "beta106i",
+   "hue": 263.021,
+   "sat": 0.296,
+   "bright": 0.022,
+   "motion": 0.004,
+   "react": 0.006,
+   "chaos": 0.002
+  },
+  {
+   "name": "Bmelgren & Rovastar - Schisathing 2 - mash0000 - schrodinger′s dog massage",
+   "author": "Bmelgren & Rovastar",
+   "hue": 350.382,
+   "sat": 0.212,
+   "bright": 0.582,
+   "motion": 0.04,
+   "react": 0.006,
+   "chaos": 0.01
+  },
+  {
+   "name": "Bmelgren + Krash - Rainbow Orb Peacock (Centred Journey Mix 2)",
+   "author": "Bmelgren + Krash",
+   "hue": 17.878,
+   "sat": 0.177,
+   "bright": 0.035,
+   "motion": 0.018,
+   "react": 0.047,
+   "chaos": 0.005
+  },
+  {
+   "name": "BrainStain-projection room - mash0000 - locustration",
+   "author": "BrainStain-projection room",
+   "hue": 147.353,
+   "sat": 0.925,
+   "bright": 0.178,
+   "motion": 0.044,
+   "react": 0.047,
+   "chaos": 0.026
+  },
+  {
+   "name": "Che - Terracarbon Stream",
+   "author": "Che",
+   "hue": 111.245,
+   "sat": 0.373,
+   "bright": 0.06,
+   "motion": 0.003,
+   "react": 0.005,
+   "chaos": 0.003
+  },
+  {
+   "name": "Cope - Passage (mandala mix)[Flexis kaleidoscope] - ap3 colonosc roam3",
+   "author": "Cope",
+   "hue": 327.292,
+   "sat": 0.582,
+   "bright": 0.103,
+   "motion": 0.016,
+   "react": -0.01,
+   "chaos": 0.013
+  },
+  {
+   "name": "cope - strange attractor [flexis let it grow mix] (Jelly 5.56 [volume noise zoom-in])",
+   "author": "cope",
+   "hue": 110.511,
+   "sat": 0.787,
+   "bright": 0.179,
+   "motion": 0.018,
+   "react": 0.011,
+   "chaos": 0.007
+  },
+  {
+   "name": "Cope - The Neverending Explosion of Red Liquid Fire",
+   "author": "Cope",
+   "hue": 324.824,
+   "sat": 0.704,
+   "bright": 0.025,
+   "motion": 0.004,
+   "react": 0,
+   "chaos": 0.002
+  },
+  {
+   "name": "cope + flexi - mother-of-whirl [composition from fractopia]",
+   "author": "cope + flexi",
+   "hue": 242.485,
+   "sat": 0.03,
+   "bright": 0.39,
+   "motion": 0.048,
+   "react": 0.014,
+   "chaos": 0.028
+  },
+  {
+   "name": "cope + flexi - mother-of-whirl [composition from fractopia] roam3 nz+",
+   "author": "cope + flexi",
+   "hue": 260.533,
+   "sat": 0.445,
+   "bright": 0.124,
+   "motion": 0.039,
+   "react": -0.016,
+   "chaos": 0.013
+  },
+  {
+   "name": "Cope-WIP - Strange Attractor 2",
+   "author": "Cope-WIP",
+   "hue": 0,
+   "sat": 0,
+   "bright": 0.51,
+   "motion": 0.027,
+   "react": -0.003,
+   "chaos": 0.01
+  },
+  {
+   "name": "cope, flexi + martin - cartune [reinventing the scene]",
+   "author": "cope, flexi + martin",
+   "hue": 154.823,
+   "sat": 0.606,
+   "bright": 0.314,
+   "motion": 0.023,
+   "react": -0.001,
+   "chaos": 0.006
+  },
+  {
+   "name": "ech0 - purp-trip of purpose",
+   "author": "ech0",
+   "hue": 318.337,
+   "sat": 0.209,
+   "bright": 0.153,
+   "motion": 0.005,
+   "react": 0.004,
+   "chaos": 0.006
+  },
+  {
+   "name": "EMPR - Random - Changing Polyevolution",
+   "author": "EMPR",
+   "hue": 264.799,
+   "sat": 0.781,
+   "bright": 0.098,
+   "motion": 0.006,
+   "react": -0.004,
+   "chaos": 0.003
+  },
+  {
+   "name": "Eo.S. - Apocalypse F2",
+   "author": "Eo.S.",
+   "hue": 349.476,
+   "sat": 0.408,
+   "bright": 0.417,
+   "motion": 0.022,
+   "react": 0.026,
+   "chaos": 0.003
+  },
+  {
+   "name": "Eo.S. - dark side of the moon (plus a few more hits and a pill)",
+   "author": "Eo.S.",
+   "hue": 219.394,
+   "sat": 0.169,
+   "bright": 0.117,
+   "motion": 0.013,
+   "react": 0.013,
+   "chaos": 0.003
+  },
+  {
+   "name": "Eo.S. - Gases Beyond",
+   "author": "Eo.S.",
+   "hue": 124.939,
+   "sat": 0.188,
+   "bright": 0.847,
+   "motion": 0.004,
+   "react": -0.006,
+   "chaos": 0.001
+  },
+  {
+   "name": "Eo.S. - glowsticks v2 02",
+   "author": "Eo.S.",
+   "hue": 152.248,
+   "sat": 0.121,
+   "bright": 0.036,
+   "motion": 0.012,
+   "react": 0.006,
+   "chaos": 0.009
+  },
+  {
+   "name": "Eo.S. - glowsticks v2 03 music shifter edit b (Jelly V2)",
+   "author": "Eo.S.",
+   "hue": 263.589,
+   "sat": 0.472,
+   "bright": 0.026,
+   "motion": 0.037,
+   "react": 0.02,
+   "chaos": 0.04
+  },
+  {
+   "name": "Eo.S. - glowsticks v2 05 and proton lights (+Krash′s beat code) ",
+   "author": "Eo.S.",
+   "hue": 114.326,
+   "sat": 0.141,
+   "bright": 0.032,
+   "motion": 0.012,
+   "react": 0.013,
+   "chaos": 0.004
+  },
+  {
+   "name": "Eo.S. - glowsticks v2 05 and proton lights (+Krash′s beat code) _Phat_remix03 madhatter_v2",
+   "author": "Eo.S.",
+   "hue": 235.589,
+   "sat": 0.745,
+   "bright": 0.107,
+   "motion": 0.027,
+   "react": 0.009,
+   "chaos": 0.008
+  },
+  {
+   "name": "Eo.S. - multisphere 01 B_Phat_Ra_mix",
+   "author": "Eo.S.",
+   "hue": 133.55,
+   "sat": 0.16,
+   "bright": 0.619,
+   "motion": 0.002,
+   "react": -0.001,
+   "chaos": 0
+  },
+  {
+   "name": "Eo.S. - pointfield 01 complex",
+   "author": "Eo.S.",
+   "hue": 209.063,
+   "sat": 0.038,
+   "bright": 0.124,
+   "motion": 0.012,
+   "react": -0.001,
+   "chaos": 0.002
+  },
+  {
+   "name": "Eo.S. - pointfield 04 arcs demon_phat edit_v3",
+   "author": "Eo.S.",
+   "hue": 58.673,
+   "sat": 0.614,
+   "bright": 0.396,
+   "motion": 0.016,
+   "react": 0.002,
+   "chaos": 0.006
+  },
+  {
+   "name": "Eo.S. - repeater 15 - kaleidoscope b",
+   "author": "Eo.S.",
+   "hue": 106.689,
+   "sat": 0.77,
+   "bright": 0.126,
+   "motion": 0.057,
+   "react": -0.016,
+   "chaos": 0.022
+  },
+  {
+   "name": "Eo.S. - sarc c_Phats Zoom Mix",
+   "author": "Eo.S.",
+   "hue": 219.383,
+   "sat": 0.521,
+   "bright": 0.047,
+   "motion": 0.007,
+   "react": -0.003,
+   "chaos": 0.002
+  },
+  {
+   "name": "Eo.S. - skylight a1 [music warp switch]",
+   "author": "Eo.S.",
+   "hue": 211.591,
+   "sat": 0.361,
+   "bright": 0.391,
+   "motion": 0.024,
+   "react": 0.009,
+   "chaos": 0.015
+  },
+  {
+   "name": "Eo.S. + Geiss - glowsticks v2 03 music shifter edit b (Psychedelic Mix)",
+   "author": "Eo.S. + Geiss",
+   "hue": 250.775,
+   "sat": 0.778,
+   "bright": 0.107,
+   "motion": 0.056,
+   "react": 0.032,
+   "chaos": 0.022
+  },
+  {
+   "name": "Eo.S. + Phat - chasers 11 sentinel C",
+   "author": "Eo.S. + Phat",
+   "hue": 31.446,
+   "sat": 0.242,
+   "bright": 0.078,
+   "motion": 0.009,
+   "react": -0.001,
+   "chaos": 0.003
+  },
+  {
+   "name": "Eo.S. + Phat - chasers 11 sentinel C (Jelly V2)",
+   "author": "Eo.S. + Phat",
+   "hue": 21.195,
+   "sat": 0.247,
+   "bright": 0.063,
+   "motion": 0.012,
+   "react": -0.005,
+   "chaos": 0.004
+  },
+  {
+   "name": "Eo.S. + Phat - chasers 11 sentinel C_poltergeist_mix response daemon",
+   "author": "Eo.S. + Phat",
+   "hue": 38.842,
+   "sat": 0.302,
+   "bright": 0.26,
+   "motion": 0.008,
+   "react": 0.02,
+   "chaos": 0.002
+  },
+  {
+   "name": "Eo.S. + Phat - chasers 15 sentinels male and female",
+   "author": "Eo.S. + Phat",
+   "hue": 32.939,
+   "sat": 0.1,
+   "bright": 0.057,
+   "motion": 0.011,
+   "react": 0,
+   "chaos": 0.003
+  },
+  {
+   "name": "Eo.S. + Phat - chasers 18 hallway",
+   "author": "Eo.S. + Phat",
+   "hue": 195.961,
+   "sat": 0.056,
+   "bright": 0.072,
+   "motion": 0.016,
+   "react": 0.008,
+   "chaos": 0.005
+  },
+  {
+   "name": "Eo.S. + Phat - chasers 19 Portal",
+   "author": "Eo.S. + Phat",
+   "hue": 201.288,
+   "sat": 0.623,
+   "bright": 0.234,
+   "motion": 0.029,
+   "react": 0.01,
+   "chaos": 0.006
+  },
+  {
+   "name": "Eo.S. + Phat - Fractical_dancer - light in the distance",
+   "author": "Eo.S. + Phat",
+   "hue": 139.655,
+   "sat": 0.08,
+   "bright": 0.026,
+   "motion": 0.014,
+   "react": 0.023,
+   "chaos": 0.004
+  },
+  {
+   "name": "Eo.S. + Phat - spectrum bubble field",
+   "author": "Eo.S. + Phat",
+   "hue": 191.725,
+   "sat": 0.12,
+   "bright": 0.027,
+   "motion": 0.004,
+   "react": 0,
+   "chaos": 0.001
+  },
+  {
+   "name": "Eo.S. + Phat - the lights at night_spikes",
+   "author": "Eo.S. + Phat",
+   "hue": 232.691,
+   "sat": 0.323,
+   "bright": 0.025,
+   "motion": 0.017,
+   "react": 0.022,
+   "chaos": 0.015
+  },
+  {
+   "name": "Eo.S. + Phat - vacuum deity watching you",
+   "author": "Eo.S. + Phat",
+   "hue": 355.405,
+   "sat": 0.827,
+   "bright": 0.172,
+   "motion": 0.017,
+   "react": 0.022,
+   "chaos": 0.01
+  },
+  {
+   "name": "Eo.S. + Phat - zen prophetmind WTF is it_v2 - Bitcore Tweak",
+   "author": "Eo.S. + Phat",
+   "hue": 295.321,
+   "sat": 0.26,
+   "bright": 0.124,
+   "motion": 0.016,
+   "react": 0.017,
+   "chaos": 0.01
+  },
+  {
+   "name": "Eo.S. + Phat + Geiss - chasers 15 sentinels male and female (Dementia Mix)",
+   "author": "Eo.S. + Phat + Geiss",
+   "hue": 34.763,
+   "sat": 0.274,
+   "bright": 0.095,
+   "motion": 0.015,
+   "react": 0.001,
+   "chaos": 0.005
+  },
+  {
+   "name": "Eo.S. and Zylot - skylight (Stained Glass Majesty mix)",
+   "author": "Eo.S. and Zylot",
+   "hue": 86.653,
+   "sat": 0.162,
+   "bright": 0.373,
+   "motion": 0.024,
+   "react": -0.001,
+   "chaos": 0.021
+  },
+  {
+   "name": "Eo.S.+Phat -Eater_v2",
+   "author": "Eo.S.+Phat -Eater_v2",
+   "hue": 339.227,
+   "sat": 0.772,
+   "bright": 0.138,
+   "motion": 0.024,
+   "react": -0.008,
+   "chaos": 0.013
+  },
+  {
+   "name": "Eo.S.+Phat -Shipwreaked_v3",
+   "author": "Eo.S.+Phat -Shipwreaked_v3",
+   "hue": 137.793,
+   "sat": 0.546,
+   "bright": 0.025,
+   "motion": 0.005,
+   "react": 0,
+   "chaos": 0.002
+  },
+  {
+   "name": "Eo.S.+Phat Speak with the orb_rotation_mix_time_mod",
+   "author": "Eo.S.+Phat Speak with the orb_rotation_mix_time_mod",
+   "hue": 287.471,
+   "sat": 0.506,
+   "bright": 0.033,
+   "motion": 0.009,
+   "react": 0.015,
+   "chaos": 0.003
+  },
+  {
+   "name": "Eosphat-shipwreakedv5b",
+   "author": "Eosphat-shipwreakedv5b",
+   "hue": 110.214,
+   "sat": 0.689,
+   "bright": 0.127,
+   "motion": 0.007,
+   "react": -0.005,
+   "chaos": 0.005
+  },
+  {
+   "name": "Esotic & Rozzor - Pixie Party Light ((No Wave Invasion) Mandala Chill Red Yellow Mix)",
+   "author": "Esotic & Rozzor",
+   "hue": 56.103,
+   "sat": 0.756,
+   "bright": 0.54,
+   "motion": 0.028,
+   "react": 0.004,
+   "chaos": 0.014
+  },
+  {
+   "name": "EVET - RGB Singularity",
+   "author": "EVET",
+   "hue": 61.68,
+   "sat": 0.901,
+   "bright": 0.212,
+   "motion": 0.033,
+   "react": -0.005,
+   "chaos": 0.002
+  },
+  {
+   "name": "fed - slowfast 1.1 (geiss composite remix)",
+   "author": "fed",
+   "hue": 13.179,
+   "sat": 0.201,
+   "bright": 0.155,
+   "motion": 0.047,
+   "react": 0.041,
+   "chaos": 0.01
+  },
+  {
+   "name": "fiShbRaiN - breakfast cruiser",
+   "author": "fiShbRaiN",
+   "hue": 280.671,
+   "sat": 0.136,
+   "bright": 0.031,
+   "motion": 0.022,
+   "react": 0.038,
+   "chaos": 0.005
+  },
+  {
+   "name": "fiShbRaiN - crystal glasses",
+   "author": "fiShbRaiN",
+   "hue": 212.814,
+   "sat": 0.348,
+   "bright": 0.118,
+   "motion": 0.014,
+   "react": 0.009,
+   "chaos": 0.011
+  },
+  {
+   "name": "fiShbRaiN - gandalf does it best (bccn Jelly V4)",
+   "author": "fiShbRaiN",
+   "hue": 307.541,
+   "sat": 0.385,
+   "bright": 0.084,
+   "motion": 0.006,
+   "react": 0.006,
+   "chaos": 0.001
+  },
+  {
+   "name": "fiShbRaiN - jade nicotine",
+   "author": "fiShbRaiN",
+   "hue": 261.728,
+   "sat": 0.386,
+   "bright": 0.042,
+   "motion": 0.009,
+   "react": 0.008,
+   "chaos": 0.004
+  },
+  {
+   "name": "fiShbRaiN - soft porn",
+   "author": "fiShbRaiN",
+   "hue": 304.695,
+   "sat": 0.196,
+   "bright": 0.049,
+   "motion": 0.012,
+   "react": 0.004,
+   "chaos": 0.007
+  },
+  {
+   "name": "fiShbRaiN - the dark side of the moon",
+   "author": "fiShbRaiN",
+   "hue": 7.636,
+   "sat": 0.113,
+   "bright": 0.111,
+   "motion": 0.024,
+   "react": -0.007,
+   "chaos": 0.003
+  },
+  {
+   "name": "fiShbRaiN - the machine that conquered the world (domination remix)",
+   "author": "fiShbRaiN",
+   "hue": 317.962,
+   "sat": 0.323,
+   "bright": 0.04,
+   "motion": 0.021,
+   "react": 0.01,
+   "chaos": 0.008
+  },
+  {
+   "name": "fiShbRaiN - witchcraft (necromancer remix)_phat_edit_v3",
+   "author": "fiShbRaiN",
+   "hue": 246.755,
+   "sat": 0.906,
+   "bright": 0.041,
+   "motion": 0.003,
+   "react": 0.002,
+   "chaos": 0.001
+  },
+  {
+   "name": "fishbrain + flexi - stitchcraft",
+   "author": "fishbrain + flexi",
+   "hue": 127.935,
+   "sat": 0.847,
+   "bright": 0.11,
+   "motion": 0.007,
+   "react": 0,
+   "chaos": 0.003
+  },
+  {
+   "name": "fiShbRaiN + Flexi - witchcraft unleashed",
+   "author": "fiShbRaiN + Flexi",
+   "hue": 29.005,
+   "sat": 0.717,
+   "bright": 0.048,
+   "motion": 0.027,
+   "react": 0.028,
+   "chaos": 0.008
+  },
+  {
+   "name": "fiShbRaiN + Geiss - the adventures of prismo jenkins - tile mix",
+   "author": "fiShbRaiN + Geiss",
+   "hue": 286.211,
+   "sat": 0.053,
+   "bright": 0.042,
+   "motion": 0.002,
+   "react": 0.011,
+   "chaos": 0.001
+  },
+  {
+   "name": "fiShbRaiN + geiss - witchcraft (Grow Mix 2)",
+   "author": "fiShbRaiN + geiss",
+   "hue": 289.892,
+   "sat": 0.46,
+   "bright": 0.34,
+   "motion": 0.041,
+   "react": 0.029,
+   "chaos": 0.014
+  },
+  {
+   "name": "fishbrain + Geiss + Stahlregen + Orb - Witchcraft (yabm - tiled)",
+   "author": "fishbrain + Geiss + Stahlregen + Orb",
+   "hue": 344.277,
+   "sat": 0.549,
+   "bright": 0.022,
+   "motion": 0.004,
+   "react": 0.003,
+   "chaos": 0.003
+  },
+  {
+   "name": "fiShbRaiN, geiss + flexi - witchcraft (Grow Mix) (moebius remix)",
+   "author": "fiShbRaiN, geiss + flexi",
+   "hue": 60.267,
+   "sat": 0.276,
+   "bright": 0.223,
+   "motion": 0.028,
+   "react": 0.024,
+   "chaos": 0.01
+  },
+  {
+   "name": "Flexi - age of shading chaos",
+   "author": "Flexi",
+   "hue": 119.991,
+   "sat": 0.361,
+   "bright": 0.079,
+   "motion": 0.008,
+   "react": -0.008,
+   "chaos": 0.004
+  },
+  {
+   "name": "flexi - alien canvas",
+   "author": "flexi",
+   "hue": 220.802,
+   "sat": 0.261,
+   "bright": 0.075,
+   "motion": 0.009,
+   "react": -0.002,
+   "chaos": 0.003
+  },
+  {
+   "name": "flexi - alien canvas [learning]",
+   "author": "flexi",
+   "hue": 29.032,
+   "sat": 0.599,
+   "bright": 0.225,
+   "motion": 0.011,
+   "react": 0.003,
+   "chaos": 0.001
+  },
+  {
+   "name": "Flexi - alien fish pond",
+   "author": "Flexi",
+   "hue": 117.649,
+   "sat": 0.707,
+   "bright": 0.285,
+   "motion": 0.028,
+   "react": -0.024,
+   "chaos": 0.006
+  },
+  {
+   "name": "flexi - alien web bouncer [edit for hexcollie]",
+   "author": "flexi",
+   "hue": 96.824,
+   "sat": 0.692,
+   "bright": 0.137,
+   "motion": 0.011,
+   "react": 0,
+   "chaos": 0.002
+  },
+  {
+   "name": "flexi - alien web bouncer [edit for hexcollie] [random mashup]",
+   "author": "flexi",
+   "hue": 9.518,
+   "sat": 0.627,
+   "bright": 0.331,
+   "motion": 0.03,
+   "react": -0.002,
+   "chaos": 0.006
+  },
+  {
+   "name": "Flexi - blame hexcollie twice",
+   "author": "Flexi",
+   "hue": 0,
+   "sat": 0.646,
+   "bright": 0.18,
+   "motion": 0.051,
+   "react": 0.024,
+   "chaos": 0.021
+  },
+  {
+   "name": "flexi - bouncing balls [double mindblob neon mix]",
+   "author": "flexi",
+   "hue": 12.907,
+   "sat": 0.703,
+   "bright": 0.259,
+   "motion": 0.033,
+   "react": 0,
+   "chaos": 0.008
+  },
+  {
+   "name": "flexi - bouncing balls [neon mix]",
+   "author": "flexi",
+   "hue": 323.475,
+   "sat": 0.494,
+   "bright": 0.226,
+   "motion": 0.031,
+   "react": -0.029,
+   "chaos": 0.006
+  },
+  {
+   "name": "Flexi - braggadocio",
+   "author": "Flexi",
+   "hue": 120,
+   "sat": 0.192,
+   "bright": 0.056,
+   "motion": 0.007,
+   "react": 0,
+   "chaos": 0.001
+  },
+  {
+   "name": "flexi - crank prototype",
+   "author": "flexi",
+   "hue": 120,
+   "sat": 0.99,
+   "bright": 0.481,
+   "motion": 0.002,
+   "react": -0.008,
+   "chaos": 0.001
+  },
+  {
+   "name": "Flexi - dawn has broken",
+   "author": "Flexi",
+   "hue": 204.095,
+   "sat": 0.237,
+   "bright": 0.403,
+   "motion": 0.071,
+   "react": 0.03,
+   "chaos": 0.008
+  },
+  {
+   "name": "Flexi - dimensions, projection and abstraction",
+   "author": "Flexi",
+   "hue": 329.604,
+   "sat": 0.401,
+   "bright": 0.266,
+   "motion": 0.03,
+   "react": 0.06,
+   "chaos": 0.008
+  },
+  {
+   "name": "Flexi - fractal jellyfish [moebius mix]",
+   "author": "Flexi",
+   "hue": 213.647,
+   "sat": 0.159,
+   "bright": 0.032,
+   "motion": 0.003,
+   "react": 0.003,
+   "chaos": 0.001
+  },
+  {
+   "name": "Flexi - gold plated maelstrom of chaos [mirrorized]",
+   "author": "Flexi",
+   "hue": 37.035,
+   "sat": 0.958,
+   "bright": 0.174,
+   "motion": 0.007,
+   "react": 0.002,
+   "chaos": 0.003
+  },
+  {
+   "name": "flexi - hyperspaceflight (bn cn Jelly 4)",
+   "author": "flexi",
+   "hue": 119.316,
+   "sat": 0.087,
+   "bright": 0.023,
+   "motion": 0.013,
+   "react": 0.025,
+   "chaos": 0.013
+  },
+  {
+   "name": "flexi - infused with the spiral (bc cn jelly V4)",
+   "author": "flexi",
+   "hue": 183.733,
+   "sat": 0.18,
+   "bright": 0.048,
+   "motion": 0.006,
+   "react": 0.004,
+   "chaos": 0.002
+  },
+  {
+   "name": "flexi - infused with the spiral (jelly 4.x cn)",
+   "author": "flexi",
+   "hue": 171.92,
+   "sat": 0.636,
+   "bright": 0.104,
+   "motion": 0.017,
+   "react": 0.004,
+   "chaos": 0.003
+  },
+  {
+   "name": "Flexi - intensive shader fractal",
+   "author": "Flexi",
+   "hue": 236.16,
+   "sat": 0.984,
+   "bright": 0.078,
+   "motion": 0.005,
+   "react": 0.008,
+   "chaos": 0.002
+  },
+  {
+   "name": "flexi - inter state",
+   "author": "flexi",
+   "hue": 33.633,
+   "sat": 0.956,
+   "bright": 0.072,
+   "motion": 0.009,
+   "react": -0.01,
+   "chaos": 0.003
+  },
+  {
+   "name": "Flexi - Julia fractal",
+   "author": "Flexi",
+   "hue": 337.09,
+   "sat": 0.348,
+   "bright": 0.176,
+   "motion": 0.032,
+   "react": 0.029,
+   "chaos": 0.011
+  },
+  {
+   "name": "Flexi - julian affairs [remix]",
+   "author": "Flexi",
+   "hue": 8.783,
+   "sat": 0.938,
+   "bright": 0.088,
+   "motion": 0.003,
+   "react": -0.002,
+   "chaos": 0.001
+  },
+  {
+   "name": "Flexi - layered + Boz - Buckwild",
+   "author": "Flexi",
+   "hue": 40.415,
+   "sat": 0.265,
+   "bright": 0.09,
+   "motion": 0.002,
+   "react": 0.03,
+   "chaos": 0.001
+  },
+  {
+   "name": "Flexi - learning curve",
+   "author": "Flexi",
+   "hue": 270.114,
+   "sat": 0.493,
+   "bright": 0.174,
+   "motion": 0.005,
+   "react": -0.033,
+   "chaos": 0.002
+  },
+  {
+   "name": "flexi - lorenz attractor",
+   "author": "flexi",
+   "hue": 23.736,
+   "sat": 0.013,
+   "bright": 0.025,
+   "motion": 0.005,
+   "react": 0.006,
+   "chaos": 0.001
+  },
+  {
+   "name": "flexi - lorenz chaser (Stahl′s rainbow multiply mix 2 - Jelly V2)",
+   "author": "flexi",
+   "hue": 252.115,
+   "sat": 0.611,
+   "bright": 0.069,
+   "motion": 0.017,
+   "react": 0.008,
+   "chaos": 0.006
+  },
+  {
+   "name": "flexi - meta4free",
+   "author": "flexi",
+   "hue": 2.458,
+   "sat": 0.627,
+   "bright": 0.113,
+   "motion": 0.008,
+   "react": -0.016,
+   "chaos": 0.004
+  },
+  {
+   "name": "Flexi - Milkcore [Martin′s ripple on water insertion]",
+   "author": "Flexi",
+   "hue": 332.719,
+   "sat": 0.61,
+   "bright": 0.153,
+   "motion": 0.003,
+   "react": 0,
+   "chaos": 0.002
+  },
+  {
+   "name": "flexi - mom, why the sky looks different today",
+   "author": "flexi",
+   "hue": 217.461,
+   "sat": 0.076,
+   "bright": 0.204,
+   "motion": 0.016,
+   "react": -0.008,
+   "chaos": 0.002
+  },
+  {
+   "name": "Flexi - multiverse",
+   "author": "Flexi",
+   "hue": 25.096,
+   "sat": 0.363,
+   "bright": 0.037,
+   "motion": 0.002,
+   "react": 0.009,
+   "chaos": 0
+  },
+  {
+   "name": "flexi - predator-prey seminar paper visualization [05 mathematical biology concepts - reaction-diffusion on predator-prey spirals]",
+   "author": "flexi",
+   "hue": 240,
+   "sat": 0.255,
+   "bright": 0.124,
+   "motion": 0.032,
+   "react": 0.06,
+   "chaos": 0.003
+  },
+  {
+   "name": "Flexi - predator-prey-spirals [geiss′ laplacian finish]",
+   "author": "Flexi",
+   "hue": 198.329,
+   "sat": 0.742,
+   "bright": 0.056,
+   "motion": 0.022,
+   "react": 0.002,
+   "chaos": 0.038
+  },
+  {
+   "name": "Flexi - psychenapping",
+   "author": "Flexi",
+   "hue": 62.225,
+   "sat": 0.931,
+   "bright": 0.251,
+   "motion": 0.027,
+   "react": 0.023,
+   "chaos": 0.007
+  },
+  {
+   "name": "Flexi - science-fraction",
+   "author": "Flexi",
+   "hue": 35.248,
+   "sat": 0.416,
+   "bright": 0.226,
+   "motion": 0.008,
+   "react": 0.005,
+   "chaos": 0.008
+  },
+  {
+   "name": "Flexi - smashing fractals [acid etching mix]",
+   "author": "Flexi",
+   "hue": 70.639,
+   "sat": 0.316,
+   "bright": 0.23,
+   "motion": 0.023,
+   "react": -0.004,
+   "chaos": 0.024
+  },
+  {
+   "name": "flexi - splatter effects 17 the wave, a google love story written in decay roam3-2 ",
+   "author": "flexi",
+   "hue": 335.502,
+   "sat": 0.726,
+   "bright": 0.046,
+   "motion": 0.012,
+   "react": -0.003,
+   "chaos": 0.007
+  },
+  {
+   "name": "Flexi - strangely dynamic world",
+   "author": "Flexi",
+   "hue": 352.27,
+   "sat": 0.693,
+   "bright": 0.135,
+   "motion": 0.006,
+   "react": -0.001,
+   "chaos": 0.002
+  },
+  {
+   "name": "flexi - target practice",
+   "author": "flexi",
+   "hue": 0,
+   "sat": 0,
+   "bright": 0.058,
+   "motion": 0.02,
+   "react": 0.013,
+   "chaos": 0.002
+  },
+  {
+   "name": "Flexi - the bouncer and the crasher [random mashup 4]",
+   "author": "Flexi",
+   "hue": 209.7,
+   "sat": 0.177,
+   "bright": 0.358,
+   "motion": 0.051,
+   "react": 0.061,
+   "chaos": 0.024
+  },
+  {
+   "name": "flexi - the distant point between",
+   "author": "flexi",
+   "hue": 11.886,
+   "sat": 0.122,
+   "bright": 0.269,
+   "motion": 0.031,
+   "react": -0.049,
+   "chaos": 0.014
+  },
+  {
+   "name": "Flexi - the distant point between derivative",
+   "author": "Flexi",
+   "hue": 27.507,
+   "sat": 0.379,
+   "bright": 0.183,
+   "motion": 0.006,
+   "react": -0.014,
+   "chaos": 0.001
+  },
+  {
+   "name": "Flexi - truly soft piece of software - this is generic texturing (Jelly) ",
+   "author": "Flexi",
+   "hue": 255.803,
+   "sat": 0.864,
+   "bright": 0.074,
+   "motion": 0.003,
+   "react": -0.003,
+   "chaos": 0
+  },
+  {
+   "name": "flexi - undercurrents 3 [geiss bipolar 1 mix] (Jelly 5.5)",
+   "author": "flexi",
+   "hue": 278.684,
+   "sat": 0.68,
+   "bright": 0.068,
+   "motion": 0.008,
+   "react": -0.034,
+   "chaos": 0.002
+  },
+  {
+   "name": "flexi - what to do with the inside of a torus [easily customizable moebius spiral template]",
+   "author": "flexi",
+   "hue": 61.064,
+   "sat": 0.17,
+   "bright": 0.415,
+   "motion": 0.01,
+   "react": 0,
+   "chaos": 0.001
+  },
+  {
+   "name": "Flexi - when monopolies were the future [simple warp + non-reactive moebius]",
+   "author": "Flexi",
+   "hue": 45.189,
+   "sat": 0.17,
+   "bright": 0.365,
+   "motion": 0.018,
+   "react": 0.002,
+   "chaos": 0.005
+  },
+  {
+   "name": "flexi + amandio c - organic [random mashup]",
+   "author": "flexi + amandio c",
+   "hue": 12.461,
+   "sat": 0.618,
+   "bright": 0.113,
+   "motion": 0.018,
+   "react": 0.004,
+   "chaos": 0.003
+  },
+  {
+   "name": "flexi + amandio c - organic12-3d4",
+   "author": "flexi + amandio c",
+   "hue": 354.742,
+   "sat": 0.05,
+   "bright": 0.186,
+   "motion": 0.028,
+   "react": 0.002,
+   "chaos": 0.007
+  },
+  {
+   "name": "Flexi + amandio c - piercing 05 - Kopie (2) - Kopie",
+   "author": "Flexi + amandio c",
+   "hue": 352.214,
+   "sat": 0.674,
+   "bright": 0.061,
+   "motion": 0.008,
+   "react": 0.001,
+   "chaos": 0.003
+  },
+  {
+   "name": "Flexi + bdrv - va ultramix #148 [fucking infinity mix]",
+   "author": "Flexi + bdrv",
+   "hue": 28.411,
+   "sat": 0.514,
+   "bright": 0.236,
+   "motion": 0.019,
+   "react": 0.038,
+   "chaos": 0.005
+  },
+  {
+   "name": "flexi + fishbrain - neon mindblob grafitti",
+   "author": "flexi + fishbrain",
+   "hue": 193.312,
+   "sat": 0.56,
+   "bright": 0.202,
+   "motion": 0.033,
+   "react": 0.006,
+   "chaos": 0.01
+  },
+  {
+   "name": "Flexi + fiShbRaiN - operation fatcap II",
+   "author": "Flexi + fiShbRaiN",
+   "hue": 240.178,
+   "sat": 0.861,
+   "bright": 0.043,
+   "motion": 0.007,
+   "react": 0.002,
+   "chaos": 0.001
+  },
+  {
+   "name": "flexi + fishbrain - warpcraft",
+   "author": "flexi + fishbrain",
+   "hue": 29.798,
+   "sat": 0.43,
+   "bright": 0.073,
+   "motion": 0.01,
+   "react": 0.002,
+   "chaos": 0.006
+  },
+  {
+   "name": "flexi + fishbrain - warpcraft [random mashup 5]",
+   "author": "flexi + fishbrain",
+   "hue": 11.62,
+   "sat": 0.621,
+   "bright": 0.063,
+   "motion": 0.022,
+   "react": 0.008,
+   "chaos": 0.012
+  },
+  {
+   "name": "flexi + fishbrain - witchcraft [complex terraforming - fiddling twists in the fabric of space]",
+   "author": "flexi + fishbrain",
+   "hue": 345.761,
+   "sat": 0.324,
+   "bright": 0.072,
+   "motion": 0.01,
+   "react": 0.013,
+   "chaos": 0.004
+  },
+  {
+   "name": "flexi + geiss - infused with the spiral (Heavy Oil Mix) nz+ rapery",
+   "author": "flexi + geiss",
+   "hue": 305.713,
+   "sat": 0.456,
+   "bright": 0.093,
+   "motion": 0.016,
+   "react": 0.019,
+   "chaos": 0.003
+  },
+  {
+   "name": "Flexi + Geiss - pogo-cubes on tokamak matter",
+   "author": "Flexi + Geiss",
+   "hue": 53.459,
+   "sat": 0.429,
+   "bright": 0.164,
+   "motion": 0.014,
+   "react": 0.003,
+   "chaos": 0.004
+  },
+  {
+   "name": "flexi + geiss - pogo-cubes on tokamak matter (bccn Jelly V4)",
+   "author": "flexi + geiss",
+   "hue": 84.756,
+   "sat": 0.228,
+   "bright": 0.026,
+   "motion": 0.008,
+   "react": 0.01,
+   "chaos": 0.002
+  },
+  {
+   "name": "Flexi + Geiss - pogo-cubes on tokamak matter (Jelly 5.55)",
+   "author": "Flexi + Geiss",
+   "hue": 124.931,
+   "sat": 0.749,
+   "bright": 0.056,
+   "motion": 0.008,
+   "react": 0.008,
+   "chaos": 0.005
+  },
+  {
+   "name": "flexi + geiss - pogo-cubes on tokamak matter [mind over matter remix]2",
+   "author": "flexi + geiss",
+   "hue": 356.839,
+   "sat": 0.48,
+   "bright": 0.07,
+   "motion": 0.019,
+   "react": 0.003,
+   "chaos": 0.004
+  },
+  {
+   "name": "flexi + geiss - tokamak fallout repellor",
+   "author": "flexi + geiss",
+   "hue": 34.887,
+   "sat": 0.873,
+   "bright": 0.185,
+   "motion": 0.037,
+   "react": -0.001,
+   "chaos": 0.026
+  },
+  {
+   "name": "Flexi + Martin - cascading decay swing",
+   "author": "Flexi + Martin",
+   "hue": 302.567,
+   "sat": 0.36,
+   "bright": 0.315,
+   "motion": 0.006,
+   "react": -0.029,
+   "chaos": 0.002
+  },
+  {
+   "name": "flexi + martin - predator-prey system versus fruitmachine",
+   "author": "flexi + martin",
+   "hue": 57.76,
+   "sat": 0.751,
+   "bright": 0.517,
+   "motion": 0.024,
+   "react": 0.011,
+   "chaos": 0.003
+  },
+  {
+   "name": "Flexi + Martin - tunnel of supraschismatika",
+   "author": "Flexi + Martin",
+   "hue": 131.254,
+   "sat": 0.24,
+   "bright": 0.079,
+   "motion": 0.02,
+   "react": 0.026,
+   "chaos": 0.012
+  },
+  {
+   "name": "Flexi + Phat fractal Star_Child_Restless",
+   "author": "Flexi + Phat fractal Star_Child_Restless",
+   "hue": 299.413,
+   "sat": 0.42,
+   "bright": 0.138,
+   "motion": 0.002,
+   "react": -0.001,
+   "chaos": 0.002
+  },
+  {
+   "name": "Flexi + Rovastar - Fractopia [blame hexcollie]",
+   "author": "Flexi + Rovastar",
+   "hue": 0,
+   "sat": 0.09,
+   "bright": 0.043,
+   "motion": 0.011,
+   "react": 0.033,
+   "chaos": 0.001
+  },
+  {
+   "name": "Flexi + Rovastar - landing on Fractopia",
+   "author": "Flexi + Rovastar",
+   "hue": 55.627,
+   "sat": 0.575,
+   "bright": 0.047,
+   "motion": 0.006,
+   "react": 0.008,
+   "chaos": 0.003
+  },
+  {
+   "name": "Flexi + Shifter - sublimal spaceship",
+   "author": "Flexi + Shifter",
+   "hue": 56.673,
+   "sat": 0.689,
+   "bright": 0.356,
+   "motion": 0.021,
+   "react": -0.009,
+   "chaos": 0.015
+  },
+  {
+   "name": "flexi + stahlregen - gimme color (spinner mix v2)",
+   "author": "flexi + stahlregen",
+   "hue": 237.863,
+   "sat": 0.33,
+   "bright": 0.158,
+   "motion": 0.043,
+   "react": 0.021,
+   "chaos": 0.004
+  },
+  {
+   "name": "flexi + stahlregen - jelly spin-off",
+   "author": "flexi + stahlregen",
+   "hue": 114.094,
+   "sat": 0.715,
+   "bright": 0.057,
+   "motion": 0.005,
+   "react": 0.003,
+   "chaos": 0.001
+  },
+  {
+   "name": "flexi + stahlregen - jewelry tiles",
+   "author": "flexi + stahlregen",
+   "hue": 185.719,
+   "sat": 0.539,
+   "bright": 0.199,
+   "motion": 0.025,
+   "react": 0.009,
+   "chaos": 0.006
+  },
+  {
+   "name": "flexi + stahlregen - organic canvas",
+   "author": "flexi + stahlregen",
+   "hue": 116.4,
+   "sat": 0.811,
+   "bright": 0.152,
+   "motion": 0.008,
+   "react": -0.007,
+   "chaos": 0.003
+  },
+  {
+   "name": "Flexi + sto - aftermath",
+   "author": "Flexi + sto",
+   "hue": 302.053,
+   "sat": 0.263,
+   "bright": 0.133,
+   "motion": 0.008,
+   "react": 0.008,
+   "chaos": 0.003
+  },
+  {
+   "name": "Flexi + sto - learning curve ",
+   "author": "Flexi + sto",
+   "hue": 311.851,
+   "sat": 0.305,
+   "bright": 0.293,
+   "motion": 0.015,
+   "react": 0.006,
+   "chaos": 0.005
+  },
+  {
+   "name": "flexi, adamfx + hexcollie - moebius morbid vision crack",
+   "author": "flexi, adamfx + hexcollie",
+   "hue": 74.652,
+   "sat": 0.458,
+   "bright": 0.705,
+   "motion": 0.021,
+   "react": -0.019,
+   "chaos": 0.009
+  },
+  {
+   "name": "flexi, fishbrain + stahlregen - witchcraft [jelly5.5]",
+   "author": "flexi, fishbrain + stahlregen",
+   "hue": 116.192,
+   "sat": 0.794,
+   "bright": 0.169,
+   "motion": 0.022,
+   "react": 0.004,
+   "chaos": 0.006
+  },
+  {
+   "name": "flexi, geiss + stahlregen - tokamak jelly infusion",
+   "author": "flexi, geiss + stahlregen",
+   "hue": 68.542,
+   "sat": 0.698,
+   "bright": 0.061,
+   "motion": 0.016,
+   "react": -0.002,
+   "chaos": 0.007
+  },
+  {
+   "name": "flexi, geiss and rovastar - chaos layered sinewsed tokamak 2",
+   "author": "flexi, geiss and rovastar",
+   "hue": 220.007,
+   "sat": 0.399,
+   "bright": 0.036,
+   "motion": 0.002,
+   "react": 0.001,
+   "chaos": 0
+  },
+  {
+   "name": "Flexi, martin + geiss - dedicated to the sherwin maxawow",
+   "author": "Flexi, martin + geiss",
+   "hue": 296.22,
+   "sat": 0.669,
+   "bright": 0.151,
+   "motion": 0.007,
+   "react": 0.049,
+   "chaos": 0.002
+  },
+  {
+   "name": "Flexi, Martin, Phat, Zylot + Eo.S - one way trip trap proof of concept [epileptic zoom tunnel edit]",
+   "author": "Flexi, Martin, Phat, Zylot + Eo.S",
+   "hue": 338.379,
+   "sat": 0.157,
+   "bright": 0.026,
+   "motion": 0.012,
+   "react": 0.015,
+   "chaos": 0.006
+  },
+  {
+   "name": "Fvese - Zoom Effects (Remix 2)",
+   "author": "Fvese",
+   "hue": 310.634,
+   "sat": 0.346,
+   "bright": 0.027,
+   "motion": 0.005,
+   "react": 0.01,
+   "chaos": 0.003
+  },
+  {
+   "name": "Geiss - 3 layers",
+   "author": "Geiss",
+   "hue": 97.099,
+   "sat": 0.259,
+   "bright": 0.331,
+   "motion": 0.016,
+   "react": 0.015,
+   "chaos": 0.004
+  },
+  {
+   "name": "Geiss - 3 layers (Rayleigh Scattering Mix)",
+   "author": "Geiss",
+   "hue": 217.749,
+   "sat": 0.017,
+   "bright": 0.096,
+   "motion": 0.006,
+   "react": 0.003,
+   "chaos": 0.004
+  },
+  {
+   "name": "Geiss - 3 layers E",
+   "author": "Geiss",
+   "hue": 84.028,
+   "sat": 0.486,
+   "bright": 0.379,
+   "motion": 0.012,
+   "react": 0.004,
+   "chaos": 0.002
+  },
+  {
+   "name": "Geiss - 3 layers G",
+   "author": "Geiss",
+   "hue": 41.739,
+   "sat": 0.168,
+   "bright": 0.133,
+   "motion": 0.005,
+   "react": -0.003,
+   "chaos": 0.002
+  },
+  {
+   "name": "Geiss - All-Spark Sinews",
+   "author": "Geiss",
+   "hue": 13.564,
+   "sat": 0.381,
+   "bright": 0.28,
+   "motion": 0.044,
+   "react": 0.058,
+   "chaos": 0.005
+  },
+  {
+   "name": "Geiss - Artifact Plasma 2",
+   "author": "Geiss",
+   "hue": 298.612,
+   "sat": 0.307,
+   "bright": 0.053,
+   "motion": 0.047,
+   "react": 0.015,
+   "chaos": 0.009
+  },
+  {
+   "name": "Geiss - Aurora 2",
+   "author": "Geiss",
+   "hue": 141.537,
+   "sat": 0.431,
+   "bright": 0.122,
+   "motion": 0.024,
+   "react": 0.008,
+   "chaos": 0.011
+  },
+  {
+   "name": "Geiss - Bipolar 1",
+   "author": "Geiss",
+   "hue": 32.539,
+   "sat": 0.207,
+   "bright": 0.065,
+   "motion": 0.009,
+   "react": 0.056,
+   "chaos": 0.004
+  },
+  {
+   "name": "Geiss - Blur Mix 3",
+   "author": "Geiss",
+   "hue": 71.154,
+   "sat": 0.208,
+   "bright": 0.143,
+   "motion": 0.017,
+   "react": 0.037,
+   "chaos": 0.005
+  },
+  {
+   "name": "Geiss - Brain Zoom 3",
+   "author": "Geiss",
+   "hue": 66.847,
+   "sat": 0.088,
+   "bright": 0.123,
+   "motion": 0.067,
+   "react": -0.005,
+   "chaos": 0.008
+  },
+  {
+   "name": "Geiss - Brain Zoom 3 (random texture mix)",
+   "author": "Geiss",
+   "hue": 53.349,
+   "sat": 0.101,
+   "bright": 0.171,
+   "motion": 0.068,
+   "react": 0.004,
+   "chaos": 0.014
+  },
+  {
+   "name": "Geiss - Cauldron - painterly (saturation remix)",
+   "author": "Geiss",
+   "hue": 257.085,
+   "sat": 0.347,
+   "bright": 0.085,
+   "motion": 0.011,
+   "react": 0.017,
+   "chaos": 0.009
+  },
+  {
+   "name": "Geiss - Cauldron - painterly 2",
+   "author": "Geiss",
+   "hue": 305.433,
+   "sat": 0.176,
+   "bright": 0.102,
+   "motion": 0.012,
+   "react": 0.012,
+   "chaos": 0.003
+  },
+  {
+   "name": "Geiss - Cauldron - painterly 2 (saturation remix)",
+   "author": "Geiss",
+   "hue": 230,
+   "sat": 0.365,
+   "bright": 0.161,
+   "motion": 0.01,
+   "react": 0.012,
+   "chaos": 0.004
+  },
+  {
+   "name": "Geiss - Cauldron - painterly 3",
+   "author": "Geiss",
+   "hue": 252.893,
+   "sat": 0.519,
+   "bright": 0.106,
+   "motion": 0.009,
+   "react": 0.017,
+   "chaos": 0.006
+  },
+  {
+   "name": "Geiss - Cauldron - painterly 4",
+   "author": "Geiss",
+   "hue": 326.555,
+   "sat": 0.097,
+   "bright": 0.063,
+   "motion": 0.004,
+   "react": 0.009,
+   "chaos": 0.002
+  },
+  {
+   "name": "Geiss - Cauldron - Tendrils (saturation remix)",
+   "author": "Geiss",
+   "hue": 231.654,
+   "sat": 0.549,
+   "bright": 0.189,
+   "motion": 0.025,
+   "react": 0.04,
+   "chaos": 0.009
+  },
+  {
+   "name": "Geiss - Constant Velocity - angular blur",
+   "author": "Geiss",
+   "hue": 74.976,
+   "sat": 0.112,
+   "bright": 0.146,
+   "motion": 0.01,
+   "react": 0.011,
+   "chaos": 0.003
+  },
+  {
+   "name": "Geiss - Cosmic Dust 2 - Game of Life mix",
+   "author": "Geiss",
+   "hue": 57.582,
+   "sat": 0.034,
+   "bright": 0.097,
+   "motion": 0.085,
+   "react": 0.164,
+   "chaos": 0.011
+  },
+  {
+   "name": "Geiss - Cosmic Dust 2 - Trails 7",
+   "author": "Geiss",
+   "hue": 12.821,
+   "sat": 0.294,
+   "bright": 0.064,
+   "motion": 0.02,
+   "react": 0.034,
+   "chaos": 0.026
+  },
+  {
+   "name": "Geiss - Cycloid 1 - painterly",
+   "author": "Geiss",
+   "hue": 104.557,
+   "sat": 0.894,
+   "bright": 0.187,
+   "motion": 0.035,
+   "react": -0.019,
+   "chaos": 0.009
+  },
+  {
+   "name": "Geiss - Cycloid 1 - painterly vortex",
+   "author": "Geiss",
+   "hue": 54.435,
+   "sat": 0.934,
+   "bright": 0.434,
+   "motion": 0.057,
+   "react": -0.009,
+   "chaos": 0.01
+  },
+  {
+   "name": "Geiss - Dancing Spirits",
+   "author": "Geiss",
+   "hue": 312.09,
+   "sat": 0.085,
+   "bright": 0.074,
+   "motion": 0.006,
+   "react": 0.036,
+   "chaos": 0.009
+  },
+  {
+   "name": "Geiss - Desert Rose 2",
+   "author": "Geiss",
+   "hue": 195.186,
+   "sat": 0.133,
+   "bright": 0.199,
+   "motion": 0.007,
+   "react": 0.003,
+   "chaos": 0.004
+  },
+  {
+   "name": "Geiss - Desert Rose 4",
+   "author": "Geiss",
+   "hue": 140.697,
+   "sat": 0.387,
+   "bright": 0.307,
+   "motion": 0.019,
+   "react": 0.006,
+   "chaos": 0.003
+  },
+  {
+   "name": "Geiss - Diffuser (Gold Mix)",
+   "author": "Geiss",
+   "hue": 33.201,
+   "sat": 0.529,
+   "bright": 0.484,
+   "motion": 0.059,
+   "react": -0.011,
+   "chaos": 0.02
+  },
+  {
+   "name": "Geiss - Drop Shadow 1",
+   "author": "Geiss",
+   "hue": 158.165,
+   "sat": 0.163,
+   "bright": 0.214,
+   "motion": 0.035,
+   "react": 0.022,
+   "chaos": 0.005
+  },
+  {
+   "name": "Geiss - Drop Shadow 2",
+   "author": "Geiss",
+   "hue": 234.041,
+   "sat": 0.149,
+   "bright": 0.231,
+   "motion": 0.031,
+   "react": 0.044,
+   "chaos": 0.006
+  },
+  {
+   "name": "Geiss - El Cubismo 2",
+   "author": "Geiss",
+   "hue": 39.222,
+   "sat": 0.727,
+   "bright": 0.142,
+   "motion": 0.012,
+   "react": 0.007,
+   "chaos": 0.003
+  },
+  {
+   "name": "Geiss - Explosion",
+   "author": "Geiss",
+   "hue": 240.046,
+   "sat": 0.518,
+   "bright": 0.292,
+   "motion": 0.015,
+   "react": -0.001,
+   "chaos": 0.002
+  },
+  {
+   "name": "Geiss - Explosion 2",
+   "author": "Geiss",
+   "hue": 262.091,
+   "sat": 0.429,
+   "bright": 0.256,
+   "motion": 0.014,
+   "react": 0.034,
+   "chaos": 0.009
+  },
+  {
+   "name": "Geiss - Explosion 3",
+   "author": "Geiss",
+   "hue": 247.01,
+   "sat": 0.356,
+   "bright": 0.296,
+   "motion": 0.012,
+   "react": 0.027,
+   "chaos": 0.002
+  },
+  {
+   "name": "Geiss - Flower Blossom",
+   "author": "Geiss",
+   "hue": 76.977,
+   "sat": 0.067,
+   "bright": 0.047,
+   "motion": 0.007,
+   "react": 0,
+   "chaos": 0.005
+  },
+  {
+   "name": "Geiss - Fog Tunnel",
+   "author": "Geiss",
+   "hue": 310.9,
+   "sat": 0.172,
+   "bright": 0.308,
+   "motion": 0.017,
+   "react": 0.017,
+   "chaos": 0.002
+  },
+  {
+   "name": "Geiss - Julia Fractal 2",
+   "author": "Geiss",
+   "hue": 158.865,
+   "sat": 0.635,
+   "bright": 0.437,
+   "motion": 0.033,
+   "react": 0.027,
+   "chaos": 0.014
+  },
+  {
+   "name": "Geiss - Julia Fractal 3",
+   "author": "Geiss",
+   "hue": 286.163,
+   "sat": 0.683,
+   "bright": 0.048,
+   "motion": 0.022,
+   "react": 0.006,
+   "chaos": 0.012
+  },
+  {
+   "name": "Geiss - Julia Fractal 3 square mix",
+   "author": "Geiss",
+   "hue": 316.417,
+   "sat": 0.667,
+   "bright": 0.056,
+   "motion": 0.01,
+   "react": 0.006,
+   "chaos": 0.005
+  },
+  {
+   "name": "geiss - liquid beats (jelly v4.5)",
+   "author": "geiss",
+   "hue": 256.353,
+   "sat": 0.49,
+   "bright": 0.04,
+   "motion": 0.023,
+   "react": 0.051,
+   "chaos": 0.018
+  },
+  {
+   "name": "Geiss - Liquid Beats 2",
+   "author": "Geiss",
+   "hue": 220.834,
+   "sat": 0.201,
+   "bright": 0.039,
+   "motion": 0.022,
+   "react": 0.032,
+   "chaos": 0.012
+  },
+  {
+   "name": "Geiss - Liquid Beats 2 (Reverse Jelly V3)",
+   "author": "Geiss",
+   "hue": 31.98,
+   "sat": 0.112,
+   "bright": 0.232,
+   "motion": 0.029,
+   "react": 0.064,
+   "chaos": 0.022
+  },
+  {
+   "name": "Geiss - Luz",
+   "author": "Geiss",
+   "hue": 272.86,
+   "sat": 0.265,
+   "bright": 0.629,
+   "motion": 0.054,
+   "react": -0.001,
+   "chaos": 0.011
+  },
+  {
+   "name": "Geiss - MicroCheckers 3",
+   "author": "Geiss",
+   "hue": 46.265,
+   "sat": 0.373,
+   "bright": 0.209,
+   "motion": 0.023,
+   "react": 0.018,
+   "chaos": 0.003
+  },
+  {
+   "name": "Geiss - Mosaic Octopus",
+   "author": "Geiss",
+   "hue": 275.438,
+   "sat": 0.759,
+   "bright": 0.333,
+   "motion": 0.012,
+   "react": 0.004,
+   "chaos": 0.008
+  },
+  {
+   "name": "Geiss - Motion Blur",
+   "author": "Geiss",
+   "hue": 233.293,
+   "sat": 0.034,
+   "bright": 0.115,
+   "motion": 0.002,
+   "react": 0.059,
+   "chaos": 0.004
+  },
+  {
+   "name": "Geiss - Motion Blur 2 (Relief Mix 2)",
+   "author": "Geiss",
+   "hue": 25.852,
+   "sat": 0.467,
+   "bright": 0.108,
+   "motion": 0.03,
+   "react": 0.031,
+   "chaos": 0.014
+  },
+  {
+   "name": "Geiss - Motion Blur 2 (Relief Mix)",
+   "author": "Geiss",
+   "hue": 36.798,
+   "sat": 0.434,
+   "bright": 0.087,
+   "motion": 0.044,
+   "react": 0.021,
+   "chaos": 0.012
+  },
+  {
+   "name": "Geiss - Neutron - radial blur 2 (firestorm mix)",
+   "author": "Geiss",
+   "hue": 14.988,
+   "sat": 0.215,
+   "bright": 0.134,
+   "motion": 0.022,
+   "react": 0.008,
+   "chaos": 0.004
+  },
+  {
+   "name": "Geiss - Pistons",
+   "author": "Geiss",
+   "hue": 16.754,
+   "sat": 0.26,
+   "bright": 0.138,
+   "motion": 0.018,
+   "react": 0.022,
+   "chaos": 0.001
+  },
+  {
+   "name": "Geiss - Planar Travel",
+   "author": "Geiss",
+   "hue": 33.878,
+   "sat": 0.127,
+   "bright": 0.167,
+   "motion": 0.025,
+   "react": 0.052,
+   "chaos": 0.008
+  },
+  {
+   "name": "Geiss - Plasma 2",
+   "author": "Geiss",
+   "hue": 38.985,
+   "sat": 0.709,
+   "bright": 0.391,
+   "motion": 0.013,
+   "react": 0.006,
+   "chaos": 0.001
+  },
+  {
+   "name": "Geiss - Reaction Diffusion - Simple Squamous Mix",
+   "author": "Geiss",
+   "hue": 23.173,
+   "sat": 0.532,
+   "bright": 0.23,
+   "motion": 0.077,
+   "react": 0.023,
+   "chaos": 0.01
+  },
+  {
+   "name": "Geiss - Reaction Diffusion (Royal Crown Mix)",
+   "author": "Geiss",
+   "hue": 319.617,
+   "sat": 0.573,
+   "bright": 0.248,
+   "motion": 0.176,
+   "react": -0.002,
+   "chaos": 0.018
+  },
+  {
+   "name": "Geiss - Reaction Diffusion (Shifting Sphere Mix)",
+   "author": "Geiss",
+   "hue": 299.421,
+   "sat": 0.288,
+   "bright": 0.035,
+   "motion": 0.011,
+   "react": 0.003,
+   "chaos": 0.006
+  },
+  {
+   "name": "Geiss - Reaction Diffusion (Squamous Flow Mix)",
+   "author": "Geiss",
+   "hue": 113.763,
+   "sat": 0.045,
+   "bright": 0.207,
+   "motion": 0.061,
+   "react": -0.014,
+   "chaos": 0.013
+  },
+  {
+   "name": "Geiss - Reaction Diffusion 3",
+   "author": "Geiss",
+   "hue": 22.804,
+   "sat": 0.319,
+   "bright": 0.261,
+   "motion": 0.065,
+   "react": 0.114,
+   "chaos": 0.011
+  },
+  {
+   "name": "Geiss - Reaction Diffusion 3 (Lichen Mix)",
+   "author": "Geiss",
+   "hue": 359.207,
+   "sat": 0.836,
+   "bright": 0.107,
+   "motion": 0.009,
+   "react": 0.014,
+   "chaos": 0.001
+  },
+  {
+   "name": "geiss - reaction diffusion 3 (rippling leopard skin)",
+   "author": "geiss",
+   "hue": 37.789,
+   "sat": 0.679,
+   "bright": 0.131,
+   "motion": 0.028,
+   "react": 0.027,
+   "chaos": 0.008
+  },
+  {
+   "name": "Geiss - Rose 3",
+   "author": "Geiss",
+   "hue": 173.913,
+   "sat": 0.096,
+   "bright": 0.627,
+   "motion": 0.061,
+   "react": 0.012,
+   "chaos": 0.011
+  },
+  {
+   "name": "Geiss - Rose 4 (bccn Jelly V4)",
+   "author": "Geiss",
+   "hue": 129.215,
+   "sat": 0.354,
+   "bright": 0.062,
+   "motion": 0.035,
+   "react": -0.004,
+   "chaos": 0.012
+  },
+  {
+   "name": "Geiss - Rose 4 (LSB mix)",
+   "author": "Geiss",
+   "hue": 293.842,
+   "sat": 0.213,
+   "bright": 0.05,
+   "motion": 0.014,
+   "react": 0.007,
+   "chaos": 0.006
+  },
+  {
+   "name": "Geiss - Rose 4 Shifted Tiles",
+   "author": "Geiss",
+   "hue": 172.818,
+   "sat": 0.598,
+   "bright": 0.093,
+   "motion": 0.023,
+   "react": 0.004,
+   "chaos": 0.01
+  },
+  {
+   "name": "Geiss - Rose 5 Crossfire Beats (composite remix)",
+   "author": "Geiss",
+   "hue": 4.449,
+   "sat": 0.164,
+   "bright": 0.059,
+   "motion": 0.005,
+   "react": 0.017,
+   "chaos": 0.007
+  },
+  {
+   "name": "Geiss - Skin Dots 6",
+   "author": "Geiss",
+   "hue": 98.957,
+   "sat": 0.108,
+   "bright": 0.048,
+   "motion": 0.011,
+   "react": -0.006,
+   "chaos": 0.003
+  },
+  {
+   "name": "Geiss - Smoke Trail",
+   "author": "Geiss",
+   "hue": 177.776,
+   "sat": 0.136,
+   "bright": 0.137,
+   "motion": 0.011,
+   "react": 0.01,
+   "chaos": 0.003
+  },
+  {
+   "name": "Geiss - Sound And The Fury (Jelly V3)",
+   "author": "Geiss",
+   "hue": 99.47,
+   "sat": 0.178,
+   "bright": 0.023,
+   "motion": 0.015,
+   "react": 0.003,
+   "chaos": 0.011
+  },
+  {
+   "name": "Geiss - Starfish 2",
+   "author": "Geiss",
+   "hue": 43.14,
+   "sat": 0.311,
+   "bright": 0.061,
+   "motion": 0.011,
+   "react": 0.003,
+   "chaos": 0.003
+  },
+  {
+   "name": "Geiss - Sunsets",
+   "author": "Geiss",
+   "hue": 0.632,
+   "sat": 0.268,
+   "bright": 0.029,
+   "motion": 0.007,
+   "react": 0,
+   "chaos": 0.006
+  },
+  {
+   "name": "Geiss - Swirlie 1",
+   "author": "Geiss",
+   "hue": 286.495,
+   "sat": 0.373,
+   "bright": 0.088,
+   "motion": 0.017,
+   "react": 0.078,
+   "chaos": 0.008
+  },
+  {
+   "name": "Geiss - Thumb Drum",
+   "author": "Geiss",
+   "hue": 0,
+   "sat": 0,
+   "bright": 0.169,
+   "motion": 0.022,
+   "react": 0.027,
+   "chaos": 0.002
+  },
+  {
+   "name": "Geiss - Tokamak Plus Painterly",
+   "author": "Geiss",
+   "hue": 284.151,
+   "sat": 0.234,
+   "bright": 0.199,
+   "motion": 0.035,
+   "react": 0.084,
+   "chaos": 0.013
+  },
+  {
+   "name": "Geiss - Trampoline",
+   "author": "Geiss",
+   "hue": 58.99,
+   "sat": 0.124,
+   "bright": 0.162,
+   "motion": 0.039,
+   "react": 0.028,
+   "chaos": 0.022
+  },
+  {
+   "name": "Geiss - Two-Pointed Pulsagon",
+   "author": "Geiss",
+   "hue": 46.606,
+   "sat": 0.811,
+   "bright": 0.062,
+   "motion": 0.006,
+   "react": -0.021,
+   "chaos": 0.002
+  },
+  {
+   "name": "Geiss - Virus Broth",
+   "author": "Geiss",
+   "hue": 201.933,
+   "sat": 0.294,
+   "bright": 0.074,
+   "motion": 0.009,
+   "react": 0.017,
+   "chaos": 0.004
+  },
+  {
+   "name": "Geiss - Vortex 1",
+   "author": "Geiss",
+   "hue": 267.525,
+   "sat": 0.319,
+   "bright": 0.037,
+   "motion": 0.002,
+   "react": 0.002,
+   "chaos": 0
+  },
+  {
+   "name": "Geiss + Rovastar - Julia Fractal (Vectrip Mix)",
+   "author": "Geiss + Rovastar",
+   "hue": 343.132,
+   "sat": 0.278,
+   "bright": 0.11,
+   "motion": 0.018,
+   "react": 0.034,
+   "chaos": 0.011
+  },
+  {
+   "name": "Geiss + Rovastar - Notions Of Tonality 2",
+   "author": "Geiss + Rovastar",
+   "hue": 16.376,
+   "sat": 0.287,
+   "bright": 0.506,
+   "motion": 0.015,
+   "react": -0.001,
+   "chaos": 0.002
+  },
+  {
+   "name": "Geiss + Rovastar - The Chaos Of Colours (sprouting dimentia mix)",
+   "author": "Geiss + Rovastar",
+   "hue": 142.326,
+   "sat": 0.171,
+   "bright": 0.184,
+   "motion": 0.009,
+   "react": -0.01,
+   "chaos": 0.006
+  },
+  {
+   "name": "Goody - Clouded Reason - revisited",
+   "author": "Goody",
+   "hue": 272.104,
+   "sat": 0.006,
+   "bright": 0.932,
+   "motion": 0.002,
+   "react": 0.005,
+   "chaos": 0.001
+  },
+  {
+   "name": "Goody - Lights in the Sky",
+   "author": "Goody",
+   "hue": 223.212,
+   "sat": 0.099,
+   "bright": 0.704,
+   "motion": 0.03,
+   "react": -0.002,
+   "chaos": 0.022
+  },
+  {
+   "name": "Goody - Unstable Sonic Reactor - Final",
+   "author": "Goody",
+   "hue": 95.223,
+   "sat": 0.016,
+   "bright": 0.091,
+   "motion": 0.014,
+   "react": -0.006,
+   "chaos": 0.006
+  },
+  {
+   "name": "Goody - Vertigo",
+   "author": "Goody",
+   "hue": 166.089,
+   "sat": 0.488,
+   "bright": 0.248,
+   "motion": 0.05,
+   "react": 0.057,
+   "chaos": 0.004
+  },
+  {
+   "name": "Goody - Vertigo - revisited",
+   "author": "Goody",
+   "hue": 182.789,
+   "sat": 0.52,
+   "bright": 0.149,
+   "motion": 0.04,
+   "react": 0.06,
+   "chaos": 0.004
+  },
+  {
+   "name": "Goody + flexi - Irdu Lili",
+   "author": "Goody + flexi",
+   "hue": 270.36,
+   "sat": 0.798,
+   "bright": 0.104,
+   "motion": 0.024,
+   "react": 0,
+   "chaos": 0.013
+  },
+  {
+   "name": "Goody + martin - crystal palace - Schizotoxin - The Wild Iris Bloom",
+   "author": "Goody + martin",
+   "hue": 19.459,
+   "sat": 0.234,
+   "bright": 0.03,
+   "motion": 0.009,
+   "react": -0.009,
+   "chaos": 0.008
+  },
+  {
+   "name": "goody + shadowharlequin - red + blue - chase - megatrip - [geiss - aurora 2 v22 -2222 v2] - shader",
+   "author": "goody + shadowharlequin",
+   "hue": 341.55,
+   "sat": 0.228,
+   "bright": 0.288,
+   "motion": 0.046,
+   "react": 0.013,
+   "chaos": 0.015
+  },
+  {
+   "name": "GreatWho - Lasershow",
+   "author": "GreatWho",
+   "hue": 84.314,
+   "sat": 0.174,
+   "bright": 0.097,
+   "motion": 0.013,
+   "react": -0.018,
+   "chaos": 0.006
+  },
+  {
+   "name": "Hexcollie - Beautiful",
+   "author": "Hexcollie",
+   "hue": 5.403,
+   "sat": 0.776,
+   "bright": 0.134,
+   "motion": 0.026,
+   "react": -0.002,
+   "chaos": 0.02
+  },
+  {
+   "name": "Hexcollie - Meatball",
+   "author": "Hexcollie",
+   "hue": 196.796,
+   "sat": 0.364,
+   "bright": 0.383,
+   "motion": 0.024,
+   "react": -0.008,
+   "chaos": 0.013
+  },
+  {
+   "name": "Hexcollie - Melodic pulsing leds - mash0000 - dou fu, qing jin, qing zuo, bitch",
+   "author": "Hexcollie",
+   "hue": 57.753,
+   "sat": 0.518,
+   "bright": 0.058,
+   "motion": 0.042,
+   "react": -0.01,
+   "chaos": 0.011
+  },
+  {
+   "name": "Hexcollie, Bdrv, Geiss, Flexi n Aderrasi - Slime Slide - mash0000 - holster your salad shot",
+   "author": "Hexcollie, Bdrv, Geiss, Flexi n Aderrasi",
+   "hue": 257.029,
+   "sat": 0.594,
+   "bright": 0.114,
+   "motion": 0.062,
+   "react": -0.005,
+   "chaos": 0.014
+  },
+  {
+   "name": "Idiot - Star Of Annon",
+   "author": "Idiot",
+   "hue": 281.663,
+   "sat": 0.409,
+   "bright": 0.053,
+   "motion": 0.002,
+   "react": 0.003,
+   "chaos": 0.003
+  },
+  {
+   "name": "Idiot - When I Get Bored",
+   "author": "Idiot",
+   "hue": 196.379,
+   "sat": 0.62,
+   "bright": 0.186,
+   "motion": 0.014,
+   "react": -0.005,
+   "chaos": 0.005
+  },
+  {
+   "name": "Illusion - Heavenly Eye - radial blur",
+   "author": "Illusion",
+   "hue": 199.184,
+   "sat": 0.037,
+   "bright": 0.494,
+   "motion": 0.019,
+   "react": 0.012,
+   "chaos": 0.006
+  },
+  {
+   "name": "Illusion & Rovastar - Clouded Bottle",
+   "author": "Illusion & Rovastar",
+   "hue": 76.537,
+   "sat": 0.55,
+   "bright": 0.053,
+   "motion": 0.009,
+   "react": 0.009,
+   "chaos": 0.003
+  },
+  {
+   "name": "iMuS and  Rovastar - The Shroomery (psilobellum)",
+   "author": "iMuS and  Rovastar",
+   "hue": 9.323,
+   "sat": 0.24,
+   "bright": 0.109,
+   "motion": 0.016,
+   "react": 0.063,
+   "chaos": 0.007
+  },
+  {
+   "name": "Inside A Black Whole AdamFX 2 martin - another kind of groove (Ati Fix)Ft Raron Flexi and Rovastar (AdamFX Remix)Uh huh 6 ngorng",
+   "author": "Inside A Black Whole AdamFX 2 martin",
+   "hue": 216.187,
+   "sat": 0.974,
+   "bright": 0.034,
+   "motion": 0.018,
+   "react": -0.025,
+   "chaos": 0.006
+  },
+  {
+   "name": "Ishan - Anuera",
+   "author": "Ishan",
+   "hue": 73.993,
+   "sat": 0.904,
+   "bright": 0.15,
+   "motion": 0.005,
+   "react": -0.004,
+   "chaos": 0.003
+  },
+  {
+   "name": "Krash - Aenema tweak 4",
+   "author": "Krash",
+   "hue": 226.319,
+   "sat": 0.883,
+   "bright": 0.084,
+   "motion": 0.008,
+   "react": 0.002,
+   "chaos": 0.002
+  },
+  {
+   "name": "Krash - Digital Flame",
+   "author": "Krash",
+   "hue": 3.565,
+   "sat": 0.461,
+   "bright": 0.119,
+   "motion": 0.024,
+   "react": 0.035,
+   "chaos": 0.003
+  },
+  {
+   "name": "Krash - interwoven (nightmare weft)_Phats_I_Wana_Fuck_Some_Candy_Kids... - mash0000 - elevator to the drugged up runaway penthouse",
+   "author": "Krash",
+   "hue": 60,
+   "sat": 0.001,
+   "bright": 0.073,
+   "motion": 0.026,
+   "react": -0.003,
+   "chaos": 0.001
+  },
+  {
+   "name": "Krash - Swelling Spiral 2",
+   "author": "Krash",
+   "hue": 124.48,
+   "sat": 0.313,
+   "bright": 0.138,
+   "motion": 0.04,
+   "react": 0.007,
+   "chaos": 0.007
+  },
+  {
+   "name": "Krash - Vinyl Disk",
+   "author": "Krash",
+   "hue": 39.943,
+   "sat": 0.205,
+   "bright": 0.116,
+   "motion": 0.012,
+   "react": 0.026,
+   "chaos": 0.002
+  },
+  {
+   "name": "Krash & Rovastar - A Million Miles from Earth (Ripple Mix)",
+   "author": "Krash & Rovastar",
+   "hue": 25.007,
+   "sat": 0.953,
+   "bright": 0.084,
+   "motion": 0.004,
+   "react": 0.003,
+   "chaos": 0.004
+  },
+  {
+   "name": "Krash & Rovastar - The Devil Is In The Details",
+   "author": "Krash & Rovastar",
+   "hue": 48.132,
+   "sat": 0.459,
+   "bright": 0.101,
+   "motion": 0.01,
+   "react": 0.014,
+   "chaos": 0.004
+  },
+  {
+   "name": "Krash + Geiss + martin - War Machine (Stahl′s ultimate Mash Mix)",
+   "author": "Krash + Geiss + martin",
+   "hue": 54.067,
+   "sat": 0.008,
+   "bright": 0.035,
+   "motion": 0.022,
+   "react": 0.043,
+   "chaos": 0.002
+  },
+  {
+   "name": "Krash + Illusion + Geiss - Spiral Movement (Reaction Diffusion mix)",
+   "author": "Krash + Illusion + Geiss",
+   "hue": 355.549,
+   "sat": 0.871,
+   "bright": 0.139,
+   "motion": 0.016,
+   "react": -0.007,
+   "chaos": 0.007
+  },
+  {
+   "name": "Krash + TEcHNO - Rhythmic Mantas - Painterly",
+   "author": "Krash + TEcHNO",
+   "hue": 235.657,
+   "sat": 0.96,
+   "bright": 0.114,
+   "motion": 0.04,
+   "react": 0.056,
+   "chaos": 0.011
+  },
+  {
+   "name": "LuX - Life′s Game 1",
+   "author": "LuX",
+   "hue": 19.927,
+   "sat": 0.099,
+   "bright": 0.023,
+   "motion": 0.017,
+   "react": 0.004,
+   "chaos": 0.011
+  },
+  {
+   "name": "LuxXx - Growing Alien Organs ii",
+   "author": "LuxXx",
+   "hue": 6.654,
+   "sat": 0.952,
+   "bright": 0.067,
+   "motion": 0.016,
+   "react": 0.025,
+   "chaos": 0.009
+  },
+  {
+   "name": "LuxXx - Melt Ur Maker I",
+   "author": "LuxXx",
+   "hue": 35.415,
+   "sat": 0.136,
+   "bright": 0.027,
+   "motion": 0.019,
+   "react": 0.006,
+   "chaos": 0.014
+  },
+  {
+   "name": "martin  - mandelbox explorer - high speed demo  [flexi's complex polynomial version]",
+   "author": "martin",
+   "hue": 162,
+   "sat": 0.387,
+   "bright": 0.033,
+   "motion": 0.003,
+   "react": 0,
+   "chaos": 0.001
+  },
+  {
+   "name": "martin - attack of the beast",
+   "author": "martin",
+   "hue": 29.501,
+   "sat": 0.199,
+   "bright": 0.025,
+   "motion": 0.007,
+   "react": 0.006,
+   "chaos": 0.002
+  },
+  {
+   "name": "martin - bring up the big guns",
+   "author": "martin",
+   "hue": 351.618,
+   "sat": 0.242,
+   "bright": 0.021,
+   "motion": 0.025,
+   "react": 0.017,
+   "chaos": 0.026
+  },
+  {
+   "name": "martin - castle in the air",
+   "author": "martin",
+   "hue": 242.532,
+   "sat": 0.412,
+   "bright": 0.168,
+   "motion": 0.004,
+   "react": 0.003,
+   "chaos": 0.001
+  },
+  {
+   "name": "martin - chain breaker xxx",
+   "author": "martin",
+   "hue": 89.878,
+   "sat": 0.453,
+   "bright": 0.048,
+   "motion": 0.006,
+   "react": 0.022,
+   "chaos": 0.002
+  },
+  {
+   "name": "Martin - charisma",
+   "author": "Martin",
+   "hue": 237.125,
+   "sat": 0.453,
+   "bright": 0.061,
+   "motion": 0.01,
+   "react": 0.034,
+   "chaos": 0.006
+  },
+  {
+   "name": "Martin - cool morning",
+   "author": "Martin",
+   "hue": 196.179,
+   "sat": 0.747,
+   "bright": 0.05,
+   "motion": 0.01,
+   "react": 0.001,
+   "chaos": 0.003
+  },
+  {
+   "name": "martin - crystal alley",
+   "author": "martin",
+   "hue": 116.875,
+   "sat": 0.651,
+   "bright": 0.201,
+   "motion": 0.062,
+   "react": 0,
+   "chaos": 0.009
+  },
+  {
+   "name": "martin - dark galaxy",
+   "author": "martin",
+   "hue": 8.855,
+   "sat": 0.671,
+   "bright": 0.121,
+   "motion": 0.023,
+   "react": 0.015,
+   "chaos": 0.027
+  },
+  {
+   "name": "Martin - journey into space",
+   "author": "Martin",
+   "hue": 159.109,
+   "sat": 0.26,
+   "bright": 0.029,
+   "motion": 0.022,
+   "react": 0.019,
+   "chaos": 0.018
+  },
+  {
+   "name": "martin - mandelbox explorer - high speed demo version",
+   "author": "martin",
+   "hue": 330.889,
+   "sat": 0.39,
+   "bright": 0.026,
+   "motion": 0.005,
+   "react": -0.002,
+   "chaos": 0.003
+  },
+  {
+   "name": "martin - mandelbox explorer - high speed demo version [Flexi's diffuse wave] [random mashup]",
+   "author": "martin",
+   "hue": 271.549,
+   "sat": 0.24,
+   "bright": 0.213,
+   "motion": 0.003,
+   "react": 0,
+   "chaos": 0.002
+  },
+  {
+   "name": "martin - moonlight splash",
+   "author": "martin",
+   "hue": 214.831,
+   "sat": 0.268,
+   "bright": 0.095,
+   "motion": 0.02,
+   "react": 0.019,
+   "chaos": 0.004
+  },
+  {
+   "name": "martin - mucus cervix",
+   "author": "martin",
+   "hue": 345.726,
+   "sat": 0.369,
+   "bright": 0.098,
+   "motion": 0.015,
+   "react": -0.007,
+   "chaos": 0.011
+  },
+  {
+   "name": "martin - musicogenic epilepsy",
+   "author": "martin",
+   "hue": 38.185,
+   "sat": 0.154,
+   "bright": 0.057,
+   "motion": 0.034,
+   "react": 0,
+   "chaos": 0.014
+  },
+  {
+   "name": "martin - pendulum in brass ps3",
+   "author": "martin",
+   "hue": 25.911,
+   "sat": 0.133,
+   "bright": 0.025,
+   "motion": 0.006,
+   "react": 0.005,
+   "chaos": 0.006
+  },
+  {
+   "name": "Martin - QBikal - Surface Turbulence",
+   "author": "Martin",
+   "hue": 191.877,
+   "sat": 0.02,
+   "bright": 0.271,
+   "motion": 0.026,
+   "react": -0.02,
+   "chaos": 0.004
+  },
+  {
+   "name": "Martin - QBikal - Surface Turbulence IIb",
+   "author": "Martin",
+   "hue": 204.792,
+   "sat": 0.253,
+   "bright": 0.058,
+   "motion": 0.032,
+   "react": 0,
+   "chaos": 0.021
+  },
+  {
+   "name": "martin - sunset over the river",
+   "author": "martin",
+   "hue": 144.192,
+   "sat": 0.199,
+   "bright": 0.056,
+   "motion": 0.006,
+   "react": 0,
+   "chaos": 0.001
+  },
+  {
+   "name": "martin - the beast",
+   "author": "martin",
+   "hue": 18.086,
+   "sat": 0.478,
+   "bright": 0.02,
+   "motion": 0.002,
+   "react": 0.004,
+   "chaos": 0.001
+  },
+  {
+   "name": "martin - The Bridge of Khazad-Dum",
+   "author": "martin",
+   "hue": 20.603,
+   "sat": 0.846,
+   "bright": 0.098,
+   "motion": 0.012,
+   "react": -0.006,
+   "chaos": 0.005
+  },
+  {
+   "name": "martin - the forge of isengard [flexi′s moebius transformation vs. logarithmic spiral mix]",
+   "author": "martin",
+   "hue": 25.325,
+   "sat": 0.555,
+   "bright": 0.066,
+   "motion": 0.04,
+   "react": -0.015,
+   "chaos": 0.003
+  },
+  {
+   "name": "martin - this beautiful planet",
+   "author": "martin",
+   "hue": 260.351,
+   "sat": 0.276,
+   "bright": 0.079,
+   "motion": 0.013,
+   "react": 0.005,
+   "chaos": 0.008
+  },
+  {
+   "name": "martin - tiling the tube",
+   "author": "martin",
+   "hue": 350.285,
+   "sat": 0.132,
+   "bright": 0.055,
+   "motion": 0.02,
+   "react": 0.015,
+   "chaos": 0.017
+  },
+  {
+   "name": "martin + flexi - bombyx mori mix2 in the beehive",
+   "author": "martin + flexi",
+   "hue": 222.515,
+   "sat": 0.469,
+   "bright": 0.063,
+   "motion": 0.003,
+   "react": -0.014,
+   "chaos": 0.002
+  },
+  {
+   "name": "martin + flexi - diamond cutter [prismaticvortex.com] - camille - i wish i wish i wish i was constrained",
+   "author": "martin + flexi",
+   "hue": 275.522,
+   "sat": 0.502,
+   "bright": 0.053,
+   "motion": 0.015,
+   "react": 0.006,
+   "chaos": 0.007
+  },
+  {
+   "name": "martin + flexi - mandelbox explorer - high speed oversustained bipolar",
+   "author": "martin + flexi",
+   "hue": 195.588,
+   "sat": 0.067,
+   "bright": 0.064,
+   "motion": 0.009,
+   "react": 0.002,
+   "chaos": 0.001
+  },
+  {
+   "name": "martin + flexi - mandelbox stepper mix [kinetic triangles gossip matrix]",
+   "author": "martin + flexi",
+   "hue": 161.557,
+   "sat": 0.264,
+   "bright": 0.236,
+   "motion": 0.019,
+   "react": 0.008,
+   "chaos": 0.003
+  },
+  {
+   "name": "Martin, Fishbrain + Flexi - lasercutting binary trees",
+   "author": "Martin, Fishbrain + Flexi",
+   "hue": 342.689,
+   "sat": 0.335,
+   "bright": 0.126,
+   "motion": 0.011,
+   "react": 0.009,
+   "chaos": 0.002
+  },
+  {
+   "name": "Martin, Fishbrain + Flexi - lasercutting binary trees [random mashup]",
+   "author": "Martin, Fishbrain + Flexi",
+   "hue": 118.141,
+   "sat": 0.225,
+   "bright": 0.11,
+   "motion": 0.005,
+   "react": 0.013,
+   "chaos": 0.001
+  },
+  {
+   "name": "martin, flexi, fishbrain + sto - enterstate",
+   "author": "martin, flexi, fishbrain + sto",
+   "hue": 177.28,
+   "sat": 0.293,
+   "bright": 0.114,
+   "motion": 0.014,
+   "react": 0.013,
+   "chaos": 0.003
+  },
+  {
+   "name": "martin, flexi, fishbrain + sto - enterstate [random mashup 2]",
+   "author": "martin, flexi, fishbrain + sto",
+   "hue": 165.677,
+   "sat": 0.46,
+   "bright": 0.145,
+   "motion": 0.034,
+   "react": -0.032,
+   "chaos": 0.021
+  },
+  {
+   "name": "Mstress - Acoustic Nerve Impulses",
+   "author": "Mstress",
+   "hue": 133.538,
+   "sat": 0.121,
+   "bright": 0.029,
+   "motion": 0.006,
+   "react": 0.005,
+   "chaos": 0.003
+  },
+  {
+   "name": "mstress - Cleaning a path - Painterly Crossfire",
+   "author": "mstress",
+   "hue": 143.339,
+   "sat": 0.095,
+   "bright": 0.034,
+   "motion": 0.012,
+   "react": 0.003,
+   "chaos": 0.005
+  },
+  {
+   "name": "NeW Adam Master Mashup FX 2 Geiss and Zylot - Reaction Diffusion 3 (Overload Mix 2) AMAZING MASUP ",
+   "author": "NeW Adam Master Mashup FX 2 Geiss and Zylot",
+   "hue": 26.807,
+   "sat": 0.334,
+   "bright": 0.162,
+   "motion": 0.101,
+   "react": 0.041,
+   "chaos": 0.034
+  },
+  {
+   "name": "NiGHtHawK - Eye of Gawd_Phat_Spiral_edit_v2",
+   "author": "NiGHtHawK",
+   "hue": 312.508,
+   "sat": 0.1,
+   "bright": 0.069,
+   "motion": 0.009,
+   "react": -0.007,
+   "chaos": 0.004
+  },
+  {
+   "name": "niko radiative bunchess - i′m gonna break my rusty cage, and run (the fuck grunge isn′t the source of anarchy)",
+   "author": "niko radiative bunchess",
+   "hue": 221.015,
+   "sat": 0.975,
+   "bright": 0.061,
+   "motion": 0.008,
+   "react": -0.002,
+   "chaos": 0.002
+  },
+  {
+   "name": "nil - Vortex of Vortices",
+   "author": "nil",
+   "hue": 345.518,
+   "sat": 0.23,
+   "bright": 0.565,
+   "motion": 0.042,
+   "react": -0.028,
+   "chaos": 0.04
+  },
+  {
+   "name": "ORB - Acid Sunrise",
+   "author": "ORB",
+   "hue": 23.578,
+   "sat": 0.519,
+   "bright": 0.039,
+   "motion": 0.004,
+   "react": -0.014,
+   "chaos": 0.001
+  },
+  {
+   "name": "ORB - Blue Emotion",
+   "author": "ORB",
+   "hue": 308.126,
+   "sat": 0.657,
+   "bright": 0.064,
+   "motion": 0.019,
+   "react": 0.021,
+   "chaos": 0.012
+  },
+  {
+   "name": "ORB - Crysal Storm ",
+   "author": "ORB",
+   "hue": 308.226,
+   "sat": 0.748,
+   "bright": 0.048,
+   "motion": 0.013,
+   "react": -0.007,
+   "chaos": 0.02
+  },
+  {
+   "name": "ORB - Lava Lamp",
+   "author": "ORB",
+   "hue": 34.812,
+   "sat": 0.997,
+   "bright": 0.04,
+   "motion": 0.005,
+   "react": 0,
+   "chaos": 0.002
+  },
+  {
+   "name": "ORB - Magma Pool",
+   "author": "ORB",
+   "hue": 16.222,
+   "sat": 0.539,
+   "bright": 0.086,
+   "motion": 0.021,
+   "react": -0.008,
+   "chaos": 0.012
+  },
+  {
+   "name": "ORB - Quicksand",
+   "author": "ORB",
+   "hue": 147.622,
+   "sat": 0.572,
+   "bright": 0.704,
+   "motion": 0.038,
+   "react": -0.012,
+   "chaos": 0.036
+  },
+  {
+   "name": "ORB - Slippery Snakes",
+   "author": "ORB",
+   "hue": 93.065,
+   "sat": 0.122,
+   "bright": 0.023,
+   "motion": 0.021,
+   "react": -0.008,
+   "chaos": 0.014
+  },
+  {
+   "name": "orb - toxic goo",
+   "author": "orb",
+   "hue": 20.438,
+   "sat": 0.29,
+   "bright": 0.517,
+   "motion": 0.035,
+   "react": 0.019,
+   "chaos": 0.052
+  },
+  {
+   "name": "Phat + Eo.S. - Data_swimmer",
+   "author": "Phat + Eo.S.",
+   "hue": 135.07,
+   "sat": 0.661,
+   "bright": 0.318,
+   "motion": 0.055,
+   "react": 0.003,
+   "chaos": 0.016
+  },
+  {
+   "name": "phat + Eo.S. - PeopleWhoEatAcid_phatColoursV2",
+   "author": "phat + Eo.S.",
+   "hue": 103.001,
+   "sat": 0.682,
+   "bright": 0.287,
+   "motion": 0.071,
+   "react": 0.055,
+   "chaos": 0.072
+  },
+  {
+   "name": "phat + Eo.S. - single cel angel birthpoints",
+   "author": "phat + Eo.S.",
+   "hue": 81.664,
+   "sat": 0.312,
+   "bright": 0.077,
+   "motion": 0.008,
+   "react": 0.008,
+   "chaos": 0.002
+  },
+  {
+   "name": "Phat + Eo.S. - Swim_waveform_mix",
+   "author": "Phat + Eo.S.",
+   "hue": 322.424,
+   "sat": 0.598,
+   "bright": 0.155,
+   "motion": 0.041,
+   "react": 0.021,
+   "chaos": 0.007
+  },
+  {
+   "name": "phat + Eo.S. - TesellatingFractal_Mix",
+   "author": "phat + Eo.S.",
+   "hue": 56.36,
+   "sat": 0.989,
+   "bright": 0.111,
+   "motion": 0.007,
+   "react": 0.002,
+   "chaos": 0.001
+  },
+  {
+   "name": "phat + Eo.S. - TesellatingFractal_Mix3",
+   "author": "phat + Eo.S.",
+   "hue": 68.587,
+   "sat": 0.996,
+   "bright": 0.134,
+   "motion": 0.009,
+   "react": 0.006,
+   "chaos": 0.002
+  },
+  {
+   "name": "Phat_Eo.S. Eyes_spiral_mix",
+   "author": "Phat_Eo.S. Eyes_spiral_mix",
+   "hue": 42.213,
+   "sat": 0.492,
+   "bright": 0.083,
+   "motion": 0.004,
+   "react": 0.003,
+   "chaos": 0.002
+  },
+  {
+   "name": "Phat_Eo.S. rainbow bubble_mid3-f. me dood",
+   "author": "Phat_Eo.S. rainbow bubble_mid3-f. me dood",
+   "hue": 159.236,
+   "sat": 0.965,
+   "bright": 0.077,
+   "motion": 0.005,
+   "react": 0.003,
+   "chaos": 0.001
+  },
+  {
+   "name": "phat_RippleNebula_update - mash0000 - the colors of autumn invoke dumpster dives",
+   "author": "phat_RippleNebula_update",
+   "hue": 331.694,
+   "sat": 0.421,
+   "bright": 0.163,
+   "motion": 0.027,
+   "react": 0.002,
+   "chaos": 0.012
+  },
+  {
+   "name": "phat_RippleNebula99h-eo.s. mod_mod6",
+   "author": "phat_RippleNebula99h-eo.s. mod_mod6",
+   "hue": 267.823,
+   "sat": 0.013,
+   "bright": 0.459,
+   "motion": 0.002,
+   "react": -0.012,
+   "chaos": 0.001
+  },
+  {
+   "name": "Phat_Rovastar - What_does_your_soul_look_like9m",
+   "author": "Phat_Rovastar",
+   "hue": 71.192,
+   "sat": 0,
+   "bright": 0.32,
+   "motion": 0.014,
+   "react": -0.004,
+   "chaos": 0.005
+  },
+  {
+   "name": "Phat_Rovastar_Eo.S. square_faces_v2",
+   "author": "Phat_Rovastar_Eo.S. square_faces_v2",
+   "hue": 233.88,
+   "sat": 0.933,
+   "bright": 0.069,
+   "motion": 0.019,
+   "react": 0.006,
+   "chaos": 0.009
+  },
+  {
+   "name": "Phat_Zylot_Eo.S. spiral_faces_v2",
+   "author": "Phat_Zylot_Eo.S. spiral_faces_v2",
+   "hue": 81.496,
+   "sat": 0.473,
+   "bright": 0.375,
+   "motion": 0.039,
+   "react": -0.009,
+   "chaos": 0.008
+  },
+  {
+   "name": "Phat_Zylot_Eo.S. spiral_Movements_Beatle_square.mix",
+   "author": "Phat_Zylot_Eo.S. spiral_Movements_Beatle_square.mix",
+   "hue": 80.102,
+   "sat": 0.421,
+   "bright": 0.575,
+   "motion": 0.009,
+   "react": -0.013,
+   "chaos": 0.005
+  },
+  {
+   "name": "Phat_Zylot_Eo.S. square_faces_v2_alt_colours",
+   "author": "Phat_Zylot_Eo.S. square_faces_v2_alt_colours",
+   "hue": 251.206,
+   "sat": 0.78,
+   "bright": 0.039,
+   "motion": 0.007,
+   "react": 0.003,
+   "chaos": 0.001
+  },
+  {
+   "name": "Phat_Zylot_Eo.S. work with lines",
+   "author": "Phat_Zylot_Eo.S. work with lines",
+   "hue": 284.728,
+   "sat": 0.978,
+   "bright": 0.054,
+   "motion": 0.002,
+   "react": 0.004,
+   "chaos": 0.001
+  },
+  {
+   "name": "Phat_Zylot_Eo.S._Krash I_hope_someone_will_see_this_triping_v2b",
+   "author": "Phat_Zylot_Eo.S._Krash I_hope_someone_will_see_this_triping_v2b",
+   "hue": 267.35,
+   "sat": 0.785,
+   "bright": 0.073,
+   "motion": 0.005,
+   "react": 0,
+   "chaos": 0.002
+  },
+  {
+   "name": "PieturP - triptrap_(getting_concrete_visions_through_a_diafragma_version)",
+   "author": "PieturP",
+   "hue": 356.753,
+   "sat": 0.034,
+   "bright": 0.075,
+   "motion": 0.014,
+   "react": 0.015,
+   "chaos": 0.004
+  },
+  {
+   "name": "raron - fourth state of Milkdrop 2",
+   "author": "raron",
+   "hue": 46.772,
+   "sat": 0.532,
+   "bright": 0.086,
+   "motion": 0.009,
+   "react": 0,
+   "chaos": 0.005
+  },
+  {
+   "name": "rce-ordinary + flexi - far away distance (custom beat detection + bipolar colour ghost mix)",
+   "author": "rce-ordinary + flexi",
+   "hue": 27.313,
+   "sat": 0.827,
+   "bright": 0.12,
+   "motion": 0.013,
+   "react": -0.009,
+   "chaos": 0.002
+  },
+  {
+   "name": "Reenen - phoenix",
+   "author": "Reenen",
+   "hue": 30.872,
+   "sat": 0.058,
+   "bright": 0.138,
+   "motion": 0.009,
+   "react": 0.013,
+   "chaos": 0.004
+  },
+  {
+   "name": "Reenen Geiss - Triple Feedback_phat_edit",
+   "author": "Reenen Geiss",
+   "hue": 220.478,
+   "sat": 0.354,
+   "bright": 0.283,
+   "motion": 0.012,
+   "react": -0.004,
+   "chaos": 0.006
+  },
+  {
+   "name": "Rovastar - A Million Miles From Earth (Wormhole Mix)",
+   "author": "Rovastar",
+   "hue": 20.22,
+   "sat": 0.82,
+   "bright": 0.163,
+   "motion": 0.012,
+   "react": 0.036,
+   "chaos": 0.012
+  },
+  {
+   "name": "Rovastar - Altars Of Harlequin′s Madness",
+   "author": "Rovastar",
+   "hue": 66.141,
+   "sat": 0.689,
+   "bright": 0.24,
+   "motion": 0.011,
+   "react": 0.025,
+   "chaos": 0.003
+  },
+  {
+   "name": "Rovastar - Altars Of Harlequin′s Madness (Dark Disorder Mix)",
+   "author": "Rovastar",
+   "hue": 99.314,
+   "sat": 0.14,
+   "bright": 0.056,
+   "motion": 0.004,
+   "react": -0.001,
+   "chaos": 0.002
+  },
+  {
+   "name": "Rovastar - Cerebral Parasites (Attack Mix)",
+   "author": "Rovastar",
+   "hue": 243.042,
+   "sat": 0.398,
+   "bright": 0.17,
+   "motion": 0.007,
+   "react": 0.026,
+   "chaos": 0.002
+  },
+  {
+   "name": "Rovastar - Cosmic Echoes 2",
+   "author": "Rovastar",
+   "hue": 59.367,
+   "sat": 0.404,
+   "bright": 0.204,
+   "motion": 0.03,
+   "react": 0.024,
+   "chaos": 0.008
+  },
+  {
+   "name": "Rovastar - Eye On Reality (Mega 3 Mix)",
+   "author": "Rovastar",
+   "hue": 141.057,
+   "sat": 0.137,
+   "bright": 0.104,
+   "motion": 0.046,
+   "react": 0.013,
+   "chaos": 0.012
+  },
+  {
+   "name": "Rovastar - Fractopia (Galaxy Swirl Mix)",
+   "author": "Rovastar",
+   "hue": 284.823,
+   "sat": 0.522,
+   "bright": 0.212,
+   "motion": 0.009,
+   "react": -0.005,
+   "chaos": 0.005
+  },
+  {
+   "name": "Rovastar - Hallucinogenic Pyramids (Beat Time Mix)",
+   "author": "Rovastar",
+   "hue": 5.851,
+   "sat": 0.758,
+   "bright": 0.148,
+   "motion": 0.009,
+   "react": 0.004,
+   "chaos": 0.002
+  },
+  {
+   "name": "Rovastar - Harlequin′s & Jester′s Dual Delight (Chaotic Nightmare Mix)",
+   "author": "Rovastar",
+   "hue": 51.366,
+   "sat": 0.65,
+   "bright": 0.339,
+   "motion": 0.031,
+   "react": -0.017,
+   "chaos": 0.018
+  },
+  {
+   "name": "Rovastar - Harlequin′s Dynamic Fractal 3",
+   "author": "Rovastar",
+   "hue": 65.819,
+   "sat": 0.372,
+   "bright": 0.062,
+   "motion": 0.013,
+   "react": 0.015,
+   "chaos": 0.009
+  },
+  {
+   "name": "Rovastar - Harlequin′s Liquid Dragon",
+   "author": "Rovastar",
+   "hue": 266.196,
+   "sat": 0.616,
+   "bright": 0.32,
+   "motion": 0.03,
+   "react": 0.013,
+   "chaos": 0.014
+  },
+  {
+   "name": "Rovastar - Hyperspace (Hyper Speed Mix)",
+   "author": "Rovastar",
+   "hue": 19.783,
+   "sat": 0.037,
+   "bright": 0.07,
+   "motion": 0.003,
+   "react": 0.029,
+   "chaos": 0.006
+  },
+  {
+   "name": "Rovastar - Inner Thoughts (Distant Memories Mix)",
+   "author": "Rovastar",
+   "hue": 7.983,
+   "sat": 0.797,
+   "bright": 0.225,
+   "motion": 0.006,
+   "react": 0.047,
+   "chaos": 0.006
+  },
+  {
+   "name": "Rovastar - Jester′s Surreal Tornado (Further Vortex Mix)",
+   "author": "Rovastar",
+   "hue": 317.717,
+   "sat": 0.496,
+   "bright": 0.261,
+   "motion": 0.026,
+   "react": 0.023,
+   "chaos": 0.03
+  },
+  {
+   "name": "Rovastar - Oozing Resistance",
+   "author": "Rovastar",
+   "hue": 4.939,
+   "sat": 0.534,
+   "bright": 0.157,
+   "motion": 0.008,
+   "react": -0.001,
+   "chaos": 0.004
+  },
+  {
+   "name": "Rovastar - Sunflower Passion",
+   "author": "Rovastar",
+   "hue": 59.931,
+   "sat": 0.988,
+   "bright": 0.915,
+   "motion": 0.002,
+   "react": -0.011,
+   "chaos": 0.001
+  },
+  {
+   "name": "Rovastar - Torrid Tales",
+   "author": "Rovastar",
+   "hue": 4.33,
+   "sat": 0.602,
+   "bright": 0.396,
+   "motion": 0.013,
+   "react": 0.007,
+   "chaos": 0.005
+  },
+  {
+   "name": "Rovastar - VooV′s Naked Movement (Pincushion Mix)",
+   "author": "Rovastar",
+   "hue": 129.656,
+   "sat": 0.091,
+   "bright": 0.138,
+   "motion": 0.01,
+   "react": 0.022,
+   "chaos": 0.004
+  },
+  {
+   "name": "Rovastar + Che - Asylum Animations",
+   "author": "Rovastar + Che",
+   "hue": 91.454,
+   "sat": 0.225,
+   "bright": 0.037,
+   "motion": 0.02,
+   "react": 0.026,
+   "chaos": 0.008
+  },
+  {
+   "name": "Rovastar + Geiss - Approach (Vectrip Mix) - painterly",
+   "author": "Rovastar + Geiss",
+   "hue": 199.362,
+   "sat": 0.525,
+   "bright": 0.059,
+   "motion": 0.01,
+   "react": -0.009,
+   "chaos": 0.003
+  },
+  {
+   "name": "Rovastar + Geiss - Hurricane Nightmare (Relief Mix)",
+   "author": "Rovastar + Geiss",
+   "hue": 131.088,
+   "sat": 0.218,
+   "bright": 0.18,
+   "motion": 0.029,
+   "react": -0.01,
+   "chaos": 0.009
+  },
+  {
+   "name": "Rovastar + Geiss - Tripmaker (square tiles remix)",
+   "author": "Rovastar + Geiss",
+   "hue": 352.695,
+   "sat": 0.439,
+   "bright": 0.067,
+   "motion": 0.002,
+   "react": 0,
+   "chaos": 0.003
+  },
+  {
+   "name": "Rovastar + Loadus + Geiss - FractalDrop (Insanity Mix)",
+   "author": "Rovastar + Loadus + Geiss",
+   "hue": 347.158,
+   "sat": 0.774,
+   "bright": 0.31,
+   "motion": 0.038,
+   "react": 0.009,
+   "chaos": 0.023
+  },
+  {
+   "name": "Rovastar + Telek - Altars of Madness (Rolling Oceans Mix)",
+   "author": "Rovastar + Telek",
+   "hue": 184.865,
+   "sat": 0.559,
+   "bright": 0.404,
+   "motion": 0.039,
+   "react": 0.014,
+   "chaos": 0.012
+  },
+  {
+   "name": "Rovastar + Unchained - Oddball World",
+   "author": "Rovastar + Unchained",
+   "hue": 197.872,
+   "sat": 0.929,
+   "bright": 0.364,
+   "motion": 0.034,
+   "react": 0.029,
+   "chaos": 0.013
+  },
+  {
+   "name": "Rovastar + Unchained - Voodoo Chess Magnet (Everglow Mix)",
+   "author": "Rovastar + Unchained",
+   "hue": 186.117,
+   "sat": 0.784,
+   "bright": 0.161,
+   "motion": 0.021,
+   "react": -0.009,
+   "chaos": 0.016
+  },
+  {
+   "name": "Rovastar + Zylot - Narell′s Fever",
+   "author": "Rovastar + Zylot",
+   "hue": 164.989,
+   "sat": 0.607,
+   "bright": 0.385,
+   "motion": 0.026,
+   "react": 0.007,
+   "chaos": 0.01
+  },
+  {
+   "name": "Rovastar + Zylot - Urza′s Revenge",
+   "author": "Rovastar + Zylot",
+   "hue": 245.911,
+   "sat": 0.418,
+   "bright": 0.658,
+   "motion": 0.068,
+   "react": -0.059,
+   "chaos": 0.014
+  },
+  {
+   "name": "Rovastar&StudioMusic-MoreCherish",
+   "author": "Rovastar&StudioMusic-MoreCherish",
+   "hue": 330.539,
+   "sat": 0.956,
+   "bright": 0.071,
+   "motion": 0.007,
+   "react": -0.021,
+   "chaos": 0.002
+  },
+  {
+   "name": "Rozzor - Learning Curve (Invert Tweak)",
+   "author": "Rozzor",
+   "hue": 54.694,
+   "sat": 0.294,
+   "bright": 0.547,
+   "motion": 0.014,
+   "react": 0,
+   "chaos": 0.011
+  },
+  {
+   "name": "Rozzor & Che - Inside The House Of Nil",
+   "author": "Rozzor & Che",
+   "hue": 270.932,
+   "sat": 0.762,
+   "bright": 0.236,
+   "motion": 0.011,
+   "react": 0.001,
+   "chaos": 0.006
+  },
+  {
+   "name": "Rozzor & Esotic - PPL (NWI) Mandala Chill Color Reactive",
+   "author": "Rozzor & Esotic",
+   "hue": 326.276,
+   "sat": 0.507,
+   "bright": 0.043,
+   "motion": 0.007,
+   "react": 0.01,
+   "chaos": 0.011
+  },
+  {
+   "name": "Rozzor & Esotic - PPL (NWI) Mandala Chill Color Reactive Texture Tweaked",
+   "author": "Rozzor & Esotic",
+   "hue": 289.649,
+   "sat": 0.711,
+   "bright": 0.113,
+   "motion": 0.013,
+   "react": 0.01,
+   "chaos": 0.016
+  },
+  {
+   "name": "Rozzor & StudioMusic - Vertigyny (Geiss Shape Mod)",
+   "author": "Rozzor & StudioMusic",
+   "hue": 67.162,
+   "sat": 0.791,
+   "bright": 0.134,
+   "motion": 0.016,
+   "react": -0.008,
+   "chaos": 0.018
+  },
+  {
+   "name": "Rozzor & Unchained - Crescat Scientia, Vita Excolatur",
+   "author": "Rozzor & Unchained",
+   "hue": 275.038,
+   "sat": 0.651,
+   "bright": 0.126,
+   "motion": 0.021,
+   "react": 0.002,
+   "chaos": 0.017
+  },
+  {
+   "name": "sawtooth grin roam",
+   "author": "sawtooth grin roam",
+   "hue": 170.268,
+   "sat": 0.435,
+   "bright": 0.128,
+   "motion": 0.045,
+   "react": 0.027,
+   "chaos": 0.018
+  },
+  {
+   "name": "ShadowHarlequin - mashup - Satin Sunburst (Neon Tokyo Megamix) v1",
+   "author": "ShadowHarlequin",
+   "hue": 299.769,
+   "sat": 0.063,
+   "bright": 0.046,
+   "motion": 0.01,
+   "react": -0.002,
+   "chaos": 0.007
+  },
+  {
+   "name": "shifter - brain coral (non-inverted)",
+   "author": "shifter",
+   "hue": 45.03,
+   "sat": 0.329,
+   "bright": 0.054,
+   "motion": 0.003,
+   "react": -0.004,
+   "chaos": 0.001
+  },
+  {
+   "name": "shifter - dark tides bdrv mix",
+   "author": "shifter",
+   "hue": 265.848,
+   "sat": 0.419,
+   "bright": 0.025,
+   "motion": 0.006,
+   "react": -0.001,
+   "chaos": 0.001
+  },
+  {
+   "name": "shifter - dark tides bdrv mix 2c",
+   "author": "shifter",
+   "hue": 268.63,
+   "sat": 0.418,
+   "bright": 0.039,
+   "motion": 0.013,
+   "react": 0.01,
+   "chaos": 0.001
+  },
+  {
+   "name": "shifter - feathers (angel wings)",
+   "author": "shifter",
+   "hue": 42.299,
+   "sat": 0.107,
+   "bright": 0.7,
+   "motion": 0.016,
+   "react": 0.026,
+   "chaos": 0.01
+  },
+  {
+   "name": "shifter - feathers (angel wings)_phat_remix relief 2",
+   "author": "shifter",
+   "hue": 84.286,
+   "sat": 0.148,
+   "bright": 0.023,
+   "motion": 0.004,
+   "react": 0.008,
+   "chaos": 0.001
+  },
+  {
+   "name": "shifter - fractal grinder",
+   "author": "shifter",
+   "hue": 305.964,
+   "sat": 0.122,
+   "bright": 0.073,
+   "motion": 0.002,
+   "react": -0.01,
+   "chaos": 0.001
+  },
+  {
+   "name": "shifter - lattice",
+   "author": "shifter",
+   "hue": 18.927,
+   "sat": 0.119,
+   "bright": 0.734,
+   "motion": 0.057,
+   "react": 0.008,
+   "chaos": 0.004
+  },
+  {
+   "name": "shifter - lazerspecs_phat_edit",
+   "author": "shifter",
+   "hue": 239.137,
+   "sat": 0.082,
+   "bright": 0.624,
+   "motion": 0.055,
+   "react": 0.036,
+   "chaos": 0.007
+  },
+  {
+   "name": "shifter - morphid",
+   "author": "shifter",
+   "hue": 78.651,
+   "sat": 0.044,
+   "bright": 0.588,
+   "motion": 0.027,
+   "react": 0.013,
+   "chaos": 0.016
+  },
+  {
+   "name": "shifter - tumbling cubes (ripples)",
+   "author": "shifter",
+   "hue": 290.495,
+   "sat": 0.294,
+   "bright": 0.208,
+   "motion": 0.016,
+   "react": 0.016,
+   "chaos": 0.002
+  },
+  {
+   "name": "shifter - tumbling cubes (ripples) Phat_parallel_planes_mix",
+   "author": "shifter",
+   "hue": 193.554,
+   "sat": 0.385,
+   "bright": 0.381,
+   "motion": 0.047,
+   "react": 0.042,
+   "chaos": 0.009
+  },
+  {
+   "name": "shifter - urchin mod",
+   "author": "shifter",
+   "hue": 62.122,
+   "sat": 0.331,
+   "bright": 0.142,
+   "motion": 0.021,
+   "react": 0.032,
+   "chaos": 0.013
+  },
+  {
+   "name": "shifter + Eo.S + Phat - Blob",
+   "author": "shifter + Eo.S + Phat",
+   "hue": 182.064,
+   "sat": 0.643,
+   "bright": 0.097,
+   "motion": 0.02,
+   "react": 0.034,
+   "chaos": 0.008
+  },
+  {
+   "name": "Stahlregen - Spiral Beats (Fluctuating Flowers)",
+   "author": "Stahlregen",
+   "hue": 183.479,
+   "sat": 0.558,
+   "bright": 0.094,
+   "motion": 0.012,
+   "react": 0.032,
+   "chaos": 0.016
+  },
+  {
+   "name": "Stahlregen & AdamFx + Eo.S + Flexi + Geiss + Phat + Rovastar + Zylot - Fractopia Kaleidoscope (MashUp 32 RMX)",
+   "author": "Stahlregen & AdamFx + Eo.S + Flexi + Geiss + Phat + Rovastar + Zylot",
+   "hue": 269.809,
+   "sat": 0.729,
+   "bright": 0.065,
+   "motion": 0.012,
+   "react": 0.004,
+   "chaos": 0.007
+  },
+  {
+   "name": "Stahlregen & Bmelgren + Geiss + Krash + PieturP + TEcHno + Zylot - MashUp 4",
+   "author": "Stahlregen & Bmelgren + Geiss + Krash + PieturP + TEcHno + Zylot",
+   "hue": 287.362,
+   "sat": 0.077,
+   "bright": 0.124,
+   "motion": 0.018,
+   "react": 0.056,
+   "chaos": 0.004
+  },
+  {
+   "name": "Stahlregen & Boz + Eo.S + Geiss + Phat + Rovastar + Zylot - Machine Code (Relief Block Mix)",
+   "author": "Stahlregen & Boz + Eo.S + Geiss + Phat + Rovastar + Zylot",
+   "hue": 60,
+   "sat": 0.302,
+   "bright": 0.129,
+   "motion": 0.058,
+   "react": -0.004,
+   "chaos": 0.004
+  },
+  {
+   "name": "Stahlregen & Boz + Eo.S + Geiss + Phat + Rovastar + Zylot - Machine Code [Jelly]",
+   "author": "Stahlregen & Boz + Eo.S + Geiss + Phat + Rovastar + Zylot",
+   "hue": 77.757,
+   "sat": 0.794,
+   "bright": 0.153,
+   "motion": 0.081,
+   "react": 0.029,
+   "chaos": 0.015
+  },
+  {
+   "name": "Stahlregen & fiSHbRaiN + flexi + Geiss + shifter - Stonecraft (Beetle Relief mix) (Reverse Jelly 2c)",
+   "author": "Stahlregen & fiSHbRaiN + flexi + Geiss + shifter",
+   "hue": 109.62,
+   "sat": 0.565,
+   "bright": 0.253,
+   "motion": 0.033,
+   "react": 0.001,
+   "chaos": 0.053
+  },
+  {
+   "name": "Stahlregen & Flexi + Geiss + Rovastar + Unchained - Blurred Echoes (reflecto fucukp)",
+   "author": "Stahlregen & Flexi + Geiss + Rovastar + Unchained",
+   "hue": 354.719,
+   "sat": 0.154,
+   "bright": 0.055,
+   "motion": 0.004,
+   "react": 0.008,
+   "chaos": 0.001
+  },
+  {
+   "name": "Stahlregen & Geiss + Eo.S + Martin + Rovastar - Halcyon Jelly Skin",
+   "author": "Stahlregen & Geiss + Eo.S + Martin + Rovastar",
+   "hue": 114.212,
+   "sat": 0.632,
+   "bright": 0.089,
+   "motion": 0.041,
+   "react": 0.019,
+   "chaos": 0.022
+  },
+  {
+   "name": "Stahlregen & Geiss + Rovastar - Fields of Flowers (distorted)",
+   "author": "Stahlregen & Geiss + Rovastar",
+   "hue": 132.38,
+   "sat": 0.092,
+   "bright": 0.083,
+   "motion": 0.011,
+   "react": -0.043,
+   "chaos": 0.003
+  },
+  {
+   "name": "Stahlregen + Flexi - gimme color (Bubble Spinner Mix)",
+   "author": "Stahlregen + Flexi",
+   "hue": 235.837,
+   "sat": 0.273,
+   "bright": 0.106,
+   "motion": 0.035,
+   "react": 0.019,
+   "chaos": 0.003
+  },
+  {
+   "name": "Stahlregen + Flexi - psychotic flower gelatine burst",
+   "author": "Stahlregen + Flexi",
+   "hue": 291.424,
+   "sat": 0.755,
+   "bright": 0.023,
+   "motion": 0.005,
+   "react": 0.005,
+   "chaos": 0.001
+  },
+  {
+   "name": "Stahlregen + Geiss + Martin - Ouboros (Metal Finish 2)",
+   "author": "Stahlregen + Geiss + Martin",
+   "hue": 60.559,
+   "sat": 0.093,
+   "bright": 0.076,
+   "motion": 0.018,
+   "react": 0.01,
+   "chaos": 0.001
+  },
+  {
+   "name": "Stahlregen + Unchained - Psychedelic Flower Kung Fu (Corrupt)",
+   "author": "Stahlregen + Unchained",
+   "hue": 57.586,
+   "sat": 0.118,
+   "bright": 0.707,
+   "motion": 0.017,
+   "react": -0.007,
+   "chaos": 0.008
+  },
+  {
+   "name": "Stuttler - LSD Bloom",
+   "author": "Stuttler",
+   "hue": 180,
+   "sat": 0.66,
+   "bright": 0.117,
+   "motion": 0.003,
+   "react": -0.017,
+   "chaos": 0.001
+  },
+  {
+   "name": "suksma - flexi - lorenz chaser - heretical tribal necklace",
+   "author": "suksma",
+   "hue": 260.176,
+   "sat": 0.035,
+   "bright": 0.068,
+   "motion": 0.027,
+   "react": 0.041,
+   "chaos": 0.015
+  },
+  {
+   "name": "suksma - gaeomaentaec - log smell 2 - steaming wienies2",
+   "author": "suksma",
+   "hue": 332.606,
+   "sat": 0.663,
+   "bright": 0.027,
+   "motion": 0.017,
+   "react": 0.017,
+   "chaos": 0.008
+  },
+  {
+   "name": "suksma - heretical crosscut playpen",
+   "author": "suksma",
+   "hue": 1.104,
+   "sat": 0.313,
+   "bright": 0.023,
+   "motion": 0.007,
+   "react": 0.003,
+   "chaos": 0.001
+  },
+  {
+   "name": "suksma - more pathetic attempts justifying my ignominious end - waning anti-tunneled",
+   "author": "suksma",
+   "hue": 32.817,
+   "sat": 0.54,
+   "bright": 0.183,
+   "motion": 0.043,
+   "react": 0.007,
+   "chaos": 0.031
+  },
+  {
+   "name": "suksma - penattrition",
+   "author": "suksma",
+   "hue": 297.211,
+   "sat": 0.46,
+   "bright": 0.255,
+   "motion": 0.03,
+   "react": 0.01,
+   "chaos": 0.009
+  },
+  {
+   "name": "suksma - vector exp 1 - couldn′t not",
+   "author": "suksma",
+   "hue": 223.545,
+   "sat": 0.407,
+   "bright": 0.195,
+   "motion": 0.031,
+   "react": 0.003,
+   "chaos": 0.011
+  },
+  {
+   "name": "suksma - water cooled red uranium vs dotes - freeenergynow.net",
+   "author": "suksma",
+   "hue": 338.283,
+   "sat": 0.433,
+   "bright": 0.058,
+   "motion": 0.028,
+   "react": 0.01,
+   "chaos": 0.008
+  },
+  {
+   "name": "suksma + aderrasi martin raron geiss - are you mad at me",
+   "author": "suksma + aderrasi martin raron geiss",
+   "hue": 241.139,
+   "sat": 0.413,
+   "bright": 0.092,
+   "motion": 0.018,
+   "react": 0.012,
+   "chaos": 0.003
+  },
+  {
+   "name": "suksma + Flexi - full tilt FSAA demo - dither color tweak",
+   "author": "suksma + Flexi",
+   "hue": 157.125,
+   "sat": 0.338,
+   "bright": 0.023,
+   "motion": 0.004,
+   "react": 0.008,
+   "chaos": 0.002
+  },
+  {
+   "name": "suksma + raron - satanizer - kissing chickens (multi-beak) - mash0002",
+   "author": "suksma + raron",
+   "hue": 59.947,
+   "sat": 0.215,
+   "bright": 0.738,
+   "motion": 0.053,
+   "react": 0.013,
+   "chaos": 0.011
+  },
+  {
+   "name": "TEcHNO + SandStorm - Psychodelic Highway",
+   "author": "TEcHNO + SandStorm",
+   "hue": 303.783,
+   "sat": 0.321,
+   "bright": 0.135,
+   "motion": 0.014,
+   "react": 0.008,
+   "chaos": 0.008
+  },
+  {
+   "name": "Telek - City Helix Lattice",
+   "author": "Telek",
+   "hue": 323.6,
+   "sat": 0.844,
+   "bright": 0.218,
+   "motion": 0.037,
+   "react": 0.109,
+   "chaos": 0.018
+  },
+  {
+   "name": "Telek - Sine Wave",
+   "author": "Telek",
+   "hue": 36.264,
+   "sat": 0.884,
+   "bright": 0.189,
+   "motion": 0.026,
+   "react": -0.007,
+   "chaos": 0.004
+  },
+  {
+   "name": "Tripgnosis - spunn",
+   "author": "Tripgnosis",
+   "hue": 186.353,
+   "sat": 0.232,
+   "bright": 0.114,
+   "motion": 0.026,
+   "react": 0.012,
+   "chaos": 0.013
+  },
+  {
+   "name": "Tschoey - Music Flower",
+   "author": "Tschoey",
+   "hue": 179.103,
+   "sat": 0.283,
+   "bright": 0.068,
+   "motion": 0.027,
+   "react": 0.014,
+   "chaos": 0.015
+  },
+  {
+   "name": "Unchained - Ghostlight Whisper",
+   "author": "Unchained",
+   "hue": 150.403,
+   "sat": 0.234,
+   "bright": 0.213,
+   "motion": 0.041,
+   "react": 0.027,
+   "chaos": 0.011
+  },
+  {
+   "name": "Unchained - Hard Science",
+   "author": "Unchained",
+   "hue": 8.641,
+   "sat": 0.338,
+   "bright": 0.051,
+   "motion": 0.011,
+   "react": -0.018,
+   "chaos": 0.017
+  },
+  {
+   "name": "Unchained - Unified Drag 2",
+   "author": "Unchained",
+   "hue": 244.688,
+   "sat": 0.43,
+   "bright": 0.067,
+   "motion": 0.017,
+   "react": 0.003,
+   "chaos": 0.012
+  },
+  {
+   "name": "Unchained & Rovastar - Luckless",
+   "author": "Unchained & Rovastar",
+   "hue": 234.981,
+   "sat": 0.764,
+   "bright": 0.097,
+   "motion": 0.01,
+   "react": 0.005,
+   "chaos": 0.004
+  },
+  {
+   "name": "Unchained vs Rovastar vs Zylot - Tripmaker (Trip machine)",
+   "author": "Unchained vs Rovastar vs Zylot",
+   "hue": 179.262,
+   "sat": 0.788,
+   "bright": 0.051,
+   "motion": 0.01,
+   "react": 0.013,
+   "chaos": 0.007
+  },
+  {
+   "name": "Various - Fire and Brimstone",
+   "author": "Various",
+   "hue": 44.248,
+   "sat": 0.884,
+   "bright": 0.523,
+   "motion": 0.019,
+   "react": -0.021,
+   "chaos": 0.003
+  },
+  {
+   "name": "Various artists - Goo",
+   "author": "Various artists",
+   "hue": 232.746,
+   "sat": 0.436,
+   "bright": 0.041,
+   "motion": 0.008,
+   "react": -0.006,
+   "chaos": 0.005
+  },
+  {
+   "name": "yin - 030 - Dance with the ocean",
+   "author": "yin",
+   "hue": 226.967,
+   "sat": 0.98,
+   "bright": 0.092,
+   "motion": 0.005,
+   "react": -0.019,
+   "chaos": 0.001
+  },
+  {
+   "name": "yin - 100 - Through the ether - Bitcore Tweak",
+   "author": "yin",
+   "hue": 210.451,
+   "sat": 0.867,
+   "bright": 0.1,
+   "motion": 0.03,
+   "react": -0.007,
+   "chaos": 0.021
+  },
+  {
+   "name": "yin - 160 - Controversial",
+   "author": "yin",
+   "hue": 252.451,
+   "sat": 0.75,
+   "bright": 0.078,
+   "motion": 0.012,
+   "react": -0.004,
+   "chaos": 0.011
+  },
+  {
+   "name": "yin - 250 - Artificial poles of the continuum",
+   "author": "yin",
+   "hue": 233.402,
+   "sat": 0.597,
+   "bright": 0.024,
+   "motion": 0.004,
+   "react": 0.003,
+   "chaos": 0.001
+  },
+  {
+   "name": "yin - 290 - Sonic brainstorm",
+   "author": "yin",
+   "hue": 87.66,
+   "sat": 0.133,
+   "bright": 0.053,
+   "motion": 0.007,
+   "react": 0.001,
+   "chaos": 0.003
+  },
+  {
+   "name": "yin - 293 - Sonic brainstorm (inner state - group experience mix)",
+   "author": "yin",
+   "hue": 264.859,
+   "sat": 0.333,
+   "bright": 0.183,
+   "motion": 0.02,
+   "react": -0.001,
+   "chaos": 0.006
+  },
+  {
+   "name": "yin - 311 - Ocean of Light (bouncing off mix)",
+   "author": "yin",
+   "hue": 277.62,
+   "sat": 0.099,
+   "bright": 0.139,
+   "motion": 0.015,
+   "react": -0.005,
+   "chaos": 0.006
+  },
+  {
+   "name": "yin - 385 - Magic ride (distance based hue)",
+   "author": "yin",
+   "hue": 40.51,
+   "sat": 0.336,
+   "bright": 0.064,
+   "motion": 0.041,
+   "react": -0.005,
+   "chaos": 0.005
+  },
+  {
+   "name": "Zylot - Funnels",
+   "author": "Zylot",
+   "hue": 56.05,
+   "sat": 0.541,
+   "bright": 0.023,
+   "motion": 0.008,
+   "react": -0.001,
+   "chaos": 0
+  },
+  {
+   "name": "Zylot - Paint Spill (Music Reactive Paint Mix)",
+   "author": "Zylot",
+   "hue": 168.574,
+   "sat": 0.19,
+   "bright": 0.046,
+   "motion": 0.015,
+   "react": 0.024,
+   "chaos": 0.008
+  },
+  {
+   "name": "Zylot - True Visionary (Final Mix)",
+   "author": "Zylot",
+   "hue": 353.373,
+   "sat": 0.109,
+   "bright": 0.094,
+   "motion": 0.021,
+   "react": 0.025,
+   "chaos": 0.01
+  },
+  {
+   "name": "Zylot & Rovastar - Sully′s Trip (The Worstest Mix)",
+   "author": "Zylot & Rovastar",
+   "hue": 342.968,
+   "sat": 0.235,
+   "bright": 0.104,
+   "motion": 0.005,
+   "react": -0.011,
+   "chaos": 0.003
+  }
+ ]
+}

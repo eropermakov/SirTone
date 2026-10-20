@@ -219,7 +219,7 @@ export const allTrackIds = async (): Promise<number[]> => {
 
 /** «Моя волна» (Stage 3): the engine picks and plays; returns how many tracks were queued. */
 export const waveStart = async (
-  profile?: "seasonal" | "for_all",
+  profile?: "seasonal" | "for_all" | "sleep",
   query?: WaveQueryIpc,
 ): Promise<WaveStarted> =>
   isTauri()

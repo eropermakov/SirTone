@@ -44,6 +44,8 @@ const env = {
   ...process.env,
   SIRTONE_DATA_DIR: dataDir,
   SIRTONE_NET_FIXTURES: netFixtures,
+  // Analysis runs on battery too (an unplugged laptop must not fail the analysis checks).
+  SIRTONE_SMOKE_AC: "1",
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`,
 };
 
@@ -872,6 +874,253 @@ if (existsSync(corpus)) {
   await sleep(1200);
   const afterSkip = (await invoke("playback_snapshot", {})).trackId;
   check("wave: «Не сейчас» goes to the next track", afterSkip !== nowId, `${nowId} → ${afterSkip}`);
+  // T4.1/T4.2: «Волны» behind the player — frames arrive at 60 Hz with small gaps, the canvas
+  // is drawn (not blank), FPS measured; leaving and coming back keeps the feed alive (viz_on
+  // counter); the palette comes from the cover and the collection.
+  await page.locator('canvas[data-testid="waves"]').waitFor({ timeout: 5000 });
+  await sleep(1500);
+  const vizRead = () =>
+    page.evaluate(() => ({
+      frames: window.__sirtoneVizStats?.frames ?? 0,
+      maxGap: window.__sirtoneVizStats?.maxGapMs ?? 0,
+      fps: window.__sirtoneWaves?.stats.fps ?? 0,
+      drawn: window.__sirtoneWaves?.stats.drawn ?? 0,
+    }));
+  await page.evaluate(() => {
+    if (window.__sirtoneVizStats) window.__sirtoneVizStats.maxGapMs = 0;
+  });
+  const v0 = await vizRead();
+  await sleep(3000);
+  const v1 = await vizRead();
+  const rate = (v1.frames - v0.frames) / 3;
+  check(
+    "viz: frames at ~60 Hz, max gap < 60 ms, waves drawn ≥ 30 FPS (P-12)",
+    rate > 50 && v1.maxGap < 60 && v1.fps >= 30 && v1.drawn > v0.drawn,
+    `${rate.toFixed(1)} frames/s, max gap ${v1.maxGap.toFixed(1)} ms, ${v1.fps.toFixed(1)} FPS`,
+  );
+  await page.evaluate(() => window.__sirtoneWaves?.sample());
+  await sleep(300);
+  const samples = await page.evaluate(() => window.__sirtoneWaves?.stats.samples ?? []);
+  check(
+    "viz: the waves canvas is painted (not blank, not flat)",
+    samples.length === 5 &&
+      samples.some((p) => p[0] + p[1] + p[2] > 30) &&
+      new Set(samples.map((p) => p.join())).size > 1,
+    JSON.stringify(samples),
+  );
+  const vizSnap = await invoke("playback_snapshot", {});
+  const vizCols = await invoke("viz_colors", { trackId: vizSnap.trackId, cover: vizSnap.cover });
+  check(
+    "viz: palette from the cover and the collection",
+    (!vizSnap.cover || vizCols.cover.length > 0) &&
+      vizCols.collection.length > 0 &&
+      "energy" in vizCols &&
+      "acousticness" in vizCols,
+    `cover ${vizCols.cover.length}, collection ${vizCols.collection.length}`,
+  );
+  if (process.env.SMOKE_SHOTS) {
+    await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "t42-waves.png") });
+  }
+  await page.getByRole("navigation").getByRole("button", { name: "Жанры" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  await page.locator('canvas[data-testid="waves"]').waitFor({ timeout: 5000 });
+  await sleep(1000);
+  const back0 = await vizRead();
+  await sleep(1000);
+  const back1 = await vizRead();
+  check(
+    "viz: back on the wave screen the feed runs again (no stale viz_on)",
+    back1.frames - back0.frames > 40,
+    `${back1.frames - back0.frames} frames/s`,
+  );
+  // T4.6: minimised (only this isolated app's window, by its pid) → the feed stops; restored →
+  // it runs again.
+  // Restoring does not bring a window to the front (Windows' foreground lock keeps the active
+  // window on top — which the coverage rule then rightly counts): after SW_RESTORE the test
+  // lifts its own window with SetWindowPos TOPMOST → NOTOPMOST, without activating it.
+  const appHwnd = spawnSync("powershell", [
+    "-NoProfile",
+    "-Command",
+    `(Get-Process -Id ${app.pid}).MainWindowHandle`,
+  ])
+    .stdout.toString()
+    .trim();
+  const showWindow = (cmd) =>
+    spawnSync("powershell", [
+      "-NoProfile",
+      "-Command",
+      `Add-Type -Name W -Namespace U -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr h, int c); [DllImport("user32.dll")] public static extern bool SetWindowPos(System.IntPtr h, System.IntPtr a, int x, int y, int cx, int cy, uint f);'; $h = [System.IntPtr]${appHwnd}; [void][U.W]::ShowWindow($h, ${cmd}); if (${cmd} -eq 9) { [void][U.W]::SetWindowPos($h, [System.IntPtr](-1), 0, 0, 0, 0, 0x13); [void][U.W]::SetWindowPos($h, [System.IntPtr](-2), 0, 0, 0, 0, 0x13) }`,
+    ]);
+  showWindow(6);
+  await sleep(1500);
+  const min0 = await vizRead();
+  await sleep(1500);
+  const min1 = await vizRead();
+  showWindow(9);
+  await sleep(1500);
+  const res0 = await vizRead();
+  await sleep(1000);
+  const res1 = await vizRead();
+  check(
+    "viz: minimised → no frames; restored → frames again (FR-VIZ-008)",
+    min1.frames - min0.frames < 5 && res1.frames - res0.frames > 40,
+    `minimised ${min1.frames - min0.frames} in 1.5 s, restored ${res1.frames - res0.frames}/s`,
+  );
+  // T4.7 / AT-02: «Ночной вайб» — full screen, the feed moves to it, controls and cursor hide
+  // after 3 s of stillness, Esc leaves and the wave screen gets its feed back.
+  await page.getByRole("button", { name: "Ночной вайб" }).click();
+  const nightEl = page.locator('[data-testid="night-vibe"]');
+  await nightEl.waitFor({ timeout: 5000 });
+  await sleep(1500);
+  const fullOn = await invoke("plugin:window|is_fullscreen", { label: "main" }).catch(() => null);
+  const n0 = await vizRead();
+  await sleep(1000);
+  const n1 = await vizRead();
+  // Hidden after 3 s of stillness; a real mouse moving over the window restarts the wait.
+  let hidden = { cursor: false, exit: null };
+  for (let i = 0; i < 16 && !(hidden.cursor && hidden.exit === "0"); i++) {
+    await sleep(500);
+    hidden = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="night-vibe"]');
+      const exit = el?.querySelector("button");
+      return {
+        cursor: el?.classList.contains("cursor-none") ?? false,
+        exit: exit ? getComputedStyle(exit).opacity : null,
+      };
+    });
+  }
+  if (process.env.SMOKE_SHOTS) {
+    await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "t47-night.png") });
+  }
+  await page.keyboard.press("Escape");
+  await nightEl.waitFor({ state: "detached", timeout: 5000 });
+  await sleep(1500);
+  const fullOff = await invoke("plugin:window|is_fullscreen", { label: "main" }).catch(() => null);
+  const w0 = await vizRead();
+  await sleep(1000);
+  const w1 = await vizRead();
+  check(
+    "night vibe: full screen, frames, UI and cursor hide when still, Esc back with frames",
+    fullOn === true &&
+      n1.frames - n0.frames > 40 &&
+      hidden.cursor &&
+      hidden.exit === "0" &&
+      fullOff === false &&
+      w1.frames - w0.frames > 40,
+    `full ${fullOn}→${fullOff}, ${n1.frames - n0.frames}/s, hidden ${JSON.stringify(hidden)}, after ${w1.frames - w0.frames}/s`,
+  );
+  // T4.3: «MilkDrop» — the mode switches on the fly; presets are precompiled (strict CSP, no
+  // eval), drawn ≥ 45 FPS; «следующий» and ✕ change the preset, ✕ is remembered.
+  await page.getByRole("button", { name: "Режим визуализации" }).click();
+  await page.getByRole("menuitem", { name: "MilkDrop" }).click();
+  await page.locator('canvas[data-testid="milkdrop"]').waitFor({ timeout: 10000 });
+  const mdReady = page.getByRole("button", { name: "Следующий пресет" });
+  await mdReady.waitFor({ timeout: 15000 }).catch(async () => {
+    const err = await page.evaluate(() => window.__sirtoneMilkdropError ?? "no error recorded");
+    throw new Error(`MilkDrop did not start: ${err}`);
+  });
+  for (let i = 0; i < 40; i++) {
+    if (await page.evaluate(() => (window.__sirtoneMilkdrop?.stats.drawn ?? 0) > 0)) break;
+    await sleep(250);
+  }
+  await sleep(3000);
+  const md0 = await page.evaluate(() => ({
+    ...window.__sirtoneMilkdrop?.stats,
+    count: window.__sirtoneMilkdrop?.count,
+  }));
+  await sleep(2000);
+  const md1 = await page.evaluate(() => ({ ...window.__sirtoneMilkdrop?.stats }));
+  const mdErrors = await page.evaluate(() => window.__sirtoneCspErrors ?? 0);
+  await page.getByRole("button", { name: "Следующий пресет" }).click();
+  await sleep(500);
+  const mdNext = await page.evaluate(() => window.__sirtoneMilkdrop?.stats.preset);
+  // ✕ rates the preset the toolbar shows at the moment of the click.
+  const mdRated = await page.evaluate(() => window.__sirtoneMilkdrop?.control().preset);
+  await page.getByRole("button", { name: "Больше не показывать этот пресет" }).click();
+  await sleep(800);
+  const mdAfterNo = await page.evaluate(() => window.__sirtoneMilkdrop?.stats.preset);
+  const ratingsFile = join(dataDir, "viz-presets.json");
+  const rated = existsSync(ratingsFile) ? JSON.parse(readFileSync(ratingsFile, "utf8")) : {};
+  if (process.env.SMOKE_SHOTS) {
+    await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "t43-milkdrop.png") });
+  }
+  check(
+    "MilkDrop: presets load and draw ≥ 45 FPS, next and ✕ change the preset, ✕ remembered",
+    md0.count > 100 &&
+      md1.drawn > md0.drawn &&
+      md1.fps >= 45 &&
+      mdErrors === 0 &&
+      mdNext !== md0.preset &&
+      mdAfterNo !== mdNext &&
+      rated[mdRated] === -1,
+    `${md0.count} presets, ${md1.fps?.toFixed(1)} FPS, worst load ${md1.worstMs?.toFixed(0)} ms, ${md0.preset} → ${mdNext} → ${mdAfterNo}, ✕ ${mdRated} → ${JSON.stringify(rated)}, csp ${mdErrors}`,
+  );
+  // T4.4: «Видео» — a clip in the library's backgrounds folder plays muted and looping through
+  // the ranged protocol (made here with ffmpeg; dropping is the same copy, done by Rust).
+  const ffmpeg = spawnSync("ffmpeg", ["-version"]).status === 0;
+  if (ffmpeg) {
+    const bgDir = join(libDir, ".sirtone", "backgrounds");
+    mkdirSync(bgDir, { recursive: true });
+    const clipId = "00000000000000aa.webm";
+    spawnSync("ffmpeg", [
+      "-y",
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=30",
+      "-t",
+      "3",
+      "-c:v",
+      "libvpx-vp9",
+      "-b:v",
+      "300k",
+      join(bgDir, clipId),
+    ]);
+    writeFileSync(
+      join(bgDir, "index.json"),
+      JSON.stringify([{ id: clipId, mood: "any", source: "smoke:1", bytes: 1 }]),
+    );
+    await page.evaluate(async () => {
+      // The app loaded its clip list at start: ask again (the drop path does the same).
+      window.dispatchEvent(new Event("sirtone-videos-refresh"));
+    });
+    await page.getByRole("button", { name: "Режим визуализации" }).click();
+    await page.getByRole("menuitem", { name: "Видео" }).click();
+    const vid = page.locator('video[data-testid="viz-video"]');
+    await vid.waitFor({ timeout: 10000 });
+    await sleep(2500);
+    const vs = await vid.evaluate((v) => ({
+      t: v.currentTime,
+      ready: v.readyState,
+      muted: v.muted,
+      loop: v.loop,
+      err: v.error?.code ?? 0,
+    }));
+    // The protocol is for <video> only (CSP media-src; fetch is not allowed): an unknown id
+    // must fail to load there.
+    const bad = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const v = document.createElement("video");
+          v.muted = true;
+          v.onerror = () => resolve(v.error?.code ?? -1);
+          v.onloadedmetadata = () => resolve(0);
+          v.src = "http://sirtone-bg.localhost/..%2Findex.json";
+          setTimeout(() => resolve(-2), 5000);
+        }),
+    );
+    check(
+      "Видео: the clip plays muted and looping over HTTP ranges; an unknown id does not load",
+      vs.ready >= 2 && vs.t > 0.5 && vs.muted && vs.loop && vs.err === 0 && bad > 0,
+      `${JSON.stringify(vs)}, bad id → error ${bad}`,
+    );
+  } else {
+    check("Видео: skipped — no ffmpeg to make a test clip", true);
+  }
+  await invoke("settings_patch", { patch: { viz: { mode: "waves" } } });
+  await page.locator('canvas[data-testid="waves"]').waitFor({ timeout: 10000 });
   await axeScreen("«Моя волна»");
   // T2.20 / P-01 (DESIGN.md §1, `08` §1): event → the frame that shows the change, measured
   // in the page. Direct actions ≤ 100 ms, a screen change ≤ 400 ms.

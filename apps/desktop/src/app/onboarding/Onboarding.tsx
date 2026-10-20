@@ -26,6 +26,7 @@ const STEPS = 4;
 export function Onboarding({
   theme,
   accent,
+  seasonSeed,
   onTheme,
   onAccent,
   status,
@@ -33,9 +34,10 @@ export function Onboarding({
   onFinish,
 }: {
   theme: ThemePref;
-  accent: AccentSource;
+  accent: AccentSource | null;
+  seasonSeed?: string | null;
   onTheme: (t: ThemePref) => void;
-  onAccent: (a: AccentSource) => void;
+  onAccent: (a: AccentSource | null) => void;
   status: LibraryStatus;
   onRoot: (s: LibraryStatus) => void;
   onFinish: () => void;
@@ -88,7 +90,12 @@ export function Onboarding({
         )}
         {step === 1 && (
           <div className="flex flex-col gap-4">
-            <AccentSwatches theme={theme} accent={accent} onAccent={onAccent} />
+            <AccentSwatches
+              theme={theme}
+              accent={accent}
+              seasonSeed={seasonSeed}
+              onAccent={onAccent}
+            />
             <SeasonSwitch />
           </div>
         )}

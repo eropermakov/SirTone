@@ -87,7 +87,9 @@ describe("dark neutrals and owner palettes on #333333 (D-75)", () => {
     const i = extraCss.indexOf(sel);
     return hexVars(extraCss.slice(i, extraCss.indexOf("}", i)));
   };
-  const neutrals = block(':root:not([data-theme="light"]) {');
+  // The same ladder serves the wave screen's dark scope over the visualisation (T4.2).
+  const neutrals = block(`:root:not([data-theme="light"]),
+[data-theme="dark"][data-viz-scope] {`);
   const surfaces = ["bg-base", "bg-layer", "bg-raised", "bg-flyout"].map(
     (k) => neutrals[k] as string,
   );

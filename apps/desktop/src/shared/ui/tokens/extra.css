@@ -13,7 +13,8 @@
 /* Dark neutrals on #333333 (owner, 2026-10-17, D-75): one neutral-gray ladder for every dark theme
    (the default dark and both owner palettes) instead of the warm brown-black of DESIGN.md §3.
    Selector weight 0,2,0 beats the verbatim copy in sirtone.css. Light theme untouched. */
-:root:not([data-theme="light"]) {
+:root:not([data-theme="light"]),
+[data-theme="dark"][data-viz-scope] {
   --bg-base: #333333;
   --bg-layer: #3a3a3a;
   --bg-raised: #3e3e3e;
@@ -156,6 +157,14 @@
     --primary-text var(--dur-theme) var(--ease-out);
 }
 
+/* The daily seasonal drift (T4.18, `14` §12): one slower fade, only while it is applied. Reduced
+   motion keeps the normal short fade. */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme-drift]:not([data-motion="0"]) {
+    --dur-theme: 1500ms;
+  }
+}
+
 /* Skeletons pulse softly instead of spinners (DESIGN.md §9 «Пустые состояния и загрузка»). */
 @keyframes skeleton-pulse {
   0%,
@@ -215,6 +224,18 @@
 }
 :root[data-blur="off"] * {
   backdrop-filter: none !important;
+}
+
+/* «Волны» without WebGL (level 0, no WebGL2, lost context; DESIGN.md §9): the blurred gradient of
+   the cover's colours drifting one cycle in 20–30 s (`assets/viz/waves.json` fallback). */
+@keyframes waves-drift {
+  0%,
+  100% {
+    transform: translate3d(-4%, -3%, 0) scale(1.08);
+  }
+  50% {
+    transform: translate3d(4%, 3%, 0) scale(1.16);
+  }
 }
 
 /* D-61: reduced motion = short fades only, no movement. */

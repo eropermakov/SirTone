@@ -1,8 +1,9 @@
-import { Check, Gauge, Plus } from "lucide-react";
+import { CalendarDays, Check, Gauge, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionSummary } from "@/app/library/CollectionScreen";
 import { mb } from "@/app/library/TrackCard";
+import type { SignalInfo } from "@/shared/ipc/bindings";
 import { duplicatesCount } from "@/shared/ipc/duplicates";
 import {
   analysisProgress,
@@ -14,7 +15,10 @@ import {
 import type { LibraryStatus } from "@/shared/ipc/library";
 import { organizeLibrary } from "@/shared/ipc/library";
 import { perfHardware } from "@/shared/ipc/perf";
-import { getSettings, patchSettings } from "@/shared/ipc/settings";
+import { getSnapshot, onSnapshot } from "@/shared/ipc/playback";
+import { getSettings, onSettingsChanged, patchSettings } from "@/shared/ipc/settings";
+import { sfx } from "@/shared/ipc/sfx";
+import { sleepCaps } from "@/shared/ipc/sleep";
 import { clearOldLogs, type StorageInfo, storageInfo } from "@/shared/ipc/storage";
 import {
   autostartAvailable,
@@ -23,6 +27,7 @@ import {
   hotkeysStatus,
   setAutostart,
 } from "@/shared/ipc/window";
+import { inkOn } from "@/shared/lib/color";
 import { accelFromEvent } from "@/shared/lib/hotkeys";
 import { cn } from "@/shared/lib/utils";
 import { benchmark, score } from "@/shared/theme/autodetect";
@@ -32,13 +37,19 @@ import { Button } from "@/shared/ui/Button";
 import { Chip } from "@/shared/ui/Chip";
 import { Dialog } from "@/shared/ui/Dialog";
 import { notify } from "@/shared/ui/notify";
+import { Slider } from "@/shared/ui/Slider";
 import { Switch } from "@/shared/ui/Switch";
+import { FX_TYPES, type FxType, isFxType } from "@/shared/viz/fxPlan";
+import EQ_PRESETS_JSON from "../../../../../assets/eq/presets.json";
 
 type Props = {
   theme: ThemePref;
-  accent: AccentSource;
+  /** `null` — the seasonal theme's own colour (T4.18). */
+  accent: AccentSource | null;
+  /** «Тема по сезону» is on: today's seed for the season swatch. */
+  seasonSeed?: string | null;
   onTheme: (t: ThemePref) => void;
-  onAccent: (a: AccentSource) => void;
+  onAccent: (a: AccentSource | null) => void;
   /** «Хранилище» (FR-DATA-004, FR-ONB-003): library folder and counters. */
   library?: LibraryStatus;
   onChooseLibrary?: () => void;
@@ -61,6 +72,7 @@ const THEMES: { id: ThemePref; key: string }[] = [
 export function SettingsScreen({
   theme,
   accent,
+  seasonSeed,
   onTheme,
   onAccent,
   library,
@@ -88,7 +100,12 @@ export function SettingsScreen({
           {isPalette(theme) && (
             <span className="t-caption text-text-secondary">{t("settings.accentByTheme")}</span>
           )}
-          <AccentSwatches theme={theme} accent={accent} onAccent={onAccent} />
+          <AccentSwatches
+            theme={theme}
+            accent={accent}
+            seasonSeed={seasonSeed}
+            onAccent={onAccent}
+          />
           <SeasonSwitch />
 
           <div className="mt-2 flex items-center gap-4 border-t border-separator pt-4">
@@ -134,6 +151,16 @@ export function SettingsScreen({
         </div>
       )}
 
+      <SoundSection />
+
+      <EqSection />
+
+      <TransitionsSection />
+
+      <DuckSection />
+
+      <SfxSection />
+
       <NetworkSection />
 
       <PerformanceSection />
@@ -143,6 +170,13 @@ export function SettingsScreen({
       <HotkeysSection />
 
       <WaveLearningSection />
+      <VizSection />
+
+      <FxSection />
+
+      <SleepSection />
+
+      <FocusSection />
 
       <NeverSection />
 
@@ -335,12 +369,32 @@ export function PerformanceSection() {
   const { t } = useTranslation("shell");
   const [level, setLevel] = useState(3);
   const [overrides, setOverrides] = useState<Record<string, unknown>>({});
+  const [autoDegrade, setAutoDegrade] = useState(true);
   useEffect(() => {
-    getSettings().then((doc) => {
-      const p = (doc.performance ?? {}) as { level?: number; overrides?: Record<string, unknown> };
-      setLevel(p.level ?? 3);
-      setOverrides(p.overrides ?? {});
+    let alive = true;
+    let off: (() => void) | undefined;
+    const load = () =>
+      getSettings().then((doc) => {
+        if (!alive) return;
+        const p = (doc.performance ?? {}) as {
+          level?: number;
+          overrides?: Record<string, unknown>;
+          auto_degrade?: boolean;
+        };
+        setLevel(p.level ?? 3);
+        setOverrides(p.overrides ?? {});
+        setAutoDegrade(p.auto_degrade !== false);
+      });
+    void load();
+    // The level may drop by itself (T4.16): show it.
+    onSettingsChanged(load).then((u) => {
+      if (alive) off = u;
+      else u();
     });
+    return () => {
+      alive = false;
+      off?.();
+    };
   }, []);
   const levels = t("settingsPerf.level", { returnObjects: true }) as unknown as string[];
   const eff = profile(level, overrides);
@@ -349,7 +403,10 @@ export function PerformanceSection() {
     setLevel(l);
     setOverrides({});
     applyPerformance(profile(l, {}));
-    patchSettings({ performance: { level: l, overrides: {} } }).catch(() => {});
+    // A manual choice is the way back from an auto-degrade (T4.16): nothing sticks any more.
+    patchSettings({ performance: { level: l, overrides: {}, degraded_from: null } }).catch(
+      () => {},
+    );
   };
   const [detecting, setDetecting] = useState(false);
   // FR-PERF-003: hardware + a 1.5 s WebGL benchmark → a level, applied like a manual choice.
@@ -374,6 +431,12 @@ export function PerformanceSection() {
     { key: "ui_animations", label: t("settingsPerf.uiAnimations"), on: eff.uiAnimations },
     { key: "list_animations", label: t("settingsPerf.listAnimations"), on: eff.listAnimations },
     { key: "blur", label: t("settingsPerf.blur"), on: eff.blur },
+    // FR-VIZ-008: pause when unseen, lower on battery — on unless switched off.
+    {
+      key: "viz_power",
+      label: t("settingsPerf.vizPower"),
+      on: overrides.viz_power !== false,
+    },
   ];
   return (
     <div className="flex flex-col gap-2">
@@ -395,6 +458,21 @@ export function PerformanceSection() {
           {detecting ? t("settingsPerf.detecting") : t("settingsPerf.detect")}
         </Button>
         <div className="flex flex-col divide-y divide-border">
+          <div className="flex items-center gap-4 py-3">
+            <span className="t-body min-w-0 flex-1 text-text-primary">
+              {t("settingsPerf.autoDegrade")}
+            </span>
+            <Switch
+              checked={autoDegrade}
+              label={t("settingsPerf.autoDegrade")}
+              onChange={(on) => {
+                setAutoDegrade(on);
+                patchSettings({ performance: { auto_degrade: on } }).catch(() =>
+                  setAutoDegrade(!on),
+                );
+              }}
+            />
+          </div>
           {switches.map((s) => (
             <div key={s.key} className="flex items-center gap-4 py-3">
               <span className="t-body min-w-0 flex-1 text-text-primary">{s.label}</span>
@@ -535,29 +613,50 @@ export function ThemeChips({
 export function AccentSwatches({
   theme,
   accent,
+  seasonSeed,
   onAccent,
 }: {
   theme: ThemePref;
-  accent: AccentSource;
-  onAccent: (a: AccentSource) => void;
+  /** `null` — the seasonal theme's own colour is chosen. */
+  accent: AccentSource | null;
+  /** «Тема по сезону» on (T4.18, FR-UI-003): the season swatch comes first; a pick is the
+   * current theme's own accent (Q-15), the season swatch returns to the theme's colour. */
+  seasonSeed?: string | null | undefined;
+  onAccent: (a: AccentSource | null) => void;
 }) {
   const { t } = useTranslation("shell");
-  const customHex = accent.kind === "custom" ? accent.hex : "#3b82f6";
+  const customHex = accent?.kind === "custom" ? accent.hex : "#3b82f6";
   return (
     <fieldset
       disabled={isPalette(theme)}
       className="m-0 border-0 p-0 flex flex-wrap gap-3 disabled:opacity-40"
       aria-label={t("settings.color")}
     >
+      {seasonSeed && (
+        <button
+          type="button"
+          aria-pressed={accent === null}
+          aria-label={t("accent.season")}
+          title={t("accent.season")}
+          onClick={() => onAccent(null)}
+          className={cn(
+            "relative flex size-8 items-center justify-center rounded-full",
+            accent === null && "ring-2 ring-text-primary ring-offset-[3px] ring-offset-bg-raised",
+          )}
+          style={{ background: seasonSeed }}
+        >
+          <CalendarDays size={16} strokeWidth={1.5} style={{ color: inkOn(seasonSeed) }} />
+        </button>
+      )}
       <button
         type="button"
-        aria-pressed={accent.kind === "auto"}
+        aria-pressed={accent?.kind === "auto"}
         aria-label={t("accent.auto")}
         title={t("accent.autoHint")}
         onClick={() => onAccent({ kind: "auto" })}
         className={cn(
           "relative flex size-8 items-center justify-center rounded-full",
-          accent.kind === "auto" &&
+          accent?.kind === "auto" &&
             "ring-2 ring-text-primary ring-offset-[3px] ring-offset-bg-raised",
         )}
         style={{
@@ -567,7 +666,7 @@ export function AccentSwatches({
         }}
       />
       {ACCENT_SLUGS.map((slug) => {
-        const selected = accent.kind === "preset" && accent.slug === slug;
+        const selected = accent?.kind === "preset" && accent.slug === slug;
         return (
           <button
             key={slug}
@@ -598,10 +697,10 @@ export function AccentSwatches({
         title={t("settings.custom")}
         className={cn(
           "relative flex size-8 cursor-pointer items-center justify-center rounded-full border border-border text-icon",
-          accent.kind === "custom" &&
+          accent?.kind === "custom" &&
             "ring-2 ring-text-primary ring-offset-[3px] ring-offset-bg-raised",
         )}
-        style={accent.kind === "custom" ? { background: customHex } : undefined}
+        style={accent?.kind === "custom" ? { background: customHex } : undefined}
       >
         <Plus size={16} strokeWidth={1.5} />
         <input
@@ -616,8 +715,8 @@ export function AccentSwatches({
   );
 }
 
-/** «Тема по сезону» (FR-ONB-001 step 2, FR-UI-003): stored now, the seasonal themes come with
- * Stage 4. */
+/** «Тема по сезону» (FR-ONB-001 step 2, FR-THEME-002, T4.18): the accent follows the season
+ * (the shell listens to the settings and applies it). */
 export function SeasonSwitch() {
   const { t } = useTranslation("shell");
   const [on, setOn] = useState(false);
@@ -641,6 +740,847 @@ export function SeasonSwitch() {
           patchSettings({ appearance: { seasonal_theme: v } }).catch(() => setOn(!v));
         }}
       />
+    </div>
+  );
+}
+
+const EQ_PRESETS = EQ_PRESETS_JSON as {
+  bands_hz: number[];
+  presets: { id: string; bands_db: number[] }[];
+};
+
+/** The three targets (Spotify Quiet / Normal / Loud, `01b` F-02). */
+const TARGETS = [-19, -14, -11] as const;
+
+/**
+ * «Звук» (T4.11, FR-PLAY-008): loudness normalization — on/off, «Тихо / Обычно / Громко»,
+ * album gain while an album plays in order. Applied at once (the engine ramps the gain).
+ */
+/** «Тракт: Bit-perfect · 48 кГц» (T4.13, FR-PLAY-002, `04` §8), live from the player. */
+function SignalLine() {
+  const { t } = useTranslation("shell");
+  const [sig, setSig] = useState<SignalInfo | null>(null);
+  useEffect(() => {
+    let alive = true;
+    let off: (() => void) | undefined;
+    getSnapshot().then((s) => alive && setSig(s.signal));
+    onSnapshot((s) => alive && setSig(s.signal)).then((u) => {
+      if (alive) off = u;
+      else u();
+    });
+    return () => {
+      alive = false;
+      off?.();
+    };
+  }, []);
+  if (!sig) return null;
+  const khz = (hz: number) => t("settingsSound.khz", { v: (hz / 1000).toLocaleString("ru") });
+  const text =
+    sig.kind === "bitperfect"
+      ? t("settingsSound.signal.bitperfect", { rate: khz(sig.deviceRate) })
+      : sig.kind === "resampled"
+        ? t("settingsSound.signal.resampled", {
+            from: khz(sig.sourceRate),
+            to: khz(sig.deviceRate),
+          })
+        : t("settingsSound.signal.dsp");
+  return (
+    <div className="t-caption text-text-secondary" data-testid="signal-path">
+      {text}
+    </div>
+  );
+}
+
+function SoundSection() {
+  const { t } = useTranslation("shell");
+  const [n, setN] = useState({ enabled: true, target: -14, album: true });
+  useEffect(() => {
+    getSettings().then((s) => {
+      const v = ((s.playback ?? {}) as { normalization?: Record<string, unknown> }).normalization;
+      setN({
+        enabled: v?.enabled !== false,
+        target: typeof v?.target_lufs === "number" ? v.target_lufs : -14,
+        album: v?.album_mode !== "off",
+      });
+    });
+  }, []);
+  const save = (next: typeof n) => {
+    const prev = n;
+    setN(next);
+    patchSettings({
+      playback: {
+        normalization: {
+          enabled: next.enabled,
+          target_lufs: next.target,
+          album_mode: next.album ? "auto" : "off",
+        },
+      },
+    }).catch(() => setN(prev));
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsSound.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <SignalLine />
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsSound.normalize")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsSound.normalizeHint")}</div>
+          </div>
+          <Switch
+            checked={n.enabled}
+            label={t("settingsSound.normalize")}
+            onChange={(v) => save({ ...n, enabled: v })}
+          />
+        </div>
+        {n.enabled && (
+          <>
+            <fieldset
+              className="m-0 flex flex-wrap gap-2 border-0 p-0"
+              aria-label={t("settingsSound.level")}
+            >
+              {TARGETS.map((v, i) => (
+                <Chip key={v} active={n.target === v} onClick={() => save({ ...n, target: v })}>
+                  {t(`settingsSound.levels.${i}`)}
+                </Chip>
+              ))}
+            </fieldset>
+            <div className="flex items-center gap-4">
+              <div className="min-w-0 flex-1">
+                <div className="t-body text-text-primary">{t("settingsSound.album")}</div>
+                <div className="t-caption text-text-secondary">{t("settingsSound.albumHint")}</div>
+              </div>
+              <Switch
+                checked={n.album}
+                label={t("settingsSound.album")}
+                onChange={(v) => save({ ...n, album: v })}
+              />
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type EqState = { enabled: boolean; preset: string; preamp: number; bands: number[] };
+const EQ_FLAT: EqState = { enabled: false, preset: "flat", preamp: 0, bands: Array(10).fill(0) };
+/** Slider 0…1 ↔ −12…+12 dB, in 0.5 dB steps. */
+const toDb = (v: number) => Math.round((v * 24 - 12) * 2) / 2;
+const fromDb = (db: number) => (db + 12) / 24;
+
+/**
+ * «Эквалайзер» (T4.12, FR-PLAY-009, `04` §6 — Winamp/VLC 10 bands + preamp, Apple's preset
+ * names): on/off (off is a true bypass), presets, 10 bands and the preamp, ±12 dB. Moving a band
+ * makes the preset «Свой». The engine glides to new values in 20 ms.
+ */
+function EqSection() {
+  const { t } = useTranslation("shell");
+  const [eq, setEq] = useState<EqState>(EQ_FLAT);
+  useEffect(() => {
+    getSettings().then((s) => {
+      const v = ((s.playback ?? {}) as { eq?: Record<string, unknown> }).eq;
+      setEq({
+        enabled: v?.enabled === true,
+        preset: typeof v?.preset === "string" ? v.preset : "flat",
+        preamp: typeof v?.preamp_db === "number" ? v.preamp_db : 0,
+        bands: Array.isArray(v?.bands_db) ? (v.bands_db as number[]) : EQ_FLAT.bands,
+      });
+    });
+  }, []);
+  const save = (next: EqState) => {
+    const prev = eq;
+    setEq(next);
+    patchSettings({
+      playback: {
+        eq: {
+          enabled: next.enabled,
+          preset: next.preset,
+          preamp_db: next.preamp,
+          bands_db: next.bands,
+        },
+      },
+    }).catch(() => setEq(prev));
+  };
+  const hz = (f: number) =>
+    f >= 1000 ? t("settingsEq.khz", { v: f / 1000 }) : t("settingsEq.hz", { v: f });
+  const db = (v: number) => t("settingsEq.db", { v: v > 0 ? `+${v}` : String(v) });
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsEq.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsEq.enable")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsEq.hint")}</div>
+          </div>
+          <Switch
+            checked={eq.enabled}
+            label={t("settingsEq.enable")}
+            onChange={(v) => save({ ...eq, enabled: v })}
+          />
+        </div>
+        {eq.enabled && (
+          <>
+            <fieldset
+              className="m-0 flex flex-wrap gap-2 border-0 p-0"
+              aria-label={t("settingsEq.presets")}
+            >
+              {EQ_PRESETS.presets.map((p) => (
+                <Chip
+                  key={p.id}
+                  active={eq.preset === p.id}
+                  onClick={() => save({ ...eq, preset: p.id, bands: p.bands_db })}
+                >
+                  {t(`settingsEq.preset.${p.id}`)}
+                </Chip>
+              ))}
+              {eq.preset === "custom" && (
+                <Chip active onClick={() => {}}>
+                  {t("settingsEq.preset.custom")}
+                </Chip>
+              )}
+            </fieldset>
+            <div className="flex flex-col gap-1">
+              {[
+                { key: 0, label: t("settingsEq.preamp"), value: eq.preamp },
+                ...EQ_PRESETS.bands_hz.map((f, i) => ({
+                  key: f,
+                  label: hz(f),
+                  value: eq.bands[i] ?? 0,
+                })),
+              ].map((row, i) => (
+                <div key={row.key} className="flex items-center gap-4">
+                  <span className="t-caption w-20 shrink-0 text-text-secondary">{row.label}</span>
+                  <Slider
+                    value={fromDb(row.value)}
+                    step={1 / 48}
+                    label={row.label}
+                    valueText={db(row.value)}
+                    onCommit={(v) => {
+                      const d = toDb(v);
+                      if (i === 0) save({ ...eq, preamp: d });
+                      else {
+                        const bands = [...eq.bands];
+                        bands[i - 1] = d;
+                        save({ ...eq, preset: "custom", bands });
+                      }
+                    }}
+                    className="flex-1"
+                  />
+                  <span className="t-caption w-14 shrink-0 text-right text-text-tertiary">
+                    {db(row.value)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * «Звуки интерфейса» (T4.15, FR-PLAY-016, `06` §8 — Discord/Slack/Telegram have their own switch
+ * and volume): played by the engine; on by default, quiet (0.5).
+ */
+function SfxSection() {
+  const { t } = useTranslation("shell");
+  const [s, setS] = useState({ enabled: true, volume: 0.5 });
+  useEffect(() => {
+    getSettings().then((d) => {
+      const v = d.sfx as { enabled?: boolean; volume?: number } | undefined;
+      setS({ enabled: v?.enabled !== false, volume: v?.volume ?? 0.5 });
+    });
+  }, []);
+  const save = (next: typeof s) => {
+    const prev = s;
+    setS(next);
+    patchSettings({ sfx: next }).catch(() => setS(prev));
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsSfx.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsSfx.enable")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsSfx.hint")}</div>
+          </div>
+          <Switch
+            checked={s.enabled}
+            label={t("settingsSfx.enable")}
+            onChange={(v) => save({ ...s, enabled: v })}
+          />
+        </div>
+        {s.enabled && (
+          <div className="flex items-center gap-4">
+            <span className="t-caption w-28 shrink-0 text-text-secondary">
+              {t("settingsSfx.volume")}
+            </span>
+            <Slider
+              value={s.volume}
+              step={0.05}
+              label={t("settingsSfx.volume")}
+              valueText={t("settingsDuck.pct", { v: Math.round(s.volume * 100) })}
+              onCommit={(v) => {
+                save({ ...s, volume: Math.round(v * 20) / 20 });
+                sfx("click");
+              }}
+              className="flex-1"
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const DUCK_SENS = ["low", "medium", "high"] as const;
+type Duck = {
+  enabled: boolean;
+  /** Reduction 0…100 % (Discord-style); 75 % ≈ −12 dB. */
+  pct: number;
+  sensitivity: (typeof DUCK_SENS)[number];
+  ignore: string[];
+};
+const pctToDb = (pct: number) => (pct >= 100 ? -80 : Math.max(-80, 20 * Math.log10(1 - pct / 100)));
+const dbToPct = (db: number) => Math.round((1 - 10 ** (db / 20)) * 100);
+
+/**
+ * «Приглушение» (T4.14, FR-PLAY-011, `04` §7 — Discord attenuation, Windows communications
+ * ducking): Sirtone gets quieter while another app plays sound (≥ 0.7 s, not short notifications),
+ * comes back a second after; strength in %, sensitivity, apps never to duck for.
+ */
+function DuckSection() {
+  const { t } = useTranslation("shell");
+  const [duck, setDuck] = useState<Duck>({
+    enabled: true,
+    pct: 75,
+    sensitivity: "medium",
+    ignore: [],
+  });
+  const [adding, setAdding] = useState("");
+  useEffect(() => {
+    getSettings().then((s) => {
+      const d = ((s.playback ?? {}) as { duck?: Record<string, unknown> }).duck;
+      setDuck({
+        enabled: d?.enabled !== false,
+        pct: typeof d?.amount_db === "number" ? dbToPct(d.amount_db) : 75,
+        sensitivity: DUCK_SENS.includes(d?.sensitivity as Duck["sensitivity"])
+          ? (d?.sensitivity as Duck["sensitivity"])
+          : "medium",
+        ignore: Array.isArray(d?.ignore) ? (d.ignore as string[]) : [],
+      });
+    });
+  }, []);
+  const save = (next: Duck) => {
+    const prev = duck;
+    setDuck(next);
+    patchSettings({
+      playback: {
+        duck: {
+          enabled: next.enabled,
+          amount_db: pctToDb(next.pct),
+          sensitivity: next.sensitivity,
+          ignore: next.ignore,
+        },
+      },
+    }).catch(() => setDuck(prev));
+  };
+  const add = () => {
+    const exe = adding.trim().toLowerCase();
+    if (!exe) return;
+    const name = exe.endsWith(".exe") ? exe : `${exe}.exe`;
+    if (!duck.ignore.includes(name)) save({ ...duck, ignore: [...duck.ignore, name] });
+    setAdding("");
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsDuck.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsDuck.enable")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsDuck.hint")}</div>
+          </div>
+          <Switch
+            checked={duck.enabled}
+            label={t("settingsDuck.enable")}
+            onChange={(v) => save({ ...duck, enabled: v })}
+          />
+        </div>
+        {duck.enabled && (
+          <>
+            <div className="flex items-center gap-4">
+              <span className="t-caption w-28 shrink-0 text-text-secondary">
+                {t("settingsDuck.amount")}
+              </span>
+              <Slider
+                value={duck.pct / 100}
+                step={0.05}
+                label={t("settingsDuck.amount")}
+                valueText={t("settingsDuck.pct", { v: duck.pct })}
+                onCommit={(v) => save({ ...duck, pct: Math.round(v * 20) * 5 })}
+                className="flex-1"
+              />
+              <span className="t-caption w-14 shrink-0 text-right text-text-tertiary">
+                {t("settingsDuck.pct", { v: duck.pct })}
+              </span>
+            </div>
+            <fieldset
+              className="m-0 flex flex-wrap gap-2 border-0 p-0"
+              aria-label={t("settingsDuck.sensitivity")}
+            >
+              {DUCK_SENS.map((s) => (
+                <Chip
+                  key={s}
+                  active={duck.sensitivity === s}
+                  onClick={() => save({ ...duck, sensitivity: s })}
+                >
+                  {t(`settingsDuck.sens.${s}`)}
+                </Chip>
+              ))}
+            </fieldset>
+            <div className="flex flex-col gap-2">
+              <div className="t-body text-text-primary">{t("settingsDuck.ignore")}</div>
+              {duck.ignore.map((exe) => (
+                <div key={exe} className="flex items-center gap-2">
+                  <span className="t-body min-w-0 flex-1 truncate text-text-secondary">{exe}</span>
+                  <Button
+                    variant="ghost"
+                    onClick={() => save({ ...duck, ignore: duck.ignore.filter((x) => x !== exe) })}
+                  >
+                    {t("settingsDuck.remove")}
+                  </Button>
+                </div>
+              ))}
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  add();
+                }}
+              >
+                <input
+                  value={adding}
+                  onChange={(e) => setAdding(e.target.value)}
+                  placeholder={t("settingsDuck.addPlaceholder")}
+                  aria-label={t("settingsDuck.addPlaceholder")}
+                  className="t-body h-(--button-height) min-w-0 flex-1 rounded-(--radius-md) border border-border bg-bg-layer px-3 text-text-primary"
+                />
+                <Button variant="secondary" type="submit">
+                  {t("settingsDuck.add")}
+                </Button>
+              </form>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const MIX_MODES = ["gapless", "crossfade", "smart"] as const;
+const MIX_INTENSITY = ["soft", "medium", "dj"] as const;
+type Mix = {
+  mode: (typeof MIX_MODES)[number];
+  intensity: (typeof MIX_INTENSITY)[number];
+  crossfade: number;
+  skipAlbums: boolean;
+};
+
+/**
+ * «Переходы между треками» (T4.10, FR-PLAY-010, `04` §4.1 — Apple «Crossfade», Spotify
+ * «Automix», Rockbox): «Без переходов» (gapless), «Кроссфейд» 1–12 с, «Умный автомикс» with its
+ * intensity; albums played in order are never mixed unless the switch is off.
+ */
+function TransitionsSection() {
+  const { t } = useTranslation("shell");
+  const [mix, setMix] = useState<Mix>({
+    mode: "smart",
+    intensity: "medium",
+    crossfade: 6,
+    skipAlbums: true,
+  });
+  useEffect(() => {
+    getSettings().then((s) => {
+      const a = ((s.playback ?? {}) as { automix?: Record<string, unknown> }).automix;
+      setMix({
+        mode: MIX_MODES.includes(a?.mode as Mix["mode"]) ? (a?.mode as Mix["mode"]) : "smart",
+        intensity: MIX_INTENSITY.includes(a?.intensity as Mix["intensity"])
+          ? (a?.intensity as Mix["intensity"])
+          : "medium",
+        crossfade: typeof a?.crossfade_s === "number" ? a.crossfade_s : 6,
+        skipAlbums: a?.skip_albums !== false,
+      });
+    });
+  }, []);
+  const save = (next: Mix) => {
+    const prev = mix;
+    setMix(next);
+    patchSettings({
+      playback: {
+        automix: {
+          mode: next.mode,
+          intensity: next.intensity,
+          crossfade_s: next.crossfade,
+          skip_albums: next.skipAlbums,
+        },
+      },
+    }).catch(() => setMix(prev));
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsMix.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <fieldset
+          className="m-0 flex flex-wrap gap-2 border-0 p-0"
+          aria-label={t("settingsMix.title")}
+        >
+          {MIX_MODES.map((m) => (
+            <Chip key={m} active={mix.mode === m} onClick={() => save({ ...mix, mode: m })}>
+              {t(`settingsMix.mode.${m}`)}
+            </Chip>
+          ))}
+        </fieldset>
+        <div className="t-caption text-text-secondary">{t(`settingsMix.hint.${mix.mode}`)}</div>
+        {mix.mode === "smart" && (
+          <fieldset
+            className="m-0 flex flex-wrap gap-2 border-0 p-0"
+            aria-label={t("settingsMix.intensity")}
+          >
+            {MIX_INTENSITY.map((i) => (
+              <Chip
+                key={i}
+                active={mix.intensity === i}
+                onClick={() => save({ ...mix, intensity: i })}
+              >
+                {t(`settingsMix.intensityName.${i}`)}
+              </Chip>
+            ))}
+          </fieldset>
+        )}
+        {mix.mode === "crossfade" && (
+          <div className="flex items-center gap-4">
+            <span className="t-caption w-28 shrink-0 text-text-secondary">
+              {t("settingsMix.length")}
+            </span>
+            <Slider
+              value={(mix.crossfade - 1) / 11}
+              step={1 / 11}
+              label={t("settingsMix.length")}
+              valueText={t("settingsMix.seconds", { count: mix.crossfade })}
+              onCommit={(v) => save({ ...mix, crossfade: Math.round(1 + v * 11) })}
+              className="flex-1"
+            />
+            <span className="t-caption w-14 shrink-0 text-right text-text-tertiary">
+              {t("settingsMix.seconds", { count: mix.crossfade })}
+            </span>
+          </div>
+        )}
+        {mix.mode !== "gapless" && (
+          <div className="flex items-center gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="t-body text-text-primary">{t("settingsMix.skipAlbums")}</div>
+              <div className="t-caption text-text-secondary">{t("settingsMix.skipAlbumsHint")}</div>
+            </div>
+            <Switch
+              checked={mix.skipAlbums}
+              label={t("settingsMix.skipAlbums")}
+              onChange={(v) => save({ ...mix, skipAlbums: v })}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** «Визуализация» (FR-VIZ-006/010): blend with the accent, the minimalist wave screen. */
+function VizSection() {
+  const { t } = useTranslation("shell");
+  const [viz, setViz] = useState({ follow_theme_accent: true, minimal: false });
+  useEffect(() => {
+    getSettings().then((s) => {
+      const v = s.viz as { follow_theme_accent?: boolean; minimal?: boolean } | undefined;
+      setViz({
+        follow_theme_accent: v?.follow_theme_accent ?? true,
+        minimal: v?.minimal ?? false,
+      });
+    });
+  }, []);
+  const toggle = (key: "follow_theme_accent" | "minimal", v: boolean) => {
+    setViz((cur) => ({ ...cur, [key]: v }));
+    patchSettings({ viz: { [key]: v } }).catch(() => setViz((cur) => ({ ...cur, [key]: !v })));
+  };
+  const rows = [
+    {
+      key: "follow_theme_accent",
+      label: "settingsViz.followAccent",
+      hint: "settingsViz.followAccentHint",
+    },
+    { key: "minimal", label: "settingsViz.minimal", hint: "settingsViz.minimalHint" },
+  ] as const;
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsViz.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        {rows.map((r) => (
+          <div key={r.key} className="flex items-center gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="t-body text-text-primary">{t(r.label)}</div>
+              <div className="t-caption text-text-secondary">{t(r.hint)}</div>
+            </div>
+            <Switch checked={viz[r.key]} label={t(r.label)} onChange={(v) => toggle(r.key, v)} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const FOCUS_VOCALS = ["none", "prefer_none", "any"] as const;
+
+/**
+ * «Фокус» (T4.24, FR-FOCUS-001/003/004/006): «свой» cycle (work, break, long break, cycles
+ * before it), «Слова» (Q-5, default «Предпочтительно без слов»), the allowed overrun at the
+ * boundary, and normalization for the session.
+ */
+function FocusSection() {
+  const { t } = useTranslation("shell");
+  const [f, setF] = useState({
+    work_min: 25,
+    break_min: 5,
+    long_break_min: 15,
+    cycles_before_long: 4,
+    vocals: "prefer_none" as (typeof FOCUS_VOCALS)[number],
+    overrun_s: 90,
+    auto_normalize: true,
+  });
+  useEffect(() => {
+    getSettings().then((d) => {
+      const v = (d.focus ?? {}) as Partial<typeof f>;
+      setF((cur) => ({ ...cur, ...v }));
+    });
+  }, []);
+  const save = (next: typeof f) => {
+    const prev = f;
+    setF(next);
+    patchSettings({ focus: next }).catch(() => setF(prev));
+  };
+  const rows = [
+    { key: "work_min", min: 5, max: 180, label: "settingsFocus.work" },
+    { key: "break_min", min: 1, max: 60, label: "settingsFocus.break" },
+    { key: "long_break_min", min: 1, max: 60, label: "settingsFocus.longBreak" },
+  ] as const;
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsFocus.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        {rows.map((r) => (
+          <div key={r.key} className="flex items-center gap-4">
+            <span className="t-caption w-28 shrink-0 text-text-secondary">{t(r.label)}</span>
+            <Slider
+              value={(f[r.key] - r.min) / (r.max - r.min)}
+              step={1 / (r.max - r.min)}
+              label={t(r.label)}
+              valueText={t("settingsSleep.fadeValue", { count: f[r.key] })}
+              onCommit={(v) => save({ ...f, [r.key]: Math.round(r.min + v * (r.max - r.min)) })}
+              className="flex-1"
+            />
+          </div>
+        ))}
+        <div className="flex items-center gap-4">
+          <span className="t-caption w-28 shrink-0 text-text-secondary">
+            {t("settingsFocus.overrun")}
+          </span>
+          <Slider
+            value={f.overrun_s / 300}
+            step={10 / 300}
+            label={t("settingsFocus.overrun")}
+            valueText={t("settingsFocus.seconds", { count: f.overrun_s })}
+            onCommit={(v) => save({ ...f, overrun_s: Math.round((v * 300) / 10) * 10 })}
+            className="flex-1"
+          />
+        </div>
+        <span className="t-body text-text-primary">{t("settingsFocus.vocals")}</span>
+        <fieldset
+          className="m-0 flex flex-wrap gap-2 border-0 p-0"
+          aria-label={t("settingsFocus.vocals")}
+        >
+          {FOCUS_VOCALS.map((v) => (
+            <Chip key={v} active={f.vocals === v} onClick={() => save({ ...f, vocals: v })}>
+              {t(`settingsFocus.vocalsName.${v}`)}
+            </Chip>
+          ))}
+        </fieldset>
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsFocus.normalize")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsFocus.normalizeHint")}</div>
+          </div>
+          <Switch
+            checked={f.auto_normalize}
+            label={t("settingsFocus.normalize")}
+            onChange={(v) => save({ ...f, auto_normalize: v })}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const SLEEP_AFTER = ["nothing", "screen_off", "sleep", "hibernate"] as const;
+
+/**
+ * «Сон-таймер» (T4.21–T4.23, FR-SLEEP-004/007, `14` §14): how long the fade lasts, «тёплый
+ * звук», and what happens after — nothing by default; «Выключить экран», «Сон», «Гибернация»
+ * only by this choice (hibernate only where Windows has it, Q-17; on Modern Standby «сон» turns
+ * the screen off and lets the PC sleep by itself, Q-4).
+ */
+function SleepSection() {
+  const { t } = useTranslation("shell");
+  const [s, setS] = useState<{
+    fade_min: number;
+    warm: boolean;
+    after: (typeof SLEEP_AFTER)[number];
+  }>({ fade_min: 10, warm: false, after: "nothing" });
+  const [caps, setCaps] = useState({ hibernate: false, modernStandby: false });
+  useEffect(() => {
+    getSettings().then((d) => {
+      const v = d.sleep as
+        | { fade_min?: number; warm?: boolean; after?: (typeof SLEEP_AFTER)[number] }
+        | undefined;
+      setS({ fade_min: v?.fade_min ?? 10, warm: v?.warm ?? false, after: v?.after ?? "nothing" });
+    });
+    sleepCaps()
+      .then(setCaps)
+      .catch(() => {});
+  }, []);
+  const save = (next: typeof s) => {
+    const prev = s;
+    setS(next);
+    patchSettings({ sleep: next }).catch(() => setS(prev));
+  };
+  const choices = SLEEP_AFTER.filter((a) => a !== "hibernate" || caps.hibernate);
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsSleep.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex items-center gap-4">
+          <span className="t-caption w-28 shrink-0 text-text-secondary">
+            {t("settingsSleep.fade")}
+          </span>
+          <Slider
+            value={(s.fade_min - 1) / 29}
+            step={1 / 29}
+            label={t("settingsSleep.fade")}
+            valueText={t("settingsSleep.fadeValue", { count: s.fade_min })}
+            onCommit={(v) => save({ ...s, fade_min: Math.round(1 + v * 29) })}
+            className="flex-1"
+          />
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsSleep.warm")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsSleep.warmHint")}</div>
+          </div>
+          <Switch
+            checked={s.warm}
+            label={t("settingsSleep.warm")}
+            onChange={(v) => save({ ...s, warm: v })}
+          />
+        </div>
+        <span className="t-body text-text-primary">{t("settingsSleep.after")}</span>
+        <fieldset
+          className="m-0 flex flex-wrap gap-2 border-0 p-0"
+          aria-label={t("settingsSleep.after")}
+        >
+          {choices.map((a) => (
+            <Chip key={a} active={s.after === a} onClick={() => save({ ...s, after: a })}>
+              {t(`settingsSleep.afterName.${a}`)}
+            </Chip>
+          ))}
+        </fieldset>
+        {s.after === "sleep" && caps.modernStandby && (
+          <div className="t-caption text-text-secondary">{t("settingsSleep.modernStandby")}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const FX_MODES = ["weather", "season", "manual", "off"] as const;
+
+/**
+ * «Живые эффекты» (T4.20, FR-FX-001/007, supplement §31): the mode (by the real weather — the
+ * default; by the season; by hand; off), the manual pick and the still version for weak PCs.
+ */
+function FxSection() {
+  const { t } = useTranslation("shell");
+  const [fx, setFx] = useState<{
+    mode: (typeof FX_MODES)[number];
+    manual: FxType;
+    static_when_weak: boolean;
+  }>({ mode: "weather", manual: "snow", static_when_weak: false });
+  useEffect(() => {
+    getSettings().then((s) => {
+      const f = s.fx as
+        | { mode?: (typeof FX_MODES)[number]; manual?: string | null; static_when_weak?: boolean }
+        | undefined;
+      setFx({
+        mode: f?.mode ?? "weather",
+        manual: isFxType(f?.manual) ? f.manual : "snow",
+        static_when_weak: f?.static_when_weak ?? false,
+      });
+    });
+  }, []);
+  const save = (next: typeof fx) => {
+    const prev = fx;
+    setFx(next);
+    patchSettings({ fx: next }).catch(() => setFx(prev));
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsFx.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <fieldset
+          className="m-0 flex flex-wrap gap-2 border-0 p-0"
+          aria-label={t("settingsFx.title")}
+        >
+          {FX_MODES.map((m) => (
+            <Chip key={m} active={fx.mode === m} onClick={() => save({ ...fx, mode: m })}>
+              {t(`settingsFx.mode.${m}`)}
+            </Chip>
+          ))}
+        </fieldset>
+        <div className="t-caption text-text-secondary">{t(`settingsFx.hint.${fx.mode}`)}</div>
+        {fx.mode === "manual" && (
+          <fieldset
+            className="m-0 flex flex-wrap gap-2 border-0 p-0"
+            aria-label={t("settingsFx.pick")}
+          >
+            {FX_TYPES.map((k) => (
+              <Chip key={k} active={fx.manual === k} onClick={() => save({ ...fx, manual: k })}>
+                {t(`settingsFx.type.${k}`)}
+              </Chip>
+            ))}
+          </fieldset>
+        )}
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsFx.static")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsFx.staticHint")}</div>
+          </div>
+          <Switch
+            checked={fx.static_when_weak}
+            label={t("settingsFx.static")}
+            onChange={(v) => save({ ...fx, static_when_weak: v })}
+          />
+        </div>
+      </div>
     </div>
   );
 }

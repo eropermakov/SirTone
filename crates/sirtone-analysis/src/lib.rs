@@ -5,3 +5,4 @@ pub mod b1;
 pub mod b2;
 pub mod b3;
 pub mod fingerprint;
+pub mod grid;

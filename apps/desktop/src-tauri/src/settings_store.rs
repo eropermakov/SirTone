@@ -135,6 +135,11 @@ pub fn settings_patch(
     if changed.iter().any(|k| k == "hotkeys") {
         crate::hotkeys::apply(&app); // FR-WIN-001: applied without a restart
     }
+    if changed.iter().any(|k| k == "playback" || k == "sfx")
+        && let Some(pb) = tauri::Manager::try_state::<crate::playback::Playback>(&app)
+    {
+        pb.renormalize(); // T4.11: a new target or the switch — heard at once
+    }
     if changed.iter().any(|k| k == "network") {
         crate::net::apply(&app); // T3.1: the offline switch, at once
     }

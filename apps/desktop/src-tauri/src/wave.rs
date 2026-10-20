@@ -34,6 +34,8 @@ enum Cmd {
     /// A wave track was skipped: its vibe repels and the upcoming tracks are picked again
     /// (D-92, AT-21).
     Skipped(i64),
+    /// Another profile from the next track on (focus segments).
+    Switch(String),
 }
 
 /// One reason of «Почему этот трек» (§17); the UI words it as `wave.why.<kind>`.
@@ -214,6 +216,20 @@ impl Wave {
         let _ = self.tx.send(Cmd::Skipped(i64::from(track)));
     }
 
+    /// Starts a wave with a built-in profile from Rust (focus, T4.24); plays at once.
+    pub fn start_profile(&self, id: &str) {
+        let (tx, _rx) = mpsc::channel();
+        let _ = self
+            .tx
+            .send(Cmd::Start(id.to_owned(), WaveQuery::default(), tx));
+    }
+
+    /// The wave goes on with another profile after the current track (focus work ↔ break):
+    /// the upcoming wave tracks are dropped and picked again.
+    pub fn switch_profile(&self, id: &str) {
+        let _ = self.tx.send(Cmd::Switch(id.to_owned()));
+    }
+
     /// More tracks for a wave that is running out (from the playback sink; never blocks).
     pub fn request_more(&self) {
         if !self.pending.swap(true, Ordering::AcqRel) {
@@ -334,6 +350,63 @@ fn next_ids(
         return Ok(Vec::new());
     };
     let ctx = ContextBuilder::default().snapshot(&clock);
+    // The sleep wave (T4.22, §14): the timer's progress and E₀ — the energy of the track that
+    // played when it started (taken once, at the first refill).
+    if let Some(s) = app.try_state::<crate::sleep::Sleep>() {
+        let state = s.fraction().map(|progress| {
+            let e0 = s.e0().unwrap_or_else(|| {
+                let id = app
+                    .try_state::<crate::playback::Playback>()
+                    .and_then(|p| p.current_track_id());
+                let e0 = tracks
+                    .iter()
+                    .find(|t| id.is_some_and(|i| i64::from(i) == t.id))
+                    .and_then(|t| t.features)
+                    .map_or(0.5, |f| f.0[sirtone_wave::engine::f::ENERGY]);
+                s.set_e0(e0);
+                e0
+            });
+            sirtone_wave::engine::SleepState { e0, progress }
+        });
+        e.set_sleep(state);
+    }
+    // Focus (T4.24, §15): «Слова» and the segment to pack into (§7.1) — what is left of it when
+    // the first new track would start: after the current one and the wave tracks already queued.
+    if profile.starts_with("focus") {
+        let doc = app
+            .try_state::<std::sync::Arc<SettingsStore>>()
+            .map(|s| s.get())
+            .unwrap_or_default();
+        e.set_vocals(match doc["focus"]["vocals"].as_str() {
+            Some("none") => sirtone_wave::engine::Vocals::None,
+            Some("any") => sirtone_wave::engine::Vocals::Any,
+            _ => sirtone_wave::engine::Vocals::PreferNone,
+        });
+        let overrun = doc["focus"]["overrun_s"].as_i64().unwrap_or(90) * 1000;
+        let pack = app
+            .try_state::<crate::focus::Focus>()
+            .and_then(|f| f.segment())
+            .filter(|(p, _)| p == profile)
+            .map(|(_, end)| {
+                let left = end
+                    .saturating_duration_since(std::time::Instant::now())
+                    .as_millis() as i64;
+                let pb = app.state::<Playback>();
+                let s = pb.snapshot();
+                let current = i64::from(s.duration_ms.unwrap_or(0).saturating_sub(s.position_ms));
+                let queued: i64 = pb
+                    .upcoming_ids()
+                    .iter()
+                    .filter_map(|id| tracks.iter().find(|t| t.id == i64::from(*id)))
+                    .map(|t| t.duration_ms as i64)
+                    .sum();
+                sirtone_wave::engine::SegmentPack {
+                    left_ms: left - current - queued,
+                    overrun_ms: overrun,
+                }
+            });
+        e.set_segment(pack);
+    }
     Ok(e.next(&ctx, &shelf, novelty(app), n, now)
         .into_iter()
         .filter_map(|id| u32::try_from(id).ok())
@@ -408,6 +481,23 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                     retune(app, &mut slot, &mut engine, &profile, &query);
                 }
             }
+            Cmd::Switch(p) => {
+                engine = None;
+                profile = p;
+                query = WaveQuery::default();
+                let pb = app.state::<Playback>();
+                pb.set_wave_profile(&profile);
+                pb.drop_upcoming_wave();
+                match next_ids(app, &mut slot, &mut engine, &profile, &query, MORE)
+                    .and_then(|ids| items_for(&app.state::<Library>(), &ids, PlayContext::Wave))
+                {
+                    Ok(items) if !items.is_empty() => pb.append(items),
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(target: "sirtone::wave", code = ?e.code, "switch failed");
+                    }
+                }
+            }
             Cmd::Retune => {
                 if engine.is_some() {
                     retune(app, &mut slot, &mut engine, &profile, &query);
@@ -467,6 +557,7 @@ pub fn wave_start(
     let profile = match profile.as_deref() {
         Some("seasonal") => "seasonal",
         Some("for_all") => "for_all",
+        Some("sleep") => "sleep",
         _ => "my_wave",
     };
     let query = query.unwrap_or_default().into_query()?;
@@ -511,4 +602,61 @@ pub fn wave_retune(wave: State<'_, Wave>) {
 pub fn wave_season_card() -> String {
     let ctx = ContextBuilder::default().snapshot(&SystemClock);
     sirtone_wave::season::card_key(&ctx.season_w).to_owned()
+}
+
+/// The seasonal/event theme of today (FR-THEME-001, docs/14 §12): the accent seed (the UI's
+/// generator makes the 6 tokens with their contrast), the visualiser palette, the cover
+/// placeholder variant and the linked effect. Same date path as `wave_season_card`, so the
+/// colour and the card name never disagree. Events join with T5.14.
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
+pub struct ThemeStateDto {
+    pub id: String,
+    pub card: String,
+    /// `season` | `event`
+    pub source: String,
+    pub seed: String,
+    pub viz: Vec<String>,
+    pub cover_variant: String,
+    pub effect: String,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn theme_state() -> ThemeStateDto {
+    use sirtone_wave::theme::{ThemeSource, ThemesConfig, resolve};
+    let ctx = ContextBuilder::default().snapshot(&SystemClock);
+    let s = resolve(&ThemesConfig::default(), &ctx.season_w, None);
+    ThemeStateDto {
+        id: s.id,
+        card: s.card,
+        source: match s.source {
+            ThemeSource::Season => "season",
+            ThemeSource::Event => "event",
+        }
+        .to_owned(),
+        seed: s.seed,
+        viz: s.viz,
+        cover_variant: s.cover_variant,
+        effect: s.effect,
+    }
+}
+
+/// The effect «По сезону» right now (T4.20, `14` §13.1, supplement §31): the season's, with the
+/// summer night's fireflies by the clock's daypart (time only from `Clock`). The weather
+/// (T5.15) will come before it; until then «По реальной погоде» falls back to this (AT-16).
+#[tauri::command]
+#[specta::specta]
+pub fn fx_season_effect() -> String {
+    use sirtone_core::wave::Daypart;
+    use sirtone_wave::theme::{ThemesConfig, season_effect};
+    let ctx = ContextBuilder::default().snapshot(&SystemClock);
+    let daypart = match ctx.daypart {
+        Daypart::Dawn => "dawn",
+        Daypart::Morning => "morning",
+        Daypart::Day => "day",
+        Daypart::Evening => "evening",
+        Daypart::Dusk => "dusk",
+        Daypart::Night => "night",
+    };
+    season_effect(&ThemesConfig::default(), &ctx.season_w, daypart)
 }

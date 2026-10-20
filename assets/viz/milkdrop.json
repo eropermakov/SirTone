@@ -1,0 +1,15 @@
+{
+  "_doc": "«MilkDrop» (T4.3, docs/06 §7.3, copy of projectM/Kodi/Poweramp, docs/01a §B.2): 30 s per preset, 3 s soft blend, hard cuts off; a new preset by the vibe on a track change. Pick: nearest kept presets by descriptors (index.json), weights below; a random one of the closest `top_k`, not one of the last `recent`; ♥ draws a preset closer (distance × like), ✕ removes it.",
+  "preset_s": 30,
+  "blend_s": 3,
+  "top_k": 8,
+  "recent": 12,
+  "like": 0.6,
+  "weights": { "hue": 1.0, "motion": 1.2, "react": 0.6, "bright": 0.8 },
+  "quality": {
+    "1": { "fps": 30, "mesh": [24, 18], "pixel_ratio": 0.75, "texture_ratio": 0.5 },
+    "2": { "fps": 45, "mesh": [32, 24], "pixel_ratio": 1.0, "texture_ratio": 0.75 },
+    "3": { "fps": 60, "mesh": [48, 36], "pixel_ratio": 1.0, "texture_ratio": 1.0 },
+    "4": { "fps": 60, "mesh": [48, 36], "pixel_ratio": 1.5, "texture_ratio": 1.0 }
+  }
+}

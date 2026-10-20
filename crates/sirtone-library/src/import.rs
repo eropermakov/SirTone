@@ -817,6 +817,21 @@ fn place(
         "UPDATE track SET import_batch_id = ?2 WHERE id = ?1",
         params![id, batch],
     )?;
+    // Tagged loudness (T4.11): normalization before the own measurement comes.
+    let l = tags.loudness;
+    if l.track_lufs.is_some() || l.album_lufs.is_some() {
+        tx.execute(
+            "UPDATE track SET tag_lufs = ?2, tag_peak_db = ?3, tag_lufs_album = ?4,
+                    tag_peak_album_db = ?5 WHERE id = ?1",
+            params![
+                id,
+                l.track_lufs,
+                l.track_peak_db,
+                l.album_lufs,
+                l.album_peak_db
+            ],
+        )?;
+    }
     // Picard's release ids: covers from the Cover Art Archive (T3.3), the album keeps the first.
     if let Some(album) = album_id
         && (tags.mbid_release.is_some() || tags.mbid_group.is_some())

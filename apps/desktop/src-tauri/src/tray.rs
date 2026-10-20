@@ -25,6 +25,13 @@ struct Labels {
     next: String,
     quit: String,
     tooltip: String,
+    sleep_start: String,
+    sleep_left: String,
+    sleep_extend: String,
+    focus_start: String,
+    focus_on: String,
+    focus_work: String,
+    focus_break: String,
 }
 
 fn labels() -> Labels {
@@ -46,6 +53,13 @@ fn labels() -> Labels {
         next: get("next", "Next"),
         quit: get("quit", "Quit"),
         tooltip: get("tooltip", "SirTone"),
+        sleep_start: get("sleepStart", "Sleep 30 min"),
+        sleep_left: get("sleepLeft", "Sleep: {min} min left — cancel"),
+        sleep_extend: get("sleepExtend", "+15 min"),
+        focus_start: get("focusStart", "Focus 25/5"),
+        focus_on: get("focusOn", "Focus: {phase}, {min} min — stop"),
+        focus_work: get("focusWork", "work"),
+        focus_break: get("focusBreak", "break"),
     }
 }
 
@@ -55,6 +69,8 @@ struct Items {
     play_pause: MenuItem<Wry>,
     prev: MenuItem<Wry>,
     next: MenuItem<Wry>,
+    sleep: MenuItem<Wry>,
+    focus: MenuItem<Wry>,
     labels: Labels,
     /// Last shown state, so unchanged snapshots do not touch the native menu.
     last: Option<TrayState>,
@@ -65,7 +81,59 @@ struct Items {
 #[derive(Default)]
 pub struct TrayMenu {
     items: Mutex<Option<Items>>,
-    tx: Mutex<Option<Sender<TrayState>>>,
+    tx: Mutex<Option<Sender<Msg>>>,
+}
+
+enum Msg {
+    Play(TrayState),
+    /// The sleep timer and focus lines (T4.21, T4.24, FR-SHELL-006).
+    Modes(String, String),
+}
+
+/// The sleep line: start, the minutes left (a click cancels), or «+15 мин» while woken.
+fn sleep_text(l: &Labels, s: &crate::sleep::SleepStatus) -> String {
+    match s.phase.as_str() {
+        "off" | "ended" => l.sleep_start.clone(),
+        "woken" => l.sleep_extend.clone(),
+        _ => l
+            .sleep_left
+            .replace("{min}", &s.remaining_ms.div_ceil(60_000).to_string()),
+    }
+}
+
+/// The focus line: start, or the phase and minutes left (a click stops).
+fn focus_text(l: &Labels, s: &crate::focus::FocusStatus) -> String {
+    let phase = match s.phase.as_str() {
+        "off" => return l.focus_start.clone(),
+        "work" => &l.focus_work,
+        _ => &l.focus_break,
+    };
+    l.focus_on
+        .replace("{phase}", phase)
+        .replace("{min}", &s.remaining_ms.div_ceil(60_000).to_string())
+}
+
+/// The sleep timer or focus changed: the tray lines follow (never blocks).
+pub fn refresh_modes(app: &AppHandle) {
+    let Some(menu) = app.try_state::<TrayMenu>() else {
+        return;
+    };
+    let texts = {
+        let items = menu.items.lock().unwrap_or_else(|p| p.into_inner());
+        let Some(items) = items.as_ref() else { return };
+        let sleep = app
+            .try_state::<crate::sleep::Sleep>()
+            .map(|s| sleep_text(&items.labels, &s.status()))
+            .unwrap_or_else(|| items.labels.sleep_start.clone());
+        let focus = app
+            .try_state::<crate::focus::Focus>()
+            .map(|f| focus_text(&items.labels, &f.status()))
+            .unwrap_or_else(|| items.labels.focus_start.clone());
+        (sleep, focus)
+    };
+    if let Some(tx) = menu.tx.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
+        let _ = tx.send(Msg::Modes(texts.0, texts.1));
+    }
 }
 
 /// What the tray shows about playback.
@@ -102,7 +170,7 @@ pub fn update(app: &AppHandle, s: &TrayState) {
     if let Some(menu) = app.try_state::<TrayMenu>()
         && let Some(tx) = menu.tx.lock().unwrap_or_else(|p| p.into_inner()).as_ref()
     {
-        let _ = tx.send(s.clone());
+        let _ = tx.send(Msg::Play(s.clone()));
     }
 }
 
@@ -156,6 +224,16 @@ fn on_menu(app: &AppHandle, event: MenuEvent) {
         ("play_pause", Some(pb)) => pb.toggle(),
         ("prev", Some(pb)) => pb.prev(),
         ("next", Some(pb)) => pb.next(),
+        ("focus", _) => {
+            if let Some(f) = app.try_state::<crate::focus::Focus>() {
+                f.tray_action();
+            }
+        }
+        ("sleep", _) => {
+            if let Some(s) = app.try_state::<crate::sleep::Sleep>() {
+                s.tray_action();
+            }
+        }
         ("quit", _) => app.exit(0),
         _ => {}
     }
@@ -167,6 +245,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
     let play_pause = MenuItem::with_id(app, "play_pause", &l.play, false, None::<&str>)?;
     let prev = MenuItem::with_id(app, "prev", &l.prev, false, None::<&str>)?;
     let next = MenuItem::with_id(app, "next", &l.next, false, None::<&str>)?;
+    let sleep = MenuItem::with_id(app, "sleep", &l.sleep_start, true, None::<&str>)?;
+    let focus = MenuItem::with_id(app, "focus", &l.focus_start, true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
         &[
@@ -176,6 +256,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
             &play_pause,
             &prev,
             &next,
+            &PredefinedMenuItem::separator(app)?,
+            &sleep,
+            &focus,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "quit", &l.quit, true, None::<&str>)?,
         ],
@@ -206,19 +289,39 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
         play_pause,
         prev,
         next,
+        sleep,
+        focus,
         labels: l,
         last: None,
     });
-    let (tx, rx) = channel::<TrayState>();
+    let (tx, rx) = channel::<Msg>();
     let handle = app.clone();
     std::thread::Builder::new()
         .name("sirtone-tray".into())
         .spawn(move || {
-            while let Ok(mut s) = rx.recv() {
-                while let Ok(newer) = rx.try_recv() {
-                    s = newer;
+            while let Ok(first) = rx.recv() {
+                // Latest wins, separately for playback and the sleep line.
+                let (mut play, mut sleep) = (None, None);
+                for m in std::iter::once(first).chain(rx.try_iter()) {
+                    match m {
+                        Msg::Play(s) => play = Some(s),
+                        Msg::Modes(s, f) => sleep = Some((s, f)),
+                    }
                 }
-                apply(&handle, &s);
+                if let Some(s) = play {
+                    apply(&handle, &s);
+                }
+                if let Some((s, f)) = sleep
+                    && let Some(menu) = handle.try_state::<TrayMenu>()
+                    && let Some(items) = menu
+                        .items
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .as_ref()
+                {
+                    let _ = items.sleep.set_text(s);
+                    let _ = items.focus.set_text(f);
+                }
             }
         })
         .ok();

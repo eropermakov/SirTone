@@ -6,12 +6,18 @@
 pub mod decode;
 pub mod devices;
 pub mod engine;
+pub mod eq;
 pub mod gapless;
 pub mod latency;
+pub mod limiter;
 pub mod mf;
 pub mod output;
 pub mod pcm;
 pub mod probe;
 pub mod render;
+pub mod sfx;
+pub mod stretch;
+pub mod viz;
+pub mod warm;
 
 pub use engine::{EngineCmd, EngineEvent, EngineHandle, PlayState, Snapshot, start};

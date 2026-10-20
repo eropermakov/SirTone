@@ -26,9 +26,15 @@ fn level(app: &AppHandle) -> u64 {
         .unwrap_or(3)
 }
 
+/// Isolated test runs (`SIRTONE_SMOKE_AC` together with `SIRTONE_DATA_DIR`) analyse on battery
+/// too: a laptop unplugged during the smoke must not stop the analysis checks.
+pub(crate) fn battery_ignored() -> bool {
+    std::env::var_os("SIRTONE_SMOKE_AC").is_some() && std::env::var_os("SIRTONE_DATA_DIR").is_some()
+}
+
 /// Why analysis waits now, if it does.
 fn blocked(app: &AppHandle) -> bool {
-    sirtone_platform::power::on_battery()
+    (sirtone_platform::power::on_battery() && !battery_ignored())
         || sirtone_platform::power::fullscreen_busy()
         || (level(app) == 0 && sirtone_platform::idle::idle_ms() < IDLE_MS)
 }

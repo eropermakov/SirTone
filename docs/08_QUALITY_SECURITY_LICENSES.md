@@ -134,7 +134,7 @@
 | Вывод (запас) | `cpal` 0.18.2 | Apache-2.0 | запас | нет exclusive |
 | Ресемплер / кольцо | `rubato` 5.0.1 · `rtrb` 0.4.0 (`ringbuf` 0.5.3 — альтернатива) | MIT OR Apache-2.0 | ✅ | |
 | Громкость | `ebur128` 0.1.10 | MIT | ✅ | последний релиз 2024-10 — стабильный порт libebur128 |
-| Time-stretch | `signalsmith-stretch` 0.1.3 | MIT | ✅ 🧪 S-08 | C++ через `cc` (нужен MSVC — есть) |
+| Time-stretch | Signalsmith Stretch + signalsmith-linear (C++, Signalsmith Audio) и C-обёртка из пакета `signalsmith-stretch` 0.1.3 (Colin Marc) — **исходники взяты в `crates/sirtone-audio/vendor/signalsmith`**, собираются через `cc` (сборочная зависимость), FFI вручную (D-100); сам пакет не используется (его `bindgen` требует libclang) | MIT | ✅ S-08 B | `cargo deny` вложенный C++ не видит — учёт здесь; тексты лицензий — `assets/licenses/signalsmith-stretch.txt` |
 | FFT | `rustfft` 6.4.1 · `realfft` 3.5.0 | MIT OR Apache-2.0 / MIT | ✅ | |
 | BPM/ключ | `stratum-dsp` =1.0.0 (без `ml`) | MIT OR Apache-2.0 (в пакете LICENSE-MIT и LICENSE-APACHE, © HLLMR) | ✅ S-08, T3.7 | `rayon` объявлен, но не используется; тянет вторую `symphonia` 0.5 (размер бинарника) |
 | Теги | `lofty` 0.25.4 | MIT OR Apache-2.0 | ✅ | ASF/WMA не поддерживает |
@@ -170,7 +170,7 @@
 | Анимация / DnD | `motion` 14.2.0 · `@dnd-kit/core` 6.3.1 (стабильный; `@dnd-kit/react` 0.5.1 — следим) | MIT | pointer-сенсоры |
 | i18n | `i18next` 26.4.5 · `react-i18next` 17.0.16 (+ ICU-плагин) | MIT | |
 | Иконки | `lucide-react` 1.57.0 | ISC | если владелец не даст своих |
-| Визуализация | `butterchurn` 2.6.7 · `butterchurn-presets` 2.4.7 (11,9 МБ, 1765 файлов; берём отобранные) | MIT | последние релизы 2025-07 / 2022-04 |
+| Визуализация | `butterchurn` 2.6.7 (+ `@babel/runtime` 7.29, `ecma-proposal-math-extensions` 0.0.2 — MIT) · `butterchurn-presets` 2.4.7 — только dev: `tools/preset-indexer` отбирает пресеты и компилирует уравнения в `assets/viz/milkdrop/presets.js` (D-95); авторы — `assets/viz/milkdrop/CREDITS.md` | MIT | последние релизы 2025-07 / 2022-04 |
 | Тесты/линт | `vitest` 5.0.4 · `@playwright/test` 1.64.1 · `@biomejs/biome` 2.5.15 · `eslint` 10.12.0 | MIT / Apache-2.0 | |
 | MCP | `@upstash/context7-mcp` 4.4.1 · `@playwright/mcp` 0.0.83 · `shadcn` MCP | MIT / Apache-2.0 | версии зафиксированы в `.mcp.json` |
 

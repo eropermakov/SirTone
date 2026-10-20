@@ -572,7 +572,7 @@ CREATE VIRTUAL TABLE search_tri USING fts5(text, content='', contentless_delete=
     "duck": { "enabled": true, "amount_db": -12, "sensitivity": "medium", "ignore": [], "pause_on_call": false },
     "autoplay_albums": false                       // ∞ после альбома/исполнителя/коллекции/поиска (FR-PLS-005, D-86); у плейлистов ∞ свой
   },
-  "viz": { "mode": "waves", "follow_theme_accent": true },
+  "viz": { "mode": "waves", "follow_theme_accent": true, "minimal": false },
   "fx": { "mode": "weather", "manual": null, "static_when_weak": false },
   "wave": { "learning": true, "novelty": 50, "repeat_window_h": 24, "artist_spacing": 5,
             "season": { "mode": "auto", "weather_nudge": true, "blend_days": 21 },

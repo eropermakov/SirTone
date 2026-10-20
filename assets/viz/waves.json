@@ -1,0 +1,36 @@
+{
+  "_doc": "«Волны» (T4.2, docs/06 §7.2, copy of Яндекс «Моя волна» + Apple Music/AMLL, docs/01a §B). Hue anchors are the vibe corners (valence × arousal, 0…1): sad = low/low, angry = low/high, joy = high/high, calm = high/low.",
+  "hue": { "sad": 265, "angry": 20, "joy": 50, "calm": 170 },
+  "chroma": [0.08, 0.2],
+  "lightness": [0.35, 0.75],
+  "mix": { "collection": 0.35, "accent": 0.25, "cover": 0.5 },
+  "speed": [0.035, 0.14],
+  "warp": { "bass": 1.4, "beat": 0.45, "beat_decay": 5.0 },
+  "sparkle": { "treble": 0.5, "max": 0.22, "density": 0.93 },
+  "pulse": { "like_ms": 900, "click_ms": 600, "lift": 0.12, "min_gap_ms": 10000 },
+  "pointer": { "radius": 0.11, "decay_ms": 900, "strength": 0.35, "max": 8, "move_gap_ms": 120 },
+  "motion": {
+    "_doc": "T4.5, FR-VIZ-002: the vibe vector → motion, continuous (no table). Unknown features count as 0.5. speed ← arousal·w + energy·w over `speed`; warp base ← energy and aggression over `warp_base`; beat gain ← danceability over `beat_gain`; glints ← 1 − acousticness over `sparkle_gain`; grain ← acousticness over `grain`.",
+    "speed_w": { "arousal": 0.6, "energy": 0.4 },
+    "warp_base": [1.25, 2.2],
+    "warp_w": { "energy": 0.6, "aggression": 0.4 },
+    "beat_gain": [0.5, 1.4],
+    "sparkle_gain": [0.4, 1.0],
+    "grain": [0.018, 0.04]
+  },
+  "smoothing": { "attack": 0.35, "release": 0.07 },
+  "transition_ms": 1500,
+  "jitter_frames": 2,
+  "quality": {
+    "1": { "fps": 30, "scale": 0.5, "minimal": true },
+    "2": { "fps": 45, "scale": 0.6, "minimal": false },
+    "3": { "fps": 60, "scale": 0.75, "minimal": false },
+    "4": { "fps": 60, "scale": 1.0, "minimal": false }
+  },
+  "night": { "hide_after_ms": 3000 },
+  "fallback": { "blur_px": 100, "drift_s": 25 },
+  "_note_sleep": "The sleep timer's modifiers (docs/14 §14, docs/06 §7.8): speed ×0.4 while fading, ×0.2 in the final; brightness −50 %; after the end the night vibe goes black over 10 s.",
+  "sleep": { "speed": 0.4, "speed_final": 0.2, "dim": 0.5, "black_ms": 10000 },
+  "_note_focus": "Focus work calms the visualisation (docs/14 §15, docs/06 §7.8): speed ×0.6; the full screen never opens by itself.",
+  "focus": { "speed": 0.6 }
+}

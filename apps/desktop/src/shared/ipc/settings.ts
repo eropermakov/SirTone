@@ -15,17 +15,54 @@ export type SettingsDoc = {
       preset: string;
       custom: string | null;
     };
+    seasonal_theme?: boolean;
+    /** «Ручной акцент» per seasonal/event theme (Q-15); `null` — the theme's own colour. */
+    theme_accents?: Record<
+      string,
+      { source: string; preset: string; custom: string | null } | null
+    >;
   };
   [key: string]: unknown;
 };
 export type SettingsPatch = {
-  appearance?: { theme?: string; accent?: Record<string, unknown>; seasonal_theme?: boolean };
+  appearance?: {
+    theme?: string;
+    accent?: Record<string, unknown>;
+    seasonal_theme?: boolean;
+    theme_accents?: Record<string, Record<string, unknown> | null>;
+  };
   hotkeys?: Record<string, string | null>;
-  performance?: { level?: number; overrides?: Record<string, unknown> };
+  performance?: {
+    level?: number;
+    overrides?: Record<string, unknown>;
+    auto_degrade?: boolean;
+    degraded_from?: number | null;
+  };
   onboarding?: { done?: boolean; tips_seen?: boolean };
   wave?: { learning?: boolean; novelty?: number };
   library?: { organize_external?: "suggest" | "auto" | "never" };
   network?: { offline_mode?: boolean };
+  sfx?: { enabled?: boolean; volume?: number };
+  fx?: { mode?: string; manual?: string | null; static_when_weak?: boolean };
+  sleep?: { fade_min?: number; final_s?: number; warm?: boolean; after?: string };
+  focus?: Record<string, unknown>;
+  playback?: {
+    normalization?: { enabled?: boolean; target_lufs?: number; album_mode?: "auto" | "off" };
+    eq?: { enabled?: boolean; preset?: string; preamp_db?: number; bands_db?: number[] };
+    duck?: {
+      enabled?: boolean;
+      amount_db?: number;
+      sensitivity?: "low" | "medium" | "high";
+      ignore?: string[];
+    };
+    automix?: {
+      mode?: "gapless" | "crossfade" | "smart";
+      intensity?: "soft" | "medium" | "dj";
+      crossfade_s?: number;
+      skip_albums?: boolean;
+    };
+  };
+  viz?: { mode?: "waves" | "milkdrop" | "video"; follow_theme_accent?: boolean; minimal?: boolean };
 };
 
 const WEB_KEY = "sirtone.web.settings";

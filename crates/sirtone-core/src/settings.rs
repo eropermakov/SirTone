@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::collections::BTreeMap;
 
 pub const SETTINGS_VERSION: u32 = 1;
 
@@ -120,6 +121,9 @@ pub struct Appearance {
     pub custom_accents: Vec<String>,
     pub seasonal_theme: bool,
     pub event_themes_auto: bool,
+    /// «Ручной акцент» of a seasonal/event theme while «Тема по сезону» is on (Q-15, D-50):
+    /// theme id → its own accent; `null` — the theme's colour again.
+    pub theme_accents: BTreeMap<String, Option<Accent>>,
 }
 
 impl Default for Appearance {
@@ -130,6 +134,7 @@ impl Default for Appearance {
             custom_accents: Vec::new(),
             seasonal_theme: false,
             event_themes_auto: false,
+            theme_accents: BTreeMap::new(),
         }
     }
 }
@@ -276,6 +281,8 @@ impl Default for Duck {
 pub struct Viz {
     pub mode: String,
     pub follow_theme_accent: bool,
+    /// The minimalist wave screen (FR-VIZ-010): two colours, no glints.
+    pub minimal: bool,
 }
 
 impl Default for Viz {
@@ -283,6 +290,7 @@ impl Default for Viz {
         Self {
             mode: "waves".into(),
             follow_theme_accent: true,
+            minimal: false,
         }
     }
 }
@@ -379,6 +387,9 @@ pub struct Focus {
     pub vocals: String,
     pub overrun_s: u32,
     pub auto_normalize: bool,
+    /// Focus switched normalization on for its session (FR-FOCUS-004): put it back to off at
+    /// the end — or at the next start if the app quit mid-session.
+    pub norm_restore: bool,
 }
 
 impl Default for Focus {
@@ -391,6 +402,7 @@ impl Default for Focus {
             vocals: "prefer_none".into(),
             overrun_s: 90,
             auto_normalize: true,
+            norm_restore: false,
         }
     }
 }
@@ -573,18 +585,31 @@ impl Default for Playback {
     }
 }
 
+/// The live effects (supplement §31, `06` §7.7) a person may pick by hand.
+pub const FX_TYPES: [&str; 9] = [
+    "snow",
+    "rain",
+    "fog",
+    "storm",
+    "clouds",
+    "motes",
+    "fireflies",
+    "leaves",
+    "petals",
+];
+
 fn validate(s: &Settings) -> Result<(), SettingsError> {
-    let a = &s.appearance.accent;
-    if !ACCENT_PRESETS.contains(&a.preset.as_str()) {
-        return Err(SettingsError::Invalid(format!(
-            "unknown accent preset `{}`",
-            a.preset
-        )));
-    }
-    if a.source == AccentSource::Custom && a.custom.as_deref().is_none_or(|c| !is_hex_color(c)) {
-        return Err(SettingsError::Invalid(
-            "custom accent needs a #rrggbb colour".into(),
-        ));
+    validate_accent(&s.appearance.accent)?;
+    for (id, a) in &s.appearance.theme_accents {
+        if id.is_empty()
+            || id.len() > 32
+            || !id.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+        {
+            return Err(SettingsError::Invalid(format!("unknown theme `{id}`")));
+        }
+        if let Some(a) = a {
+            validate_accent(a)?;
+        }
     }
     if s.performance.level > 4 {
         return Err(SettingsError::Invalid(
@@ -596,9 +621,100 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
             "playback.volume must be 0..=1".into(),
         ));
     }
+    let duck = &s.playback.duck;
+    if !(-80.0..=0.0).contains(&duck.amount_db)
+        || !["low", "medium", "high"].contains(&duck.sensitivity.as_str())
+    {
+        return Err(SettingsError::Invalid(
+            "playback.duck: amount −80…0 dB, sensitivity low|medium|high".into(),
+        ));
+    }
+    let mix = &s.playback.automix;
+    if !["gapless", "crossfade", "smart"].contains(&mix.mode.as_str())
+        || !["soft", "medium", "dj"].contains(&mix.intensity.as_str())
+        || !(1.0..=12.0).contains(&mix.crossfade_s)
+    {
+        return Err(SettingsError::Invalid(
+            "playback.automix: mode gapless|crossfade|smart, intensity soft|medium|dj, crossfade 1–12 s"
+                .into(),
+        ));
+    }
+    let eq = &s.playback.eq;
+    if eq.bands_db.len() != 10
+        || eq.bands_db.iter().any(|v| !(-12.0..=12.0).contains(v))
+        || !(-12.0..=12.0).contains(&eq.preamp_db)
+    {
+        return Err(SettingsError::Invalid(
+            "playback.eq: 10 bands and the preamp within ±12 dB".into(),
+        ));
+    }
+    if !crate::loudness::TARGETS.contains(&s.playback.normalization.target_lufs) {
+        return Err(SettingsError::Invalid(
+            "playback.normalization.target_lufs must be -19, -14 or -11".into(),
+        ));
+    }
+    if !["auto", "off"].contains(&s.playback.normalization.album_mode.as_str()) {
+        return Err(SettingsError::Invalid(
+            "playback.normalization.album_mode must be auto or off".into(),
+        ));
+    }
+    if !(1..=30).contains(&s.sleep.fade_min) || !(5..=120).contains(&s.sleep.final_s) {
+        return Err(SettingsError::Invalid(
+            "sleep.fade_min must be 1..=30, sleep.final_s 5..=120".into(),
+        ));
+    }
+    let fo = &s.focus;
+    if !(5..=180).contains(&fo.work_min)
+        || !(1..=60).contains(&fo.break_min)
+        || !(1..=60).contains(&fo.long_break_min)
+        || !(1..=12).contains(&fo.cycles_before_long)
+        || fo.overrun_s > 300
+        || !["none", "prefer_none", "any"].contains(&fo.vocals.as_str())
+    {
+        return Err(SettingsError::Invalid(
+            "focus: work 5–180, break 1–60, long 1–60, cycles 1–12, overrun ≤ 300 s, vocals none|prefer_none|any".into(),
+        ));
+    }
+    if !["nothing", "screen_off", "sleep", "hibernate"].contains(&s.sleep.after.as_str()) {
+        return Err(SettingsError::Invalid(
+            "sleep.after must be nothing, screen_off, sleep or hibernate".into(),
+        ));
+    }
+    if !["weather", "season", "manual", "off"].contains(&s.fx.mode.as_str()) {
+        return Err(SettingsError::Invalid(
+            "fx.mode must be weather, season, manual or off".into(),
+        ));
+    }
+    if s.fx
+        .manual
+        .as_deref()
+        .is_some_and(|m| !FX_TYPES.contains(&m))
+    {
+        return Err(SettingsError::Invalid("unknown fx.manual effect".into()));
+    }
+    if !["waves", "milkdrop", "video"].contains(&s.viz.mode.as_str()) {
+        return Err(SettingsError::Invalid(
+            "viz.mode must be waves, milkdrop or video".into(),
+        ));
+    }
     if s.wave.novelty > 100 {
         return Err(SettingsError::Invalid(
             "wave.novelty must be 0..=100".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_accent(a: &Accent) -> Result<(), SettingsError> {
+    if !ACCENT_PRESETS.contains(&a.preset.as_str()) {
+        return Err(SettingsError::Invalid(format!(
+            "unknown accent preset `{}`",
+            a.preset
+        )));
+    }
+    if a.source == AccentSource::Custom && a.custom.as_deref().is_none_or(|c| !is_hex_color(c)) {
+        return Err(SettingsError::Invalid(
+            "custom accent needs a #rrggbb colour".into(),
         ));
     }
     Ok(())
@@ -695,5 +811,40 @@ mod tests {
         assert!(apply_patch(&doc, &json!({ "performance": { "level": 9 } })).is_err());
         assert!(apply_patch(&doc, &json!({ "appearance": { "theme": "neon" } })).is_err());
         assert!(apply_patch(&doc, &json!({ "settings_version": 7 })).is_err());
+    }
+
+    #[test]
+    fn sleep_settings_are_checked() {
+        let (doc, _) = normalize(&json!({})).unwrap();
+        let ok =
+            json!({ "sleep": { "fade_min": 15, "final_s": 30, "warm": true, "after": "sleep" } });
+        assert!(apply_patch(&doc, &ok).is_ok());
+        assert!(apply_patch(&doc, &json!({ "sleep": { "fade_min": 0 } })).is_err());
+        assert!(apply_patch(&doc, &json!({ "sleep": { "after": "shutdown" } })).is_err());
+    }
+
+    #[test]
+    fn fx_mode_and_manual_pick_are_checked() {
+        let (doc, _) = normalize(&json!({})).unwrap();
+        let ok = json!({ "fx": { "mode": "manual", "manual": "leaves" } });
+        assert!(apply_patch(&doc, &ok).is_ok());
+        assert!(apply_patch(&doc, &json!({ "fx": { "mode": "rainbow" } })).is_err());
+        assert!(apply_patch(&doc, &json!({ "fx": { "manual": "confetti" } })).is_err());
+    }
+
+    #[test]
+    fn theme_accents_are_kept_per_theme_and_cleared_by_null() {
+        let (doc, _) = normalize(&json!({})).unwrap();
+        let set = json!({ "appearance": { "theme_accents": { "autumn": { "source": "preset", "preset": "blue" } } } });
+        let (doc, typed, _) = apply_patch(&doc, &set).unwrap();
+        let a = typed.appearance.theme_accents["autumn"].as_ref().unwrap();
+        assert_eq!(a.preset, "blue");
+        let clear = json!({ "appearance": { "theme_accents": { "autumn": null } } });
+        let (_, typed, _) = apply_patch(&doc, &clear).unwrap();
+        assert!(typed.appearance.theme_accents["autumn"].is_none());
+        let bad = json!({ "appearance": { "theme_accents": { "Autumn!": null } } });
+        assert!(apply_patch(&doc, &bad).is_err());
+        let bad = json!({ "appearance": { "theme_accents": { "winter": { "source": "custom", "custom": "red" } } } });
+        assert!(apply_patch(&doc, &bad).is_err());
     }
 }

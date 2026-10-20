@@ -35,7 +35,38 @@ impl TagReader for LoftyTags {
             mbid_recording: mbid(tag.get_string(ItemKey::MusicBrainzRecordingId)),
             mbid_release: mbid(tag.get_string(ItemKey::MusicBrainzReleaseId)),
             mbid_group: mbid(tag.get_string(ItemKey::MusicBrainzReleaseGroupId)),
+            loudness: loudness(tag),
         }
+    }
+}
+
+/// ReplayGain 2.0 (`-6.54 dB`, peak `0.987654`) → LUFS (T4.11, `04` §5). Implausible values are
+/// dropped. Opus `R128_*_GAIN` is not reachable through lofty's generic tag (no item key for it):
+/// Opus files get their loudness from the own measurement (B0).
+fn loudness(tag: &lofty::tag::Tag) -> sirtone_core::ports::TagLoudness {
+    use sirtone_core::loudness::{lufs_from_replaygain, peak_db_from_linear};
+    let num = |k: ItemKey| {
+        tag.get_string(k).and_then(|s| {
+            s.trim()
+                .trim_end_matches("dB")
+                .trim_end_matches("db")
+                .trim()
+                .parse::<f32>()
+                .ok()
+        })
+    };
+    let plausible = |l: f32| (-70.0..=5.0).contains(&l);
+    let track_lufs = num(ItemKey::ReplayGainTrackGain)
+        .map(lufs_from_replaygain)
+        .filter(|l| plausible(*l));
+    let album_lufs = num(ItemKey::ReplayGainAlbumGain)
+        .map(lufs_from_replaygain)
+        .filter(|l| plausible(*l));
+    sirtone_core::ports::TagLoudness {
+        track_lufs,
+        track_peak_db: num(ItemKey::ReplayGainTrackPeak).and_then(peak_db_from_linear),
+        album_lufs,
+        album_peak_db: num(ItemKey::ReplayGainAlbumPeak).and_then(peak_db_from_linear),
     }
 }
 
@@ -201,6 +232,39 @@ mod tests {
             .join("../../fixtures/generated")
             .join(rel);
         p.exists().then_some(p)
+    }
+
+    /// ReplayGain 2.0 tags (T4.11): gains → LUFS (reference −18), peaks → dBFS.
+    #[test]
+    fn reads_replaygain_as_lufs() {
+        use lofty::config::WriteOptions;
+        use lofty::tag::{ItemValue, TagItem};
+        let Some(src) = fixture("tags/cyrillic-ok.flac") else {
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("sirtone-rg-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("rg.flac");
+        std::fs::copy(&src, &p).unwrap();
+        let mut file = lofty::read_from_path(&p).unwrap();
+        let tag = file.primary_tag_mut().unwrap();
+        for (k, v) in [
+            (ItemKey::ReplayGainTrackGain, "-6.54 dB"),
+            (ItemKey::ReplayGainTrackPeak, "0.987654"),
+            (ItemKey::ReplayGainAlbumGain, "+2.00 dB"),
+            (ItemKey::ReplayGainAlbumPeak, "0.5"),
+        ] {
+            tag.insert(TagItem::new(k, ItemValue::Text(v.into())));
+        }
+        file.save_to_path(&p, WriteOptions::default()).unwrap();
+        let l = LoftyTags.read(&p).loudness;
+        assert!((l.track_lufs.unwrap() + 11.46).abs() < 1e-3, "{l:?}");
+        assert!((l.album_lufs.unwrap() + 20.0).abs() < 1e-3);
+        assert!((l.track_peak_db.unwrap() + 0.1077).abs() < 1e-3);
+        assert!((l.album_peak_db.unwrap() + 6.0206).abs() < 1e-3);
+        // Without tags — nothing.
+        assert_eq!(LoftyTags.read(&src).loudness, Default::default());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

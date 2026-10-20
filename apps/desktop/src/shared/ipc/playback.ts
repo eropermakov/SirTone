@@ -8,6 +8,7 @@ import {
   type QueueView,
   type RepeatMode,
 } from "./bindings";
+import { sfx } from "./sfx";
 
 /**
  * Playback IPC (prototype 0.2). Commands and events are generated (`bindings.ts`); outside Tauri
@@ -32,6 +33,7 @@ export const EMPTY_SNAPSHOT: PlaybackSnapshot = {
   positionMs: 0,
   durationMs: null,
   volume: 1,
+  signal: null,
 };
 
 export async function getSnapshot(): Promise<PlaybackSnapshot> {
@@ -64,6 +66,11 @@ export function next(): void {
   if (isTauri()) void commands.playbackNext();
 }
 
+/** «Смешать сейчас» (T4.9b): `false` — nothing to mix into (transitions off, no next track). */
+export async function mixNow(): Promise<boolean> {
+  return isTauri() ? commands.playbackMixNow() : false;
+}
+
 export function prev(): void {
   if (isTauri()) void commands.playbackPrev();
 }
@@ -91,10 +98,12 @@ export async function getQueue(): Promise<QueueView> {
 
 /** «Воспроизвести далее» / «В конец очереди» (FR-PLAY-006). */
 export function queuePlayNext(ids: number[], context: PlayContext): void {
+  sfx("queue_add");
   if (isTauri()) void commands.queuePlayNext(ids, context);
 }
 
 export function queueAppend(ids: number[], context: PlayContext): void {
+  sfx("queue_add");
   if (isTauri()) void commands.queueAppend(ids, context);
 }
 

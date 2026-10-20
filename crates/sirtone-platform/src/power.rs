@@ -1,7 +1,10 @@
 //! Background work that never gets in the way (T3.10, FR-PERF-005, docs/06 §6.2): is the PC on
 //! battery, is a full-screen game or presentation running, and a below-normal, EcoQoS thread.
 
-use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+use windows::Win32::System::Power::{
+    ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED, GetSystemPowerStatus,
+    SYSTEM_POWER_STATUS, SetThreadExecutionState,
+};
 use windows::Win32::System::Threading::{
     GetCurrentThread, SetThreadInformation, SetThreadPriority,
     THREAD_POWER_THROTTLING_CURRENT_VERSION, THREAD_POWER_THROTTLING_EXECUTION_SPEED,
@@ -16,6 +19,21 @@ pub fn on_battery() -> bool {
     let mut s = SYSTEM_POWER_STATUS::default();
     // SAFETY: `s` is a valid out-structure.
     unsafe { GetSystemPowerStatus(&mut s) }.is_ok() && s.ACLineStatus == 0
+}
+
+/// Keeps the display (and the system) awake while `on`, for the calling thread (`07` §8.1): the
+/// request lives as long as the thread or until it is called with `false`. Hold it from one
+/// long-lived thread.
+pub fn keep_display_awake(on: bool) {
+    let flags = if on {
+        ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED
+    } else {
+        ES_CONTINUOUS
+    };
+    // SAFETY: plain call; the previous state it returns is not needed.
+    unsafe {
+        SetThreadExecutionState(flags);
+    }
 }
 
 /// A full-screen game (D3D), a presentation or a «busy» full-screen app is in front.

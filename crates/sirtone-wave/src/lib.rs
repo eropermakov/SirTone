@@ -11,3 +11,4 @@ pub mod rng;
 pub mod season;
 pub mod similar;
 pub mod synth;
+pub mod theme;

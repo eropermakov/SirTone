@@ -47,6 +47,8 @@ async function mockTauri(page: Page) {
             return {
               version: "0.1.2",
               settings,
+              // A test that needs a collection sets `__mockLibrary` before the page loads.
+              library: w.__mockLibrary ?? null,
               playback: {
                 state: "playing",
                 title: "Mock track",
@@ -55,6 +57,10 @@ async function mockTauri(page: Page) {
                 volume: 0.5,
               },
             };
+          case "ui_sound":
+            return null;
+          case "playback_snapshot":
+            return { state: "playing", title: "Mock track", volume: 0.5, signal: null };
           case "settings_get":
             return settings;
           case "settings_patch": {
@@ -65,11 +71,48 @@ async function mockTauri(page: Page) {
           case "hotkeys_status":
           case "playlists_list":
           case "never_list":
+          case "viz_videos":
             return [];
           case "autostart_available":
             return false;
           case "wave_season_card":
             return "preWinter";
+          case "viz_start":
+            return 1;
+          case "viz_stop":
+            return null;
+          case "track_tags":
+            return [];
+          // Screens with a collection ask; without data the UI shows its fallbacks.
+          case "track_feedback":
+          case "viz_colors":
+          case "artist_suggestions":
+          case "collection_artists":
+          case "collection_albums":
+          case "storage_info":
+          case "duplicates_count":
+            throw { code: "NotFound", retryable: false, details: null };
+          case "sleep_start":
+          case "focus_start":
+            return null;
+          case "sleep_status":
+            return { phase: "off", kind: null, remainingMs: 0, tracksLeft: null };
+          case "focus_status":
+            return { phase: "off", remainingMs: 0, segmentMs: 0, paused: false, today: 0 };
+          case "sleep_caps":
+            return { hibernate: true, modernStandby: true };
+          case "fx_season_effect":
+            return "snow";
+          case "theme_state":
+            return {
+              id: "autumn",
+              card: "preWinter",
+              source: "season",
+              seed: "#b2a832",
+              viz: ["#b2a832", "#8f7a52", "#5a4a6c"],
+              cover_variant: "autumn",
+              effect: "leaves",
+            };
           case "analysis_progress":
             return { done: 0, total: 0, paused: false };
           case "update_status":
@@ -175,4 +218,97 @@ test("commands go out, events come back, errors become a toast", async ({ page }
     patch: { appearance: { theme: string } };
   };
   expect(patch.patch.appearance.theme).toBe("light");
+});
+
+test("live effects only behind «Моя волна» (T4.20, FR-FX-006)", async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 12,
+      artists: 3,
+      albums: 2,
+      unknown: 0,
+      durationSec: 3000,
+      bytes: 1,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await expect(page.locator("footer").getByText("Mock track")).toBeVisible();
+  await emit(page, "playback-snapshot", {
+    state: "playing",
+    trackId: 7,
+    title: "Mock track",
+    positionMs: 62000,
+    durationMs: 200000,
+    volume: 0.5,
+  });
+  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await expect(page.getByTestId("fx")).toHaveCount(1);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __sirtoneFx?: { stats: { type: string } } }).__sirtoneFx?.stats
+            .type,
+      ),
+    )
+    .toBe("snow");
+  for (const name of ["Исполнители", "Альбомы", "Настройки"]) {
+    await page.getByRole("button", { name, exact: true }).first().click();
+    await expect(page.getByTestId("fx")).toHaveCount(0);
+  }
+});
+
+test("sleep and focus start from the wave screen; their settings render (T4.21, T4.24)", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 12,
+      artists: 3,
+      albums: 2,
+      unknown: 0,
+      durationSec: 3000,
+      bytes: 1,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await expect(page.locator("footer").getByText("Mock track")).toBeVisible();
+  await emit(page, "playback-snapshot", {
+    state: "playing",
+    trackId: 7,
+    title: "Mock track",
+    positionMs: 62000,
+    durationMs: 200000,
+    volume: 0.5,
+  });
+  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await page.getByRole("button", { name: "Сон-таймер", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Через 30 минут" }).click();
+  await expect
+    .poll(async () => (await calls(page, "sleep_start")).at(-1)?.args)
+    .toEqual({ kind: "minutes", value: 30 });
+  await page.getByRole("button", { name: "Фокус", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Работа 25 мин · перерыв 5 мин" }).click();
+  await expect
+    .poll(async () => (await calls(page, "focus_start")).at(-1)?.args)
+    .toEqual({ work: 25, brk: 5 });
+  await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
+  for (const h of ["Живые эффекты", "Сон-таймер", "Фокус"]) {
+    await expect(page.getByRole("heading", { name: h, exact: true })).toBeVisible();
+  }
+  const text = await page.locator("main").innerText();
+  expect(text).not.toMatch(/settings(Sleep|Focus|Fx)\.|\{count|\{time/);
+  await expect(page.getByText("Предпочтительно без слов")).toBeVisible();
 });

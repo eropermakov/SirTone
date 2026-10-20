@@ -5,28 +5,36 @@
 mod analysis;
 mod artists;
 mod autostart;
+mod backgrounds;
+mod beatgrid;
 mod bootstrap;
 mod continuation;
 mod covers_online;
 mod diagnostics;
+mod duck;
 mod duplicates;
 mod feedback;
+mod focus;
 mod hotkeys;
 mod ipc;
 mod journal;
 mod library;
 mod net;
+mod night;
 mod perf;
 mod playback;
 mod playlists;
 mod popularity;
+mod presets;
 mod resolve;
 mod search;
 mod settings_store;
+mod sleep;
 mod storage;
 mod tray;
 mod unknowns;
 mod updates;
+mod viz;
 mod wave;
 mod window_chrome;
 
@@ -85,7 +93,24 @@ fn main() {
         .manage(resolve::Resolver::default())
         .manage(popularity::Popularity::default())
         .manage(covers_online::CoversOnline::default())
+        .manage(viz::Viz::default())
+        .manage(night::Night::default())
+        .manage(beatgrid::Grids::default())
+        .manage(presets::Presets::open(&data_dir))
         .manage(hotkeys::Hotkeys::default())
+        // «Видео» clips with HTTP ranges (T4.4); off the main thread.
+        .register_asynchronous_uri_scheme_protocol("sirtone-bg", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let path = request.uri().path().to_string();
+            let range = request
+                .headers()
+                .get("range")
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string);
+            std::thread::spawn(move || {
+                responder.respond(backgrounds::protocol(&app, &path, range.as_deref()))
+            });
+        })
         // Covers without IPC (docs/03 §5.6); work off the main thread.
         .register_asynchronous_uri_scheme_protocol("sirtone-cover", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
@@ -110,7 +135,18 @@ fn main() {
             if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event
                 && let Some(lib) = window.try_state::<library::Library>()
             {
-                lib.import_paths(window.app_handle(), paths.clone());
+                // Video clips become «Видео» backgrounds (T4.4); everything else is music.
+                let (videos, music): (Vec<_>, Vec<_>) =
+                    paths.iter().cloned().partition(|p| backgrounds::is_video(p));
+                if let Some(pb) = window.try_state::<playback::Playback>() {
+                    pb.sfx("drop"); // T4.15
+                }
+                if !videos.is_empty() {
+                    backgrounds::add_dropped(window.app_handle(), videos);
+                }
+                if !music.is_empty() {
+                    lib.import_paths(window.app_handle(), music);
+                }
             }
         })
         .setup(move |app| {
@@ -127,6 +163,12 @@ fn main() {
             let net_state = net::start(app.handle());
             app.manage(net_state);
             analysis::start(app.handle().clone());
+            duck::start(app.handle().clone());
+            app.manage(sleep::Sleep::start(app.handle().clone()));
+            app.manage(focus::Focus::start(
+                app.handle().clone(),
+                diagnostics::data_dir(),
+            ));
             resolve::start(app.handle().clone());
             match playback::Playback::start(app.handle().clone(), store) {
                 Ok(pb) => {

@@ -220,6 +220,8 @@ pub struct Resolved {
     pub artist_id: Option<i64>,
     /// Placeholder hint (T3.20).
     pub art: u8,
+    /// Loudness of the track and its album (normalization, T4.11).
+    pub loud: sirtone_library::loudness::TrackLoudness,
 }
 
 struct Shared {
@@ -647,6 +649,7 @@ impl Library {
                         album_id: r.get(4)?,
                         artist_id: r.get(5)?,
                         art: 0,
+                        loud: Default::default(),
                     })
                 }) {
                     out.push(r);
@@ -654,8 +657,10 @@ impl Library {
             }
             let ids: Vec<i64> = out.iter().map(|r| i64::from(r.id)).collect();
             let art = sirtone_library::art::track_hints(c, &ids)?;
+            let loud = sirtone_library::loudness::for_tracks(c, &ids)?;
             for r in &mut out {
                 r.art = art.get(&i64::from(r.id)).copied().unwrap_or(0x70);
+                r.loud = loud.get(&i64::from(r.id)).copied().unwrap_or_default();
             }
             Ok(out)
         })

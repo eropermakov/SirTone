@@ -43,6 +43,17 @@ pub struct Tags {
     /// MusicBrainz release and release group ids: covers from the Cover Art Archive (T3.3).
     pub mbid_release: Option<String>,
     pub mbid_group: Option<String>,
+    /// ReplayGain 2.0 / R128 loudness, converted to LUFS (T4.11); peaks dBFS (sample peak).
+    pub loudness: TagLoudness,
+}
+
+/// Loudness written by a tagger (foobar2000, MusicBee, opusenc…), already in LUFS.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct TagLoudness {
+    pub track_lufs: Option<f32>,
+    pub track_peak_db: Option<f32>,
+    pub album_lufs: Option<f32>,
+    pub album_peak_db: Option<f32>,
 }
 
 /// A MusicBrainz id: 36 characters, hex digits and dashes.

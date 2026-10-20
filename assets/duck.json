@@ -1,0 +1,20 @@
+{
+  "_doc": "Ducking (T4.14, FR-PLAY-011, docs/04 §7 — copy of F-04: Windows communications ducking, Discord attenuation, Android transient focus). Another application counts as sounding when its session peak stays at or above threshold_db for onset_ms; Sirtone comes back hold_ms after it falls quiet. Sensitivity picks the pair. poll_ms — how often the sessions are looked at. builtin_ignore: never counted — tools that capture Sirtone itself (their session carries Sirtone's own sound back).",
+  "poll_ms": 100,
+  "hold_ms": 1000,
+  "sensitivity": {
+    "low": {
+      "threshold_db": -50.0,
+      "onset_ms": 1000
+    },
+    "medium": {
+      "threshold_db": -60.0,
+      "onset_ms": 700
+    },
+    "high": {
+      "threshold_db": -66.0,
+      "onset_ms": 500
+    }
+  },
+  "builtin_ignore": ["s01-output.exe"]
+}

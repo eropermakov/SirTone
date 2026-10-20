@@ -5,9 +5,9 @@
 use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::{
-    analysis, artists, autostart, bootstrap, continuation, duplicates, feedback, hotkeys, library,
-    net, perf, playback, playlists, search, settings_store, storage, unknowns, updates, wave,
-    window_chrome,
+    analysis, artists, autostart, backgrounds, bootstrap, continuation, duplicates, feedback,
+    focus, hotkeys, library, net, night, perf, playback, playlists, presets, search,
+    settings_store, sleep, storage, unknowns, updates, viz, wave, window_chrome,
 };
 
 /// Free-form JSON across IPC, exported as TS `unknown`. specta inlines `serde_json::Value`
@@ -35,6 +35,8 @@ pub fn builder() -> Builder<tauri::Wry> {
             playback::playback_set_volume,
             playback::playback_next,
             playback::playback_prev,
+            playback::playback_mix_now,
+            playback::ui_sound,
             playback::play_tracks,
             playback::queue_play_next,
             playback::queue_append,
@@ -44,6 +46,15 @@ pub fn builder() -> Builder<tauri::Wry> {
             unknowns::unknown_normal,
             unknowns::unknown_release,
             unknowns::unknown_retry,
+            viz::viz_start,
+            viz::viz_stop,
+            viz::viz_colors,
+            night::night_set,
+            presets::viz_preset_ratings,
+            presets::viz_preset_rate,
+            backgrounds::viz_videos,
+            backgrounds::viz_video_set_mood,
+            backgrounds::viz_video_remove,
             continuation::continuation_preview,
             continuation::continuation_set,
             continuation::continuation_exclude,
@@ -110,6 +121,19 @@ pub fn builder() -> Builder<tauri::Wry> {
             wave::wave_why,
             wave::wave_retune,
             wave::wave_season_card,
+            wave::theme_state,
+            wave::fx_season_effect,
+            sleep::sleep_start,
+            sleep::sleep_cancel,
+            sleep::sleep_extend,
+            sleep::sleep_wake,
+            sleep::sleep_status,
+            sleep::sleep_caps,
+            focus::focus_start,
+            focus::focus_stop,
+            focus::focus_pause,
+            focus::focus_skip,
+            focus::focus_status,
             analysis::analysis_progress,
             library::library_organize,
             net::net_status,
@@ -136,7 +160,11 @@ pub fn builder() -> Builder<tauri::Wry> {
             playback::QueueChanged,
             playlists::PlaylistsChanged,
             duplicates::DuplicatesFound,
-            library::OrganizeSuggested
+            viz::VizPower,
+            backgrounds::VideosAdded,
+            library::OrganizeSuggested,
+            sleep::SleepStatus,
+            focus::FocusStatus
         ])
 }
 

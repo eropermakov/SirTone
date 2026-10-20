@@ -1,5 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionScreen } from "@/app/library/CollectionScreen";
 import { GenresScreen } from "@/app/library/GenresScreen";
@@ -29,9 +29,17 @@ import {
   type SettingsDoc,
   type SettingsPatch,
 } from "@/shared/ipc/settings";
+import { sfx } from "@/shared/ipc/sfx";
 import { type UpdateStatus, updateStatus } from "@/shared/ipc/updates";
 import { setWindowTheme } from "@/shared/ipc/window";
 import { autoSlug } from "@/shared/theme/autoAccent";
+import {
+  type SeasonTheme,
+  setSeasonalEnabled,
+  setThemeViz,
+  useSeasonTheme,
+  whenIdle,
+} from "@/shared/theme/seasonal";
 import {
   ACCENT_SLUGS,
   type AccentSlug,
@@ -55,12 +63,16 @@ import { blankDraft, SmartEditor } from "./playlists/SmartEditor";
 import { nextName, usePlaylists } from "./playlists/usePlaylists";
 import { SearchScreen } from "./search/SearchScreen";
 import { EmptyScreen } from "./shell/EmptyScreen";
+import { FocusBanner } from "./shell/FocusBanner";
 import { PlayerBar } from "./shell/PlayerBar";
 import { QueuePanel } from "./shell/QueuePanel";
 import { SettingsScreen } from "./shell/SettingsScreen";
 import { type Screen, Sidebar } from "./shell/Sidebar";
+import { SleepBanner } from "./shell/SleepBanner";
+import { useAutoDegrade } from "./shell/useAutoDegrade";
 import { usePerformance } from "./shell/usePerformance";
 import { usePlayback } from "./shell/usePlayback";
+import { useVideoDrops } from "./wave/useVideoDrops";
 import { WaveScreen } from "./wave/WaveScreen";
 
 /** One place in the app: a sidebar section, maybe with an album/artist opened. */
@@ -75,33 +87,58 @@ type NavEntry = {
 };
 
 /** Shell (prototype slice of T2.1/T2.2): three zones from DESIGN.md §7. Appearance lives in Rust settings (T0.6). */
-type Appearance = { theme: ThemePref; accent: AccentSource };
-const DEFAULT: Appearance = { theme: "system", accent: { kind: "preset", slug: "sirkov" } };
+type Appearance = {
+  theme: ThemePref;
+  accent: AccentSource;
+  /** «Тема по сезону» (T4.18) and the manual accents of its themes (Q-15). */
+  seasonal: boolean;
+  themeAccents: Record<string, AccentSource>;
+};
+const DEFAULT: Appearance = {
+  theme: "system",
+  accent: { kind: "preset", slug: "sirkov" },
+  seasonal: false,
+  themeAccents: {},
+};
+
+type AccentDoc = { source: string; preset: string; custom: string | null };
 
 function fromDoc(doc: SettingsDoc): Appearance {
-  const a = doc.appearance.accent;
-  const accent: AccentSource =
-    a.source === "auto"
-      ? { kind: "auto" }
-      : a.source === "custom" && a.custom
-        ? { kind: "custom", hex: a.custom }
-        : {
-            kind: "preset",
-            slug: (ACCENT_SLUGS as readonly string[]).includes(a.preset)
-              ? (a.preset as AccentSlug)
-              : "sirkov",
-          };
-  return { theme: doc.appearance.theme, accent };
+  const themeAccents: Record<string, AccentSource> = {};
+  for (const [id, a] of Object.entries(doc.appearance.theme_accents ?? {})) {
+    if (a) themeAccents[id] = parseAccent(a);
+  }
+  return {
+    theme: doc.appearance.theme,
+    accent: parseAccent(doc.appearance.accent),
+    seasonal: Boolean(doc.appearance.seasonal_theme),
+    themeAccents,
+  };
+}
+
+function parseAccent(a: AccentDoc): AccentSource {
+  return a.source === "auto"
+    ? { kind: "auto" }
+    : a.source === "custom" && a.custom
+      ? { kind: "custom", hex: a.custom }
+      : {
+          kind: "preset",
+          slug: (ACCENT_SLUGS as readonly string[]).includes(a.preset)
+            ? (a.preset as AccentSlug)
+            : "sirkov",
+        };
+}
+
+function accentDoc(a: AccentSource): Record<string, unknown> {
+  return a.kind === "auto"
+    ? { source: "auto" }
+    : a.kind === "custom"
+      ? { source: "custom", custom: a.hex }
+      : { source: "preset", preset: a.slug };
 }
 
 function toPatch(a: Appearance): SettingsPatch {
-  const accent =
-    a.accent.kind === "auto"
-      ? { source: "auto" }
-      : a.accent.kind === "custom"
-        ? { source: "custom", custom: a.accent.hex }
-        : { source: "preset", preset: a.accent.slug };
-  return { appearance: { theme: a.theme, accent } };
+  return { appearance: { theme: a.theme, accent: accentDoc(a.accent) } };
 }
 
 const NARROW = "(max-width: 899px)";
@@ -240,6 +277,21 @@ export function App() {
   });
   const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW).matches);
   usePerformance();
+  // «Видео» clips dropped anywhere on the window (T4.4).
+  useVideoDrops();
+  // T4.16: a sustained frame-time problem lowers the level once and sticks (D-47).
+  useAutoDegrade(screen);
+  // UI sounds (T4.15, `06` §8): a click for buttons (switches have their own on/off sound).
+  useEffect(() => {
+    const click = (e: MouseEvent) => {
+      const b = (e.target as Element | null)?.closest("button, [role=menuitem]");
+      if (b && b.getAttribute("role") !== "switch" && !(b as HTMLButtonElement).disabled) {
+        sfx("click");
+      }
+    };
+    document.addEventListener("click", click, true);
+    return () => document.removeEventListener("click", click, true);
+  }, []);
 
   // Load settings once (and move prototype 0.1 choices over), then follow changes from Rust.
   useEffect(() => {
@@ -263,16 +315,80 @@ export function App() {
   }, [hydrate]);
 
   /** Optimistic UI (DESIGN.md §1): apply at once, persist in the background, roll back on error. */
-  const setAppearance = (next: (a: Appearance) => Appearance) => {
+  const setAppearance = (next: (a: Appearance) => Appearance, patch?: SettingsPatch) => {
     const prev = appearance;
     const value = next(prev);
     setAppearanceState(value);
-    patchSettings(toPatch(value)).catch(() => setAppearanceState(prev));
+    patchSettings(patch ?? toPatch(value)).catch(() => setAppearanceState(prev));
+  };
+
+  // «Тема по сезону» (T4.18): today's theme from Rust; the daily drift between seasons is shown
+  // only after 2 s without input and fades over 1.5 s (`14` §12); switching on is instant.
+  useEffect(() => setSeasonalEnabled(appearance.seasonal), [appearance.seasonal]);
+  const season = useSeasonTheme();
+  const [shownSeason, setShownSeason] = useState<SeasonTheme | null>(null);
+  const shownRef = useRef<SeasonTheme | null>(null);
+  useEffect(() => {
+    const prev = shownRef.current;
+    const show = (s: SeasonTheme | null) => {
+      shownRef.current = s;
+      setShownSeason(s);
+    };
+    if (!season || !prev || prev.id !== season.id) {
+      show(season);
+      return;
+    }
+    if (prev.seed === season.seed && prev.viz.join() === season.viz.join()) return;
+    const stop = new AbortController();
+    let done: number | undefined;
+    whenIdle(2000, stop.signal).then(() => {
+      if (stop.signal.aborted) return;
+      const root = document.documentElement;
+      root.dataset.themeDrift = "";
+      show(season);
+      done = window.setTimeout(() => delete root.dataset.themeDrift, 1600);
+    });
+    return () => {
+      stop.abort();
+      window.clearTimeout(done);
+    };
+  }, [season]);
+  const seasonOn = appearance.seasonal && !!shownSeason && !isPalette(appearance.theme);
+  const themeAccent = seasonOn ? appearance.themeAccents[shownSeason.id] : undefined;
+  // What the interface wears: the theme's own accent for this theme, else the theme's seed.
+  const seasonSeed = seasonOn ? (shownSeason?.seed ?? null) : null;
+  // Stable between renders (the playback ticks must not re-apply the theme).
+  const effAccent: AccentSource = useMemo(
+    () => themeAccent ?? (seasonSeed ? { kind: "custom", hex: seasonSeed } : appearance.accent),
+    [themeAccent, seasonSeed, appearance.accent],
+  );
+  useEffect(
+    () => setThemeViz(seasonOn && !themeAccent ? (shownSeason?.viz ?? null) : null),
+    [seasonOn, themeAccent, shownSeason],
+  );
+  // What AccentPicker marks: `null` — the theme's colour (the season swatch).
+  const pickedAccent: AccentSource | null = seasonOn ? (themeAccent ?? null) : appearance.accent;
+  const pickAccent = (a: AccentSource | null) => {
+    if (seasonOn && shownSeason) {
+      // Q-15: with «Тема по сезону» on a pick is this theme's own accent.
+      const id = shownSeason.id;
+      setAppearance(
+        (p) => {
+          const themeAccents = { ...p.themeAccents };
+          if (a) themeAccents[id] = a;
+          else delete themeAccents[id];
+          return { ...p, themeAccents };
+        },
+        { appearance: { theme_accents: { [id]: a ? accentDoc(a) : null } } },
+      );
+    } else if (a) {
+      setAppearance((p) => ({ ...p, accent: a }));
+    }
   };
 
   useEffect(() => {
     const apply = () => {
-      applyAppearance(appearance.theme, appearance.accent, coverSlug);
+      applyAppearance(appearance.theme, effAccent, coverSlug);
       setWindowTheme(
         resolveTheme(appearance.theme),
         isPalette(appearance.theme) ? appearance.theme : null,
@@ -281,11 +397,11 @@ export function App() {
     apply();
     if (appearance.theme !== "system") return;
     return onSystemThemeChange(apply);
-  }, [appearance, coverSlug]);
+  }, [appearance.theme, effAccent, coverSlug]);
 
   // «Авто» (T2.2): the playing cover picks the set; computed once per cover (cached).
   useEffect(() => {
-    if (appearance.accent.kind !== "auto" || !snap.cover) return;
+    if (effAccent.kind !== "auto" || !snap.cover) return;
     let alive = true;
     autoSlug(snap.cover)
       .then((s) => {
@@ -295,7 +411,7 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [appearance.accent.kind, snap.cover]);
+  }, [effAccent.kind, snap.cover]);
 
   useEffect(() => {
     const m = window.matchMedia(NARROW);
@@ -325,6 +441,13 @@ export function App() {
   };
   const hasMusic = lib.status.tracks > 0;
   const report = lib.report;
+  // The import ended: a soft «done» or a low «error» (T4.15).
+  useEffect(() => {
+    if (report) sfx("import_done");
+  }, [report]);
+  useEffect(() => {
+    if (error) sfx("import_error");
+  }, [error]);
 
   return (
     <DndRoot onNavigate={setScreen}>
@@ -351,9 +474,10 @@ export function App() {
             {screen === "settings" ? (
               <SettingsScreen
                 theme={appearance.theme}
-                accent={appearance.accent}
+                accent={pickedAccent}
+                seasonSeed={seasonSeed}
                 onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
-                onAccent={(accent) => setAppearance((a) => ({ ...a, accent }))}
+                onAccent={pickAccent}
                 library={lib.status}
                 onChooseLibrary={() => lib.setRootNeeded(true)}
                 onReplaySetup={() => setOnboard("setup")}
@@ -423,6 +547,8 @@ export function App() {
             </div>
           )}
         </div>
+        <SleepBanner />
+        <FocusBanner />
         <div className="t-caption bg-bg-base px-4 pt-1 text-center text-text-tertiary">
           {t("proto")}
         </div>
@@ -568,9 +694,10 @@ export function App() {
         {onboard === "setup" && (
           <Onboarding
             theme={appearance.theme}
-            accent={appearance.accent}
+            accent={pickedAccent}
+            seasonSeed={seasonSeed}
             onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
-            onAccent={(accent) => setAppearance((a) => ({ ...a, accent }))}
+            onAccent={pickAccent}
             status={lib.status}
             onRoot={rootChosen}
             onFinish={() => setOnboard("tips")}

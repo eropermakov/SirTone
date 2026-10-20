@@ -312,3 +312,25 @@ pub struct SimTrack {
     /// B2: `track.embedding` — `[scale f32 LE][64 × i8]`.
     pub embedding: Option<Vec<u8>>,
 }
+
+/// How a track fits what is left of a focus or sleep segment (docs/14 §7.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fit {
+    /// Another track will still fit after it (≥ 150 s left).
+    More,
+    /// It ends at the boundary: −`overrun` … +30 s.
+    Boundary,
+    No,
+}
+
+/// `left_ms` — the segment's time left when the track would start.
+pub fn fit(left_ms: i64, dur_ms: i64, overrun_ms: i64) -> Fit {
+    let after = left_ms - dur_ms;
+    if after >= 150_000 {
+        Fit::More
+    } else if (-overrun_ms..=30_000).contains(&after) {
+        Fit::Boundary
+    } else {
+        Fit::No
+    }
+}
