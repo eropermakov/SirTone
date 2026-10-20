@@ -216,6 +216,15 @@ export const commands = {
 	 *  (T5.15) will come before it; until then «По реальной погоде» falls back to this (AT-16).
 	 */
 	fxSeasonEffect: () => __TAURI_INVOKE<string>("fx_season_effect"),
+	/**  Starts the timer: `kind` = `minutes` (with `value` minutes), `track`, `tracks` (`value`). */
+	sleepStart: (kind: string, value: number) => __TAURI_INVOKE<void>("sleep_start", { kind, value }),
+	sleepCancel: () => __TAURI_INVOKE<void>("sleep_cancel"),
+	/**  «+15 мин». */
+	sleepExtend: () => __TAURI_INVOKE<void>("sleep_extend"),
+	/**  Any action in the window while the timer fades (the page sends it on pointer and key). */
+	sleepWake: () => __TAURI_INVOKE<void>("sleep_wake"),
+	sleepStatus: () => __TAURI_INVOKE<SleepStatus>("sleep_status"),
+	sleepCaps: () => __TAURI_INVOKE<SleepCaps>("sleep_caps"),
 	analysisProgress: () => typedError<AnalysisProgress, AppError>(__TAURI_INVOKE("analysis_progress")),
 	/**
 	 *  «Навести порядок» (T3.19, FR-FS-005): the adopted files waiting for it (`all` = false) or
@@ -263,6 +272,7 @@ export const events = {
 	playbackSnapshot: makeEvent<PlaybackSnapshot>("playback-snapshot"),
 	playlistsChanged: makeEvent<PlaylistsChanged>("playlists-changed"),
 	queueChanged: makeEvent<QueueChanged>("queue-changed"),
+	sleepStatus: makeEvent<SleepStatus>("sleep-status"),
 	videosAdded: makeEvent<VideosAdded>("videos-added"),
 	vizPower: makeEvent<VizPower>("viz-power"),
 };
@@ -653,6 +663,27 @@ export type SignalInfo = {
 };
 
 export type SignalKind = "bitperfect" | "resampled" | "dsp";
+
+/**  Which after-timer choices this PC offers (hibernate only if available, Q-17). */
+export type SleepCaps = {
+	hibernate: boolean,
+	/**  Modern Standby: «сон» means the screen off and the system left to sleep. */
+	modernStandby: boolean,
+};
+
+/**  What the UI shows (FR-SLEEP-001/006). */
+export type SleepStatus = {
+	/**
+	 *  `off` · `running` · `fading` · `final` · `woken` · `ended` (the timer paused playback;
+	 *  the night vibe fades to black, the screen may sleep)
+	 */
+	phase: string,
+	/**  `minutes` · `track` · `tracks` */
+	kind: string | null,
+	remainingMs: number,
+	/**  Tracks left for «через N треков». */
+	tracksLeft: number | null,
+};
 
 export type StorageInfo = {
 	/**  `library.db` with its WAL. */

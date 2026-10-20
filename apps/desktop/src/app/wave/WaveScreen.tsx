@@ -13,6 +13,7 @@ import {
   Trash2,
   Waves,
 } from "lucide-react";
+
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { TrackCard } from "@/app/library/TrackCard";
@@ -29,6 +30,7 @@ import {
 } from "@/shared/ipc/feedback";
 import { allTrackIds, playTracks, trackDetails, waveStart, waveWhy } from "@/shared/ipc/library";
 import { type PlaybackSnapshot, setShuffle, togglePlay } from "@/shared/ipc/playback";
+import { sleepStart } from "@/shared/ipc/sleep";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/Button";
 import { Cover } from "@/shared/ui/Cover";
@@ -39,6 +41,7 @@ import { ForAllButton, type Gathering } from "./ForAllButton";
 import { NightVibe } from "./NightVibe";
 import { NoveltySlider } from "./NoveltySlider";
 import { SeasonWaveButton } from "./SeasonWaveButton";
+import { SleepButton } from "./SleepButton";
 import { VizBackground } from "./VizBackground";
 import { VizToolbar } from "./VizToolbar";
 import { pulseWaves } from "./WavesBackground";
@@ -73,7 +76,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       .catch(() => {});
   }, [id]);
 
-  const startWave = (profile?: "seasonal" | "for_all", gathering?: Gathering | null) =>
+  const startWave = (profile?: "seasonal" | "for_all" | "sleep", gathering?: Gathering | null) =>
     waveStart(profile, gathering ? { gathering } : undefined)
       .then((r) => {
         if (r.queued === 0) notify(t("wave.empty"));
@@ -310,6 +313,12 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
         >
           <CircleSlash size={24} strokeWidth={1.5} />
         </button>
+        <SleepButton
+          onSleepWave={() => {
+            // The timer first: the sleep wave's first tracks already follow its curve.
+            void sleepStart("minutes", 30).then(() => startWave("sleep"));
+          }}
+        />
         <button
           type="button"
           aria-label={t("wave.night")}

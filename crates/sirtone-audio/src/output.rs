@@ -26,6 +26,10 @@ pub struct Shared {
     pub duck_bits: AtomicU32,
     /// UI sounds volume (T4.15), linear: 0 — off.
     pub sfx_bits: AtomicU32,
+    /// The sleep timer's late multiplier (T4.21, `14` §14): the target in dB (`f32` bits, high
+    /// half) and the ramp to it in ms (low half) — one atomic, so the pair is never torn. The
+    /// render thread glides there linearly in dB.
+    pub sleep_bits: AtomicU64,
     /// Pause ramp target: true = audible.
     pub playing: AtomicBool,
     /// Ring may legitimately run dry (end of track, nothing loaded): no underrun.
@@ -49,8 +53,27 @@ impl Shared {
         let s = Self::default();
         s.gain_bits.store(1f32.to_bits(), Ordering::Relaxed);
         s.duck_bits.store(1f32.to_bits(), Ordering::Relaxed);
+        s.sleep_bits.store(pack_sleep(0.0, 0), Ordering::Relaxed);
         s.starving_ok.store(true, Ordering::Relaxed);
         Arc::new(s)
+    }
+}
+
+/// The sleep multiplier's target and ramp in one word (see `Shared::sleep_bits`).
+pub fn pack_sleep(target_db: f32, ramp_ms: u32) -> u64 {
+    (u64::from(target_db.min(0.0).to_bits()) << 32) | u64::from(ramp_ms)
+}
+
+pub fn unpack_sleep(v: u64) -> (f32, u32) {
+    (f32::from_bits((v >> 32) as u32), v as u32)
+}
+
+/// dB → amplitude; exactly 1.0 at 0 dB (the untouched path stays bit-exact).
+fn db_amp(db: f32) -> f32 {
+    if db == 0.0 {
+        1.0
+    } else {
+        (db * (std::f32::consts::LN_10 / 20.0)).exp()
     }
 }
 
@@ -230,6 +253,12 @@ fn render_loop(
     let duck_down = 1.0 - (-1.0 / (DUCK_ATTACK_S * rate)).exp();
     let duck_up = 1.0 - (-1.0 / (DUCK_RELEASE_S * rate)).exp();
     let mut duck = 1f32;
+    // Sleep fade (T4.21): the level now in dB, the step per frame and the frames left.
+    let mut sleep_seen = shared.sleep_bits.load(Ordering::Relaxed);
+    let mut sleep_db = 0f32;
+    let mut sleep_step = 0f32;
+    let mut sleep_left = 0u32;
+    let mut sleep_amp = 1f32;
 
     let mut fill = |frames: usize, ring: &mut rtrb::Consumer<f32>| -> Result<(), AppError> {
         let req = shared.flush_req.load(Ordering::Acquire);
@@ -243,6 +272,20 @@ fn render_loop(
         let playing = shared.playing.load(Ordering::Relaxed);
         let target_gain = f32::from_bits(shared.gain_bits.load(Ordering::Relaxed));
         let duck_target = f32::from_bits(shared.duck_bits.load(Ordering::Relaxed));
+        let sleep_now = shared.sleep_bits.load(Ordering::Relaxed);
+        if sleep_now != sleep_seen {
+            sleep_seen = sleep_now;
+            let (target, ramp_ms) = unpack_sleep(sleep_now);
+            let frames = (ramp_ms as f32 * rate / 1000.0) as u32;
+            if frames == 0 {
+                sleep_db = target;
+                sleep_left = 0;
+            } else {
+                sleep_step = (target - sleep_db) / frames as f32;
+                sleep_left = frames;
+            }
+            sleep_amp = db_amp(sleep_db);
+        }
         let out = &mut bytes[..frames * ch * 4];
         // Fully paused: keep the ring intact, write silence.
         let take = if !playing && pause_gain <= 0.0 {
@@ -274,8 +317,17 @@ fn render_loop(
                         } else {
                             duck_up
                         };
+                    if sleep_left > 0 {
+                        sleep_left -= 1;
+                        sleep_db = if sleep_left == 0 {
+                            unpack_sleep(sleep_seen).0
+                        } else {
+                            sleep_db + sleep_step
+                        };
+                        sleep_amp = db_amp(sleep_db);
+                    }
                 }
-                let v = s * gain * pause_gain * duck;
+                let v = s * gain * pause_gain * duck * sleep_amp;
                 out[i * 4..i * 4 + 4].copy_from_slice(&v.to_le_bytes());
             }
             chunk.commit_all();
@@ -325,4 +377,22 @@ fn render_loop(
     }
     let _ = client.stop_stream();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sleep_word_round_trips_and_zero_db_is_exactly_one() {
+        for (db, ms) in [(0.0f32, 0u32), (-24.0, 250), (-60.0, 30_000), (-7.25, 1000)] {
+            assert_eq!(unpack_sleep(pack_sleep(db, ms)), (db, ms));
+        }
+        // Never louder than untouched.
+        assert_eq!(unpack_sleep(pack_sleep(3.0, 10)).0, 0.0);
+        assert_eq!(db_amp(0.0).to_bits(), 1f32.to_bits());
+        let x = 0.123_456_7f32;
+        assert_eq!((x * db_amp(0.0)).to_bits(), x.to_bits());
+        assert!((db_amp(-24.0) - 0.063_095_73).abs() < 1e-6);
+    }
 }

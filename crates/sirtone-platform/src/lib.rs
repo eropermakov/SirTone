@@ -8,5 +8,6 @@ pub mod idle;
 pub mod occlusion;
 pub mod power;
 pub mod sessions;
+pub mod sleep_power;
 pub mod smtc;
 pub mod tags;

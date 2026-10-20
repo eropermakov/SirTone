@@ -334,6 +334,26 @@ fn next_ids(
         return Ok(Vec::new());
     };
     let ctx = ContextBuilder::default().snapshot(&clock);
+    // The sleep wave (T4.22, §14): the timer's progress and E₀ — the energy of the track that
+    // played when it started (taken once, at the first refill).
+    if let Some(s) = app.try_state::<crate::sleep::Sleep>() {
+        let state = s.fraction().map(|progress| {
+            let e0 = s.e0().unwrap_or_else(|| {
+                let id = app
+                    .try_state::<crate::playback::Playback>()
+                    .and_then(|p| p.current_track_id());
+                let e0 = tracks
+                    .iter()
+                    .find(|t| id.is_some_and(|i| i64::from(i) == t.id))
+                    .and_then(|t| t.features)
+                    .map_or(0.5, |f| f.0[sirtone_wave::engine::f::ENERGY]);
+                s.set_e0(e0);
+                e0
+            });
+            sirtone_wave::engine::SleepState { e0, progress }
+        });
+        e.set_sleep(state);
+    }
     Ok(e.next(&ctx, &shelf, novelty(app), n, now)
         .into_iter()
         .filter_map(|id| u32::try_from(id).ok())
@@ -467,6 +487,7 @@ pub fn wave_start(
     let profile = match profile.as_deref() {
         Some("seasonal") => "seasonal",
         Some("for_all") => "for_all",
+        Some("sleep") => "sleep",
         _ => "my_wave",
     };
     let query = query.unwrap_or_default().into_query()?;

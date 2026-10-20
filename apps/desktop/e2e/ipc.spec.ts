@@ -92,6 +92,10 @@ async function mockTauri(page: Page) {
           case "storage_info":
           case "duplicates_count":
             throw { code: "NotFound", retryable: false, details: null };
+          case "sleep_status":
+            return { phase: "off", kind: null, remainingMs: 0, tracksLeft: null };
+          case "sleep_caps":
+            return { hibernate: true, modernStandby: true };
           case "fx_season_effect":
             return "snow";
           case "theme_state":

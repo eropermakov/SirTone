@@ -282,6 +282,7 @@ fn plan_for(
             && !q.shuffled()
             && cur.album_key != 0
             && cur.album_key == next.album_key,
+        sleep: SLEEP_SOFT_MIX.load(std::sync::atomic::Ordering::Relaxed),
     };
     let (mut ta, mut tb) = (mix_track(a?), mix_track(b?));
     // Beat grids for L3 (T4.9c): measured lazily; until then the plan is L2 and it is redone.
@@ -308,6 +309,10 @@ fn plan_for(
 }
 
 /// The next track for the engine: its gain and how the current one hands over to it.
+/// The sleep timer runs (T4.21): transitions are planned soft (`MixCtx::sleep`).
+pub static SLEEP_SOFT_MIX: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 fn next_for_engine(
     q: &Queue<QueueItem>,
     norm: &Norm,
@@ -783,6 +788,34 @@ impl Playback {
     }
 
     /// A UI sound by name (T4.15).
+    /// The sleep timer's late multiplier (T4.21): glide to `db` over `ramp_ms`, linear in dB.
+    pub fn sleep_gain(&self, db: f32, ramp_ms: u32) {
+        self.engine.send(EngineCmd::SetSleepGain {
+            target_db: db,
+            ramp_ms,
+        });
+    }
+
+    /// «Тёплый звук» (T4.21): the low-pass cut-off, `None` — off.
+    pub fn set_warm(&self, cutoff: Option<f32>) {
+        self.engine.send(EngineCmd::SetWarm(cutoff));
+    }
+
+    /// UI sounds keep quiet through the sleep timer's final (`14` §14); `false` — as set.
+    pub fn mute_sfx(&self, mute: bool) {
+        let v = if mute {
+            0.0
+        } else {
+            sfx_volume(&self.settings.get())
+        };
+        self.engine.send(EngineCmd::SetSfxVolume(v));
+    }
+
+    /// Index of the playing item in the queue (the sleep timer counts tracks by it).
+    pub fn queue_position(&self) -> usize {
+        self.queue().position()
+    }
+
     pub fn sfx(&self, name: &str) {
         if let Some(id) = sirtone_audio::sfx::id_of(name) {
             self.engine.send(EngineCmd::Sfx(id));

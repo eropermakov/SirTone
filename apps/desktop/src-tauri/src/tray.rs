@@ -25,6 +25,9 @@ struct Labels {
     next: String,
     quit: String,
     tooltip: String,
+    sleep_start: String,
+    sleep_left: String,
+    sleep_extend: String,
 }
 
 fn labels() -> Labels {
@@ -46,6 +49,9 @@ fn labels() -> Labels {
         next: get("next", "Next"),
         quit: get("quit", "Quit"),
         tooltip: get("tooltip", "SirTone"),
+        sleep_start: get("sleepStart", "Sleep 30 min"),
+        sleep_left: get("sleepLeft", "Sleep: {min} min left — cancel"),
+        sleep_extend: get("sleepExtend", "+15 min"),
     }
 }
 
@@ -55,6 +61,7 @@ struct Items {
     play_pause: MenuItem<Wry>,
     prev: MenuItem<Wry>,
     next: MenuItem<Wry>,
+    sleep: MenuItem<Wry>,
     labels: Labels,
     /// Last shown state, so unchanged snapshots do not touch the native menu.
     last: Option<TrayState>,
@@ -65,7 +72,42 @@ struct Items {
 #[derive(Default)]
 pub struct TrayMenu {
     items: Mutex<Option<Items>>,
-    tx: Mutex<Option<Sender<TrayState>>>,
+    tx: Mutex<Option<Sender<Msg>>>,
+}
+
+enum Msg {
+    Play(TrayState),
+    /// The sleep timer line (T4.21, FR-SHELL-006).
+    Sleep(String),
+}
+
+/// The sleep line: start, the minutes left (a click cancels), or «+15 мин» while woken.
+fn sleep_text(l: &Labels, s: &crate::sleep::SleepStatus) -> String {
+    match s.phase.as_str() {
+        "off" | "ended" => l.sleep_start.clone(),
+        "woken" => l.sleep_extend.clone(),
+        _ => l
+            .sleep_left
+            .replace("{min}", &s.remaining_ms.div_ceil(60_000).to_string()),
+    }
+}
+
+/// The sleep timer changed: the tray line follows (never blocks).
+pub fn refresh_sleep(app: &AppHandle) {
+    let (Some(menu), Some(sleep)) = (
+        app.try_state::<TrayMenu>(),
+        app.try_state::<crate::sleep::Sleep>(),
+    ) else {
+        return;
+    };
+    let text = {
+        let items = menu.items.lock().unwrap_or_else(|p| p.into_inner());
+        let Some(items) = items.as_ref() else { return };
+        sleep_text(&items.labels, &sleep.status())
+    };
+    if let Some(tx) = menu.tx.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
+        let _ = tx.send(Msg::Sleep(text));
+    }
 }
 
 /// What the tray shows about playback.
@@ -102,7 +144,7 @@ pub fn update(app: &AppHandle, s: &TrayState) {
     if let Some(menu) = app.try_state::<TrayMenu>()
         && let Some(tx) = menu.tx.lock().unwrap_or_else(|p| p.into_inner()).as_ref()
     {
-        let _ = tx.send(s.clone());
+        let _ = tx.send(Msg::Play(s.clone()));
     }
 }
 
@@ -156,6 +198,11 @@ fn on_menu(app: &AppHandle, event: MenuEvent) {
         ("play_pause", Some(pb)) => pb.toggle(),
         ("prev", Some(pb)) => pb.prev(),
         ("next", Some(pb)) => pb.next(),
+        ("sleep", _) => {
+            if let Some(s) = app.try_state::<crate::sleep::Sleep>() {
+                s.tray_action();
+            }
+        }
         ("quit", _) => app.exit(0),
         _ => {}
     }
@@ -167,6 +214,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
     let play_pause = MenuItem::with_id(app, "play_pause", &l.play, false, None::<&str>)?;
     let prev = MenuItem::with_id(app, "prev", &l.prev, false, None::<&str>)?;
     let next = MenuItem::with_id(app, "next", &l.next, false, None::<&str>)?;
+    let sleep = MenuItem::with_id(app, "sleep", &l.sleep_start, true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
         &[
@@ -176,6 +224,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
             &play_pause,
             &prev,
             &next,
+            &PredefinedMenuItem::separator(app)?,
+            &sleep,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "quit", &l.quit, true, None::<&str>)?,
         ],
@@ -206,19 +256,37 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
         play_pause,
         prev,
         next,
+        sleep,
         labels: l,
         last: None,
     });
-    let (tx, rx) = channel::<TrayState>();
+    let (tx, rx) = channel::<Msg>();
     let handle = app.clone();
     std::thread::Builder::new()
         .name("sirtone-tray".into())
         .spawn(move || {
-            while let Ok(mut s) = rx.recv() {
-                while let Ok(newer) = rx.try_recv() {
-                    s = newer;
+            while let Ok(first) = rx.recv() {
+                // Latest wins, separately for playback and the sleep line.
+                let (mut play, mut sleep) = (None, None);
+                for m in std::iter::once(first).chain(rx.try_iter()) {
+                    match m {
+                        Msg::Play(s) => play = Some(s),
+                        Msg::Sleep(t) => sleep = Some(t),
+                    }
                 }
-                apply(&handle, &s);
+                if let Some(s) = play {
+                    apply(&handle, &s);
+                }
+                if let Some(t) = sleep
+                    && let Some(menu) = handle.try_state::<TrayMenu>()
+                    && let Some(items) = menu
+                        .items
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .as_ref()
+                {
+                    let _ = items.sleep.set_text(t);
+                }
             }
         })
         .ok();

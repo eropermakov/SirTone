@@ -18,5 +18,6 @@ pub mod render;
 pub mod sfx;
 pub mod stretch;
 pub mod viz;
+pub mod warm;
 
 pub use engine::{EngineCmd, EngineEvent, EngineHandle, PlayState, Snapshot, start};

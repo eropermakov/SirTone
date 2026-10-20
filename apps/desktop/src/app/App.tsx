@@ -67,6 +67,7 @@ import { PlayerBar } from "./shell/PlayerBar";
 import { QueuePanel } from "./shell/QueuePanel";
 import { SettingsScreen } from "./shell/SettingsScreen";
 import { type Screen, Sidebar } from "./shell/Sidebar";
+import { SleepBanner } from "./shell/SleepBanner";
 import { useAutoDegrade } from "./shell/useAutoDegrade";
 import { usePerformance } from "./shell/usePerformance";
 import { usePlayback } from "./shell/usePlayback";
@@ -545,6 +546,7 @@ export function App() {
             </div>
           )}
         </div>
+        <SleepBanner />
         <div className="t-caption bg-bg-base px-4 pt-1 text-center text-text-tertiary">
           {t("proto")}
         </div>

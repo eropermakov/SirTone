@@ -83,6 +83,9 @@ pub struct MixCtx {
     /// An album playing in order (the same predicate as album gain: from an album, no shuffle)
     /// and both tracks belong to it.
     pub album_in_order: bool,
+    /// The sleep timer is on (`14` §14): soft automix — L1/L2 only, overlaps up to
+    /// `max_ms` × 1.5, no beatmatching.
+    pub sleep: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -375,7 +378,12 @@ pub fn plan(a: &MixTrack, b: &MixTrack, ctx: MixCtx, cfg: &MixCfg, p: &MixParams
     let thr_a = a.lufs.unwrap_or(-14.0) - p.threshold_db;
     let thr_b = b.lufs.unwrap_or(-14.0) - p.threshold_db;
     let want = quiet_tail_ms(a, thr_a) + quiet_head_ms(b, thr_b);
-    let ov = want.clamp(ip.min_ms, ip.max_ms).min(a_stop / 2);
+    let max_ms = if ctx.sleep {
+        ip.max_ms * 3 / 2
+    } else {
+        ip.max_ms
+    };
+    let ov = want.clamp(ip.min_ms, max_ms).min(a_stop / 2);
     if ov == 0 {
         return Plan {
             level: Level::L1,
@@ -412,7 +420,8 @@ pub fn plan(a: &MixTrack, b: &MixTrack, ctx: MixCtx, cfg: &MixCfg, p: &MixParams
         ramp_ms: 0,
         reason: "envelope overlap",
     };
-    if beatmatch_ok(a, b, ip.tempo_tolerance, p)
+    if !ctx.sleep
+        && beatmatch_ok(a, b, ip.tempo_tolerance, p)
         && let Some(l3) = beatmatch(a, b, &l2, p)
     {
         return l3;
@@ -586,6 +595,7 @@ mod tests {
             &b,
             MixCtx {
                 album_in_order: true,
+                ..MixCtx::default()
             },
             &smart,
             &p,
@@ -599,7 +609,8 @@ mod tests {
                 &a,
                 &b,
                 MixCtx {
-                    album_in_order: true
+                    album_in_order: true,
+                    ..MixCtx::default()
                 },
                 &keep,
                 &p
@@ -713,6 +724,15 @@ mod tests {
         assert_eq!(plan(&a, &b, MixCtx::default(), &smart, &p).level, Level::L3);
         let soft = cfg(Mode::Automix(Intensity::Soft));
         assert_ne!(plan(&a, &b, MixCtx::default(), &soft, &p).level, Level::L3);
+        // The sleep timer: soft — never L3, overlaps up to 1.5 × the mode's longest.
+        let sleep = MixCtx {
+            sleep: true,
+            ..MixCtx::default()
+        };
+        let calm = plan(&a, &b, sleep, &dj, &p);
+        assert_eq!(calm.level, Level::L2);
+        let dj_max = p.max_overlap_ms(Mode::Automix(Intensity::Dj)).unwrap_or(0);
+        assert!(calm.out_ms <= dj_max * 3 / 2, "{}", calm.out_ms);
         // No grid at all (today's analysis) → L2.
         a.tail_grid = None;
         assert_eq!(plan(&a, &b, MixCtx::default(), &smart, &p).level, Level::L2);

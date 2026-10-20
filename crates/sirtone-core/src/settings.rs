@@ -654,6 +654,16 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
             "playback.normalization.album_mode must be auto or off".into(),
         ));
     }
+    if !(1..=30).contains(&s.sleep.fade_min) || !(5..=120).contains(&s.sleep.final_s) {
+        return Err(SettingsError::Invalid(
+            "sleep.fade_min must be 1..=30, sleep.final_s 5..=120".into(),
+        ));
+    }
+    if !["nothing", "screen_off", "sleep", "hibernate"].contains(&s.sleep.after.as_str()) {
+        return Err(SettingsError::Invalid(
+            "sleep.after must be nothing, screen_off, sleep or hibernate".into(),
+        ));
+    }
     if !["weather", "season", "manual", "off"].contains(&s.fx.mode.as_str()) {
         return Err(SettingsError::Invalid(
             "fx.mode must be weather, season, manual or off".into(),
@@ -785,6 +795,16 @@ mod tests {
         assert!(apply_patch(&doc, &json!({ "performance": { "level": 9 } })).is_err());
         assert!(apply_patch(&doc, &json!({ "appearance": { "theme": "neon" } })).is_err());
         assert!(apply_patch(&doc, &json!({ "settings_version": 7 })).is_err());
+    }
+
+    #[test]
+    fn sleep_settings_are_checked() {
+        let (doc, _) = normalize(&json!({})).unwrap();
+        let ok =
+            json!({ "sleep": { "fade_min": 15, "final_s": 30, "warm": true, "after": "sleep" } });
+        assert!(apply_patch(&doc, &ok).is_ok());
+        assert!(apply_patch(&doc, &json!({ "sleep": { "fade_min": 0 } })).is_err());
+        assert!(apply_patch(&doc, &json!({ "sleep": { "after": "shutdown" } })).is_err());
     }
 
     #[test]

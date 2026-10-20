@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { useSleepStatus } from "@/shared/ipc/sleep";
+import { WAVES } from "@/shared/viz/palette";
+import { wavesMood } from "@/shared/viz/waves";
 import { FxLayer } from "./FxLayer";
 import { MilkDropBackground } from "./MilkDropBackground";
 import { useVizEnv } from "./useVizEnv";
@@ -22,6 +25,14 @@ export function VizBackground({
   scrim?: boolean;
 }) {
   const { prefs, reduced } = useVizEnv();
+  const { s: sleep } = useSleepStatus();
+  const fading = sleep.phase === "fading" || sleep.phase === "final";
+  const dim = fading ? WAVES.sleep.dim : 0;
+  // Slower while the timer fades: ×0.4, ×0.2 in the final.
+  useEffect(() => {
+    wavesMood.speed =
+      sleep.phase === "final" ? WAVES.sleep.speed_final : fading ? WAVES.sleep.speed : 1;
+  }, [sleep.phase, fading]);
   const [failed, setFailed] = useState(false);
   const mode = prefs?.mode ?? "waves";
   useEffect(() => {
@@ -62,6 +73,12 @@ export function VizBackground({
     <>
       {bg}
       <FxLayer />
+      {/* The sleep timer (FR-SLEEP-005, `06` §7.8): dimmer while it fades. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-bg-base transition-opacity duration-(--dur-theme)"
+        style={{ opacity: dim }}
+      />
       {scrim && (
         <div aria-hidden className="pointer-events-none absolute inset-0 bg-(--artwork-scrim)" />
       )}

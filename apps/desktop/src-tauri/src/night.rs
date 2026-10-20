@@ -4,8 +4,7 @@
 //! the whole immersive session and cleared when it ends.
 //!
 //! Hook for the sleep timer (T4.21, FR-SLEEP-007): in its last 10 minutes the display request
-//! must be released so the screen can go dark — `release_for_sleep_timer` answers `false` until
-//! the timer exists.
+//! must be released so the screen can go dark — `release_for_sleep_timer`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -20,9 +19,10 @@ pub struct Night {
     running: Mutex<Option<Arc<AtomicBool>>>,
 }
 
-/// The sleep timer's «let the screen sleep» window (T4.21).
-fn release_for_sleep_timer(_app: &AppHandle) -> bool {
-    false
+/// The sleep timer's «let the screen sleep» window (T4.21): from its fade on.
+fn release_for_sleep_timer(app: &AppHandle) -> bool {
+    app.try_state::<crate::sleep::Sleep>()
+        .is_some_and(|s| s.releases_display())
 }
 
 impl Night {

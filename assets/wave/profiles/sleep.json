@@ -1,0 +1,49 @@
+{
+  "schema": "sirtone.wave-profile/1",
+  "_note": "«Засыпательная волна» (FR-SLEEP-003, docs/14 §14): the energy curve E(t) = E_min + (E0 − E_min)·(1 − (t/T)^p) with the timer's progress t/T; hard filters (aggression, energy above the curve, tempo in the last third); a soft vocal penalty in the last third and a bonus for soft intros and outros (features 16–17); novelty ≤ 25. Learning context_only: a finished track is not a signal, skips teach only the «sleep» context (FR-SLEEP-008). Temporary values until calibration (OWN-08).",
+  "id": "sleep",
+  "name_key": "wave.profile.sleep",
+  "weights": {
+    "taste": 0.5,
+    "session": 0.1,
+    "context": 0.2,
+    "season": 0.05,
+    "event": 0.0,
+    "curve": 0.0,
+    "novelty": 0.0,
+    "universal": 0.0,
+    "filters": 0.15
+  },
+  "novelty": {
+    "mode": "slider"
+  },
+  "learning_policy": "context_only",
+  "sleep": {
+    "e_min": 0.1,
+    "p": 1.6,
+    "aggression_max": 0.35,
+    "energy_margin": 0.25,
+    "last_third_from": 0.667,
+    "tempo_max_bpm": 90,
+    "vocal_penalty": 0.15,
+    "soft_bonus": 0.12,
+    "novelty_max": 0.25,
+    "e0_default": 0.5
+  },
+  "sequencing": {
+    "artist_spacing": 5,
+    "repeat_window_h": 24,
+    "max_energy_jump": 0.2,
+    "transition_bonus": true
+  },
+  "relax_order": [
+    "filters.atmosphere",
+    "filters.activity",
+    "filters.character",
+    "filters.mood",
+    "tempo",
+    "energy",
+    "language",
+    "frequency"
+  ]
+}

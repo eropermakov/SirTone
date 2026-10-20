@@ -18,6 +18,7 @@ import { perfHardware } from "@/shared/ipc/perf";
 import { getSnapshot, onSnapshot } from "@/shared/ipc/playback";
 import { getSettings, onSettingsChanged, patchSettings } from "@/shared/ipc/settings";
 import { sfx } from "@/shared/ipc/sfx";
+import { sleepCaps } from "@/shared/ipc/sleep";
 import { clearOldLogs, type StorageInfo, storageInfo } from "@/shared/ipc/storage";
 import {
   autostartAvailable,
@@ -172,6 +173,8 @@ export function SettingsScreen({
       <VizSection />
 
       <FxSection />
+
+      <SleepSection />
 
       <NeverSection />
 
@@ -1331,6 +1334,86 @@ function VizSection() {
             <Switch checked={viz[r.key]} label={t(r.label)} onChange={(v) => toggle(r.key, v)} />
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+const SLEEP_AFTER = ["nothing", "screen_off", "sleep", "hibernate"] as const;
+
+/**
+ * «Сон-таймер» (T4.21–T4.23, FR-SLEEP-004/007, `14` §14): how long the fade lasts, «тёплый
+ * звук», and what happens after — nothing by default; «Выключить экран», «Сон», «Гибернация»
+ * only by this choice (hibernate only where Windows has it, Q-17; on Modern Standby «сон» turns
+ * the screen off and lets the PC sleep by itself, Q-4).
+ */
+function SleepSection() {
+  const { t } = useTranslation("shell");
+  const [s, setS] = useState<{
+    fade_min: number;
+    warm: boolean;
+    after: (typeof SLEEP_AFTER)[number];
+  }>({ fade_min: 10, warm: false, after: "nothing" });
+  const [caps, setCaps] = useState({ hibernate: false, modernStandby: false });
+  useEffect(() => {
+    getSettings().then((d) => {
+      const v = d.sleep as
+        | { fade_min?: number; warm?: boolean; after?: (typeof SLEEP_AFTER)[number] }
+        | undefined;
+      setS({ fade_min: v?.fade_min ?? 10, warm: v?.warm ?? false, after: v?.after ?? "nothing" });
+    });
+    sleepCaps()
+      .then(setCaps)
+      .catch(() => {});
+  }, []);
+  const save = (next: typeof s) => {
+    const prev = s;
+    setS(next);
+    patchSettings({ sleep: next }).catch(() => setS(prev));
+  };
+  const choices = SLEEP_AFTER.filter((a) => a !== "hibernate" || caps.hibernate);
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsSleep.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex items-center gap-4">
+          <span className="t-caption w-28 shrink-0 text-text-secondary">
+            {t("settingsSleep.fade")}
+          </span>
+          <Slider
+            value={(s.fade_min - 1) / 29}
+            step={1 / 29}
+            label={t("settingsSleep.fade")}
+            valueText={t("settingsSleep.fadeValue", { count: s.fade_min })}
+            onCommit={(v) => save({ ...s, fade_min: Math.round(1 + v * 29) })}
+            className="flex-1"
+          />
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsSleep.warm")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsSleep.warmHint")}</div>
+          </div>
+          <Switch
+            checked={s.warm}
+            label={t("settingsSleep.warm")}
+            onChange={(v) => save({ ...s, warm: v })}
+          />
+        </div>
+        <span className="t-body text-text-primary">{t("settingsSleep.after")}</span>
+        <fieldset
+          className="m-0 flex flex-wrap gap-2 border-0 p-0"
+          aria-label={t("settingsSleep.after")}
+        >
+          {choices.map((a) => (
+            <Chip key={a} active={s.after === a} onClick={() => save({ ...s, after: a })}>
+              {t(`settingsSleep.afterName.${a}`)}
+            </Chip>
+          ))}
+        </fieldset>
+        {s.after === "sleep" && caps.modernStandby && (
+          <div className="t-caption text-text-secondary">{t("settingsSleep.modernStandby")}</div>
+        )}
       </div>
     </div>
   );

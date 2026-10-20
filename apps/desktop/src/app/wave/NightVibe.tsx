@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { useSleepStatus } from "@/shared/ipc/sleep";
 import { nightSet } from "@/shared/ipc/viz";
 import { cn } from "@/shared/lib/utils";
 import { WAVES } from "@/shared/viz/palette";
@@ -59,6 +60,8 @@ export function NightVibe({
     };
   }, [onExit]);
 
+  const sleepEnded = useSleepStatus().s.phase === "ended";
+
   return createPortal(
     <div
       data-theme="dark"
@@ -70,6 +73,15 @@ export function NightVibe({
       )}
     >
       <VizBackground trackId={trackId} cover={cover} scrim={false} />
+      {/* After the sleep timer: a slow fade to black (FR-SLEEP-005). */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-bg-base transition-opacity ease-linear"
+        style={{
+          opacity: sleepEnded ? 1 : 0,
+          transitionDuration: `${WAVES.sleep.black_ms}ms`,
+        }}
+      />
       <div className="absolute bottom-8 left-8 flex flex-col gap-1 text-text-tertiary">
         <div className="t-body-strong">{title}</div>
         <div className="t-caption">{artists}</div>

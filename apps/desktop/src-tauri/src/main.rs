@@ -28,6 +28,7 @@ mod presets;
 mod resolve;
 mod search;
 mod settings_store;
+mod sleep;
 mod storage;
 mod tray;
 mod unknowns;
@@ -162,6 +163,7 @@ fn main() {
             app.manage(net_state);
             analysis::start(app.handle().clone());
             duck::start(app.handle().clone());
+            app.manage(sleep::Sleep::start(app.handle().clone()));
             resolve::start(app.handle().clone());
             match playback::Playback::start(app.handle().clone(), store) {
                 Ok(pb) => {

@@ -743,3 +743,79 @@ fn live_skips_repel_and_unanalysed_ones_do_not() {
         / 8.0;
     assert!(mean <= 1.0, "sad in the next 10: {mean}");
 }
+
+#[test]
+fn sleep_wave_follows_the_energy_curve_and_learns_only_its_context() {
+    use sirtone_core::wave::{EndReason, PlayEvent, PlaySource};
+    use sirtone_wave::engine::{SleepState, f};
+    use sirtone_wave::learn::replay;
+
+    let tracks = synth::library(4_000, NOW, 1.0, 31);
+    let history = synth::history(&tracks, NOW);
+    let cfg = Config::builtin_profile("sleep").expect("assets");
+    assert_eq!(cfg.profile.id, "sleep");
+    let rules = cfg.profile.sleep.clone().expect("sleep rules");
+    // The curve: from E₀ down to E_min, faster in the second half.
+    assert!((rules.energy_at(0.8, 0.0) - 0.8).abs() < 1e-6);
+    assert!((rules.energy_at(0.8, 1.0) - rules.e_min).abs() < 1e-6);
+    let mid = rules.energy_at(0.8, 0.5);
+    assert!(mid > 0.45 && mid < 0.8, "{mid}");
+    let feat = |id: i64| {
+        tracks
+            .iter()
+            .find(|t| t.id == id)
+            .and_then(|t| t.features)
+            .expect("analysed")
+            .0
+    };
+    let tempo90 = (90f32 - 50.0) / 150.0;
+    for progress in [0.1f32, 0.5, 0.9] {
+        let mut e = Engine::new(cfg.clone(), &tracks, &history, NOW, 9);
+        e.set_sleep(Some(SleepState { e0: 0.8, progress }));
+        let e_max = rules.energy_at(0.8, progress) + rules.energy_margin;
+        let picks: Vec<i64> = (0..10)
+            .flat_map(|i| e.next(&ctx(Daypart::Night), &[], 1.0, 5, NOW + i * 60_000))
+            .collect();
+        assert!(
+            picks.len() >= 30,
+            "progress {progress}: {} picks",
+            picks.len()
+        );
+        for id in picks {
+            let x = feat(id);
+            assert!(x[f::AGGRESSION] <= rules.aggression_max, "{id} aggressive");
+            assert!(
+                x[f::ENERGY] <= e_max + 1e-6,
+                "{id} energy {} > {e_max}",
+                x[f::ENERGY]
+            );
+            if progress >= rules.last_third_from {
+                assert!(x[f::TEMPO] <= tempo90 + 1e-6, "{id} too fast");
+            }
+        }
+    }
+    // Learning (FR-SLEEP-008): a track finished in the sleep wave teaches nothing; a skip
+    // there touches only the «sleep» context, not the taste.
+    let cat_cfg = Config::builtin().expect("assets");
+    let cat = sirtone_wave::engine::Catalog::build(&tracks, &cat_cfg);
+    let mut h = sirtone_wave::learn::History::default();
+    let base = replay(&cat_cfg, &cat, &h, NOW);
+    let ev = |reason, profile: &str| PlayEvent {
+        track_id: tracks[5].id,
+        ts: NOW - 1000,
+        played_ms: 10_000,
+        duration_ms: 200_000,
+        end_reason: reason,
+        source: PlaySource::Wave,
+        profile: Some(profile.to_string()),
+        context: ctx(Daypart::Night),
+        event_id: None,
+        novelty: None,
+        category: None,
+    };
+    h.events.push(ev(EndReason::Finished, "sleep"));
+    h.events.push(ev(EndReason::Skip, "sleep"));
+    let after = replay(&cat_cfg, &cat, &h, NOW);
+    assert_eq!(base.taste.mean(), after.taste.mean());
+    assert!(after.context.contains_key("sleep"));
+}

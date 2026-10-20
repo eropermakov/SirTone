@@ -7,7 +7,7 @@ use tauri_specta::{Builder, collect_commands, collect_events};
 use crate::{
     analysis, artists, autostart, backgrounds, bootstrap, continuation, duplicates, feedback,
     hotkeys, library, net, night, perf, playback, playlists, presets, search, settings_store,
-    storage, unknowns, updates, viz, wave, window_chrome,
+    sleep, storage, unknowns, updates, viz, wave, window_chrome,
 };
 
 /// Free-form JSON across IPC, exported as TS `unknown`. specta inlines `serde_json::Value`
@@ -123,6 +123,12 @@ pub fn builder() -> Builder<tauri::Wry> {
             wave::wave_season_card,
             wave::theme_state,
             wave::fx_season_effect,
+            sleep::sleep_start,
+            sleep::sleep_cancel,
+            sleep::sleep_extend,
+            sleep::sleep_wake,
+            sleep::sleep_status,
+            sleep::sleep_caps,
             analysis::analysis_progress,
             library::library_organize,
             net::net_status,
@@ -151,7 +157,8 @@ pub fn builder() -> Builder<tauri::Wry> {
             duplicates::DuplicatesFound,
             viz::VizPower,
             backgrounds::VideosAdded,
-            library::OrganizeSuggested
+            library::OrganizeSuggested,
+            sleep::SleepStatus
         ])
 }
 

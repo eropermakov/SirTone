@@ -109,6 +109,41 @@ pub struct Profile {
     /// `full` — the owner's models; `guests` — the separate guests' model only (§8, AT-20).
     #[serde(default = "default_policy")]
     pub learning_policy: String,
+    /// «Засыпательная волна» (§14): the energy curve and its filters.
+    #[serde(default)]
+    pub sleep: Option<SleepRules>,
+}
+
+/// The sleep wave's rules (`profiles/sleep.json`, §14, FR-SLEEP-003).
+#[derive(Debug, Clone, Deserialize)]
+pub struct SleepRules {
+    pub e_min: f32,
+    pub p: f32,
+    pub aggression_max: f32,
+    pub energy_margin: f32,
+    pub last_third_from: f32,
+    pub tempo_max_bpm: f32,
+    pub vocal_penalty: f32,
+    pub soft_bonus: f32,
+    pub novelty_max: f32,
+    /// E₀ when the timer does not run (the wave started on its own).
+    pub e0_default: f32,
+}
+
+impl SleepRules {
+    /// `E(t) = E_min + (E₀ − E_min)·(1 − (t/T)^p)`, faster in the second half.
+    pub fn energy_at(&self, e0: f32, progress: f32) -> f32 {
+        let t = progress.clamp(0.0, 1.0);
+        self.e_min + (e0.max(self.e_min) - self.e_min) * (1.0 - t.powf(self.p))
+    }
+}
+
+/// Where the sleep timer is (the app passes it before each refill): E₀ — the energy of the
+/// track playing when it started; `progress` — 0…1 of the timer.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SleepState {
+    pub e0: f32,
+    pub progress: f32,
 }
 
 fn default_policy() -> String {
@@ -258,6 +293,9 @@ pub struct Config {
     pub universal: Universal,
     /// Profiles whose plays and signals teach only the guests' model (`learning_policy`).
     pub guest_profiles: Vec<String>,
+    /// Profiles that teach only their own context (`context_only`, the sleep wave §14): a
+    /// finished track is no signal, a skip teaches only the «sleep» context.
+    pub context_only_profiles: Vec<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -268,7 +306,7 @@ pub struct ConfigError {
 }
 
 /// Built-in profiles (docs/14 §5): id → file.
-const PROFILES: [(&str, &str, &str); 3] = [
+const PROFILES: [(&str, &str, &str); 4] = [
     (
         "my_wave",
         "profiles/my_wave.json",
@@ -283,6 +321,11 @@ const PROFILES: [(&str, &str, &str); 3] = [
         "for_all",
         "profiles/for_all.json",
         include_str!("../../../assets/wave/profiles/for_all.json"),
+    ),
+    (
+        "sleep",
+        "profiles/sleep.json",
+        include_str!("../../../assets/wave/profiles/sleep.json"),
     ),
 ];
 
@@ -335,9 +378,12 @@ impl Config {
             include_str!("../../../assets/wave/universal.json"),
         )?;
         let mut guest_profiles = Vec::new();
+        let mut context_only_profiles = Vec::new();
         for (pid, pfile, ptext) in PROFILES {
-            if parse(pfile, ptext)?["learning_policy"].as_str() == Some("guests") {
-                guest_profiles.push(pid.to_string());
+            match parse(pfile, ptext)?["learning_policy"].as_str() {
+                Some("guests") => guest_profiles.push(pid.to_string()),
+                Some("context_only") => context_only_profiles.push(pid.to_string()),
+                _ => {}
             }
         }
         let profile: Profile = serde_json::from_value(p).map_err(err(file))?;
@@ -359,9 +405,9 @@ impl Config {
         if weights.iter().map(|(_, v)| v).sum::<f32>() <= 0.0 {
             return Err(invalid("all weights are 0".into()));
         }
-        if !["full", "guests"].contains(&profile.learning_policy.as_str()) {
+        if !["full", "guests", "context_only"].contains(&profile.learning_policy.as_str()) {
             return Err(invalid(format!(
-                "learning_policy {}: full or guests",
+                "learning_policy {}: full, guests or context_only",
                 profile.learning_policy
             )));
         }
@@ -377,6 +423,7 @@ impl Config {
         Ok(Self {
             universal: serde_json::from_value(u).map_err(err("universal.json"))?,
             guest_profiles,
+            context_only_profiles,
             profile,
             engine: serde_json::from_value(e).map_err(err("engine.json"))?,
             genres: serde_json::from_value(g).map_err(err("genres.json"))?,
@@ -921,9 +968,19 @@ pub struct Engine {
     /// «Настроить волну» and its evaluation on the catalog (T3.18).
     query: WaveQuery,
     qs: QueryState,
+    /// The sleep timer for the sleep wave (§14); `None` — not running.
+    sleep: Option<SleepState>,
 }
 
+/// The context model key the sleep wave learns into (FR-SLEEP-008).
+pub const SLEEP_CONTEXT: &str = "sleep";
+
 impl Engine {
+    /// The sleep timer's state for the next refill (the sleep wave's energy curve).
+    pub fn set_sleep(&mut self, s: Option<SleepState>) {
+        self.sleep = s;
+    }
+
     /// Builds the catalog and replays the statistics into the taste model once (§8.3 (2)).
     pub fn new(
         cfg: Config,
@@ -960,6 +1017,7 @@ impl Engine {
             words,
             query,
             qs,
+            sleep: None,
         }
     }
 
@@ -1078,6 +1136,11 @@ impl Engine {
     ) -> Vec<i64> {
         // A chosen «Частота» is a hard filter and the slider is inactive (Q-12, D-42).
         let novelty = if self.qs.frequency_on { 0.5 } else { novelty };
+        // The sleep wave: «незнакомое будит» (§14).
+        let novelty = match &self.cfg.profile.sleep {
+            Some(r) => novelty.min(r.novelty_max),
+            None => novelty,
+        };
         self.rebuild(ctx, not_now, novelty, now_ms);
         let mut out = Vec::with_capacity(n);
         for _ in 0..n {
@@ -1167,7 +1230,27 @@ impl Engine {
         }
         let sw = sctx.season_w;
         let season_floor = cfg.profile.season_floor;
-        let w_ctx = context_weights(&self.context, &sctx, e.context_prior_n);
+        let mut w_ctx = context_weights(&self.context, &sctx, e.context_prior_n);
+        // The sleep wave (§14): its own context model, the energy curve and its filters.
+        let sleep = cfg.profile.sleep.as_ref().map(|r| {
+            let st = self.sleep.unwrap_or(SleepState {
+                e0: r.e0_default,
+                progress: 0.0,
+            });
+            if let Some((m, n)) = self.context.get(SLEEP_CONTEXT) {
+                let lambda = *n as f32 / (*n as f32 + e.context_prior_n);
+                for (wi, mi) in w_ctx.iter_mut().zip(m.mean().iter()) {
+                    *wi += lambda * mi;
+                }
+            }
+            let last_third = st.progress >= r.last_third_from;
+            (
+                r,
+                r.energy_at(st.e0, st.progress) + r.energy_margin,
+                last_third,
+                tempo_feature(r.tempo_max_bpm),
+            )
+        });
         let w_sess = self.session_vec;
         let repel = &self.repel;
         let repel_w = e.session.repel;
@@ -1224,6 +1307,16 @@ impl Engine {
                 continue;
             }
             let x = &cat.feat[t];
+            // The sleep wave's hard filters: nothing aggressive, nothing above the curve, slow
+            // in the last third (only what the analysis knows; unanalysed tracks carry means).
+            if let Some((r, e_max, last_third, tempo_max)) = sleep
+                && cat.conf[t] > 0.0
+                && (x[f::AGGRESSION] > r.aggression_max
+                    || x[f::ENERGY] > e_max
+                    || (last_third && x[f::TEMPO] > tempo_max))
+            {
+                continue;
+            }
             let taste = 0.6 * sigmoid(dot(&wt, x) + bias) + 0.4 * cat.mean(t);
             let context = sigmoid(dot(&w_ctx, x));
             let session = 0.5 + 0.5 * dot(&w_sess, x).tanh();
@@ -1267,6 +1360,13 @@ impl Engine {
                     p += w * (-(d2 / REPEL_DIMS.len() as f32) * inv2s2).exp();
                 }
                 s -= repel_w * p.min(1.0);
+            }
+            // The sleep wave: soft intros and outros up; words down in the last third.
+            if let Some((r, _, last_third, _)) = sleep {
+                s += r.soft_bonus * 0.5 * (x[f::SOFT_IN] + x[f::SOFT_OUT]);
+                if last_third {
+                    s -= r.vocal_penalty * x[f::VOCAL];
+                }
             }
             // Soft repeat penalty for a week after the hard window (§6).
             let since = now_ms - cat.last_played[t];

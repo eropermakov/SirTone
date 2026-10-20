@@ -86,6 +86,9 @@ type Pointer = { x: number; y: number; born: number; strength: number };
 /** Diagnostics for the smoke test: frames drawn, measured FPS, sampled pixels. */
 export const wavesStats = { drawn: 0, fps: 0, samples: [] as number[][], lost: 0 };
 
+/** A mode's slow-down (`06` §7.8): the sleep timer sets ×0.4 → ×0.2 (T4.22); 1 — normal. */
+export const wavesMood = { speed: 1 };
+
 export class WavesEngine {
   private gl: WebGL2RenderingContext | null = null;
   private prog: WebGLProgram | null = null;
@@ -296,7 +299,7 @@ export class WavesEngine {
     }
     // Paused: the field keeps drifting, slower.
     const speed = this.current(now)?.motion.speed ?? this.c.speed[0];
-    this.time += dt * speed * (f?.playing ? 1 : 0.35) * 10;
+    this.time += dt * speed * wavesMood.speed * (f?.playing ? 1 : 0.35) * 10;
     this.fpsN += 1;
     if (now - this.fpsT >= 1000) {
       wavesStats.fps = (this.fpsN * 1000) / (now - this.fpsT || 1);

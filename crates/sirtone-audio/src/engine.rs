@@ -42,6 +42,14 @@ pub enum EngineCmd {
     Sfx(u8),
     /// UI sounds volume 0…1 (0 — off).
     SetSfxVolume(f32),
+    /// The sleep timer (T4.21, `14` §14): glide the late multiplier to `target_db` over
+    /// `ramp_ms`, linearly in dB (0 dB, 0 ms — untouched).
+    SetSleepGain {
+        target_db: f32,
+        ramp_ms: u32,
+    },
+    /// «Тёплый звук» (T4.21): the low-pass cut-off to glide to; `None` — off (a true bypass).
+    SetWarm(Option<f32>),
     /// The track to continue with when the current one ends, without a gap (T1.5, docs/04 §3:
     /// pre-opened and fed into the same ring), its normalization gain and — for automix or
     /// crossfade (T4.9) — how A hands over to it. `None` clears it.
@@ -323,6 +331,8 @@ struct Engine {
     eq: Option<((u32, usize), Chain)>,
     eq_params: crate::eq::EqParams,
     limiter_on: bool,
+    /// «Тёплый звук» cut-off while the sleep timer fades (T4.21).
+    warm: Option<f32>,
     /// How the current track hands over to the next one (T4.9); `None` — gapless.
     next_mix: Option<MixSpec>,
     /// When the last UI sound was sent (T4.15: ≥ 80 ms apart).
@@ -453,6 +463,7 @@ fn curve(t: f64, fade: bool, out: bool) -> f32 {
 /// What runs on the engine thread after the resampler, before the ring.
 pub(crate) struct Chain {
     eq: crate::eq::Eq,
+    warm: crate::warm::Warm,
     limiter: crate::limiter::Limiter,
     limiter_on: bool,
 }
@@ -460,6 +471,7 @@ pub(crate) struct Chain {
 impl Chain {
     pub(crate) fn process(&mut self, buf: &mut [f32]) {
         self.eq.process(buf);
+        self.warm.process(buf);
         if self.limiter_on {
             self.limiter.process(buf);
         }
@@ -493,6 +505,7 @@ impl Engine {
             eq: None,
             eq_params: crate::eq::EqParams::default(),
             limiter_on: false,
+            warm: None,
             next_mix: None,
             mixing: None,
             sfx_at: None,
@@ -592,6 +605,19 @@ impl Engine {
                 let g = v.clamp(0.0, 1.0);
                 self.shared.sfx_bits.store(g.to_bits(), Ordering::Relaxed);
                 return;
+            }
+            EngineCmd::SetSleepGain { target_db, ramp_ms } => {
+                self.shared.sleep_bits.store(
+                    crate::output::pack_sleep(target_db, ramp_ms),
+                    Ordering::Relaxed,
+                );
+                return;
+            }
+            EngineCmd::SetWarm(cutoff) => {
+                self.warm = cutoff;
+                if let Some((_, c)) = self.eq.as_mut() {
+                    c.warm.set(cutoff);
+                }
             }
             EngineCmd::SetDuck(db) => {
                 let amp = sirtone_core::loudness::amplitude(db.min(0.0));
@@ -883,8 +909,11 @@ impl Engine {
         if self.eq.as_ref().is_none_or(|(k, _)| *k != key) {
             let mut eq = crate::eq::Eq::new(key.0, key.1);
             eq.set(&self.eq_params);
+            let mut warm = crate::warm::Warm::new(key.0, key.1);
+            warm.set(self.warm);
             let chain = Chain {
                 eq,
+                warm,
                 limiter: crate::limiter::Limiter::new(key.0, key.1),
                 limiter_on: self.limiter_on,
             };
@@ -1195,7 +1224,10 @@ impl Engine {
                     source_channels: d.source.channels,
                     device_rate: o.format.rate,
                     device_channels: o.format.channels,
-                    dsp: self.limiter_on || self.eq_params.enabled || d.source.gain_db() != 0.0,
+                    dsp: self.limiter_on
+                        || self.eq_params.enabled
+                        || self.warm.is_some()
+                        || d.source.gain_db() != 0.0,
                 }),
                 _ => None,
             },
