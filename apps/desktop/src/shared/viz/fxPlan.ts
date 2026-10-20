@@ -50,6 +50,8 @@ export type FxConfig = {
   milkdrop_halve_max_level: number;
   static_count: number;
   season_density: number;
+  /** The shader's wind at full real-weather drift (T5.15). */
+  weather_wind: number;
   transition_ms: number;
   breath: {
     swirl: number;
@@ -84,6 +86,9 @@ export type FxInput = {
   seasonEffect: string | null;
   /** The real weather's effect; `null` — no weather or older than 3 h (T5.15). */
   weatherEffect: string | null;
+  /** The real weather's wind drift (−1…1, + right) and intensity (0…1) — T5.15. */
+  weatherDrift?: number;
+  weatherIntensity?: number;
   level: number;
   milkdrop: boolean;
   reduced: boolean;
@@ -98,6 +103,8 @@ export type FxPlan = {
   /** One still frame, no animation (level 1 switch, reduced motion). */
   still: boolean;
   flash: boolean;
+  /** The real weather's wind for the drift (−1…1 → the shader's wind); `null` — the type's own. */
+  wind: number | null;
 };
 
 /** `null` — nothing on screen. */
@@ -119,7 +126,12 @@ export function planFx(p: FxInput, c: FxConfig = FX): FxPlan | null {
   if (weak && !p.staticWhenWeak) return null;
   const still = weak || p.reduced;
   const b = weak ? { count: c.static_count, fps: 0, planes: 1 } : budget(p.level, p.milkdrop, c);
-  const density = (t.density ?? 1) * (decorative ? c.season_density : 1);
+  // The real weather: snow and rain as dense as it falls, the wind pushes them (supplement §31).
+  const real = !decorative && p.mode === "weather";
+  const falls = type === "snow" || type === "rain" || type === "storm";
+  const byWeather =
+    real && falls ? 0.4 + 0.6 * Math.min(1, Math.max(0, p.weatherIntensity ?? 1)) : 1;
+  const density = (t.density ?? 1) * (decorative ? c.season_density : 1) * byWeather;
   return {
     type,
     count: t.shape === "noise" ? 0 : Math.max(1, Math.round(b.count * density)),
@@ -127,6 +139,7 @@ export function planFx(p: FxInput, c: FxConfig = FX): FxPlan | null {
     planes: b.planes,
     still,
     flash: !!t.flash && !still,
+    wind: real ? Math.max(-1, Math.min(1, p.weatherDrift ?? 0)) * c.weather_wind : null,
   };
 }
 

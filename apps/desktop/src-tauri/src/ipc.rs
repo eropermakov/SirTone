@@ -122,7 +122,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             wave::wave_retune,
             wave::wave_season_card,
             wave::theme_state,
-            wave::fx_season_effect,
+            wave::fx_sources,
             sleep::sleep_start,
             sleep::sleep_cancel,
             sleep::sleep_extend,

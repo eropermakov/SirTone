@@ -119,8 +119,8 @@ async function mockTauri(page: Page) {
             return { phase: "off", remainingMs: 0, segmentMs: 0, paused: false, today: 0 };
           case "sleep_caps":
             return { hibernate: true, modernStandby: true };
-          case "fx_season_effect":
-            return "snow";
+          case "fx_sources":
+            return { season: "snow", weather: null, drift: 0, intensity: 0 };
           case "theme_state":
             return {
               id: "autumn",

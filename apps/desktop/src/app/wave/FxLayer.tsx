@@ -1,6 +1,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { commands } from "@/shared/ipc/bindings";
+import { useWeather } from "@/shared/ipc/context";
 import { getSettings, onSettingsChanged } from "@/shared/ipc/settings";
 import { FxEngine, fxStats } from "@/shared/viz/fx";
 import { type FxMode, type FxPlan, planFx } from "@/shared/viz/fxPlan";
@@ -27,8 +28,15 @@ export function FxLayer() {
   const [fx, setFx] = useState<FxPrefs | null>(null);
   const [season, setSeason] = useState<string | null>(null);
   const [forced, setForced] = useState<FxPlan | null | undefined>(undefined);
+  const [weatherSrc, setWeatherSrc] = useState<{
+    effect: string | null;
+    drift: number;
+    intensity: number;
+  }>({ effect: null, drift: 0, intensity: 0 });
+  const weatherNow = useWeather();
   const [failed, setFailed] = useState(false);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a weather update is the trigger itself.
   useEffect(() => {
     let alive = true;
     let off: (() => void) | undefined;
@@ -46,11 +54,20 @@ export function FxLayer() {
             staticWhenWeak: f.static_when_weak ?? false,
           });
       });
-      // The season's effect by the clock (summer nights — fireflies), again every hour.
+      // The season's effect (summer nights — fireflies) and the real weather's (T5.15), again
+      // every hour and on every weather update.
       if (isTauri())
         commands
-          .fxSeasonEffect()
-          .then((e) => alive && setSeason(e))
+          .fxSources()
+          .then((e) => {
+            if (!alive) return;
+            setSeason(e.season);
+            setWeatherSrc({
+              effect: e.weather,
+              drift: e.drift ?? 0,
+              intensity: e.intensity ?? 0,
+            });
+          })
           .catch(() => {});
     };
     load();
@@ -70,7 +87,7 @@ export function FxLayer() {
       window.clearInterval(hourly);
       off?.();
     };
-  }, []);
+  }, [weatherNow]);
 
   const plan = useMemo(() => {
     if (forced !== undefined) return forced;
@@ -79,13 +96,15 @@ export function FxLayer() {
       mode: fx.mode,
       manual: fx.manual,
       seasonEffect: season,
-      weatherEffect: null,
+      weatherEffect: weatherSrc.effect,
+      weatherDrift: weatherSrc.drift,
+      weatherIntensity: weatherSrc.intensity,
       level: effectiveLevel,
       milkdrop: prefs.mode === "milkdrop",
       reduced,
       staticWhenWeak: fx.staticWhenWeak,
     });
-  }, [forced, prefs, fx, season, effectiveLevel, reduced]);
+  }, [forced, prefs, fx, season, weatherSrc, effectiveLevel, reduced]);
 
   const show = !!plan && !failed;
   const latest = useRef(plan);

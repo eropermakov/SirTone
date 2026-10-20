@@ -210,12 +210,7 @@ export const commands = {
 	 */
 	waveSeasonCard: () => __TAURI_INVOKE<string>("wave_season_card"),
 	themeState: () => __TAURI_INVOKE<ThemeStateDto>("theme_state"),
-	/**
-	 *  The effect «По сезону» right now (T4.20, `14` §13.1, supplement §31): the season's, with the
-	 *  summer night's fireflies by the clock's daypart (time only from `Clock`). The weather
-	 *  (T5.15) will come before it; until then «По реальной погоде» falls back to this (AT-16).
-	 */
-	fxSeasonEffect: () => __TAURI_INVOKE<string>("fx_season_effect"),
+	fxSources: () => __TAURI_INVOKE<FxSources>("fx_sources"),
 	/**  Starts the timer: `kind` = `minutes` (with `value` minutes), `track`, `tracks` (`value`). */
 	sleepStart: (kind: string, value: number) => __TAURI_INVOKE<void>("sleep_start", { kind, value }),
 	sleepCancel: () => __TAURI_INVOKE<void>("sleep_cancel"),
@@ -417,6 +412,21 @@ export type FocusStatus = {
 	paused: boolean,
 	/**  Work segments done today. */
 	today: number,
+};
+
+/**
+ *  The live effects' sources right now (T4.20, T5.15, `14` §13.1, supplement §31): «По сезону»
+ *  (the season's, the summer night's fireflies by the daypart — by the sun where the city is
+ *  known) and «По реальной погоде» — `None` without fresh weather (then the season's, AT-16), plus
+ *  the wind's drift and the weather's intensity for the particles.
+ */
+export type FxSources = {
+	season: string,
+	weather: string | null,
+	/**  −1…1, + — to the right. */
+	drift: number | null,
+	/**  0…1. */
+	intensity: number | null,
 };
 
 /**  A genre card (FR-LIB-002; `01b` F-34). */

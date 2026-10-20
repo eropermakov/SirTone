@@ -48,6 +48,33 @@ describe("live effects plan (T4.20, FR-FX-001…007)", () => {
     expect(planFx({ ...base, seasonEffect: null })).toBeNull();
   });
 
+  it("the real weather: as dense as it snows, drifting with the wind (T5.15, AT-15)", () => {
+    const snow = FX.types.snow.density ?? 1;
+    const light = planFx({
+      ...base,
+      mode: "weather",
+      weatherEffect: "snow",
+      weatherIntensity: 0.5,
+      weatherDrift: 0.5,
+    });
+    expect(light?.type).toBe("snow");
+    expect(light?.count).toBe(Math.round(1500 * snow * 0.7));
+    expect(light?.wind).toBeCloseTo(0.5 * FX.weather_wind);
+    // From the east — to the left.
+    expect(
+      planFx({ ...base, mode: "weather", weatherEffect: "snow", weatherDrift: -1 })?.wind,
+    ).toBeLessThan(0);
+    // No weather (AT-16): the season's, with its own wind.
+    const season = planFx({
+      ...base,
+      mode: "weather",
+      weatherEffect: null,
+      seasonEffect: "leaves",
+    });
+    expect(season?.type).toBe("leaves");
+    expect(season?.wind).toBeNull();
+  });
+
   it("reduced motion — a still frame without flashes", () => {
     const p = planFx({ ...base, mode: "manual", manual: "storm", reduced: true });
     expect(p).toMatchObject({ type: "storm", still: true, flash: false, fps: 0 });

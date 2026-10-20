@@ -640,14 +640,26 @@ pub fn theme_state() -> ThemeStateDto {
     }
 }
 
-/// The effect «По сезону» right now (T4.20, `14` §13.1, supplement §31): the season's, with the
-/// summer night's fireflies by the clock's daypart (time only from `Clock`). The weather
-/// (T5.15) will come before it; until then «По реальной погоде» falls back to this (AT-16).
+/// The live effects' sources right now (T4.20, T5.15, `14` §13.1, supplement §31): «По сезону»
+/// (the season's, the summer night's fireflies by the daypart — by the sun where the city is
+/// known) and «По реальной погоде» — `None` without fresh weather (then the season's, AT-16), plus
+/// the wind's drift and the weather's intensity for the particles.
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct FxSources {
+    pub season: String,
+    pub weather: Option<String>,
+    /// −1…1, + — to the right.
+    pub drift: f32,
+    /// 0…1.
+    pub intensity: f32,
+}
+
 #[tauri::command]
 #[specta::specta]
-pub fn fx_season_effect() -> String {
+pub fn fx_sources() -> FxSources {
     use sirtone_core::wave::Daypart;
-    use sirtone_wave::theme::{ThemesConfig, season_effect};
+    use sirtone_wave::theme::{ThemesConfig, season_effect, weather_effect};
     let ctx = crate::context::builder().snapshot(&SystemClock);
     let daypart = match ctx.daypart {
         Daypart::Dawn => "dawn",
@@ -657,5 +669,16 @@ pub fn fx_season_effect() -> String {
         Daypart::Dusk => "dusk",
         Daypart::Night => "night",
     };
-    season_effect(&ThemesConfig::default(), &ctx.season_w, daypart)
+    let cfg = ThemesConfig::default();
+    let w = crate::context::weather_now();
+    let night = cfg.night_dayparts.iter().any(|d| d == daypart);
+    FxSources {
+        season: season_effect(&cfg, &ctx.season_w, daypart),
+        weather: w
+            .class
+            .as_deref()
+            .and_then(|c| weather_effect(&cfg, &ctx.season_w, c, w.is_day && !night)),
+        drift: w.drift,
+        intensity: w.intensity,
+    }
 }
