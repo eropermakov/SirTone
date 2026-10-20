@@ -874,6 +874,25 @@ const fromDb = (db: number) => (db + 12) / 24;
  * names): on/off (off is a true bypass), presets, 10 bands and the preamp, ±12 dB. Moving a band
  * makes the preset «Свой». The engine glides to new values in 20 ms.
  */
+/** The preset an edit started from (an old «Свой» — the flat one). */
+function eqBase(eq: EqState) {
+  return (
+    EQ_PRESETS.presets.find((p) => p.id === eq.preset) ??
+    EQ_PRESETS.presets.find((p) => p.id === "flat") ??
+    EQ_PRESETS.presets[0] ?? { id: "flat", bands_db: [] }
+  );
+}
+
+/** The bands or the preamp moved off the preset (owner, 2026-10-20: «Сбросить»). */
+function eqEdited(eq: EqState): boolean {
+  const base = eqBase(eq);
+  return (
+    eq.preset === "custom" ||
+    eq.preamp !== 0 ||
+    eq.bands.some((v, i) => Math.abs(v - (base.bands_db[i] ?? 0)) > 0.01)
+  );
+}
+
 function EqSection() {
   const { t } = useTranslation("shell");
   const [eq, setEq] = useState<EqState>(EQ_FLAT);
@@ -941,6 +960,28 @@ function EqSection() {
                 </Chip>
               )}
             </fieldset>
+            {eqEdited(eq) && (
+              <div className="flex items-center gap-3">
+                <span className="t-caption flex-1 text-text-secondary">
+                  {t("settingsEq.edited", {
+                    preset: t(`settingsEq.preset.${eqBase(eq).id}`),
+                  })}
+                </span>
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    save({
+                      ...eq,
+                      preset: eqBase(eq).id,
+                      preamp: 0,
+                      bands: [...eqBase(eq).bands_db],
+                    })
+                  }
+                >
+                  {t("settingsEq.reset")}
+                </Button>
+              </div>
+            )}
             <div className="flex flex-col gap-1">
               {[
                 { key: 0, label: t("settingsEq.preamp"), value: eq.preamp },
@@ -963,7 +1004,8 @@ function EqSection() {
                       else {
                         const bands = [...eq.bands];
                         bands[i - 1] = d;
-                        save({ ...eq, preset: "custom", bands });
+                        // The preset stays as the base: «Сбросить» goes back to it.
+                        save({ ...eq, bands });
                       }
                     }}
                     className="flex-1"

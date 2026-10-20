@@ -35,6 +35,14 @@ body,
   height: 100%;
   margin: 0;
 }
+/* Only the list being scrolled may bounce — never the whole window (owner, 2026-10-20). */
+html,
+body {
+  overscroll-behavior: none;
+}
+* {
+  overscroll-behavior: contain;
+}
 body {
   background: var(--bg-base);
   color: var(--text-primary);

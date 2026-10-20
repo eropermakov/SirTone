@@ -92,6 +92,11 @@ async function mockTauri(page: Page) {
           case "storage_info":
           case "duplicates_count":
             throw { code: "NotFound", retryable: false, details: null };
+          case "wave_start":
+            return {
+              status: "ok",
+              data: { queued: 5, relaxed: [], noPopularity: false, few: false },
+            };
           case "sleep_start":
           case "focus_start":
             return null;
@@ -311,4 +316,49 @@ test("sleep and focus start from the wave screen; their settings render (T4.21, 
   const text = await page.locator("main").innerText();
   expect(text).not.toMatch(/settings(Sleep|Focus|Fx)\.|\{count|\{time/);
   await expect(page.getByText("Предпочтительно без слов")).toBeVisible();
+});
+
+test("«Настроить волну»: tiles combine, «Слушать» starts and saves; no page bounce", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 12,
+      artists: 3,
+      albums: 2,
+      unknown: 0,
+      durationSec: 3000,
+      bytes: 1,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await expect(page.locator("footer").getByText("Mock track")).toBeVisible();
+  expect(
+    await page.evaluate(() => getComputedStyle(document.documentElement).overscrollBehaviorY),
+  ).toBe("none");
+  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await page.getByRole("button", { name: "Настроить", exact: true }).click();
+  const dlg = page.getByRole("dialog");
+  await dlg.getByRole("button", { name: "Работа", exact: true }).click();
+  await dlg.getByRole("button", { name: "Спокойное", exact: true }).first().click();
+  await dlg.getByRole("button", { name: "Без слов", exact: true }).click();
+  await expect(dlg.getByText("Работаете?")).toBeVisible();
+  await dlg.getByRole("button", { name: "Слушать", exact: true }).click();
+  const call = (await calls(page, "wave_start")).at(-1)?.args as {
+    query: { activity: string[]; character: string[]; language: string[] };
+  };
+  expect(call.query.activity).toEqual(["work"]);
+  expect(call.query.character).toEqual(["calm"]);
+  expect(call.query.language).toEqual(["none"]);
+  const saved = (await calls(page, "settings_patch")).at(-1)?.args as {
+    patch: { wave: { setup: { activity: string[] } } };
+  };
+  expect(saved.patch.wave.setup.activity).toEqual(["work"]);
+  await expect(page.getByRole("button", { name: /Настроить\s*3/ })).toBeVisible();
 });

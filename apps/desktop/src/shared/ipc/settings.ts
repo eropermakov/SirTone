@@ -39,7 +39,7 @@ export type SettingsPatch = {
     degraded_from?: number | null;
   };
   onboarding?: { done?: boolean; tips_seen?: boolean };
-  wave?: { learning?: boolean; novelty?: number };
+  wave?: { learning?: boolean; novelty?: number; setup?: unknown };
   library?: { organize_external?: "suggest" | "auto" | "never" };
   network?: { offline_mode?: boolean };
   sfx?: { enabled?: boolean; volume?: number };

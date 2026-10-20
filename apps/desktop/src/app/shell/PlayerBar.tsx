@@ -15,7 +15,7 @@ import {
 import { cn } from "@/shared/lib/utils";
 import { Cover } from "@/shared/ui/Cover";
 import { Slider } from "@/shared/ui/Slider";
-import { ForwardIcon, PauseIcon, PlayIcon, RewindIcon } from "@/shared/ui/TransportIcons";
+import { ForwardIcon, PlayPauseIcon, RewindIcon } from "@/shared/ui/TransportIcons";
 
 /** m:ss / h:mm:ss timecode (format, not text). */
 export function timecode(ms: number): string {
@@ -102,7 +102,6 @@ export function PlayerBar({
       : snap.repeat === "all"
         ? t("player.repeatAll")
         : t("player.repeat");
-  const PlayPauseIcon = playing ? PauseIcon : PlayIcon;
 
   return (
     <footer className="flex h-(--player-height) shrink-0 items-center gap-4 border-t border-separator bg-bg-base px-4">
@@ -147,7 +146,7 @@ export function PlayerBar({
             aria-label={playing ? t("player.pause") : t("player.play")}
             className="flex size-(--play-size) items-center justify-center rounded-full text-text-primary transition-transform active:scale-90 disabled:opacity-40"
           >
-            <PlayPauseIcon size={32} />
+            <PlayPauseIcon playing={playing} size={32} />
           </button>
           <button
             type="button"
