@@ -328,6 +328,9 @@ pub struct Wave {
     pub artist_spacing: u32,
     pub season: Value,
     pub influence: Value,
+    /// «Настроить волну» (FR-WAVE-003): the saved setup «Моя волна» plays with (the UI's
+    /// `WaveQueryIpc`; `wave_start` checks its keys); `null` — none.
+    pub setup: Value,
 }
 
 impl Default for Wave {
@@ -339,6 +342,7 @@ impl Default for Wave {
             artist_spacing: 5,
             season: serde_json::json!({ "mode": "auto", "weather_nudge": true, "blend_days": 21 }),
             influence: serde_json::json!({ "season": 1.0, "context": 1.0, "events": 1.0 }),
+            setup: Value::Null,
         }
     }
 }

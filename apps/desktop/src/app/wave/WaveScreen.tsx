@@ -11,6 +11,7 @@ import {
   MoreHorizontal,
   Pencil,
   Shuffle,
+  SlidersHorizontal,
   Trash2,
   Waves,
 } from "lucide-react";
@@ -21,6 +22,7 @@ import { TrackCard } from "@/app/library/TrackCard";
 import type { GoTo } from "@/app/library/TrackList";
 import { useAddToPlaylist } from "@/app/playlists/useAddToPlaylist";
 import { useTrackTags } from "@/app/playlists/useTrackTags";
+import type { WaveQueryIpc } from "@/shared/ipc/bindings";
 import {
   like,
   never,
@@ -29,15 +31,17 @@ import {
   type TrackFeedback,
   trackFeedback,
 } from "@/shared/ipc/feedback";
+import { focusStart } from "@/shared/ipc/focus";
 import { allTrackIds, playTracks, trackDetails, waveStart, waveWhy } from "@/shared/ipc/library";
 import { next, type PlaybackSnapshot, prev, setShuffle, togglePlay } from "@/shared/ipc/playback";
+import { getSettings, patchSettings } from "@/shared/ipc/settings";
 import { sleepStart } from "@/shared/ipc/sleep";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/Button";
 import { Cover } from "@/shared/ui/Cover";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
-import { PauseIcon, PlayIcon } from "@/shared/ui/TransportIcons";
+import { PlayPauseIcon } from "@/shared/ui/TransportIcons";
 import { FocusButton } from "./FocusButton";
 import { ForAllButton, type Gathering } from "./ForAllButton";
 import { NightVibe } from "./NightVibe";
@@ -46,6 +50,7 @@ import { SeasonWaveButton } from "./SeasonWaveButton";
 import { SleepButton } from "./SleepButton";
 import { VizBackground } from "./VizBackground";
 import { VizToolbar } from "./VizToolbar";
+import { setupCount, WaveSetup } from "./WaveSetup";
 import { pulseWaves } from "./WavesBackground";
 
 const NONE: TrackFeedback = { liked: false, neverTrack: false, neverArtist: false };
@@ -79,8 +84,23 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       .catch(() => {});
   }, [id]);
 
-  const startWave = (profile?: "seasonal" | "for_all" | "sleep", gathering?: Gathering | null) =>
-    waveStart(profile, gathering ? { gathering } : undefined)
+  // «Настроить волну» (FR-WAVE-003): the saved setup steers «Моя волна» until «Сбросить».
+  const [setup, setSetup] = useState<WaveQueryIpc | null>(null);
+  const [setupOpen, setSetupOpen] = useState(false);
+  useEffect(() => {
+    getSettings()
+      .then((d) => setSetup(((d.wave ?? {}) as { setup?: WaveQueryIpc | null }).setup ?? null))
+      .catch(() => {});
+  }, []);
+  const startWave = (
+    profile?: "seasonal" | "for_all" | "sleep",
+    gathering?: Gathering | null,
+    query?: WaveQueryIpc,
+  ) =>
+    waveStart(
+      profile,
+      gathering ? { gathering } : (query ?? (profile ? undefined : (setup ?? undefined))),
+    )
       .then((r) => {
         if (r.queued === 0) notify(t("wave.empty"));
         // «Для всех» is honest about its data (FR-ALL-005).
@@ -98,6 +118,34 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       playTracks(ids, Math.floor(Math.random() * ids.length), "collection");
     });
 
+  const playSetup = (q: WaveQueryIpc) => {
+    const empty = setupCount(q) === 0;
+    setSetup(empty ? null : q);
+    setSetupOpen(false);
+    void patchSettings({ wave: { setup: empty ? null : q } }).catch(() => {});
+    void startWave(undefined, null, q);
+  };
+  const setupButton = (
+    <Button variant="secondary" onClick={() => setSetupOpen(true)} className="relative">
+      <SlidersHorizontal size={16} strokeWidth={1.5} />
+      {t("wave.setup.button")}
+      {setupCount(setup) > 0 && (
+        <span className="t-badge rounded-full bg-primary px-1.5 text-on-primary">
+          {setupCount(setup)}
+        </span>
+      )}
+    </Button>
+  );
+  const setupDialog = setupOpen && (
+    <WaveSetup
+      initial={setup}
+      onClose={() => setSetupOpen(false)}
+      onPlay={playSetup}
+      onSleepWave={() => void sleepStart("minutes", 30).then(() => startWave("sleep"))}
+      onFocus={() => void focusStart(25, 5)}
+    />
+  );
+
   if (id == null || snap.state === "empty") {
     return (
       <section className="flex h-full flex-col items-center justify-center gap-4 text-center">
@@ -108,6 +156,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
             <Waves size={16} strokeWidth={1.5} />
             {t("wave.start")}
           </Button>
+          {setupButton}
           <SeasonWaveButton onStart={() => void startWave("seasonal")} />
           <ForAllButton onStart={forAll} />
           <Button variant="secondary" onClick={() => void shuffleAll()}>
@@ -115,6 +164,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
             {t("wave.shuffleAll")}
           </Button>
         </div>
+        {setupDialog}
       </section>
     );
   }
@@ -231,7 +281,6 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
     },
   ];
 
-  const PlayPause = playing ? PauseIcon : PlayIcon;
   return (
     <section
       data-theme="dark"
@@ -293,6 +342,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
             {t("wave.start")}
           </Button>
         )}
+        {setupButton}
         {snap.waveProfile !== "seasonal" && (
           <SeasonWaveButton onStart={() => void startWave("seasonal")} />
         )}
@@ -317,7 +367,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
           aria-label={playing ? t("player.pause") : t("player.play")}
           className="flex size-16 items-center justify-center rounded-full bg-accent-fill text-accent-on transition-transform active:scale-95"
         >
-          <PlayPause size={28} />
+          <PlayPauseIcon playing={playing} size={28} />
         </button>
         <button
           type="button"
@@ -370,6 +420,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
         <Menu items={items} at={menu} label={t("trackMenu.label")} onClose={() => setMenu(null)} />
       )}
       {toPlaylist.dialog}
+      {setupDialog}
       {card && (
         <TrackCard
           key={card.id}

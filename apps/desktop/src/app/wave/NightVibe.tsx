@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useSleepStatus } from "@/shared/ipc/sleep";
 import { nightSet } from "@/shared/ipc/viz";
 import { cn } from "@/shared/lib/utils";
-import { ForwardIcon, PauseIcon, PlayIcon, RewindIcon } from "@/shared/ui/TransportIcons";
+import { ForwardIcon, PlayPauseIcon, RewindIcon } from "@/shared/ui/TransportIcons";
 import { WAVES } from "@/shared/viz/palette";
 import { VizBackground } from "./VizBackground";
 
@@ -135,7 +135,7 @@ export function NightVibe({
               onClick={player.onToggle}
               className="flex size-16 items-center justify-center rounded-full bg-accent-fill text-accent-on transition-transform active:scale-95"
             >
-              {player.playing ? <PauseIcon size={28} /> : <PlayIcon size={28} />}
+              <PlayPauseIcon playing={player.playing} size={28} />
             </button>
             <button
               type="button"
