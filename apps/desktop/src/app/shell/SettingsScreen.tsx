@@ -176,6 +176,8 @@ export function SettingsScreen({
 
       <SleepSection />
 
+      <FocusSection />
+
       <NeverSection />
 
       <div className="flex flex-col gap-2">
@@ -1334,6 +1336,97 @@ function VizSection() {
             <Switch checked={viz[r.key]} label={t(r.label)} onChange={(v) => toggle(r.key, v)} />
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+const FOCUS_VOCALS = ["none", "prefer_none", "any"] as const;
+
+/**
+ * «Фокус» (T4.24, FR-FOCUS-001/003/004/006): «свой» cycle (work, break, long break, cycles
+ * before it), «Слова» (Q-5, default «Предпочтительно без слов»), the allowed overrun at the
+ * boundary, and normalization for the session.
+ */
+function FocusSection() {
+  const { t } = useTranslation("shell");
+  const [f, setF] = useState({
+    work_min: 25,
+    break_min: 5,
+    long_break_min: 15,
+    cycles_before_long: 4,
+    vocals: "prefer_none" as (typeof FOCUS_VOCALS)[number],
+    overrun_s: 90,
+    auto_normalize: true,
+  });
+  useEffect(() => {
+    getSettings().then((d) => {
+      const v = (d.focus ?? {}) as Partial<typeof f>;
+      setF((cur) => ({ ...cur, ...v }));
+    });
+  }, []);
+  const save = (next: typeof f) => {
+    const prev = f;
+    setF(next);
+    patchSettings({ focus: next }).catch(() => setF(prev));
+  };
+  const rows = [
+    { key: "work_min", min: 5, max: 180, label: "settingsFocus.work" },
+    { key: "break_min", min: 1, max: 60, label: "settingsFocus.break" },
+    { key: "long_break_min", min: 1, max: 60, label: "settingsFocus.longBreak" },
+  ] as const;
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsFocus.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        {rows.map((r) => (
+          <div key={r.key} className="flex items-center gap-4">
+            <span className="t-caption w-28 shrink-0 text-text-secondary">{t(r.label)}</span>
+            <Slider
+              value={(f[r.key] - r.min) / (r.max - r.min)}
+              step={1 / (r.max - r.min)}
+              label={t(r.label)}
+              valueText={t("settingsSleep.fadeValue", { count: f[r.key] })}
+              onCommit={(v) => save({ ...f, [r.key]: Math.round(r.min + v * (r.max - r.min)) })}
+              className="flex-1"
+            />
+          </div>
+        ))}
+        <div className="flex items-center gap-4">
+          <span className="t-caption w-28 shrink-0 text-text-secondary">
+            {t("settingsFocus.overrun")}
+          </span>
+          <Slider
+            value={f.overrun_s / 300}
+            step={10 / 300}
+            label={t("settingsFocus.overrun")}
+            valueText={t("settingsFocus.seconds", { count: f.overrun_s })}
+            onCommit={(v) => save({ ...f, overrun_s: Math.round((v * 300) / 10) * 10 })}
+            className="flex-1"
+          />
+        </div>
+        <span className="t-body text-text-primary">{t("settingsFocus.vocals")}</span>
+        <fieldset
+          className="m-0 flex flex-wrap gap-2 border-0 p-0"
+          aria-label={t("settingsFocus.vocals")}
+        >
+          {FOCUS_VOCALS.map((v) => (
+            <Chip key={v} active={f.vocals === v} onClick={() => save({ ...f, vocals: v })}>
+              {t(`settingsFocus.vocalsName.${v}`)}
+            </Chip>
+          ))}
+        </fieldset>
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsFocus.normalize")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsFocus.normalizeHint")}</div>
+          </div>
+          <Switch
+            checked={f.auto_normalize}
+            label={t("settingsFocus.normalize")}
+            onChange={(v) => save({ ...f, auto_normalize: v })}
+          />
+        </div>
       </div>
     </div>
   );

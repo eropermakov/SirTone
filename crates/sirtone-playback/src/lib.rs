@@ -2,6 +2,7 @@
 
 pub mod automix;
 pub mod duck;
+pub mod focus;
 pub mod queue;
 pub mod sleep;
 

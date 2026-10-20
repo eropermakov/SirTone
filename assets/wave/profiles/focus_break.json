@@ -1,0 +1,44 @@
+{
+  "schema": "sirtone.wave-profile/1",
+  "_note": "«Фокус: перерыв» (FR-FOCUS-005, docs/14 §15): 1–2 positive, energetic tracks (valence ≥ 0.6, energy ≥ 0.6), loved ones first (the taste leads). Learning context_only. Temporary values until calibration (OWN-08).",
+  "id": "focus_break",
+  "name_key": "wave.profile.focus_break",
+  "weights": {
+    "taste": 0.7,
+    "session": 0.05,
+    "context": 0.1,
+    "season": 0.0,
+    "event": 0.0,
+    "curve": 0.0,
+    "novelty": 0.0,
+    "universal": 0.0,
+    "filters": 0.15
+  },
+  "novelty": {
+    "mode": "slider"
+  },
+  "learning_policy": "context_only",
+  "sequencing": {
+    "artist_spacing": 5,
+    "repeat_window_h": 24,
+    "max_energy_jump": 0.2,
+    "transition_bonus": true
+  },
+  "relax_order": [
+    "filters.atmosphere",
+    "filters.activity",
+    "filters.character",
+    "filters.mood",
+    "tempo",
+    "energy",
+    "language",
+    "frequency"
+  ],
+  "focus": {
+    "segment": "break",
+    "vocal_penalty": 0.0,
+    "novelty_max": 0.25,
+    "valence_min": 0.6,
+    "energy_min": 0.6
+  }
+}

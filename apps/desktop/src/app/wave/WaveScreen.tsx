@@ -37,6 +37,7 @@ import { Cover } from "@/shared/ui/Cover";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
 import { PauseIcon, PlayIcon } from "@/shared/ui/TransportIcons";
+import { FocusButton } from "./FocusButton";
 import { ForAllButton, type Gathering } from "./ForAllButton";
 import { NightVibe } from "./NightVibe";
 import { NoveltySlider } from "./NoveltySlider";
@@ -313,6 +314,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
         >
           <CircleSlash size={24} strokeWidth={1.5} />
         </button>
+        <FocusButton />
         <SleepButton
           onSleepWave={() => {
             // The timer first: the sleep wave's first tracks already follow its curve.

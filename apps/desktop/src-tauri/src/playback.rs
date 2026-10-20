@@ -811,6 +811,16 @@ impl Playback {
         self.engine.send(EngineCmd::SetSfxVolume(v));
     }
 
+    /// Library ids of the items after the current one (focus packing, T4.24).
+    pub fn upcoming_ids(&self) -> Vec<u32> {
+        let q = self.queue();
+        q.items()
+            .iter()
+            .skip(q.position() + 1)
+            .filter_map(|i| i.track_id)
+            .collect()
+    }
+
     /// Index of the playing item in the queue (the sleep timer counts tracks by it).
     pub fn queue_position(&self) -> usize {
         self.queue().position()

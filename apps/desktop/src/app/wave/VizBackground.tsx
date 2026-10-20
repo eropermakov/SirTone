@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useFocusStatus } from "@/shared/ipc/focus";
 import { useSleepStatus } from "@/shared/ipc/sleep";
 import { WAVES } from "@/shared/viz/palette";
 import { wavesMood } from "@/shared/viz/waves";
@@ -26,13 +27,20 @@ export function VizBackground({
 }) {
   const { prefs, reduced } = useVizEnv();
   const { s: sleep } = useSleepStatus();
+  const focusWork = useFocusStatus().s.phase === "work";
   const fading = sleep.phase === "fading" || sleep.phase === "final";
   const dim = fading ? WAVES.sleep.dim : 0;
   // Slower while the timer fades: ×0.4, ×0.2 in the final.
   useEffect(() => {
     wavesMood.speed =
-      sleep.phase === "final" ? WAVES.sleep.speed_final : fading ? WAVES.sleep.speed : 1;
-  }, [sleep.phase, fading]);
+      sleep.phase === "final"
+        ? WAVES.sleep.speed_final
+        : fading
+          ? WAVES.sleep.speed
+          : focusWork
+            ? WAVES.focus.speed
+            : 1;
+  }, [sleep.phase, fading, focusWork]);
   const [failed, setFailed] = useState(false);
   const mode = prefs?.mode ?? "waves";
   useEffect(() => {

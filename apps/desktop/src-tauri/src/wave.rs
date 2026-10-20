@@ -34,6 +34,8 @@ enum Cmd {
     /// A wave track was skipped: its vibe repels and the upcoming tracks are picked again
     /// (D-92, AT-21).
     Skipped(i64),
+    /// Another profile from the next track on (focus segments).
+    Switch(String),
 }
 
 /// One reason of «Почему этот трек» (§17); the UI words it as `wave.why.<kind>`.
@@ -214,6 +216,20 @@ impl Wave {
         let _ = self.tx.send(Cmd::Skipped(i64::from(track)));
     }
 
+    /// Starts a wave with a built-in profile from Rust (focus, T4.24); plays at once.
+    pub fn start_profile(&self, id: &str) {
+        let (tx, _rx) = mpsc::channel();
+        let _ = self
+            .tx
+            .send(Cmd::Start(id.to_owned(), WaveQuery::default(), tx));
+    }
+
+    /// The wave goes on with another profile after the current track (focus work ↔ break):
+    /// the upcoming wave tracks are dropped and picked again.
+    pub fn switch_profile(&self, id: &str) {
+        let _ = self.tx.send(Cmd::Switch(id.to_owned()));
+    }
+
     /// More tracks for a wave that is running out (from the playback sink; never blocks).
     pub fn request_more(&self) {
         if !self.pending.swap(true, Ordering::AcqRel) {
@@ -354,6 +370,43 @@ fn next_ids(
         });
         e.set_sleep(state);
     }
+    // Focus (T4.24, §15): «Слова» and the segment to pack into (§7.1) — what is left of it when
+    // the first new track would start: after the current one and the wave tracks already queued.
+    if profile.starts_with("focus") {
+        let doc = app
+            .try_state::<std::sync::Arc<SettingsStore>>()
+            .map(|s| s.get())
+            .unwrap_or_default();
+        e.set_vocals(match doc["focus"]["vocals"].as_str() {
+            Some("none") => sirtone_wave::engine::Vocals::None,
+            Some("any") => sirtone_wave::engine::Vocals::Any,
+            _ => sirtone_wave::engine::Vocals::PreferNone,
+        });
+        let overrun = doc["focus"]["overrun_s"].as_i64().unwrap_or(90) * 1000;
+        let pack = app
+            .try_state::<crate::focus::Focus>()
+            .and_then(|f| f.segment())
+            .filter(|(p, _)| p == profile)
+            .map(|(_, end)| {
+                let left = end
+                    .saturating_duration_since(std::time::Instant::now())
+                    .as_millis() as i64;
+                let pb = app.state::<Playback>();
+                let s = pb.snapshot();
+                let current = i64::from(s.duration_ms.unwrap_or(0).saturating_sub(s.position_ms));
+                let queued: i64 = pb
+                    .upcoming_ids()
+                    .iter()
+                    .filter_map(|id| tracks.iter().find(|t| t.id == i64::from(*id)))
+                    .map(|t| t.duration_ms as i64)
+                    .sum();
+                sirtone_wave::engine::SegmentPack {
+                    left_ms: left - current - queued,
+                    overrun_ms: overrun,
+                }
+            });
+        e.set_segment(pack);
+    }
     Ok(e.next(&ctx, &shelf, novelty(app), n, now)
         .into_iter()
         .filter_map(|id| u32::try_from(id).ok())
@@ -426,6 +479,23 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                 if let Some(e) = engine.as_mut() {
                     e.skipped(id, SystemClock.now_utc_ms());
                     retune(app, &mut slot, &mut engine, &profile, &query);
+                }
+            }
+            Cmd::Switch(p) => {
+                engine = None;
+                profile = p;
+                query = WaveQuery::default();
+                let pb = app.state::<Playback>();
+                pb.set_wave_profile(&profile);
+                pb.drop_upcoming_wave();
+                match next_ids(app, &mut slot, &mut engine, &profile, &query, MORE)
+                    .and_then(|ids| items_for(&app.state::<Library>(), &ids, PlayContext::Wave))
+                {
+                    Ok(items) if !items.is_empty() => pb.append(items),
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(target: "sirtone::wave", code = ?e.code, "switch failed");
+                    }
                 }
             }
             Cmd::Retune => {

@@ -14,6 +14,7 @@ mod diagnostics;
 mod duck;
 mod duplicates;
 mod feedback;
+mod focus;
 mod hotkeys;
 mod ipc;
 mod journal;
@@ -164,6 +165,10 @@ fn main() {
             analysis::start(app.handle().clone());
             duck::start(app.handle().clone());
             app.manage(sleep::Sleep::start(app.handle().clone()));
+            app.manage(focus::Focus::start(
+                app.handle().clone(),
+                diagnostics::data_dir(),
+            ));
             resolve::start(app.handle().clone());
             match playback::Playback::start(app.handle().clone(), store) {
                 Ok(pb) => {

@@ -225,6 +225,13 @@ export const commands = {
 	sleepWake: () => __TAURI_INVOKE<void>("sleep_wake"),
 	sleepStatus: () => __TAURI_INVOKE<SleepStatus>("sleep_status"),
 	sleepCaps: () => __TAURI_INVOKE<SleepCaps>("sleep_caps"),
+	/**  Starts focus: `work`/`brk` minutes (a preset) or `0` — the settings. */
+	focusStart: (work: number, brk: number) => __TAURI_INVOKE<void>("focus_start", { work, brk }),
+	focusStop: () => __TAURI_INVOKE<void>("focus_stop"),
+	focusPause: (paused: boolean) => __TAURI_INVOKE<void>("focus_pause", { paused }),
+	/**  «Пропустить сегмент». */
+	focusSkip: () => __TAURI_INVOKE<void>("focus_skip"),
+	focusStatus: () => __TAURI_INVOKE<FocusStatus>("focus_status"),
 	analysisProgress: () => typedError<AnalysisProgress, AppError>(__TAURI_INVOKE("analysis_progress")),
 	/**
 	 *  «Навести порядок» (T3.19, FR-FS-005): the adopted files waiting for it (`all` = false) or
@@ -262,6 +269,7 @@ export const commands = {
 /** Events */
 export const events = {
 	duplicatesFound: makeEvent<DuplicatesFound>("duplicates-found"),
+	focusStatus: makeEvent<FocusStatus>("focus-status"),
 	hotkeyConflict: makeEvent<HotkeyConflict>("hotkey-conflict"),
 	importFinished: makeEvent<ImportFinished>("import-finished"),
 	importProgress: makeEvent<ImportProgress>("import-progress"),
@@ -380,6 +388,18 @@ export type DuplicatesView = {
 export type ErrorCode = "FileNotFound" | "UnsupportedFormat" | "DecodeFailed" | "PathTooLong" | "DiskFull" | "PermissionDenied" | "DeviceUnavailable" | "DeviceBusy" | "NetworkOffline" | "RateLimited" | "RemoteError" | "DbBusy" | "DbCorrupt" | "Cancelled" | "InvalidArgument" | "LibraryOffline" | 
 /**  No library folder chosen yet (docs/03 §8.2): the UI asks for one. */
 "LibraryRootNotSet" | "NotSupported" | "InvalidConfig" | "Internal";
+
+/**  What the UI and the tray show (FR-FOCUS-002). */
+export type FocusStatus = {
+	/**  `off` · `work` · `break` · `long_break` */
+	phase: string,
+	remainingMs: number,
+	/**  The segment's full length (the ring). */
+	segmentMs: number,
+	paused: boolean,
+	/**  Work segments done today. */
+	today: number,
+};
 
 /**  A genre card (FR-LIB-002; `01b` F-34). */
 export type GenreItem = {

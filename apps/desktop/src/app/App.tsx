@@ -63,6 +63,7 @@ import { blankDraft, SmartEditor } from "./playlists/SmartEditor";
 import { nextName, usePlaylists } from "./playlists/usePlaylists";
 import { SearchScreen } from "./search/SearchScreen";
 import { EmptyScreen } from "./shell/EmptyScreen";
+import { FocusBanner } from "./shell/FocusBanner";
 import { PlayerBar } from "./shell/PlayerBar";
 import { QueuePanel } from "./shell/QueuePanel";
 import { SettingsScreen } from "./shell/SettingsScreen";
@@ -547,6 +548,7 @@ export function App() {
           )}
         </div>
         <SleepBanner />
+        <FocusBanner />
         <div className="t-caption bg-bg-base px-4 pt-1 text-center text-text-tertiary">
           {t("proto")}
         </div>

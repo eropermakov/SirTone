@@ -45,6 +45,7 @@ export type SettingsPatch = {
   sfx?: { enabled?: boolean; volume?: number };
   fx?: { mode?: string; manual?: string | null; static_when_weak?: boolean };
   sleep?: { fade_min?: number; final_s?: number; warm?: boolean; after?: string };
+  focus?: Record<string, unknown>;
   playback?: {
     normalization?: { enabled?: boolean; target_lufs?: number; album_mode?: "auto" | "off" };
     eq?: { enabled?: boolean; preset?: string; preamp_db?: number; bands_db?: number[] };

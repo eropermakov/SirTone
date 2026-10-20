@@ -14,6 +14,7 @@ use crate::learn::{History, Models, ctx_levels, replay};
 use crate::query::{Character, Mood, QueryState, SeasonPick, Vibe, WaveQuery, script_lang};
 use crate::rng::Rng;
 use crate::season::{NO_SEASON, Seasonality, dominant};
+use sirtone_core::wave::{Fit, fit};
 
 /// Feature indices (docs/14 §4.1).
 pub mod f {
@@ -112,6 +113,41 @@ pub struct Profile {
     /// «Засыпательная волна» (§14): the energy curve and its filters.
     #[serde(default)]
     pub sleep: Option<SleepRules>,
+    /// The focus wave (§15): work or break rules.
+    #[serde(default)]
+    pub focus: Option<FocusRules>,
+}
+
+/// The focus wave's rules (`profiles/focus*.json`, §15, FR-FOCUS-003/005).
+#[derive(Debug, Clone, Deserialize)]
+pub struct FocusRules {
+    pub segment: String,
+    #[serde(default)]
+    pub energy_target: Option<f32>,
+    #[serde(default)]
+    pub energy_tol: Option<f32>,
+    #[serde(default)]
+    pub dynamics_max: Option<f32>,
+    /// «Только без слов»: vocals above this are out.
+    #[serde(default)]
+    pub vocal_hard_max: Option<f32>,
+    /// «Предпочтительно без слов»: score − penalty × vocal.
+    #[serde(default)]
+    pub vocal_penalty: f32,
+    pub novelty_max: f32,
+    #[serde(default)]
+    pub valence_min: Option<f32>,
+    #[serde(default)]
+    pub energy_min: Option<f32>,
+}
+
+/// «Слова» in the focus settings (Q-5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Vocals {
+    None,
+    #[default]
+    PreferNone,
+    Any,
 }
 
 /// The sleep wave's rules (`profiles/sleep.json`, §14, FR-SLEEP-003).
@@ -306,7 +342,7 @@ pub struct ConfigError {
 }
 
 /// Built-in profiles (docs/14 §5): id → file.
-const PROFILES: [(&str, &str, &str); 4] = [
+const PROFILES: [(&str, &str, &str); 6] = [
     (
         "my_wave",
         "profiles/my_wave.json",
@@ -326,6 +362,16 @@ const PROFILES: [(&str, &str, &str); 4] = [
         "sleep",
         "profiles/sleep.json",
         include_str!("../../../assets/wave/profiles/sleep.json"),
+    ),
+    (
+        "focus",
+        "profiles/focus.json",
+        include_str!("../../../assets/wave/profiles/focus.json"),
+    ),
+    (
+        "focus_break",
+        "profiles/focus_break.json",
+        include_str!("../../../assets/wave/profiles/focus_break.json"),
     ),
 ];
 
@@ -466,6 +512,8 @@ pub struct Catalog {
     /// Multiplier for tracks without deep analysis (`floor + (1 − floor)·conf`).
     cold: Vec<f32>,
     pub artist: Vec<i64>,
+    /// Track length (packing into a focus/sleep segment, §7.1).
+    pub(crate) dur_ms: Vec<u64>,
     pub(crate) alpha: Vec<f32>,
     pub(crate) beta: Vec<f32>,
     pub(crate) plays: Vec<u32>,
@@ -567,6 +615,7 @@ impl Catalog {
             feat: Vec::with_capacity(n),
             cold: Vec::with_capacity(n),
             artist: Vec::with_capacity(n),
+            dur_ms: Vec::with_capacity(n),
             alpha: Vec::with_capacity(n),
             beta: Vec::with_capacity(n),
             plays: Vec::with_capacity(n),
@@ -638,6 +687,7 @@ impl Catalog {
             c.cold
                 .push(e.cold_conf_floor + (1.0 - e.cold_conf_floor) * conf);
             c.artist.push(t.artist_id);
+            c.dur_ms.push(t.duration_ms);
             // Filled by the replay of the journal (learn.rs).
             c.alpha.push(1.0);
             c.beta.push(1.0);
@@ -970,12 +1020,39 @@ pub struct Engine {
     qs: QueryState,
     /// The sleep timer for the sleep wave (§14); `None` — not running.
     sleep: Option<SleepState>,
+    /// «Слова» for the focus wave (Q-5).
+    vocals: Vocals,
+    /// The mode's hard filters (sleep, focus) apply; off for one rebuild when they leave nothing
+    /// (a library without fitting tracks must still play, `05` §10.1 relaxation).
+    mode_strict: bool,
+    /// Packing into a segment (§7.1): its time left when the next pick would start, and the
+    /// allowed overrun; each pick takes its length off.
+    segment: Option<SegmentPack>,
 }
 
-/// The context model key the sleep wave learns into (FR-SLEEP-008).
-pub const SLEEP_CONTEXT: &str = "sleep";
+/// A focus (or sleep) segment to pack tracks into (§7.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SegmentPack {
+    pub left_ms: i64,
+    pub overrun_ms: i64,
+}
 
 impl Engine {
+    /// «Только без слов / Предпочтительно без слов / Неважно» for the focus wave.
+    pub fn set_vocals(&mut self, v: Vocals) {
+        self.vocals = v;
+    }
+
+    /// Pack the next picks into a segment (§7.1); `None` — no boundary.
+    pub fn set_segment(&mut self, s: Option<SegmentPack>) {
+        self.segment = s;
+    }
+
+    /// What is left of the segment after the picks so far.
+    pub fn segment(&self) -> Option<SegmentPack> {
+        self.segment
+    }
+
     /// The sleep timer's state for the next refill (the sleep wave's energy curve).
     pub fn set_sleep(&mut self, s: Option<SleepState>) {
         self.sleep = s;
@@ -1018,6 +1095,9 @@ impl Engine {
             query,
             qs,
             sleep: None,
+            vocals: Vocals::default(),
+            mode_strict: true,
+            segment: None,
         }
     }
 
@@ -1136,12 +1216,19 @@ impl Engine {
     ) -> Vec<i64> {
         // A chosen «Частота» is a hard filter and the slider is inactive (Q-12, D-42).
         let novelty = if self.qs.frequency_on { 0.5 } else { novelty };
-        // The sleep wave: «незнакомое будит» (§14).
-        let novelty = match &self.cfg.profile.sleep {
-            Some(r) => novelty.min(r.novelty_max),
-            None => novelty,
+        // The sleep and focus waves keep novelty low («незнакомое будит / отвлекает»).
+        let novelty = match (&self.cfg.profile.sleep, &self.cfg.profile.focus) {
+            (Some(r), _) => novelty.min(r.novelty_max),
+            (_, Some(r)) => novelty.min(r.novelty_max),
+            _ => novelty,
         };
         self.rebuild(ctx, not_now, novelty, now_ms);
+        let moded = self.cfg.profile.sleep.is_some() || self.cfg.profile.focus.is_some();
+        if moded && self.buf.iter().all(Vec::is_empty) {
+            self.mode_strict = false;
+            self.rebuild(ctx, not_now, novelty, now_ms);
+            self.mode_strict = true;
+        }
         let mut out = Vec::with_capacity(n);
         for _ in 0..n {
             match self.pick(novelty) {
@@ -1231,18 +1318,26 @@ impl Engine {
         let sw = sctx.season_w;
         let season_floor = cfg.profile.season_floor;
         let mut w_ctx = context_weights(&self.context, &sctx, e.context_prior_n);
+        // A mode's own context model (`context_only`: the sleep wave, focus — FR-SLEEP-008,
+        // FR-FOCUS-008) is what «подходит для сна / фокуса» learnt from skips there.
+        if cfg.profile.learning_policy == "context_only"
+            && let Some((m, n)) = self.context.get(&cfg.profile.id)
+        {
+            let lambda = *n as f32 / (*n as f32 + e.context_prior_n);
+            for (wi, mi) in w_ctx.iter_mut().zip(m.mean().iter()) {
+                *wi += lambda * mi;
+            }
+        }
+        let strict = self.mode_strict;
+        let focus = cfg.profile.focus.as_ref().filter(|_| strict);
+        let vocals = self.vocals;
+        let vibe = &cfg.vibe;
         // The sleep wave (§14): its own context model, the energy curve and its filters.
         let sleep = cfg.profile.sleep.as_ref().map(|r| {
             let st = self.sleep.unwrap_or(SleepState {
                 e0: r.e0_default,
                 progress: 0.0,
             });
-            if let Some((m, n)) = self.context.get(SLEEP_CONTEXT) {
-                let lambda = *n as f32 / (*n as f32 + e.context_prior_n);
-                for (wi, mi) in w_ctx.iter_mut().zip(m.mean().iter()) {
-                    *wi += lambda * mi;
-                }
-            }
             let last_third = st.progress >= r.last_third_from;
             (
                 r,
@@ -1310,10 +1405,28 @@ impl Engine {
             // The sleep wave's hard filters: nothing aggressive, nothing above the curve, slow
             // in the last third (only what the analysis knows; unanalysed tracks carry means).
             if let Some((r, e_max, last_third, tempo_max)) = sleep
+                && strict
                 && cat.conf[t] > 0.0
                 && (x[f::AGGRESSION] > r.aggression_max
                     || x[f::ENERGY] > e_max
                     || (last_third && x[f::TEMPO] > tempo_max))
+            {
+                continue;
+            }
+            // The focus wave's hard filters (§15), only on what the analysis knows.
+            if let Some(r) = focus
+                && cat.conf[t] > 0.0
+                && (r
+                    .energy_target
+                    .zip(r.energy_tol)
+                    .is_some_and(|(e0, tol)| (x[f::ENERGY] - e0).abs() > tol)
+                    || r.dynamics_max.is_some_and(|m| x[f::DYNAMICS] > m)
+                    || r.valence_min.is_some_and(|m| x[f::VALENCE] < m)
+                    || r.energy_min.is_some_and(|m| x[f::ENERGY] < m)
+                    || (r.segment == "work"
+                        && vibe.excluded(x, &[Mood::Sad], &[Character::Aggressive]))
+                    || (vocals == Vocals::None
+                        && r.vocal_hard_max.is_some_and(|m| x[f::VOCAL] > m)))
             {
                 continue;
             }
@@ -1360,6 +1473,11 @@ impl Engine {
                     p += w * (-(d2 / REPEL_DIMS.len() as f32) * inv2s2).exp();
                 }
                 s -= repel_w * p.min(1.0);
+            }
+            if let Some(r) = focus
+                && vocals == Vocals::PreferNone
+            {
+                s -= r.vocal_penalty * x[f::VOCAL];
             }
             // The sleep wave: soft intros and outros up; words down in the last third.
             if let Some((r, _, last_third, _)) = sleep {
@@ -1527,6 +1645,52 @@ impl Engine {
                 }
                 if pool.is_empty() {
                     continue;
+                }
+                // A segment boundary (§7.1): only tracks that leave room for another or end
+                // at the boundary; by score, and among near-equal ones (±0.02) the one ending
+                // closest to the boundary. Nothing fits → the shortest (the caller fades over).
+                let packed = self.segment.map(|sg| {
+                    let fits: Vec<(f32, u32, usize, Fit)> = pool
+                        .iter()
+                        .map(|&(sc, idx, pg)| {
+                            let d = cat.dur_ms[idx as usize] as i64;
+                            (sc, idx, pg, fit(sg.left_ms, d, sg.overrun_ms))
+                        })
+                        .filter(|p| p.3 != Fit::No)
+                        .collect();
+                    if fits.is_empty() {
+                        let &(_, idx, pg) = pool
+                            .iter()
+                            .min_by_key(|p| cat.dur_ms[p.1 as usize])
+                            .unwrap_or(&pool[0]);
+                        return (idx, pg);
+                    }
+                    let best = fits.iter().map(|p| p.0).fold(f32::MIN, f32::max);
+                    let near = |p: &&(f32, u32, usize, Fit)| p.0 >= best - 0.02;
+                    let boundary = fits
+                        .iter()
+                        .filter(near)
+                        .filter(|p| p.3 == Fit::Boundary)
+                        .min_by_key(|p| (sg.left_ms - cat.dur_ms[p.1 as usize] as i64).abs());
+                    let top = fits.iter().max_by(|a, b| a.0.total_cmp(&b.0));
+                    let &(_, idx, pg, _) = boundary.or(top).unwrap_or(&fits[0]);
+                    (idx, pg)
+                });
+                if let Some((chosen, cg)) = packed {
+                    let t = chosen as usize;
+                    if let Some(sg) = self.segment.as_mut() {
+                        sg.left_ms -= cat.dur_ms[t] as i64;
+                    }
+                    ss.queued.push(cat.id[t]);
+                    ss.recent_artists.push(cat.artist[t]);
+                    if ss.recent_artists.len() > seq.artist_spacing.saturating_sub(1) {
+                        ss.recent_artists.remove(0);
+                    }
+                    ss.prev_energy = Some(cat.feat[t][f::ENERGY]);
+                    ss.prev_tempo = Some(cat.feat[t][f::TEMPO]);
+                    ss.group_counts[cg] += 1;
+                    ss.slots += 1;
+                    return Some(chosen);
                 }
                 let max = pool.iter().map(|p| p.0).fold(f32::MIN, f32::max);
                 let total: f32 = pool

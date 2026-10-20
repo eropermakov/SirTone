@@ -1,4 +1,5 @@
 import type { VizFrame } from "../ipc/viz";
+import { tryFlash } from "./flashBudget";
 import { blendLook, type Look, WAVES, type WavesConfig } from "./palette";
 
 /**
@@ -231,6 +232,8 @@ export class WavesEngine {
     if (this.opts.reducedMotion) return;
     const now = performance.now();
     if (now - this.lastLift < this.c.pulse.min_gap_ms) return;
+    // The screen's one flash budget, shared with the storm (T4.20).
+    if (!tryFlash(now, this.c.pulse.min_gap_ms)) return;
     this.lastLift = now;
     this.lift = { at: now, ms: kind === "like" ? this.c.pulse.like_ms : this.c.pulse.click_ms };
   }

@@ -35,6 +35,7 @@ export type WavesConfig = {
   quality: Record<"1" | "2" | "3" | "4", Quality>;
   night: { hide_after_ms: number };
   sleep: { speed: number; speed_final: number; dim: number; black_ms: number };
+  focus: { speed: number };
   fallback: { blur_px: number; drift_s: number };
 };
 export const WAVES = cfg as unknown as WavesConfig;

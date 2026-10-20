@@ -30,5 +30,7 @@
   "night": { "hide_after_ms": 3000 },
   "fallback": { "blur_px": 100, "drift_s": 25 },
   "_note_sleep": "The sleep timer's modifiers (docs/14 §14, docs/06 §7.8): speed ×0.4 while fading, ×0.2 in the final; brightness −50 %; after the end the night vibe goes black over 10 s.",
-  "sleep": { "speed": 0.4, "speed_final": 0.2, "dim": 0.5, "black_ms": 10000 }
+  "sleep": { "speed": 0.4, "speed_final": 0.2, "dim": 0.5, "black_ms": 10000 },
+  "_note_focus": "Focus work calms the visualisation (docs/14 §15, docs/06 §7.8): speed ×0.6; the full screen never opens by itself.",
+  "focus": { "speed": 0.6 }
 }

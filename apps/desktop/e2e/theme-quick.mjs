@@ -120,15 +120,49 @@ try {
   // —— T4.18 ——
   const plain = await accentFill();
   const state = await invoke("theme_state", {});
+  // P-19, second half: rAF gaps over 25 ms (a dropped frame at 60 Hz) during the change.
+  const gapsDuring = (ms) =>
+    page.evaluate(
+      (dur) =>
+        new Promise((resolve) => {
+          let last = 0;
+          let gaps = 0;
+          const t0 = performance.now();
+          const tick = (now) => {
+            if (last && now - last > 25) gaps++;
+            last = now;
+            if (now - t0 < dur) requestAnimationFrame(tick);
+            else resolve(gaps);
+          };
+          requestAnimationFrame(tick);
+        }),
+      ms,
+    );
   await page.evaluate(() => {
     window.__long = [];
     new PerformanceObserver((l) => {
       for (const e of l.getEntries()) window.__long.push(e.duration);
     }).observe({ type: "longtask" });
   });
+  const gapsP = gapsDuring(1500);
   await page.getByRole("switch", { name: "Тема по сезону" }).first().click();
-  await sleep(1500);
+  const switchGaps = await gapsP;
   const seasonal = await accentFill();
+  // The daily drift: the slow 1.5 s fade of the registered colours.
+  const driftGaps = await page
+    .evaluate(() => {
+      const root = document.documentElement;
+      root.dataset.themeDrift = "";
+      root.style.setProperty("--accent-fill", "#5aa9e6");
+      return null;
+    })
+    .then(() => gapsDuring(2000));
+  await page.evaluate(() => {
+    const root = document.documentElement;
+    root.style.removeProperty("--accent-fill");
+    delete root.dataset.themeDrift;
+  });
+  await sleep(600);
   const long = await page.evaluate(() => window.__long);
   check(
     "«Тема по сезону» paints the season's colour",
@@ -139,6 +173,11 @@ try {
     "P-19: no long task > 50 ms on the theme change",
     long.every((d) => d <= 50),
     `long tasks ${JSON.stringify(long.map((d) => Math.round(d)))}`,
+  );
+  check(
+    "P-19: ≤ 2 dropped frames on the switch and over the 1.5 s drift",
+    switchGaps <= 2 && driftGaps <= 2,
+    `switch ${switchGaps}, drift ${driftGaps}`,
   );
   await page.getByRole("button", { name: "Синий", exact: true }).first().click();
   await sleep(1200);

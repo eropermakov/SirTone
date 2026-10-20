@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resetFlashBudget, tryFlash } from "./flashBudget";
 import { budget, FlashClock, FX, type FxInput, fxColors, planFx } from "./fxPlan";
 
 const base: FxInput = {
@@ -62,7 +63,23 @@ describe("live effects plan (T4.20, FR-FX-001…007)", () => {
     expect(fxColors("snow")).toHaveLength(1);
   });
 
+  it("one budget for the screen: a «Волны» lift 3 s after a storm flash is refused", () => {
+    resetFlashBudget();
+    const clock = new FlashClock(0, () => 0);
+    let first = -1;
+    for (let t = 0; t < 20_000 && first < 0; t += 16) if (clock.level(t) > 0) first = t;
+    expect(first).toBeGreaterThanOrEqual(10_000);
+    expect(tryFlash(first + 3_000)).toBe(false);
+    expect(tryFlash(first + 10_000)).toBe(true);
+    // And the other way round: a lift just now delays the storm.
+    resetFlashBudget();
+    expect(tryFlash(50_000)).toBe(true);
+    const storm = new FlashClock(40_000, () => 0);
+    for (let t = 50_000; t < 59_000; t += 16) expect(storm.level(t)).toBe(0);
+  });
+
   it("storm flashes: never two within 10 s, smooth, ≤ lift", () => {
+    resetFlashBudget();
     let r = 0;
     const seq = [0, 0, 0.5, 1, 0, 0.2];
     const clock = new FlashClock(0, () => seq[r++ % seq.length] ?? 0);

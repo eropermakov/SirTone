@@ -1,6 +1,7 @@
 import FX_JSON from "../../../../../assets/viz/fx.json";
 import THEMES from "../../../../../assets/wave/themes.json";
 import { hexToRgb } from "../lib/color";
+import { tryFlash } from "./flashBudget";
 
 /**
  * What the live-effects layer draws (T4.20, FR-FX-001…007, `14` §13, supplement §31): pure
@@ -158,7 +159,8 @@ export class FlashClock {
   /** The flash brightness lift now (0 — none). */
   level(now: number): number {
     if (now >= this.next) {
-      this.at = now;
+      // The screen's one budget (shared with the «Волны» lift): too soon — try again later.
+      if (tryFlash(now, this.c.min_gap_s * 1000)) this.at = now;
       this.next = now + Math.max(this.c.min_gap_s * 1000, this.gap());
     }
     const k = (now - this.at) / this.c.ms;

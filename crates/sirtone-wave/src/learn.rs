@@ -134,8 +134,8 @@ pub fn replay(cfg: &Config, cat: &Catalog, h: &History, now_ms: i64) -> Models {
             m.guest_beta[i] += k;
         }
     };
-    // The sleep wave (`context_only`, §14, FR-SLEEP-008): falling asleep to a track says
-    // nothing about taste; a skip teaches only the «sleep» context.
+    // The sleep and focus waves (`context_only`, FR-SLEEP-008, FR-FOCUS-008): finishing a track
+    // there says nothing about taste; a skip teaches only that mode's own context model.
     let context_only = |p: &Option<String>| {
         p.as_deref()
             .is_some_and(|p| cfg.context_only_profiles.iter().any(|g| g == p))
@@ -151,10 +151,8 @@ pub fn replay(cfg: &Config, cat: &Catalog, h: &History, now_ms: i64) -> Models {
                 } else {
                     s.skip_mid
                 };
-                let entry = m
-                    .context
-                    .entry(crate::engine::SLEEP_CONTEXT.to_string())
-                    .or_default();
+                let key = ev.profile.clone().unwrap_or_default();
+                let entry = m.context.entry(key).or_default();
                 entry.0.update(&cat.feat[i], 0.0, w * decay(ev.ts));
                 entry.1 += 1;
             }

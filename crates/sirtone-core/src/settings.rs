@@ -659,6 +659,18 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
             "sleep.fade_min must be 1..=30, sleep.final_s 5..=120".into(),
         ));
     }
+    let fo = &s.focus;
+    if !(5..=180).contains(&fo.work_min)
+        || !(1..=60).contains(&fo.break_min)
+        || !(1..=60).contains(&fo.long_break_min)
+        || !(1..=12).contains(&fo.cycles_before_long)
+        || fo.overrun_s > 300
+        || !["none", "prefer_none", "any"].contains(&fo.vocals.as_str())
+    {
+        return Err(SettingsError::Invalid(
+            "focus: work 5–180, break 1–60, long 1–60, cycles 1–12, overrun ≤ 300 s, vocals none|prefer_none|any".into(),
+        ));
+    }
     if !["nothing", "screen_off", "sleep", "hibernate"].contains(&s.sleep.after.as_str()) {
         return Err(SettingsError::Invalid(
             "sleep.after must be nothing, screen_off, sleep or hibernate".into(),

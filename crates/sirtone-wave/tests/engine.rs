@@ -819,3 +819,86 @@ fn sleep_wave_follows_the_energy_curve_and_learns_only_its_context() {
     assert_eq!(base.taste.mean(), after.taste.mean());
     assert!(after.context.contains_key("sleep"));
 }
+
+#[test]
+fn focus_waves_keep_even_energy_and_pack_to_the_boundary() {
+    use sirtone_core::wave::{Fit, fit};
+    use sirtone_wave::engine::{SegmentPack, Vocals, f};
+
+    let tracks = synth::library(4_000, NOW, 1.0, 41);
+    let history = synth::history(&tracks, NOW);
+    let feat = |id: i64| {
+        let t = tracks.iter().find(|t| t.id == id).expect("track");
+        (t.features.expect("analysed").0, t.duration_ms as i64)
+    };
+    // Work: energy 0.45 ± 0.12, no drops, «Только без слов».
+    let cfg = Config::builtin_profile("focus").expect("assets");
+    assert_eq!(cfg.profile.id, "focus");
+    let mut e = Engine::new(cfg, &tracks, &history, NOW, 4);
+    e.set_vocals(Vocals::None);
+    let picks: Vec<i64> = (0..8)
+        .flat_map(|i| e.next(&ctx(Daypart::Day), &[], 1.0, 5, NOW + i * 60_000))
+        .collect();
+    assert!(picks.len() >= 30, "{}", picks.len());
+    for id in &picks {
+        let (x, _) = feat(*id);
+        assert!(
+            (x[f::ENERGY] - 0.45).abs() <= 0.12 + 1e-6,
+            "{id} energy {}",
+            x[f::ENERGY]
+        );
+        assert!(x[f::DYNAMICS] <= 0.6 + 1e-6, "{id} drops");
+        assert!(x[f::VOCAL] <= 0.35 + 1e-6, "{id} words");
+    }
+    // Packing (AT-18): 25 minutes filled; the last track ends −30…+90 s around the boundary.
+    for seed in 0..5u64 {
+        let cfg = Config::builtin_profile("focus").expect("assets");
+        let mut e = Engine::new(cfg, &tracks, &history, NOW, 100 + seed);
+        let seg = 25 * 60_000i64;
+        e.set_segment(Some(SegmentPack {
+            left_ms: seg,
+            overrun_ms: 90_000,
+        }));
+        let mut left = seg;
+        let mut n = 0;
+        while left > 30_000 && n < 30 {
+            let Some(id) = e
+                .next(&ctx(Daypart::Day), &[], 0.3, 1, NOW)
+                .first()
+                .copied()
+            else {
+                break;
+            };
+            let (_, d) = feat(id);
+            assert_ne!(
+                fit(left, d, 90_000),
+                Fit::No,
+                "seed {seed}: {d} ms into {left} ms"
+            );
+            left -= d;
+            n += 1;
+        }
+        assert!(
+            (-90_000..=30_000).contains(&left),
+            "seed {seed}: ends {left} ms off"
+        );
+    }
+    // Break: positive and energetic.
+    let cfg = Config::builtin_profile("focus_break").expect("assets");
+    let mut e = Engine::new(cfg, &tracks, &history, NOW, 6);
+    for id in e.next(&ctx(Daypart::Day), &[], 0.3, 10, NOW) {
+        let (x, _) = feat(id);
+        assert!(x[f::VALENCE] >= 0.6 && x[f::ENERGY] >= 0.6, "{id}: {x:?}");
+    }
+    // A library with nothing bright still plays a break (the mode's filters relax).
+    let mut calm = tracks.clone();
+    for t in &mut calm {
+        if let Some((x, _)) = t.features.as_mut() {
+            x[f::VALENCE] = 0.2;
+            x[f::ENERGY] = 0.2;
+        }
+    }
+    let cfg = Config::builtin_profile("focus_break").expect("assets");
+    let mut e = Engine::new(cfg, &calm, &synth::history(&calm, NOW), NOW, 8);
+    assert_eq!(e.next(&ctx(Daypart::Day), &[], 0.3, 2, NOW).len(), 2);
+}

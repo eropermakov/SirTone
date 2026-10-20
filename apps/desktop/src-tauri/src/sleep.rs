@@ -207,7 +207,7 @@ fn publish(app: &AppHandle, status: &Mutex<SleepStatus>, s: SleepStatus) {
         *cur = s.clone();
     }
     let _ = s.emit(app);
-    crate::tray::refresh_sleep(app);
+    crate::tray::refresh_modes(app);
 }
 
 /// Back to normal: full volume at once (we are paused or cancelled), no filter, UI sounds.
