@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { CollectionSummary } from "@/app/library/CollectionScreen";
 import { mb } from "@/app/library/TrackCard";
 import type { SignalInfo } from "@/shared/ipc/bindings";
+import { type City, cityLocate, citySearch, useWeather } from "@/shared/ipc/context";
 import { duplicatesCount } from "@/shared/ipc/duplicates";
 import {
   analysisProgress,
@@ -170,6 +171,8 @@ export function SettingsScreen({
       <HotkeysSection />
 
       <WaveLearningSection />
+      <PlaceSection />
+
       <VizSection />
 
       <FxSection />
@@ -1378,6 +1381,135 @@ function VizSection() {
             <Switch checked={viz[r.key]} label={t(r.label)} onChange={(v) => toggle(r.key, v)} />
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * «Место и погода» (T5.5, FR-CTX-001/002/004): the city by name (Open-Meteo geocoder) or
+ * «Определить автоматически» (the Windows location service, only on this press, D-54); the
+ * weather line. Without a city — the daypart by the clock and no weather (works offline).
+ */
+function PlaceSection() {
+  const { t } = useTranslation("shell");
+  const weather = useWeather();
+  const [city, setCity] = useState<City | null>(null);
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<City[]>([]);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    getSettings().then((s) => {
+      const c = (s.context as { city?: City | null } | undefined)?.city ?? null;
+      setCity(c);
+    });
+    const id = window.setInterval(() => tick((n) => n + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+  useEffect(() => {
+    const needle = q.trim();
+    if (needle.length < 2) {
+      setHits([]);
+      return;
+    }
+    const id = window.setTimeout(() => {
+      citySearch(needle)
+        .then((r) => {
+          setHits(r);
+          setProblem(r.length === 0 ? "none" : null);
+        })
+        .catch(() => setProblem("offline"));
+    }, 300);
+    return () => window.clearTimeout(id);
+  }, [q]);
+  const choose = (c: City | null) => {
+    const prev = city;
+    setCity(c);
+    setQ("");
+    setHits([]);
+    setProblem(null);
+    patchSettings({ context: { city: c } }).catch(() => setCity(prev));
+  };
+  const minutes = weather.fetchedAt ? Math.round((Date.now() - weather.fetchedAt) / 60_000) : 0;
+  const cityName = city ? city.name || t("settingsPlace.here") : t("settingsPlace.none");
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsPlace.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary" data-testid="place-city">
+              {cityName}
+              {city?.admin ? `, ${city.admin}` : ""}
+              {city?.country ? `, ${city.country}` : ""}
+            </div>
+            <div className="t-caption text-text-secondary">
+              {city ? t("settingsPlace.hintSet") : t("settingsPlace.hintNone")}
+            </div>
+          </div>
+          {city && (
+            <Button variant="ghost" onClick={() => choose(null)}>
+              {t("settingsPlace.clear")}
+            </Button>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={t("settingsPlace.search")}
+            aria-label={t("settingsPlace.search")}
+            className="t-body h-(--button-height) min-w-0 flex-1 rounded-full border border-border bg-bg-layer px-4 text-text-primary"
+          />
+          <Button
+            variant="secondary"
+            onClick={() =>
+              void cityLocate()
+                .then((c) => choose(c))
+                .catch(() => setProblem("denied"))
+            }
+          >
+            {t("settingsPlace.auto")}
+          </Button>
+        </div>
+        {hits.length > 0 && (
+          <ul className="m-0 flex list-none flex-col p-0" aria-label={t("settingsPlace.search")}>
+            {hits.map((h) => (
+              <li key={`${h.lat},${h.lon}`}>
+                <button
+                  type="button"
+                  onClick={() => choose(h)}
+                  className="t-body w-full rounded-(--radius-md) px-3 py-2 text-left text-text-primary hover:bg-bg-hover"
+                >
+                  {h.name}
+                  <span className="t-caption text-text-secondary">
+                    {[h.admin, h.country].filter(Boolean).join(", ") &&
+                      ` · ${[h.admin, h.country].filter(Boolean).join(", ")}`}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {problem && (
+          <div className="t-caption text-text-secondary">
+            {t(`settingsPlace.problem.${problem}`)}
+          </div>
+        )}
+        {city && (
+          <div className="t-caption text-text-secondary" data-testid="place-weather">
+            {weather.class
+              ? t("settingsPlace.weather", {
+                  what: t(`settingsPlace.class.${weather.class}`),
+                  temp: Math.round(weather.tempC ?? 0),
+                  minutes,
+                })
+              : t("settingsPlace.noWeather")}
+          </div>
+        )}
+        <div className="t-caption text-text-tertiary">{t("settingsPlace.credit")}</div>
       </div>
     </div>
   );

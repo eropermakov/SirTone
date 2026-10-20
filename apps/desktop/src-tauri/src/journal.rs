@@ -49,7 +49,8 @@ pub struct Journal {
     tx: Mutex<Option<Sender<PlayEvent>>>,
     writer: Mutex<Option<std::thread::JoinHandle<()>>>,
     clock: Arc<dyn Clock>,
-    context: ContextBuilder,
+    /// `None` — the app's shared context (`context::builder`); tests pin one.
+    context: Option<ContextBuilder>,
     /// The running wave's profile, stamped on wave plays as they open.
     wave_profile: Mutex<Option<String>>,
 }
@@ -78,7 +79,8 @@ impl Journal {
             tx: Mutex::new(Some(tx)),
             writer: Mutex::new(writer),
             clock,
-            context: ContextBuilder::default(),
+            // The app's shared context (city, weather) at each snapshot.
+            context: None,
             wave_profile: Mutex::new(None),
         }
     }
@@ -181,7 +183,11 @@ impl Journal {
                 duration_ms: s.duration_ms.unwrap_or(0),
                 heard: Duration::ZERO,
                 playing_since: Some(Instant::now()),
-                context: self.context.snapshot_at(self.clock.as_ref(), now),
+                context: self
+                    .context
+                    .as_ref()
+                    .map_or_else(crate::context::builder, Clone::clone)
+                    .snapshot_at(self.clock.as_ref(), now),
                 profile: (item.source == PlaySource::Wave)
                     .then(|| {
                         self.wave_profile
@@ -284,7 +290,7 @@ mod tests {
             tx: Mutex::new(Some(tx)),
             writer: Mutex::new(None),
             clock: Arc::new(FixedClock::local(2026, 11, 22, 19, 0, 180)),
-            context: ContextBuilder::default(),
+            context: Some(ContextBuilder::default()),
             wave_profile: Mutex::new(None),
         };
         (j, rx)

@@ -23,12 +23,35 @@ struct DaypartFrom {
 struct ContextJson {
     schema: String,
     daypart_by_clock: Vec<DaypartFrom>,
+    daypart_by_sun: BySunJson,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct BySunJson {
+    dawn_before_rise: u16,
+    morning_after_rise: u16,
+    day_from: String,
+    evening_before_set: u16,
+    dusk_before_set: u16,
+    night_after_set: u16,
+}
+
+/// Daypart boundaries around the sun (minutes), `context.json` `daypart_by_sun`.
+#[derive(Debug, Clone, Copy)]
+pub struct BySun {
+    pub dawn_before_rise: u16,
+    pub morning_after_rise: u16,
+    pub day_from: u16,
+    pub evening_before_set: u16,
+    pub dusk_before_set: u16,
+    pub night_after_set: u16,
 }
 
 /// Daypart boundaries by the clock: `(start minute, daypart)`, ascending.
 #[derive(Debug, Clone)]
 pub struct ContextConfig {
     pub daypart_by_clock: Vec<(u16, Daypart)>,
+    pub by_sun: BySun,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -97,9 +120,47 @@ impl ContextConfig {
         if v.is_empty() || v.windows(2).any(|w| w[0].0 >= w[1].0) {
             return Err(ConfigError::Invalid("daypart_by_clock must ascend".into()));
         }
+        let s = &c.daypart_by_sun;
+        let Some(day_from) = hhmm(&s.day_from) else {
+            return Err(ConfigError::Invalid(format!("day_from {}", s.day_from)));
+        };
         Ok(Self {
             daypart_by_clock: v,
+            by_sun: BySun {
+                dawn_before_rise: s.dawn_before_rise,
+                morning_after_rise: s.morning_after_rise,
+                day_from,
+                evening_before_set: s.evening_before_set,
+                dusk_before_set: s.dusk_before_set,
+                night_after_set: s.night_after_set,
+            },
         })
+    }
+
+    /// The daypart by the sun (FR-CTX-001): `rise`/`set` — local minutes of today's sunrise and
+    /// sunset. Boundaries keep their order even on short winter days (each clamped after the last).
+    pub fn daypart_by_sun(&self, minute: u16, rise: f64, set: f64) -> Daypart {
+        let b = &self.by_sun;
+        let m = f64::from(minute);
+        let dawn = rise - f64::from(b.dawn_before_rise);
+        let morning = (rise + f64::from(b.morning_after_rise)).max(dawn);
+        let evening = (set - f64::from(b.evening_before_set)).max(morning);
+        let day = f64::from(b.day_from).clamp(morning, evening);
+        let dusk = (set - f64::from(b.dusk_before_set)).max(evening);
+        let night = (set + f64::from(b.night_after_set)).max(dusk);
+        if m < dawn || m >= night {
+            Daypart::Night
+        } else if m < morning {
+            Daypart::Dawn
+        } else if m < day {
+            Daypart::Morning
+        } else if m < evening {
+            Daypart::Day
+        } else if m < dusk {
+            Daypart::Evening
+        } else {
+            Daypart::Dusk
+        }
     }
 
     /// The daypart at `minute` past local midnight; before the first boundary the last one

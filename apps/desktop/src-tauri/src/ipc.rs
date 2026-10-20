@@ -5,8 +5,8 @@
 use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::{
-    analysis, artists, autostart, backgrounds, bootstrap, continuation, duplicates, feedback,
-    focus, hotkeys, library, net, night, perf, playback, playlists, presets, search,
+    analysis, artists, autostart, backgrounds, bootstrap, context, continuation, duplicates,
+    feedback, focus, hotkeys, library, net, night, perf, playback, playlists, presets, search,
     settings_store, sleep, storage, unknowns, updates, viz, wave, window_chrome,
 };
 
@@ -134,6 +134,9 @@ pub fn builder() -> Builder<tauri::Wry> {
             focus::focus_pause,
             focus::focus_skip,
             focus::focus_status,
+            context::city_search,
+            context::city_locate,
+            context::weather_get,
             analysis::analysis_progress,
             library::library_organize,
             net::net_status,
@@ -164,7 +167,8 @@ pub fn builder() -> Builder<tauri::Wry> {
             backgrounds::VideosAdded,
             library::OrganizeSuggested,
             sleep::SleepStatus,
-            focus::FocusStatus
+            focus::FocusStatus,
+            context::WeatherNow
         ])
 }
 

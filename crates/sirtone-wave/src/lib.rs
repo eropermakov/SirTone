@@ -10,5 +10,7 @@ pub mod query;
 pub mod rng;
 pub mod season;
 pub mod similar;
+pub mod sun;
 pub mod synth;
 pub mod theme;
+pub mod weather;

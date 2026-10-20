@@ -528,6 +528,9 @@ impl Default for Geo {
 pub struct ContextPrefs {
     pub auto_atmosphere: bool,
     pub activity_detection: bool,
+    /// The chosen city (T5.5, FR-CTX-002): `{name, country, admin, lat, lon}`; `null` — none
+    /// (the daypart by the clock, no weather).
+    pub city: Value,
 }
 
 impl Default for ContextPrefs {
@@ -535,6 +538,7 @@ impl Default for ContextPrefs {
         Self {
             auto_atmosphere: true,
             activity_detection: false,
+            city: Value::Null,
         }
     }
 }
@@ -672,6 +676,21 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
         return Err(SettingsError::Invalid(
             "sleep.fade_min must be 1..=30, sleep.final_s 5..=120".into(),
         ));
+    }
+    if !s.context.city.is_null() {
+        let c = &s.context.city;
+        let ok = c["lat"]
+            .as_f64()
+            .is_some_and(|v| (-90.0..=90.0).contains(&v))
+            && c["lon"]
+                .as_f64()
+                .is_some_and(|v| (-180.0..=180.0).contains(&v))
+            && c["name"].is_string();
+        if !ok {
+            return Err(SettingsError::Invalid(
+                "context.city: {name, lat −90…90, lon −180…180}".into(),
+            ));
+        }
     }
     let fo = &s.focus;
     if !(5..=180).contains(&fo.work_min)

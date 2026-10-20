@@ -8,6 +8,7 @@ mod autostart;
 mod backgrounds;
 mod beatgrid;
 mod bootstrap;
+mod context;
 mod continuation;
 mod covers_online;
 mod diagnostics;
@@ -164,6 +165,7 @@ fn main() {
             app.manage(net_state);
             analysis::start(app.handle().clone());
             duck::start(app.handle().clone());
+            context::start(app.handle(), diagnostics::data_dir());
             app.manage(sleep::Sleep::start(app.handle().clone()));
             app.manage(focus::Focus::start(
                 app.handle().clone(),

@@ -2,11 +2,38 @@
   "schema": "sirtone.context/1",
   "_note": "Daypart by the clock when no coordinates are known (FR-CTX-001). Temporary values, D-69.",
   "daypart_by_clock": [
-    { "daypart": "dawn", "from": "05:00" },
-    { "daypart": "morning", "from": "07:00" },
-    { "daypart": "day", "from": "12:00" },
-    { "daypart": "evening", "from": "17:00" },
-    { "daypart": "dusk", "from": "21:00" },
-    { "daypart": "night", "from": "22:00" }
-  ]
+    {
+      "daypart": "dawn",
+      "from": "05:00"
+    },
+    {
+      "daypart": "morning",
+      "from": "07:00"
+    },
+    {
+      "daypart": "day",
+      "from": "12:00"
+    },
+    {
+      "daypart": "evening",
+      "from": "17:00"
+    },
+    {
+      "daypart": "dusk",
+      "from": "21:00"
+    },
+    {
+      "daypart": "night",
+      "from": "22:00"
+    }
+  ],
+  "_note_sun": "Daypart by the sun when the city is known (FR-CTX-001, 05 §10.2): minutes around the local sunrise and sunset; «day» starts at the clock's noon. Temporary values, D-108.",
+  "daypart_by_sun": {
+    "dawn_before_rise": 30,
+    "morning_after_rise": 60,
+    "day_from": "12:00",
+    "evening_before_set": 150,
+    "dusk_before_set": 20,
+    "night_after_set": 40
+  }
 }

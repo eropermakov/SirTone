@@ -97,6 +97,19 @@ async function mockTauri(page: Page) {
               status: "ok",
               data: { queued: 5, relaxed: [], noPopularity: false, few: false },
             };
+          case "weather_get":
+            return {
+              class: null,
+              tempC: null,
+              isDay: true,
+              drift: 0,
+              intensity: 0,
+              fetchedAt: null,
+              fresh: false,
+            };
+          case "city_search":
+            // typedError wraps the bare answer itself.
+            return [{ name: "Москва", country: "Россия", admin: "Москва", lat: 55.75, lon: 37.62 }];
           case "sleep_start":
           case "focus_start":
             return null;
@@ -361,4 +374,22 @@ test("«Настроить волну»: tiles combine, «Слушать» start
   };
   expect(saved.patch.wave.setup.activity).toEqual(["work"]);
   await expect(page.getByRole("button", { name: /Настроить\s*3/ })).toBeVisible();
+});
+
+test("«Место и погода»: a city is found and chosen (T5.5)", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
+  await expect(page.getByTestId("place-city")).toHaveText("Город не выбран");
+  await page.getByRole("searchbox", { name: "Найти город" }).fill("Моск");
+  await page.getByRole("button", { name: /Москва/ }).click();
+  await expect
+    .poll(async () => {
+      const last = (await calls(page, "settings_patch")).at(-1)?.args as {
+        patch: { context?: { city?: { name: string; lat: number } } };
+      };
+      return last?.patch.context?.city?.name;
+    })
+    .toBe("Москва");
+  await expect(page.getByTestId("place-city")).toContainText("Москва");
 });

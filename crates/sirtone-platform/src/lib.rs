@@ -3,6 +3,7 @@
 pub mod caption;
 pub mod clock;
 pub mod files;
+pub mod geo;
 pub mod hardware;
 pub mod idle;
 pub mod occlusion;

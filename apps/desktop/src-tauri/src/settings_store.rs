@@ -140,6 +140,9 @@ pub fn settings_patch(
     {
         pb.renormalize(); // T4.11: a new target or the switch — heard at once
     }
+    if changed.iter().any(|k| k == "context") {
+        crate::context::apply(&app); // T5.5: a new city — the sun and the weather follow
+    }
     if changed.iter().any(|k| k == "network") {
         crate::net::apply(&app); // T3.1: the offline switch, at once
     }

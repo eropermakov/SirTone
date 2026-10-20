@@ -13,6 +13,10 @@ pub struct ContextBuilder {
     pub context: ContextConfig,
     /// Southern hemisphere (from the chosen city's latitude; none chosen → northern).
     pub southern: bool,
+    /// The chosen city (T5.5): the daypart by the sun; `None` — by the clock.
+    pub coords: Option<(f64, f64)>,
+    /// The last weather; only a fresh one (< 3 h) enters the snapshot (AT-16).
+    pub weather: Option<crate::weather::WeatherState>,
 }
 
 impl ContextBuilder {
@@ -22,13 +26,26 @@ impl ContextBuilder {
 
     pub fn snapshot_at(&self, clock: &dyn Clock, utc_ms: i64) -> ContextSnapshot {
         let t = local_time(clock, utc_ms);
+        let offset = f64::from(clock.local_offset_min(utc_ms));
+        let by_sun = self.coords.and_then(|(lat, lon)| {
+            let (rise, set) = crate::sun::sun_times(lat, lon, t.day)?;
+            Some(
+                self.context
+                    .daypart_by_sun(t.minute, rise + offset, set + offset),
+            )
+        });
+        let weather = self
+            .weather
+            .as_ref()
+            .filter(|w| w.fresh(utc_ms))
+            .and_then(crate::weather::WeatherState::class);
         ContextSnapshot {
             now_utc_ms: utc_ms,
             local_minute: t.minute,
             weekday: t.weekday,
-            daypart: self.context.daypart_at(t.minute),
+            daypart: by_sun.unwrap_or_else(|| self.context.daypart_at(t.minute)),
             season_w: season_weights(t.day, self.southern, self.seasons.blend_days),
-            weather: None,
+            weather,
         }
     }
 }
@@ -91,6 +108,53 @@ mod tests {
             "{:?}",
             s.season_w
         );
+    }
+
+    #[test]
+    fn the_daypart_follows_the_sun_where_the_city_is_known() {
+        use sirtone_core::wave::Daypart;
+        let moscow = ContextBuilder {
+            coords: Some((55.7558, 37.6173)),
+            ..ContextBuilder::default()
+        };
+        // 21 December: sunset 15:57 — at 16:30 it is dusk by the sun, still «day» by the clock.
+        let c = FixedClock::local(2026, 12, 21, 16, 30, 180);
+        assert_eq!(moscow.snapshot(&c).daypart, Daypart::Dusk);
+        assert_eq!(ContextBuilder::default().snapshot(&c).daypart, Daypart::Day);
+        // 08:30 that day — dawn (sunrise 08:59).
+        let c = FixedClock::local(2026, 12, 21, 8, 30, 180);
+        assert_eq!(moscow.snapshot(&c).daypart, Daypart::Dawn);
+        // 21 June, 21:00 — still evening (sunset 21:18), 23:00 — night.
+        let c = FixedClock::local(2026, 6, 21, 21, 0, 180);
+        assert_eq!(moscow.snapshot(&c).daypart, Daypart::Dusk);
+        let c = FixedClock::local(2026, 6, 21, 23, 0, 180);
+        assert_eq!(moscow.snapshot(&c).daypart, Daypart::Night);
+    }
+
+    #[test]
+    fn only_fresh_weather_enters_the_snapshot() {
+        use sirtone_core::wave::WeatherClass;
+        let c = FixedClock::local(2026, 12, 21, 12, 0, 180);
+        let now = c.now_utc_ms();
+        let w = |age_ms: i64| crate::weather::WeatherState {
+            fetched_at_ms: now - age_ms,
+            lat: 55.76,
+            lon: 37.62,
+            code: 73,
+            intensity: 0.5,
+            wind_ms: 3.0,
+            wind_from_deg: 270.0,
+            is_day: true,
+            temp_c: -3.0,
+            sunrise_s: None,
+            sunset_s: None,
+        };
+        let b = |age| ContextBuilder {
+            weather: Some(w(age)),
+            ..ContextBuilder::default()
+        };
+        assert_eq!(b(60_000).snapshot(&c).weather, Some(WeatherClass::Snow));
+        assert_eq!(b(3 * 3600 * 1000 + 1).snapshot(&c).weather, None);
     }
 
     #[test]

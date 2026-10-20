@@ -10,7 +10,6 @@ use std::time::Duration;
 use sirtone_core::error::{AppError, ErrorCode};
 use sirtone_core::wave::Clock;
 use sirtone_platform::clock::SystemClock;
-use sirtone_wave::context::ContextBuilder;
 use sirtone_wave::engine::{Config, Engine};
 use sirtone_wave::learn::History;
 use sirtone_wave::query::{Activity, Character, Freq, Lang, Mood, SeasonPick, WaveQuery};
@@ -349,7 +348,7 @@ fn next_ids(
     let Some(e) = engine.as_mut() else {
         return Ok(Vec::new());
     };
-    let ctx = ContextBuilder::default().snapshot(&clock);
+    let ctx = crate::context::builder().snapshot(&clock);
     // The sleep wave (T4.22, §14): the timer's progress and E₀ — the energy of the track that
     // played when it started (taken once, at the first refill).
     if let Some(s) = app.try_state::<crate::sleep::Sleep>() {
@@ -600,7 +599,7 @@ pub fn wave_retune(wave: State<'_, Wave>) {
 #[tauri::command]
 #[specta::specta]
 pub fn wave_season_card() -> String {
-    let ctx = ContextBuilder::default().snapshot(&SystemClock);
+    let ctx = crate::context::builder().snapshot(&SystemClock);
     sirtone_wave::season::card_key(&ctx.season_w).to_owned()
 }
 
@@ -624,7 +623,7 @@ pub struct ThemeStateDto {
 #[specta::specta]
 pub fn theme_state() -> ThemeStateDto {
     use sirtone_wave::theme::{ThemeSource, ThemesConfig, resolve};
-    let ctx = ContextBuilder::default().snapshot(&SystemClock);
+    let ctx = crate::context::builder().snapshot(&SystemClock);
     let s = resolve(&ThemesConfig::default(), &ctx.season_w, None);
     ThemeStateDto {
         id: s.id,
@@ -649,7 +648,7 @@ pub fn theme_state() -> ThemeStateDto {
 pub fn fx_season_effect() -> String {
     use sirtone_core::wave::Daypart;
     use sirtone_wave::theme::{ThemesConfig, season_effect};
-    let ctx = ContextBuilder::default().snapshot(&SystemClock);
+    let ctx = crate::context::builder().snapshot(&SystemClock);
     let daypart = match ctx.daypart {
         Daypart::Dawn => "dawn",
         Daypart::Morning => "morning",

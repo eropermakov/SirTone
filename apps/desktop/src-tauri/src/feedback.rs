@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use sirtone_core::error::{AppError, ErrorCode};
 use sirtone_library::feedback;
 use sirtone_platform::clock::SystemClock;
-use sirtone_wave::context::ContextBuilder;
 use tauri::State;
 
 use crate::library::Library;
@@ -78,7 +77,7 @@ pub fn feedback_not_now(
     pb: State<'_, Playback>,
     track: u32,
 ) -> Result<(), AppError> {
-    let ctx = ContextBuilder::default().snapshot(&SystemClock);
+    let ctx = crate::context::builder().snapshot(&SystemClock);
     let key = sirtone_wave::context::bucket_key(&ctx);
     lib.with_write(|c| feedback::not_now(c, i64::from(track), &key))?;
     pb.next();

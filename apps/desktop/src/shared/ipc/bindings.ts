@@ -232,6 +232,15 @@ export const commands = {
 	/**  «Пропустить сегмент». */
 	focusSkip: () => __TAURI_INVOKE<void>("focus_skip"),
 	focusStatus: () => __TAURI_INVOKE<FocusStatus>("focus_status"),
+	/**  Cities by name (Open-Meteo geocoder, in Russian); offline — an error the UI words. */
+	citySearch: (query: string) => typedError<City[], AppError>(__TAURI_INVOKE("city_search", { query })),
+	/**
+	 *  «Определить автоматически» (D-54): the Windows location service, coarse, only on this press;
+	 *  denied or off — an error the UI words («включите определение местоположения в Windows»).
+	 */
+	cityLocate: () => typedError<City, AppError>(__TAURI_INVOKE("city_locate")),
+	/**  The weather now (UI line, effects). */
+	weatherGet: () => __TAURI_INVOKE<WeatherNow>("weather_get"),
 	analysisProgress: () => typedError<AnalysisProgress, AppError>(__TAURI_INVOKE("analysis_progress")),
 	/**
 	 *  «Навести порядок» (T3.19, FR-FS-005): the adopted files waiting for it (`all` = false) or
@@ -283,6 +292,7 @@ export const events = {
 	sleepStatus: makeEvent<SleepStatus>("sleep-status"),
 	videosAdded: makeEvent<VideosAdded>("videos-added"),
 	vizPower: makeEvent<VizPower>("viz-power"),
+	weatherNow: makeEvent<WeatherNow>("weather-now"),
 };
 
 /* Types */
@@ -351,6 +361,14 @@ export type Bootstrap = {
 	settings: unknown,
 	playback: PlaybackSnapshot | null,
 	library: LibraryStatus | null,
+};
+
+export type City = {
+	name: string,
+	country: string | null,
+	admin: string | null,
+	lat: number | null,
+	lon: number | null,
 };
 
 export type DupPair = {
@@ -923,6 +941,21 @@ export type WaveStarted = {
 	noPopularity: boolean,
 	/**  «Для всех»: fewer than 30 suitable tracks — the honest caption. */
 	few: boolean,
+};
+
+/**  The weather as the UI shows it (and the effects use). */
+export type WeatherNow = {
+	/**  `clear` · `cloudy` · `fog` · `rain` · `snow` · `storm`; `None` — no fresh weather. */
+	class: string | null,
+	tempC: number | null,
+	isDay: boolean,
+	/**  −1…1: where the wind pushes particles (+ right). */
+	drift: number | null,
+	intensity: number | null,
+	/**  Unix ms of the fetch; `None` — never. */
+	fetchedAt: number | null,
+	/**  Younger than 3 h. */
+	fresh: boolean,
 };
 
 /**  One reason of «Почему этот трек» (§17); the UI words it as `wave.why.<kind>`. */

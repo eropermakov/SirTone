@@ -42,6 +42,7 @@ windows = { workspace = true, features = [
     "Foundation_Collections",
     "Media",
     "Media_Control",
+    "Devices_Geolocation",
     "Storage",
     "Storage_Streams",
 ] }
