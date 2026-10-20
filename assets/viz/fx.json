@@ -13,7 +13,13 @@
   "static_count": 300,
   "season_density": 0.5,
   "transition_ms": 2500,
-  "breath": { "swirl": 0.012, "beat_decay": 6.0, "bass_alpha": 0.3 },
+  "breath": {
+    "swirl": 0.012,
+    "beat_decay": 4.0,
+    "bass_alpha": 0.25,
+    "attack_s": 0.35,
+    "release_s": 1.2
+  },
   "flash": { "min_gap_s": 10, "max_gap_s": 25, "ms": 400, "lift": 0.14 },
   "types": {
     "snow": {
