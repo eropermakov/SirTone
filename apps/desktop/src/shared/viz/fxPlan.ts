@@ -51,7 +51,13 @@ export type FxConfig = {
   static_count: number;
   season_density: number;
   transition_ms: number;
-  breath: { swirl: number; beat_decay: number; bass_alpha: number };
+  breath: {
+    swirl: number;
+    beat_decay: number;
+    bass_alpha: number;
+    attack_s: number;
+    release_s: number;
+  };
   flash: { min_gap_s: number; max_gap_s: number; ms: number; lift: number };
   types: Record<FxType, FxTypeCfg>;
   noise_scale: number;

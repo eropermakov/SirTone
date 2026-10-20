@@ -17,8 +17,17 @@ export type WavesConfig = {
   lightness: Range;
   mix: { collection: number; accent: number; cover: number };
   speed: Range;
-  warp: { bass: number; beat: number; beat_decay: number; smooth_s: number };
-  sparkle: { treble: number; max: number; density: number };
+  warp: { smooth_s: number };
+  /** The music speeds the flow up (D-107): bass and the beat's envelope, glided. */
+  flow: {
+    bass: number;
+    beat: number;
+    beat_decay: number;
+    attack_s: number;
+    release_s: number;
+    max: number;
+  };
+  sparkle: { treble: number; max: number; density: number; smooth_s: number };
   pulse: { like_ms: number; click_ms: number; lift: number; min_gap_ms: number };
   pointer: { radius: number; decay_ms: number; strength: number; max: number; move_gap_ms: number };
   motion: {

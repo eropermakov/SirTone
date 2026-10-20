@@ -178,6 +178,9 @@ export class FxEngine {
   private lastDraw = 0;
   private time = 0;
   private bass = 0;
+  /** The beat's envelope, glided (the swirl never jumps, D-107). */
+  private swirl = 0;
+  private breathAt = 0;
   private flash: FlashClock | null = null;
   private fpsN = 0;
   private fpsT = 0;
@@ -466,10 +469,20 @@ export class FxEngine {
         this.next = undefined;
       }
     }
-    // The breath: the bass smoothed (attack fast, release slow).
+    // The breath (D-107): the bass and the beat's envelope glide both ways — the particles
+    // sway and brighten softly, nothing jumps on a beat.
     const f = latestVizFrame();
-    const want = !this.opts.reducedMotion && f?.playing ? (f.bands[0] ?? 0) : 0;
-    this.bass += (want - this.bass) * (want > this.bass ? 0.35 : 0.06);
+    const dt = this.breathAt ? Math.min(0.1, (now - this.breathAt) / 1000) : 0;
+    this.breathAt = now;
+    const b = this.c.breath;
+    const glide = (cur: number, want: number) =>
+      dt > 0
+        ? cur + (want - cur) * (1 - Math.exp(-dt / (want > cur ? b.attack_s : b.release_s)))
+        : cur;
+    const live = !this.opts.reducedMotion && f?.playing;
+    this.bass = glide(this.bass, live ? (f?.bands[0] ?? 0) : 0);
+    const beat = live && (f?.bpm ?? 0) > 0 ? Math.exp(-(f?.beatPhase ?? 0) * b.beat_decay) : 0;
+    this.swirl = glide(this.swirl, beat);
     this.fpsN += 1;
     if (now - this.fpsT >= 1000) {
       fxStats.fps = (this.fpsN * 1000) / (now - this.fpsT || 1);
@@ -510,11 +523,6 @@ export class FxEngine {
       gl.useProgram(this.part);
       gl.bindVertexArray(this.vaoP);
       const u = this.pu;
-      const f = latestVizFrame();
-      const beat =
-        !this.opts.reducedMotion && !still && f?.playing && f.bpm > 0
-          ? Math.exp(-f.beatPhase * this.c.breath.beat_decay)
-          : 0;
       const shape = SHAPES[t.shape];
       gl.uniform2f(u.u_res ?? null, this.canvas.width, this.canvas.height);
       gl.uniform1f(u.u_px ?? null, this.canvas.height / 1080);
@@ -527,7 +535,7 @@ export class FxEngine {
       gl.uniform1f(u.u_spin ?? null, t.spin ?? 0);
       gl.uniform1f(u.u_wind ?? null, t.wind);
       gl.uniform1f(u.u_planes ?? null, plan.planes);
-      gl.uniform1f(u.u_swirl ?? null, this.c.breath.swirl * beat);
+      gl.uniform1f(u.u_swirl ?? null, still ? 0 : this.c.breath.swirl * this.swirl);
       gl.uniform1i(u.u_shape ?? null, shape);
       gl.uniform3fv(u.u_c ?? null, this.colors);
       gl.uniform1i(u.u_nc ?? null, this.nColors);

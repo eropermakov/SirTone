@@ -6,7 +6,9 @@ import { blendLook, type Look, WAVES, type WavesConfig } from "./palette";
  * «Волны» (T4.2, FR-VIZ-003/010, `06` §7.1–7.2): a WebGL2 fragment shader — domain warping with
  * fBm noise in two passes (Inigo Quilez, «Domain warping», 2002 — the classic «liquid» field the
  * Apple Music / AMLL background is made of, `01a` §B.3), a 4-colour palette, vignette and grain.
- * What moves it is copied from Яндекс «Моя волна» (`01a` §B.3): in time with the beat grid, high
+ * The field only flows (owner, 2026-10-20, D-107): the beat and the bass speed the flow up and let
+ * it slow down again — smoothly, through the time integral — and never touch its shape; high notes
+ * fade glints in and out slowly. Earlier copy of Яндекс «Моя волна» (`01a` §B.3): in time with the beat grid, high
  * notes → glints, like/click → an impulse, the cursor → white impulses; minimal variant — two
  * colours, no glints.
  *
@@ -93,6 +95,11 @@ export const wavesStats = {
   /** The warp now and the largest frame-to-frame change lately (smoothness check). */
   warp: 0,
   warpStep: 0,
+  /** The music's speed-up of the flow now. */
+  push: 0,
+  /** Its largest frame-to-frame change and its peak lately (smoothness check). */
+  pushStep: 0,
+  pushMax: 0,
 };
 
 /** A mode's slow-down (`06` §7.8): the sleep timer sets ×0.4 → ×0.2 (T4.22); 1 — normal. */
@@ -115,6 +122,10 @@ export class WavesEngine {
    * field breathes with the music instead of jumping on every beat (owner, 2026-10-20). */
   private warpNow = -1;
   private warpAt = 0;
+  /** How much the music speeds the flow up now (0…`flow.max`), glided. */
+  private push = 0;
+  /** Glints from the high notes, glided. */
+  private glint = 0;
   private from: Look | null = null;
   private to: Look | null = null;
   private lookAt = 0;
@@ -312,9 +323,28 @@ export class WavesEngine {
       const want = target[i] ?? 0;
       this.bands[i] = cur + (want - cur) * (want > cur ? s.attack : s.release);
     }
+    // The music speeds the flow up (bass + the beat's envelope), glided both ways: the field
+    // accelerates and eases off, its shape stays (D-107).
+    const fl = this.c.flow;
+    const look = this.current(now);
+    const reduced = this.opts.reducedMotion;
+    const beat = !reduced && f?.playing && f.bpm > 0 ? Math.exp(-f.beatPhase * fl.beat_decay) : 0;
+    const drive = reduced
+      ? 0
+      : Math.min(fl.max, this.bands[0] * fl.bass + beat * fl.beat * (look?.motion.beatGain ?? 1));
+    const tau = drive > this.push ? fl.attack_s : fl.release_s;
+    if (dt > 0) this.push += (drive - this.push) * (1 - Math.exp(-dt / tau));
+    const gl = reduced ? 0 : this.bands[2];
+    if (dt > 0) this.glint += (gl - this.glint) * (1 - Math.exp(-dt / this.c.sparkle.smooth_s));
+    wavesStats.pushStep = Math.max(
+      wavesStats.pushStep * 0.995,
+      Math.abs(this.push - wavesStats.push),
+    );
+    wavesStats.pushMax = Math.max(wavesStats.pushMax * 0.999, this.push);
+    wavesStats.push = this.push;
     // Paused: the field keeps drifting, slower.
-    const speed = this.current(now)?.motion.speed ?? this.c.speed[0];
-    this.time += dt * speed * wavesMood.speed * (f?.playing ? 1 : 0.35) * 10;
+    const speed = look?.motion.speed ?? this.c.speed[0];
+    this.time += dt * speed * wavesMood.speed * (f?.playing ? 1 : 0.35) * 10 * (1 + this.push);
     this.fpsN += 1;
     if (now - this.fpsT >= 1000) {
       wavesStats.fps = (this.fpsN * 1000) / (now - this.fpsT || 1);
@@ -331,10 +361,8 @@ export class WavesEngine {
     const m = look.motion;
     const reduced = this.opts.reducedMotion;
     const f = this.frame;
-    const beat =
-      !reduced && f?.playing && f.bpm > 0 ? Math.exp(-f.beatPhase * c.warp.beat_decay) : 0;
-    const target =
-      m.warpBase + (reduced ? 0 : this.bands[0] * c.warp.bass + beat * c.warp.beat * m.beatGain);
+    // The shape follows only the track's character (eased over a track change), not the beat.
+    const target = m.warpBase;
     const dt = this.warpAt ? Math.min(0.1, (now - this.warpAt) / 1000) : 0;
     this.warpAt = now;
     if (this.warpNow < 0 || dt === 0) this.warpNow = target;
@@ -346,7 +374,7 @@ export class WavesEngine {
     const sparkle =
       this.q.minimal || reduced
         ? 0
-        : Math.min(c.sparkle.max, this.bands[2] * c.sparkle.treble * m.sparkleGain);
+        : Math.min(c.sparkle.max, this.glint * c.sparkle.treble * m.sparkleGain);
     const liftK = (now - this.lift.at) / (this.lift.ms || 1);
     const lift = liftK >= 0 && liftK < 1 ? c.pulse.lift * Math.sin(Math.PI * liftK) : 0;
     const pal = look.palette;
