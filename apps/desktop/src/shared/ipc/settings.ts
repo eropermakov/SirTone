@@ -21,7 +21,12 @@ export type SettingsDoc = {
 export type SettingsPatch = {
   appearance?: { theme?: string; accent?: Record<string, unknown>; seasonal_theme?: boolean };
   hotkeys?: Record<string, string | null>;
-  performance?: { level?: number; overrides?: Record<string, unknown> };
+  performance?: {
+    level?: number;
+    overrides?: Record<string, unknown>;
+    auto_degrade?: boolean;
+    degraded_from?: number | null;
+  };
   onboarding?: { done?: boolean; tips_seen?: boolean };
   wave?: { learning?: boolean; novelty?: number };
   library?: { organize_external?: "suggest" | "auto" | "never" };

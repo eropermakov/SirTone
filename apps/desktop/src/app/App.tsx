@@ -60,6 +60,7 @@ import { PlayerBar } from "./shell/PlayerBar";
 import { QueuePanel } from "./shell/QueuePanel";
 import { SettingsScreen } from "./shell/SettingsScreen";
 import { type Screen, Sidebar } from "./shell/Sidebar";
+import { useAutoDegrade } from "./shell/useAutoDegrade";
 import { usePerformance } from "./shell/usePerformance";
 import { usePlayback } from "./shell/usePlayback";
 import { useVideoDrops } from "./wave/useVideoDrops";
@@ -244,6 +245,8 @@ export function App() {
   usePerformance();
   // «Видео» clips dropped anywhere on the window (T4.4).
   useVideoDrops();
+  // T4.16: a sustained frame-time problem lowers the level once and sticks (D-47).
+  useAutoDegrade(screen);
   // UI sounds (T4.15, `06` §8): a click for buttons (switches have their own on/off sound).
   useEffect(() => {
     const click = (e: MouseEvent) => {

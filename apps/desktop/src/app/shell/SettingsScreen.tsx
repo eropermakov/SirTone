@@ -16,7 +16,7 @@ import type { LibraryStatus } from "@/shared/ipc/library";
 import { organizeLibrary } from "@/shared/ipc/library";
 import { perfHardware } from "@/shared/ipc/perf";
 import { getSnapshot, onSnapshot } from "@/shared/ipc/playback";
-import { getSettings, patchSettings } from "@/shared/ipc/settings";
+import { getSettings, onSettingsChanged, patchSettings } from "@/shared/ipc/settings";
 import { sfx } from "@/shared/ipc/sfx";
 import { clearOldLogs, type StorageInfo, storageInfo } from "@/shared/ipc/storage";
 import {
@@ -351,12 +351,32 @@ export function PerformanceSection() {
   const { t } = useTranslation("shell");
   const [level, setLevel] = useState(3);
   const [overrides, setOverrides] = useState<Record<string, unknown>>({});
+  const [autoDegrade, setAutoDegrade] = useState(true);
   useEffect(() => {
-    getSettings().then((doc) => {
-      const p = (doc.performance ?? {}) as { level?: number; overrides?: Record<string, unknown> };
-      setLevel(p.level ?? 3);
-      setOverrides(p.overrides ?? {});
+    let alive = true;
+    let off: (() => void) | undefined;
+    const load = () =>
+      getSettings().then((doc) => {
+        if (!alive) return;
+        const p = (doc.performance ?? {}) as {
+          level?: number;
+          overrides?: Record<string, unknown>;
+          auto_degrade?: boolean;
+        };
+        setLevel(p.level ?? 3);
+        setOverrides(p.overrides ?? {});
+        setAutoDegrade(p.auto_degrade !== false);
+      });
+    void load();
+    // The level may drop by itself (T4.16): show it.
+    onSettingsChanged(load).then((u) => {
+      if (alive) off = u;
+      else u();
     });
+    return () => {
+      alive = false;
+      off?.();
+    };
   }, []);
   const levels = t("settingsPerf.level", { returnObjects: true }) as unknown as string[];
   const eff = profile(level, overrides);
@@ -365,7 +385,10 @@ export function PerformanceSection() {
     setLevel(l);
     setOverrides({});
     applyPerformance(profile(l, {}));
-    patchSettings({ performance: { level: l, overrides: {} } }).catch(() => {});
+    // A manual choice is the way back from an auto-degrade (T4.16): nothing sticks any more.
+    patchSettings({ performance: { level: l, overrides: {}, degraded_from: null } }).catch(
+      () => {},
+    );
   };
   const [detecting, setDetecting] = useState(false);
   // FR-PERF-003: hardware + a 1.5 s WebGL benchmark → a level, applied like a manual choice.
@@ -417,6 +440,21 @@ export function PerformanceSection() {
           {detecting ? t("settingsPerf.detecting") : t("settingsPerf.detect")}
         </Button>
         <div className="flex flex-col divide-y divide-border">
+          <div className="flex items-center gap-4 py-3">
+            <span className="t-body min-w-0 flex-1 text-text-primary">
+              {t("settingsPerf.autoDegrade")}
+            </span>
+            <Switch
+              checked={autoDegrade}
+              label={t("settingsPerf.autoDegrade")}
+              onChange={(on) => {
+                setAutoDegrade(on);
+                patchSettings({ performance: { auto_degrade: on } }).catch(() =>
+                  setAutoDegrade(!on),
+                );
+              }}
+            />
+          </div>
           {switches.map((s) => (
             <div key={s.key} className="flex items-center gap-4 py-3">
               <span className="t-body min-w-0 flex-1 text-text-primary">{s.label}</span>
