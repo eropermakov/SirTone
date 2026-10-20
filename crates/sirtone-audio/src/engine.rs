@@ -38,6 +38,10 @@ pub enum EngineCmd {
     SetVolume(f32),
     /// Ducking (T4.14): the gain while another application sounds, dB (0 — none).
     SetDuck(f32),
+    /// A UI sound (T4.15, id from `sfx::id_of`); dropped if one played < 80 ms ago.
+    Sfx(u8),
+    /// UI sounds volume 0…1 (0 — off).
+    SetSfxVolume(f32),
     /// The track to continue with when the current one ends, without a gap (T1.5, docs/04 §3:
     /// pre-opened and fed into the same ring), its normalization gain and — for automix or
     /// crossfade (T4.9) — how A hands over to it. `None` clears it.
@@ -321,6 +325,8 @@ struct Engine {
     limiter_on: bool,
     /// How the current track hands over to the next one (T4.9); `None` — gapless.
     next_mix: Option<MixSpec>,
+    /// When the last UI sound was sent (T4.15: ≥ 80 ms apart).
+    sfx_at: Option<Instant>,
     /// The overlap in progress: the outgoing deck mixed under the new current one.
     mixing: Option<Mixing>,
 }
@@ -489,6 +495,7 @@ impl Engine {
             limiter_on: false,
             next_mix: None,
             mixing: None,
+            sfx_at: None,
         }
     }
 
@@ -566,6 +573,25 @@ impl Engine {
                 if let Err(e) = self.seek(ms) {
                     self.fail(e);
                 }
+            }
+            EngineCmd::Sfx(id) => {
+                // `06` §8: at least 80 ms between UI sounds.
+                if self
+                    .sfx_at
+                    .is_none_or(|t| t.elapsed() >= Duration::from_millis(80))
+                    && f32::from_bits(self.shared.sfx_bits.load(Ordering::Relaxed)) > 0.0
+                    && self.ensure_output().is_ok()
+                    && let Some((out, _)) = self.output.as_mut()
+                {
+                    let _ = out.sfx.push(id);
+                    self.sfx_at = Some(Instant::now());
+                }
+                return;
+            }
+            EngineCmd::SetSfxVolume(v) => {
+                let g = v.clamp(0.0, 1.0);
+                self.shared.sfx_bits.store(g.to_bits(), Ordering::Relaxed);
+                return;
             }
             EngineCmd::SetDuck(db) => {
                 let amp = sirtone_core::loudness::amplitude(db.min(0.0));

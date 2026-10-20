@@ -36,6 +36,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             playback::playback_next,
             playback::playback_prev,
             playback::playback_mix_now,
+            playback::ui_sound,
             playback::play_tracks,
             playback::queue_play_next,
             playback::queue_append,

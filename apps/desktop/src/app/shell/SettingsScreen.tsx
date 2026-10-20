@@ -17,6 +17,7 @@ import { organizeLibrary } from "@/shared/ipc/library";
 import { perfHardware } from "@/shared/ipc/perf";
 import { getSnapshot, onSnapshot } from "@/shared/ipc/playback";
 import { getSettings, patchSettings } from "@/shared/ipc/settings";
+import { sfx } from "@/shared/ipc/sfx";
 import { clearOldLogs, type StorageInfo, storageInfo } from "@/shared/ipc/storage";
 import {
   autostartAvailable,
@@ -145,6 +146,8 @@ export function SettingsScreen({
       <TransitionsSection />
 
       <DuckSection />
+
+      <SfxSection />
 
       <NetworkSection />
 
@@ -895,6 +898,62 @@ function EqSection() {
               ))}
             </div>
           </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * «Звуки интерфейса» (T4.15, FR-PLAY-016, `06` §8 — Discord/Slack/Telegram have their own switch
+ * and volume): played by the engine; on by default, quiet (0.5).
+ */
+function SfxSection() {
+  const { t } = useTranslation("shell");
+  const [s, setS] = useState({ enabled: true, volume: 0.5 });
+  useEffect(() => {
+    getSettings().then((d) => {
+      const v = d.sfx as { enabled?: boolean; volume?: number } | undefined;
+      setS({ enabled: v?.enabled !== false, volume: v?.volume ?? 0.5 });
+    });
+  }, []);
+  const save = (next: typeof s) => {
+    const prev = s;
+    setS(next);
+    patchSettings({ sfx: next }).catch(() => setS(prev));
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsSfx.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsSfx.enable")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsSfx.hint")}</div>
+          </div>
+          <Switch
+            checked={s.enabled}
+            label={t("settingsSfx.enable")}
+            onChange={(v) => save({ ...s, enabled: v })}
+          />
+        </div>
+        {s.enabled && (
+          <div className="flex items-center gap-4">
+            <span className="t-caption w-28 shrink-0 text-text-secondary">
+              {t("settingsSfx.volume")}
+            </span>
+            <Slider
+              value={s.volume}
+              step={0.05}
+              label={t("settingsSfx.volume")}
+              valueText={t("settingsDuck.pct", { v: Math.round(s.volume * 100) })}
+              onCommit={(v) => {
+                save({ ...s, volume: Math.round(v * 20) / 20 });
+                sfx("click");
+              }}
+              className="flex-1"
+            />
+          </div>
         )}
       </div>
     </div>

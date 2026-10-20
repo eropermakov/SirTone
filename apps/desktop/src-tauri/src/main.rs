@@ -136,6 +136,9 @@ fn main() {
                 // Video clips become «Видео» backgrounds (T4.4); everything else is music.
                 let (videos, music): (Vec<_>, Vec<_>) =
                     paths.iter().cloned().partition(|p| backgrounds::is_video(p));
+                if let Some(pb) = window.try_state::<playback::Playback>() {
+                    pb.sfx("drop"); // T4.15
+                }
                 if !videos.is_empty() {
                     backgrounds::add_dropped(window.app_handle(), videos);
                 }

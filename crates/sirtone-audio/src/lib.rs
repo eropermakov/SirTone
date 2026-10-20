@@ -15,6 +15,7 @@ pub mod output;
 pub mod pcm;
 pub mod probe;
 pub mod render;
+pub mod sfx;
 pub mod stretch;
 pub mod viz;
 

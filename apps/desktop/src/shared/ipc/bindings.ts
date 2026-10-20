@@ -22,6 +22,11 @@ export const commands = {
 	 *  too close to the end).
 	 */
 	playbackMixNow: () => __TAURI_INVOKE<boolean>("playback_mix_now"),
+	/**
+	 *  A UI sound (T4.15, `06` §8): `click`, `toggle_on`, `toggle_off`, `queue_add`, `drop`,
+	 *  `import_done`, `import_error`, `mode`, `focus_work_end`, `focus_break_end`.
+	 */
+	uiSound: (name: string) => __TAURI_INVOKE<void>("ui_sound", { name }),
 	/**  Plays library tracks `ids` as one context starting at `start` (double-click in a list). */
 	playTracks: (ids: number[], start: number, context: PlayContext, playlist: number | null) => typedError<null, AppError>(__TAURI_INVOKE("play_tracks", { ids, start, context, playlist })),
 	/**  «Воспроизвести далее» (FR-PLAY-006). */

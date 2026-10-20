@@ -55,6 +55,8 @@ async function mockTauri(page: Page) {
                 volume: 0.5,
               },
             };
+          case "ui_sound":
+            return null;
           case "playback_snapshot":
             return { state: "playing", title: "Mock track", volume: 0.5, signal: null };
           case "settings_get":

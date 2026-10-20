@@ -29,6 +29,7 @@ import {
   type SettingsDoc,
   type SettingsPatch,
 } from "@/shared/ipc/settings";
+import { sfx } from "@/shared/ipc/sfx";
 import { type UpdateStatus, updateStatus } from "@/shared/ipc/updates";
 import { setWindowTheme } from "@/shared/ipc/window";
 import { autoSlug } from "@/shared/theme/autoAccent";
@@ -243,6 +244,17 @@ export function App() {
   usePerformance();
   // «Видео» clips dropped anywhere on the window (T4.4).
   useVideoDrops();
+  // UI sounds (T4.15, `06` §8): a click for buttons (switches have their own on/off sound).
+  useEffect(() => {
+    const click = (e: MouseEvent) => {
+      const b = (e.target as Element | null)?.closest("button, [role=menuitem]");
+      if (b && b.getAttribute("role") !== "switch" && !(b as HTMLButtonElement).disabled) {
+        sfx("click");
+      }
+    };
+    document.addEventListener("click", click, true);
+    return () => document.removeEventListener("click", click, true);
+  }, []);
 
   // Load settings once (and move prototype 0.1 choices over), then follow changes from Rust.
   useEffect(() => {
@@ -328,6 +340,13 @@ export function App() {
   };
   const hasMusic = lib.status.tracks > 0;
   const report = lib.report;
+  // The import ended: a soft «done» or a low «error» (T4.15).
+  useEffect(() => {
+    if (report) sfx("import_done");
+  }, [report]);
+  useEffect(() => {
+    if (error) sfx("import_error");
+  }, [error]);
 
   return (
     <DndRoot onNavigate={setScreen}>

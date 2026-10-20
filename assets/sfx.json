@@ -1,0 +1,191 @@
+{
+  "_doc": "UI sounds (T4.15, FR-PLAY-016/UI-005, docs/06 §8 — F-32: Discord/Slack/Telegram practice). Synthesised by the engine at the device rate (no sound files: their rights are an open owner question, OWN-06; these are temporary until the owner's sounds). Each: partials (Hz, relative gain), length (ms, < 150), attack and decay (ms), gain. Order = the engine's sound ids.",
+  "sounds": [
+    {
+      "id": "click",
+      "partials": [
+        [
+          2400,
+          1.0
+        ],
+        [
+          4800,
+          0.3
+        ]
+      ],
+      "ms": 28,
+      "attack_ms": 1,
+      "decay_ms": 12,
+      "gain": 0.25
+    },
+    {
+      "id": "toggle_on",
+      "partials": [
+        [
+          880,
+          1.0
+        ],
+        [
+          1320,
+          0.5
+        ]
+      ],
+      "ms": 70,
+      "attack_ms": 2,
+      "decay_ms": 35,
+      "gain": 0.3,
+      "glide": 1.5
+    },
+    {
+      "id": "toggle_off",
+      "partials": [
+        [
+          1320,
+          1.0
+        ],
+        [
+          880,
+          0.5
+        ]
+      ],
+      "ms": 70,
+      "attack_ms": 2,
+      "decay_ms": 35,
+      "gain": 0.3,
+      "glide": 0.67
+    },
+    {
+      "id": "queue_add",
+      "partials": [
+        [
+          1046,
+          1.0
+        ],
+        [
+          1568,
+          0.4
+        ]
+      ],
+      "ms": 90,
+      "attack_ms": 3,
+      "decay_ms": 45,
+      "gain": 0.28
+    },
+    {
+      "id": "drop",
+      "partials": [
+        [
+          180,
+          1.0
+        ],
+        [
+          360,
+          0.3
+        ]
+      ],
+      "ms": 110,
+      "attack_ms": 2,
+      "decay_ms": 50,
+      "gain": 0.45
+    },
+    {
+      "id": "import_done",
+      "partials": [
+        [
+          784,
+          1.0
+        ],
+        [
+          1175,
+          0.6
+        ],
+        [
+          1568,
+          0.4
+        ]
+      ],
+      "ms": 140,
+      "attack_ms": 4,
+      "decay_ms": 70,
+      "gain": 0.3,
+      "glide": 1.12
+    },
+    {
+      "id": "import_error",
+      "partials": [
+        [
+          330,
+          1.0
+        ],
+        [
+          311,
+          0.8
+        ]
+      ],
+      "ms": 140,
+      "attack_ms": 4,
+      "decay_ms": 70,
+      "gain": 0.35,
+      "glide": 0.85
+    },
+    {
+      "id": "mode",
+      "partials": [
+        [
+          1318,
+          1.0
+        ],
+        [
+          1976,
+          0.35
+        ]
+      ],
+      "ms": 100,
+      "attack_ms": 3,
+      "decay_ms": 55,
+      "gain": 0.26
+    },
+    {
+      "id": "focus_work_end",
+      "partials": [
+        [
+          659,
+          1.0
+        ],
+        [
+          988,
+          0.5
+        ],
+        [
+          1318,
+          0.25
+        ]
+      ],
+      "ms": 145,
+      "attack_ms": 8,
+      "decay_ms": 90,
+      "gain": 0.3
+    },
+    {
+      "id": "focus_break_end",
+      "partials": [
+        [
+          988,
+          1.0
+        ],
+        [
+          1318,
+          0.5
+        ],
+        [
+          1976,
+          0.25
+        ]
+      ],
+      "ms": 145,
+      "attack_ms": 8,
+      "decay_ms": 90,
+      "gain": 0.3
+    }
+  ]
+}

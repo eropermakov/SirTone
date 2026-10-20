@@ -2,6 +2,7 @@ import { Check, Heart, Lock, LockOpen, SkipForward, Sparkles, X } from "lucide-r
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { patchSettings } from "@/shared/ipc/settings";
+import { sfx } from "@/shared/ipc/sfx";
 import { videoClips, videoRemove, videoSetMood } from "@/shared/ipc/viz";
 import { cn } from "@/shared/lib/utils";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
@@ -30,7 +31,10 @@ export function VizToolbar() {
     id: m,
     label: t(`viz.mode.${m}`),
     icon: m === mode ? Check : undefined,
-    onSelect: () => void patchSettings({ viz: { mode: m } }).catch(() => {}),
+    onSelect: () => {
+      sfx("mode");
+      void patchSettings({ viz: { mode: m } }).catch(() => {});
+    },
   }));
   if (mode === "video") {
     const clip = vc.clips.find((c) => c.id === vc.current);

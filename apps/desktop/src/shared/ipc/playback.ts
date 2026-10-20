@@ -8,6 +8,7 @@ import {
   type QueueView,
   type RepeatMode,
 } from "./bindings";
+import { sfx } from "./sfx";
 
 /**
  * Playback IPC (prototype 0.2). Commands and events are generated (`bindings.ts`); outside Tauri
@@ -97,10 +98,12 @@ export async function getQueue(): Promise<QueueView> {
 
 /** «Воспроизвести далее» / «В конец очереди» (FR-PLAY-006). */
 export function queuePlayNext(ids: number[], context: PlayContext): void {
+  sfx("queue_add");
   if (isTauri()) void commands.queuePlayNext(ids, context);
 }
 
 export function queueAppend(ids: number[], context: PlayContext): void {
+  sfx("queue_add");
   if (isTauri()) void commands.queueAppend(ids, context);
 }
 

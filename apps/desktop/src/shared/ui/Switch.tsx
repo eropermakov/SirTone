@@ -1,3 +1,4 @@
+import { sfx } from "@/shared/ipc/sfx";
 import { cn } from "@/shared/lib/utils";
 
 type Props = {
@@ -16,7 +17,10 @@ export function Switch({ checked, onChange, label, disabled }: Props) {
       aria-checked={checked}
       aria-label={label}
       disabled={disabled}
-      onClick={() => onChange(!checked)}
+      onClick={() => {
+        sfx(checked ? "toggle_off" : "toggle_on");
+        onChange(!checked);
+      }}
       className={cn(
         "relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-40",
         checked ? "bg-accent-fill" : "bg-inactive",

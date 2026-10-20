@@ -178,6 +178,16 @@ pub fn eq_from_settings(doc: &serde_json::Value) -> sirtone_audio::eq::EqParams 
     }
 }
 
+/// UI sounds volume (T4.15): 0 when switched off.
+fn sfx_volume(doc: &serde_json::Value) -> f32 {
+    let s = &doc["sfx"];
+    if s["enabled"].as_bool().unwrap_or(true) {
+        s["volume"].as_f64().unwrap_or(0.5) as f32
+    } else {
+        0.0
+    }
+}
+
 /// The limiter (T4.13) runs while anything may raise the level: normalization or the EQ.
 fn limiter_wanted(doc: &serde_json::Value) -> bool {
     Norm::from_settings(doc).enabled || eq_from_settings(doc).enabled
@@ -702,6 +712,7 @@ impl Playback {
         engine.send(EngineCmd::SetPauseOnDeviceLoss(pause_on_loss));
         engine.send(EngineCmd::SetEq(eq_from_settings(&settings.get())));
         engine.send(EngineCmd::SetLimiter(limiter_wanted(&settings.get())));
+        engine.send(EngineCmd::SetSfxVolume(sfx_volume(&settings.get())));
         let _ = handle.set(engine.clone());
         Ok(Self {
             engine,
@@ -769,6 +780,13 @@ impl Playback {
             self.app.get(),
         );
         self.engine.send(EngineCmd::SetNext(next));
+    }
+
+    /// A UI sound by name (T4.15).
+    pub fn sfx(&self, name: &str) {
+        if let Some(id) = sirtone_audio::sfx::id_of(name) {
+            self.engine.send(EngineCmd::Sfx(id));
+        }
     }
 
     /// Ducking gain while another application sounds (T4.14), dB; 0 — none.
@@ -879,6 +897,7 @@ impl Playback {
         self.engine.send(EngineCmd::SetEq(eq_from_settings(&doc)));
         self.engine
             .send(EngineCmd::SetLimiter(limiter_wanted(&doc)));
+        self.engine.send(EngineCmd::SetSfxVolume(sfx_volume(&doc)));
     }
 
     /// After a queue edit: the engine gets the new «next», the player bar its flags, the panel
@@ -1387,6 +1406,14 @@ pub fn playback_next(pb: State<'_, Playback>) {
 #[specta::specta]
 pub fn playback_prev(pb: State<'_, Playback>) {
     pb.prev();
+}
+
+/// A UI sound (T4.15, `06` §8): `click`, `toggle_on`, `toggle_off`, `queue_add`, `drop`,
+/// `import_done`, `import_error`, `mode`, `focus_work_end`, `focus_break_end`.
+#[tauri::command]
+#[specta::specta]
+pub fn ui_sound(pb: State<'_, Playback>, name: String) {
+    pb.sfx(&name);
 }
 
 /// «Смешать сейчас» (T4.9b): `false` — nothing to mix into (transitions off, no next track,

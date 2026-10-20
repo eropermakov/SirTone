@@ -24,6 +24,8 @@ pub struct Shared {
     /// Ducking target (T4.14, FR-PLAY-011), linear: 1 — none. A late multiplier: down over
     /// ≈ 150 ms (attack), back over ≈ 1.2 s (release), smoothed here.
     pub duck_bits: AtomicU32,
+    /// UI sounds volume (T4.15), linear: 0 — off.
+    pub sfx_bits: AtomicU32,
     /// Pause ramp target: true = audible.
     pub playing: AtomicBool,
     /// Ring may legitimately run dry (end of track, nothing loaded): no underrun.
@@ -64,6 +66,8 @@ pub struct Output {
     pub device_id: String,
     thread: Option<JoinHandle<()>>,
     shared: Arc<Shared>,
+    /// UI sound triggers to the render thread (T4.15).
+    pub sfx: rtrb::Producer<u8>,
 }
 
 /// Ring size: ~200 ms of headroom (docs/04 §1).
@@ -83,7 +87,11 @@ impl Output {
     /// fills. COM objects are thread-bound, so the device is opened on the render thread.
     pub fn open(shared: Arc<Shared>) -> Result<(Self, rtrb::Producer<f32>), AppError> {
         let (tx_fmt, rx_fmt) = mpsc::channel::<Result<(DeviceFormat, String), AppError>>();
-        let (tx_ring, rx_ring) = mpsc::channel::<(rtrb::Consumer<f32>, rtrb::Producer<f32>)>();
+        let (tx_ring, rx_ring) = mpsc::channel::<(
+            rtrb::Consumer<f32>,
+            rtrb::Producer<f32>,
+            crate::sfx::SfxVoices,
+        )>();
         shared.stop.store(false, Ordering::Relaxed);
         shared.failed.store(false, Ordering::Relaxed);
         let rt_shared = shared.clone();
@@ -98,10 +106,10 @@ impl Output {
                             channels: usize::from(fmt.get_nchannels()),
                         };
                         let _ = tx_fmt.send(Ok((format, id)));
-                        let Ok((ring, tap)) = rx_ring.recv() else {
+                        let Ok((ring, tap, sfx)) = rx_ring.recv() else {
                             return;
                         };
-                        if render_loop(client, fmt, ring, tap, &rt_shared).is_err() {
+                        if render_loop(client, fmt, ring, tap, sfx, &rt_shared).is_err() {
                             rt_shared.failed.store(true, Ordering::Release);
                         }
                     }
@@ -123,8 +131,11 @@ impl Output {
         if let Ok(mut slot) = shared.viz_tap.lock() {
             *slot = Some((tap_cons, format));
         }
+        // UI sounds (T4.15): synthesised for this device rate here, played by the render thread.
+        let (sfx_prod, sfx_cons) = rtrb::RingBuffer::<u8>::new(16);
+        let voices = crate::sfx::SfxVoices::new(crate::sfx::bank(format.rate), sfx_cons);
         tx_ring
-            .send((cons, tap_prod))
+            .send((cons, tap_prod, voices))
             .map_err(|e| AppError::new(ErrorCode::DeviceUnavailable).with_details(e))?;
         tracing::info!(target: "sirtone::audio", rate = format.rate, channels = format.channels, "output opened");
         Ok((
@@ -133,6 +144,7 @@ impl Output {
                 device_id,
                 thread: Some(thread),
                 shared,
+                sfx: sfx_prod,
             },
             prod,
         ))
@@ -201,6 +213,7 @@ fn render_loop(
     fmt: WaveFormat,
     mut ring: rtrb::Consumer<f32>,
     mut tap: rtrb::Producer<f32>,
+    mut sfx: crate::sfx::SfxVoices,
     shared: &Shared,
 ) -> Result<(), AppError> {
     register_mmcss();
@@ -273,6 +286,19 @@ fn render_loop(
             out[written * ch * 4..].fill(0);
             if playing && !shared.starving_ok.load(Ordering::Relaxed) {
                 shared.underruns.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        // UI sounds on top (T4.15): their own volume, also while the music is paused.
+        sfx.poll();
+        if sfx.busy() {
+            let g = f32::from_bits(shared.sfx_bits.load(Ordering::Relaxed));
+            for f in 0..frames {
+                let s = sfx.next_sample() * g;
+                for c in 0..ch {
+                    let i = (f * ch + c) * 4;
+                    let v = f32::from_le_bytes([out[i], out[i + 1], out[i + 2], out[i + 3]]) + s;
+                    out[i..i + 4].copy_from_slice(&v.to_le_bytes());
+                }
             }
         }
         render
