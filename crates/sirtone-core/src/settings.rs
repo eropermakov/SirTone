@@ -599,6 +599,14 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
             "playback.volume must be 0..=1".into(),
         ));
     }
+    let duck = &s.playback.duck;
+    if !(-80.0..=0.0).contains(&duck.amount_db)
+        || !["low", "medium", "high"].contains(&duck.sensitivity.as_str())
+    {
+        return Err(SettingsError::Invalid(
+            "playback.duck: amount −80…0 dB, sensitivity low|medium|high".into(),
+        ));
+    }
     let mix = &s.playback.automix;
     if !["gapless", "crossfade", "smart"].contains(&mix.mode.as_str())
         || !["soft", "medium", "dj"].contains(&mix.intensity.as_str())

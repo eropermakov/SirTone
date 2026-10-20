@@ -7,5 +7,6 @@ pub mod hardware;
 pub mod idle;
 pub mod occlusion;
 pub mod power;
+pub mod sessions;
 pub mod smtc;
 pub mod tags;

@@ -36,6 +36,8 @@ pub enum EngineCmd {
     Seek(u64),
     /// Slider value 0…1; the engine applies the cubic curve (docs/04 §7).
     SetVolume(f32),
+    /// Ducking (T4.14): the gain while another application sounds, dB (0 — none).
+    SetDuck(f32),
     /// The track to continue with when the current one ends, without a gap (T1.5, docs/04 §3:
     /// pre-opened and fed into the same ring), its normalization gain and — for automix or
     /// crossfade (T4.9) — how A hands over to it. `None` clears it.
@@ -564,6 +566,13 @@ impl Engine {
                 if let Err(e) = self.seek(ms) {
                     self.fail(e);
                 }
+            }
+            EngineCmd::SetDuck(db) => {
+                let amp = sirtone_core::loudness::amplitude(db.min(0.0));
+                self.shared
+                    .duck_bits
+                    .store(amp.to_bits(), Ordering::Relaxed);
+                return;
             }
             EngineCmd::SetVolume(v) => {
                 self.volume = v.clamp(0.0, 1.0);

@@ -21,6 +21,9 @@ pub struct Shared {
     pub underruns: AtomicU64,
     /// Target linear gain (`f32` bits), already on the cubic curve.
     pub gain_bits: AtomicU32,
+    /// Ducking target (T4.14, FR-PLAY-011), linear: 1 — none. A late multiplier: down over
+    /// ≈ 150 ms (attack), back over ≈ 1.2 s (release), smoothed here.
+    pub duck_bits: AtomicU32,
     /// Pause ramp target: true = audible.
     pub playing: AtomicBool,
     /// Ring may legitimately run dry (end of track, nothing loaded): no underrun.
@@ -43,6 +46,7 @@ impl Shared {
     pub fn new() -> Arc<Self> {
         let s = Self::default();
         s.gain_bits.store(1f32.to_bits(), Ordering::Relaxed);
+        s.duck_bits.store(1f32.to_bits(), Ordering::Relaxed);
         s.starving_ok.store(true, Ordering::Relaxed);
         Arc::new(s)
     }
@@ -66,6 +70,9 @@ pub struct Output {
 const RING_MS: usize = 200;
 pub(crate) const PAUSE_RAMP_S: f32 = 0.015;
 pub(crate) const VOLUME_SMOOTH_S: f32 = 0.008;
+/// Ducking time constants (`04` §7: attack 150 ms, release 1.2 s ≈ 3 time constants).
+const DUCK_ATTACK_S: f32 = 0.05;
+const DUCK_RELEASE_S: f32 = 0.4;
 
 /// Test hook: called on the render thread right before its real-time loop starts, so a test
 /// allocator can assert that the loop never allocates (T1.3, `assert_no_alloc` style).
@@ -207,6 +214,9 @@ fn render_loop(
     let smooth = 1.0 - (-1.0 / (VOLUME_SMOOTH_S * rate)).exp();
     let mut pause_gain = 0f32;
     let mut gain = f32::from_bits(shared.gain_bits.load(Ordering::Relaxed));
+    let duck_down = 1.0 - (-1.0 / (DUCK_ATTACK_S * rate)).exp();
+    let duck_up = 1.0 - (-1.0 / (DUCK_RELEASE_S * rate)).exp();
+    let mut duck = 1f32;
 
     let mut fill = |frames: usize, ring: &mut rtrb::Consumer<f32>| -> Result<(), AppError> {
         let req = shared.flush_req.load(Ordering::Acquire);
@@ -219,6 +229,7 @@ fn render_loop(
         }
         let playing = shared.playing.load(Ordering::Relaxed);
         let target_gain = f32::from_bits(shared.gain_bits.load(Ordering::Relaxed));
+        let duck_target = f32::from_bits(shared.duck_bits.load(Ordering::Relaxed));
         let out = &mut bytes[..frames * ch * 4];
         // Fully paused: keep the ring intact, write silence.
         let take = if !playing && pause_gain <= 0.0 {
@@ -244,8 +255,14 @@ fn render_loop(
                         (pause_gain - ramp_step).max(0.0)
                     };
                     gain += (target_gain - gain) * smooth;
+                    duck += (duck_target - duck)
+                        * if duck_target < duck {
+                            duck_down
+                        } else {
+                            duck_up
+                        };
                 }
-                let v = s * gain * pause_gain;
+                let v = s * gain * pause_gain * duck;
                 out[i * 4..i * 4 + 4].copy_from_slice(&v.to_le_bytes());
             }
             chunk.commit_all();

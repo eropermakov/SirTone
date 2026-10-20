@@ -11,6 +11,7 @@ mod bootstrap;
 mod continuation;
 mod covers_online;
 mod diagnostics;
+mod duck;
 mod duplicates;
 mod feedback;
 mod hotkeys;
@@ -157,6 +158,7 @@ fn main() {
             let net_state = net::start(app.handle());
             app.manage(net_state);
             analysis::start(app.handle().clone());
+            duck::start(app.handle().clone());
             resolve::start(app.handle().clone());
             match playback::Playback::start(app.handle().clone(), store) {
                 Ok(pb) => {

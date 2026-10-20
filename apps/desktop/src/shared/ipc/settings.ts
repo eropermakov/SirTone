@@ -29,6 +29,12 @@ export type SettingsPatch = {
   playback?: {
     normalization?: { enabled?: boolean; target_lufs?: number; album_mode?: "auto" | "off" };
     eq?: { enabled?: boolean; preset?: string; preamp_db?: number; bands_db?: number[] };
+    duck?: {
+      enabled?: boolean;
+      amount_db?: number;
+      sensitivity?: "low" | "medium" | "high";
+      ignore?: string[];
+    };
     automix?: {
       mode?: "gapless" | "crossfade" | "smart";
       intensity?: "soft" | "medium" | "dj";

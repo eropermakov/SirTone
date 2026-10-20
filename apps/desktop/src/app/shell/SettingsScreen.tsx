@@ -144,6 +144,8 @@ export function SettingsScreen({
 
       <TransitionsSection />
 
+      <DuckSection />
+
       <NetworkSection />
 
       <PerformanceSection />
@@ -891,6 +893,151 @@ function EqSection() {
                   </span>
                 </div>
               ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const DUCK_SENS = ["low", "medium", "high"] as const;
+type Duck = {
+  enabled: boolean;
+  /** Reduction 0…100 % (Discord-style); 75 % ≈ −12 dB. */
+  pct: number;
+  sensitivity: (typeof DUCK_SENS)[number];
+  ignore: string[];
+};
+const pctToDb = (pct: number) => (pct >= 100 ? -80 : Math.max(-80, 20 * Math.log10(1 - pct / 100)));
+const dbToPct = (db: number) => Math.round((1 - 10 ** (db / 20)) * 100);
+
+/**
+ * «Приглушение» (T4.14, FR-PLAY-011, `04` §7 — Discord attenuation, Windows communications
+ * ducking): Sirtone gets quieter while another app plays sound (≥ 0.7 s, not short notifications),
+ * comes back a second after; strength in %, sensitivity, apps never to duck for.
+ */
+function DuckSection() {
+  const { t } = useTranslation("shell");
+  const [duck, setDuck] = useState<Duck>({
+    enabled: true,
+    pct: 75,
+    sensitivity: "medium",
+    ignore: [],
+  });
+  const [adding, setAdding] = useState("");
+  useEffect(() => {
+    getSettings().then((s) => {
+      const d = ((s.playback ?? {}) as { duck?: Record<string, unknown> }).duck;
+      setDuck({
+        enabled: d?.enabled !== false,
+        pct: typeof d?.amount_db === "number" ? dbToPct(d.amount_db) : 75,
+        sensitivity: DUCK_SENS.includes(d?.sensitivity as Duck["sensitivity"])
+          ? (d?.sensitivity as Duck["sensitivity"])
+          : "medium",
+        ignore: Array.isArray(d?.ignore) ? (d.ignore as string[]) : [],
+      });
+    });
+  }, []);
+  const save = (next: Duck) => {
+    const prev = duck;
+    setDuck(next);
+    patchSettings({
+      playback: {
+        duck: {
+          enabled: next.enabled,
+          amount_db: pctToDb(next.pct),
+          sensitivity: next.sensitivity,
+          ignore: next.ignore,
+        },
+      },
+    }).catch(() => setDuck(prev));
+  };
+  const add = () => {
+    const exe = adding.trim().toLowerCase();
+    if (!exe) return;
+    const name = exe.endsWith(".exe") ? exe : `${exe}.exe`;
+    if (!duck.ignore.includes(name)) save({ ...duck, ignore: [...duck.ignore, name] });
+    setAdding("");
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsDuck.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsDuck.enable")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsDuck.hint")}</div>
+          </div>
+          <Switch
+            checked={duck.enabled}
+            label={t("settingsDuck.enable")}
+            onChange={(v) => save({ ...duck, enabled: v })}
+          />
+        </div>
+        {duck.enabled && (
+          <>
+            <div className="flex items-center gap-4">
+              <span className="t-caption w-28 shrink-0 text-text-secondary">
+                {t("settingsDuck.amount")}
+              </span>
+              <Slider
+                value={duck.pct / 100}
+                step={0.05}
+                label={t("settingsDuck.amount")}
+                valueText={t("settingsDuck.pct", { v: duck.pct })}
+                onCommit={(v) => save({ ...duck, pct: Math.round(v * 20) * 5 })}
+                className="flex-1"
+              />
+              <span className="t-caption w-14 shrink-0 text-right text-text-tertiary">
+                {t("settingsDuck.pct", { v: duck.pct })}
+              </span>
+            </div>
+            <fieldset
+              className="m-0 flex flex-wrap gap-2 border-0 p-0"
+              aria-label={t("settingsDuck.sensitivity")}
+            >
+              {DUCK_SENS.map((s) => (
+                <Chip
+                  key={s}
+                  active={duck.sensitivity === s}
+                  onClick={() => save({ ...duck, sensitivity: s })}
+                >
+                  {t(`settingsDuck.sens.${s}`)}
+                </Chip>
+              ))}
+            </fieldset>
+            <div className="flex flex-col gap-2">
+              <div className="t-body text-text-primary">{t("settingsDuck.ignore")}</div>
+              {duck.ignore.map((exe) => (
+                <div key={exe} className="flex items-center gap-2">
+                  <span className="t-body min-w-0 flex-1 truncate text-text-secondary">{exe}</span>
+                  <Button
+                    variant="ghost"
+                    onClick={() => save({ ...duck, ignore: duck.ignore.filter((x) => x !== exe) })}
+                  >
+                    {t("settingsDuck.remove")}
+                  </Button>
+                </div>
+              ))}
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  add();
+                }}
+              >
+                <input
+                  value={adding}
+                  onChange={(e) => setAdding(e.target.value)}
+                  placeholder={t("settingsDuck.addPlaceholder")}
+                  aria-label={t("settingsDuck.addPlaceholder")}
+                  className="t-body h-(--button-height) min-w-0 flex-1 rounded-(--radius-md) border border-border bg-bg-layer px-3 text-text-primary"
+                />
+                <Button variant="secondary" type="submit">
+                  {t("settingsDuck.add")}
+                </Button>
+              </form>
             </div>
           </>
         )}

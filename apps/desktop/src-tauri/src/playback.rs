@@ -771,6 +771,11 @@ impl Playback {
         self.engine.send(EngineCmd::SetNext(next));
     }
 
+    /// Ducking gain while another application sounds (T4.14), dB; 0 — none.
+    pub fn set_duck(&self, db: f32) {
+        self.engine.send(EngineCmd::SetDuck(db));
+    }
+
     /// Plans the handover again (beat grids arrived, T4.9c); the engine takes it until the
     /// overlap begins.
     pub fn replan(&self) {
