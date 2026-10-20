@@ -92,6 +92,9 @@ async function mockTauri(page: Page) {
           case "storage_info":
           case "duplicates_count":
             throw { code: "NotFound", retryable: false, details: null };
+          case "sleep_start":
+          case "focus_start":
+            return null;
           case "sleep_status":
             return { phase: "off", kind: null, remainingMs: 0, tracksLeft: null };
           case "focus_status":
@@ -259,4 +262,53 @@ test("live effects only behind «Моя волна» (T4.20, FR-FX-006)", async 
     await page.getByRole("button", { name, exact: true }).first().click();
     await expect(page.getByTestId("fx")).toHaveCount(0);
   }
+});
+
+test("sleep and focus start from the wave screen; their settings render (T4.21, T4.24)", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 12,
+      artists: 3,
+      albums: 2,
+      unknown: 0,
+      durationSec: 3000,
+      bytes: 1,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await expect(page.locator("footer").getByText("Mock track")).toBeVisible();
+  await emit(page, "playback-snapshot", {
+    state: "playing",
+    trackId: 7,
+    title: "Mock track",
+    positionMs: 62000,
+    durationMs: 200000,
+    volume: 0.5,
+  });
+  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await page.getByRole("button", { name: "Сон-таймер", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Через 30 минут" }).click();
+  await expect
+    .poll(async () => (await calls(page, "sleep_start")).at(-1)?.args)
+    .toEqual({ kind: "minutes", value: 30 });
+  await page.getByRole("button", { name: "Фокус", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Работа 25 мин · перерыв 5 мин" }).click();
+  await expect
+    .poll(async () => (await calls(page, "focus_start")).at(-1)?.args)
+    .toEqual({ work: 25, brk: 5 });
+  await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
+  for (const h of ["Живые эффекты", "Сон-таймер", "Фокус"]) {
+    await expect(page.getByRole("heading", { name: h, exact: true })).toBeVisible();
+  }
+  const text = await page.locator("main").innerText();
+  expect(text).not.toMatch(/settings(Sleep|Focus|Fx)\.|\{count|\{time/);
+  await expect(page.getByText("Предпочтительно без слов")).toBeVisible();
 });

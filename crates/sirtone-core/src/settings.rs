@@ -387,6 +387,9 @@ pub struct Focus {
     pub vocals: String,
     pub overrun_s: u32,
     pub auto_normalize: bool,
+    /// Focus switched normalization on for its session (FR-FOCUS-004): put it back to off at
+    /// the end — or at the next start if the app quit mid-session.
+    pub norm_restore: bool,
 }
 
 impl Default for Focus {
@@ -399,6 +402,7 @@ impl Default for Focus {
             vocals: "prefer_none".into(),
             overrun_s: 90,
             auto_normalize: true,
+            norm_restore: false,
         }
     }
 }

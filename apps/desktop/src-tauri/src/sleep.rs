@@ -119,10 +119,29 @@ impl Sleep {
 
     /// For the tray: start «Сон 30 мин», or «+15 мин» while woken.
     pub fn tray_action(&self) {
-        match self.status().phase.as_str() {
-            "off" | "ended" => self.send(Cmd::Start(SleepKind::Minutes(30))),
-            _ => self.send(Cmd::Extend),
-        }
+        self.send(match tray_cmd(&self.status().phase) {
+            TrayCmd::Start => Cmd::Start(SleepKind::Minutes(30)),
+            TrayCmd::Extend => Cmd::Extend,
+            TrayCmd::Cancel => Cmd::Cancel,
+        });
+    }
+}
+
+/// What the tray's sleep line does in each phase — it matches its text (`tray::sleep_text`):
+/// «Сон через 30 минут» starts, «Ещё 15 минут» (woken) extends, «осталось N мин — отменить»
+/// cancels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TrayCmd {
+    Start,
+    Extend,
+    Cancel,
+}
+
+fn tray_cmd(phase: &str) -> TrayCmd {
+    match phase {
+        "off" | "ended" => TrayCmd::Start,
+        "woken" => TrayCmd::Extend,
+        _ => TrayCmd::Cancel,
     }
 }
 
@@ -225,6 +244,12 @@ fn restore(pb: &Playback, run: &Run) {
 
 type WaveShare = Mutex<(Option<f32>, Option<f32>)>;
 
+/// `SIRTONE_SMOKE_NO_SYSINPUT`, honoured only with `SIRTONE_DATA_DIR` (an isolated test run).
+fn ignore_system_input() -> bool {
+    std::env::var_os("SIRTONE_DATA_DIR").is_some()
+        && std::env::var_os("SIRTONE_SMOKE_NO_SYSINPUT").is_some()
+}
+
 fn run(app: &AppHandle, rx: &Receiver<Cmd>, status: &Mutex<SleepStatus>, wave: &WaveShare) {
     let t0 = Instant::now();
     let mut cur: Option<Run> = None;
@@ -314,8 +339,9 @@ fn run(app: &AppHandle, rx: &Receiver<Cmd>, status: &Mutex<SleepStatus>, wave: &
         };
         r.timer.set_end(end);
         let phase = r.timer.phase(now);
-        // Woken by input anywhere in the system (only polled while it matters).
-        if matches!(phase, Phase::Fading | Phase::Final | Phase::Woken) {
+        // Woken by input anywhere in the system (only polled while it matters). Tests on an
+        // isolated data dir may switch it off: the owner using the PC must not skew them.
+        if matches!(phase, Phase::Fading | Phase::Final | Phase::Woken) && !ignore_system_input() {
             let idle = sirtone_platform::idle::idle_ms();
             if idle < r.idle_prev && r.timer.input(now) {
                 pb.sleep_gain(0.0, WAKE_RAMP_MS);
@@ -413,9 +439,6 @@ fn after_timer(app: &AppHandle, after: After) {
     if std::env::var_os("SIRTONE_DATA_DIR").is_some()
         && std::env::var_os("SIRTONE_SMOKE_DRYPOWER").is_some()
     {
-        if let Ok(dir) = app.path().app_local_data_dir() {
-            let _ = std::fs::write(dir.join("sleep-after.txt"), format!("{action:?}"));
-        }
         if let Some(d) = std::env::var_os("SIRTONE_DATA_DIR") {
             let _ = std::fs::write(
                 std::path::Path::new(&d).join("sleep-after.txt"),
@@ -500,5 +523,20 @@ pub fn sleep_caps() -> SleepCaps {
     SleepCaps {
         hibernate: c.hibernate,
         modern_standby: c.modern_standby && !c.s3,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_tray_line_does_what_it_says() {
+        assert_eq!(tray_cmd("off"), TrayCmd::Start);
+        assert_eq!(tray_cmd("ended"), TrayCmd::Start);
+        assert_eq!(tray_cmd("woken"), TrayCmd::Extend);
+        for p in ["running", "fading", "final"] {
+            assert_eq!(tray_cmd(p), TrayCmd::Cancel, "{p}");
+        }
     }
 }

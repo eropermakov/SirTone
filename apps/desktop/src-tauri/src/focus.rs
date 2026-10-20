@@ -135,7 +135,8 @@ impl Focus {
     /// For the tray: start with the settings, or stop.
     pub fn tray_action(&self) {
         if self.status().phase == "off" {
-            self.send(Cmd::Start(None));
+            // The line reads «Фокус 25/5».
+            self.send(Cmd::Start(Some((25, 5))));
         } else {
             self.send(Cmd::Stop);
         }
@@ -215,13 +216,21 @@ fn switch_music(app: &AppHandle, segment: Segment, overrun_ms: u64) {
 }
 
 fn end(app: &AppHandle, r: &Run) {
-    if r.norm_restore
-        && let Some(s) = app.try_state::<Arc<SettingsStore>>()
-        && s.get()["playback"]["normalization"]["enabled"].as_bool() == Some(true)
-    {
-        let _ =
-            s.patch(&serde_json::json!({ "playback": { "normalization": { "enabled": false } } }));
+    if r.norm_restore {
+        restore_norm(app);
     }
+}
+
+/// Normalization back to off (unless switched off by hand meanwhile) and the marker cleared.
+fn restore_norm(app: &AppHandle) {
+    let Some(s) = app.try_state::<Arc<SettingsStore>>() else {
+        return;
+    };
+    let mut patch = serde_json::json!({ "focus": { "norm_restore": false } });
+    if s.get()["playback"]["normalization"]["enabled"].as_bool() == Some(true) {
+        patch["playback"] = serde_json::json!({ "normalization": { "enabled": false } });
+    }
+    let _ = s.patch(&patch);
 }
 
 fn run(
@@ -233,6 +242,10 @@ fn run(
 ) {
     let t0 = Instant::now();
     let now_ms = || t0.elapsed().as_millis() as u64;
+    // The app quit during a focus session that had switched normalization on: give it back.
+    if settings(app)["focus"]["norm_restore"].as_bool() == Some(true) {
+        restore_norm(app);
+    }
     let mut cur: Option<Run> = None;
     loop {
         let cmd = match rx.recv_timeout(if cur.is_some() {
@@ -259,8 +272,12 @@ fn run(
                     && doc["playback"]["normalization"]["enabled"].as_bool() == Some(false)
                     && let Some(s) = app.try_state::<Arc<SettingsStore>>()
                 {
+                    // The marker goes with it: a quit mid-session still gives «off» back.
                     norm_restore = s
-                        .patch(&serde_json::json!({ "playback": { "normalization": { "enabled": true } } }))
+                        .patch(&serde_json::json!({
+                            "playback": { "normalization": { "enabled": true } },
+                            "focus": { "norm_restore": true }
+                        }))
                         .is_ok();
                 }
                 let cycle = FocusCycle::start(cfg, now, day, load_today(data));

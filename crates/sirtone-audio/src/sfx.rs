@@ -132,6 +132,13 @@ impl SfxVoices {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn focus_boundary_sounds_exist() {
+        assert!(id_of("focus_work_end").is_some());
+        assert!(id_of("focus_break_end").is_some());
+    }
+
     use super::*;
 
     #[test]

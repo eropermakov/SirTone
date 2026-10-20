@@ -55,24 +55,30 @@ for (let i = 0; i < 20; i++) {
     join(dir, `tone${i}.mp3`),
   ]);
 }
-const app = spawn(exe, [], {
-  env: {
-    ...process.env,
-    SIRTONE_DATA_DIR: dataDir,
-    SIRTONE_SMOKE_AC: "1",
-    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`,
-  },
-  stdio: "ignore",
-});
-let page;
-for (let i = 0; i < 80 && !page; i++) {
-  try {
-    const b = await chromium.connectOverCDP(`http://127.0.0.1:${PORT}`);
-    page = b.contexts()[0]?.pages()[0];
-  } catch {
-    await sleep(250);
+const launch = () =>
+  spawn(exe, [], {
+    env: {
+      ...process.env,
+      SIRTONE_DATA_DIR: dataDir,
+      SIRTONE_SMOKE_AC: "1",
+      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`,
+    },
+    stdio: "ignore",
+  });
+const connect = async () => {
+  for (let i = 0; i < 80; i++) {
+    try {
+      const b = await chromium.connectOverCDP(`http://127.0.0.1:${PORT}`);
+      const p = b.contexts()[0]?.pages()[0];
+      if (p) return p;
+    } catch {
+      await sleep(250);
+    }
   }
-}
+  return null;
+};
+let app = launch();
+let page = await connect();
 await page.waitForSelector("footer");
 const invoke = (cmd, args) =>
   page.evaluate(([c, a]) => window.__TAURI_INTERNALS__.invoke(c, a), [cmd, args]);
@@ -153,6 +159,22 @@ try {
   check(
     "after «Остановить» normalization is off again",
     s1.playback.normalization.enabled === false,
+  );
+  // The app quits mid-session: the next start gives «off» back (the persisted marker).
+  await invoke("focus_start", { work: 25, brk: 5 });
+  await sleep(2000);
+  const s2 = await invoke("settings_get", {});
+  app.kill();
+  await sleep(2000);
+  app = launch();
+  page = await connect();
+  await page.waitForSelector("footer");
+  await sleep(1500);
+  const s3 = await invoke("settings_get", {});
+  check(
+    "a quit mid-focus does not leave normalization on",
+    s2.playback.normalization.enabled === true && s3.playback.normalization.enabled === false,
+    `during ${s2.playback.normalization.enabled}, after restart ${s3.playback.normalization.enabled}`,
   );
 } catch (e) {
   check("run", false, String(e).slice(0, 400));

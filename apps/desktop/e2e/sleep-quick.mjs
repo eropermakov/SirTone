@@ -40,6 +40,9 @@ const app = spawn(exe, [], {
     SIRTONE_DATA_DIR: dataDir,
     SIRTONE_SMOKE_AC: "1",
     SIRTONE_SMOKE_DRYPOWER: "1",
+    // Someone using this PC must not wake the timer mid-measurement (the in-window wake is
+    // what this run checks; system input is covered by S-18 and the owner).
+    SIRTONE_SMOKE_NO_SYSINPUT: "1",
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`,
   },
   stdio: "ignore",
