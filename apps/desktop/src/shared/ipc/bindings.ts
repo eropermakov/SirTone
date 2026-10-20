@@ -209,6 +209,7 @@ export const commands = {
 	 *  the season or, in a transition window, the mix («Предзимье»).
 	 */
 	waveSeasonCard: () => __TAURI_INVOKE<string>("wave_season_card"),
+	themeState: () => __TAURI_INVOKE<ThemeStateDto>("theme_state"),
 	analysisProgress: () => typedError<AnalysisProgress, AppError>(__TAURI_INVOKE("analysis_progress")),
 	/**
 	 *  «Навести порядок» (T3.19, FR-FS-005): the adopted files waiting for it (`all` = false) or
@@ -655,6 +656,23 @@ export type StorageInfo = {
 	logsBytes: number | null,
 	/**  Log files older than today (what «Удалить старые журналы» removes). */
 	oldLogs: number,
+};
+
+/**
+ *  The seasonal/event theme of today (FR-THEME-001, docs/14 §12): the accent seed (the UI's
+ *  generator makes the 6 tokens with their contrast), the visualiser palette, the cover
+ *  placeholder variant and the linked effect. Same date path as `wave_season_card`, so the
+ *  colour and the card name never disagree. Events join with T5.14.
+ */
+export type ThemeStateDto = {
+	id: string,
+	card: string,
+	/**  `season` | `event` */
+	source: string,
+	seed: string,
+	viz: string[],
+	cover_variant: string,
+	effect: string,
 };
 
 /**  What the user typed for a track (ручное назначение). */

@@ -15,11 +15,22 @@ export type SettingsDoc = {
       preset: string;
       custom: string | null;
     };
+    seasonal_theme?: boolean;
+    /** «Ручной акцент» per seasonal/event theme (Q-15); `null` — the theme's own colour. */
+    theme_accents?: Record<
+      string,
+      { source: string; preset: string; custom: string | null } | null
+    >;
   };
   [key: string]: unknown;
 };
 export type SettingsPatch = {
-  appearance?: { theme?: string; accent?: Record<string, unknown>; seasonal_theme?: boolean };
+  appearance?: {
+    theme?: string;
+    accent?: Record<string, unknown>;
+    seasonal_theme?: boolean;
+    theme_accents?: Record<string, Record<string, unknown> | null>;
+  };
   hotkeys?: Record<string, string | null>;
   performance?: {
     level?: number;

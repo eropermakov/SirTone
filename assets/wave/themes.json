@@ -1,0 +1,14 @@
+{
+  "schema": "sirtone.themes/1",
+  "_note": "Seasonal and event themes (FR-THEME-001/005, docs/06 §4.4, docs/14 §12). Names are the owner's (supplement §30); HEX values are TEMPORARY placeholders until the owner's design (OWN-14, D-3). The accent is the seed: the whole 6-token set comes from the generator (docs/06 §4.2) with its contrast guarantees. «viz» — the visualiser palette (3–5 colours). «effect» — the linked live effect (docs/14 §13). Events without a palette use the season's theme.",
+  "seasons": {
+    "winter": { "accent": "#5AA9E6", "viz": ["#5AA9E6", "#B8D4E8", "#2E3A87"], "effect": "snow" },
+    "spring": { "accent": "#4CB86B", "viz": ["#7BC86C", "#B39DDB", "#F4B6C2"], "effect": "petals" },
+    "summer": { "accent": "#F2725C", "viz": ["#F2725C", "#F6C445", "#2EC4B6"], "effect": "sunlight" },
+    "autumn": { "accent": "#E09A2D", "viz": ["#E09A2D", "#B4442F", "#7A1E2C"], "effect": "leaves" }
+  },
+  "events": {
+    "new_year": { "accent": "#A4161A", "viz": ["#A4161A", "#D4AF37", "#1E5631"], "effect": "snow" },
+    "halloween": { "accent": "#F07C1B", "viz": ["#F07C1B", "#6A3D9A", "#16131A"], "effect": "leaves" }
+  }
+}

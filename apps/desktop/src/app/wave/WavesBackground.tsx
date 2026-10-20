@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { startViz, vizColors } from "@/shared/ipc/viz";
+import { useThemeViz } from "@/shared/theme/seasonal";
 import { fallbackColors, lookOf, type PaletteInput, WAVES } from "@/shared/viz/palette";
 import { WavesEngine, wavesStats } from "@/shared/viz/waves";
 import { useVizEnv } from "./useVizEnv";
@@ -32,6 +33,7 @@ export function WavesBackground({
   const { prefs, reduced, power, pausedRef, effectiveLevel } = useVizEnv();
   const [failed, setFailed] = useState(false);
   const [input, setInput] = useState<PaletteInput | null>(null);
+  const themeViz = useThemeViz();
 
   // The track's colours (cover palette, vibe, collection) — once per track.
   useEffect(() => {
@@ -40,7 +42,7 @@ export function WavesBackground({
     const accent =
       getComputedStyle(document.documentElement).getPropertyValue("--accent-fill").trim() ||
       "#888888";
-    const base = { accent, followAccent: prefs.followAccent, minimal: prefs.minimal };
+    const base = { accent, followAccent: prefs.followAccent, minimal: prefs.minimal, themeViz };
     setInput((cur) => cur ?? { ...base, colors: null });
     vizColors(trackId, cover).then((colors) => {
       if (alive) setInput({ ...base, colors });
@@ -48,7 +50,7 @@ export function WavesBackground({
     return () => {
       alive = false;
     };
-  }, [trackId, cover, prefs]);
+  }, [trackId, cover, prefs, themeViz]);
 
   const gl = !!prefs && prefs.level > 0 && !failed;
   const quality = WAVES.quality[String(Math.min(4, effectiveLevel)) as "1" | "2" | "3" | "4"];

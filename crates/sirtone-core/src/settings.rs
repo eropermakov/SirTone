@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::collections::BTreeMap;
 
 pub const SETTINGS_VERSION: u32 = 1;
 
@@ -120,6 +121,9 @@ pub struct Appearance {
     pub custom_accents: Vec<String>,
     pub seasonal_theme: bool,
     pub event_themes_auto: bool,
+    /// «Ручной акцент» of a seasonal/event theme while «Тема по сезону» is on (Q-15, D-50):
+    /// theme id → its own accent; `null` — the theme's colour again.
+    pub theme_accents: BTreeMap<String, Option<Accent>>,
 }
 
 impl Default for Appearance {
@@ -130,6 +134,7 @@ impl Default for Appearance {
             custom_accents: Vec::new(),
             seasonal_theme: false,
             event_themes_auto: false,
+            theme_accents: BTreeMap::new(),
         }
     }
 }
@@ -577,17 +582,17 @@ impl Default for Playback {
 }
 
 fn validate(s: &Settings) -> Result<(), SettingsError> {
-    let a = &s.appearance.accent;
-    if !ACCENT_PRESETS.contains(&a.preset.as_str()) {
-        return Err(SettingsError::Invalid(format!(
-            "unknown accent preset `{}`",
-            a.preset
-        )));
-    }
-    if a.source == AccentSource::Custom && a.custom.as_deref().is_none_or(|c| !is_hex_color(c)) {
-        return Err(SettingsError::Invalid(
-            "custom accent needs a #rrggbb colour".into(),
-        ));
+    validate_accent(&s.appearance.accent)?;
+    for (id, a) in &s.appearance.theme_accents {
+        if id.is_empty()
+            || id.len() > 32
+            || !id.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+        {
+            return Err(SettingsError::Invalid(format!("unknown theme `{id}`")));
+        }
+        if let Some(a) = a {
+            validate_accent(a)?;
+        }
     }
     if s.performance.level > 4 {
         return Err(SettingsError::Invalid(
@@ -644,6 +649,21 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
     if s.wave.novelty > 100 {
         return Err(SettingsError::Invalid(
             "wave.novelty must be 0..=100".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_accent(a: &Accent) -> Result<(), SettingsError> {
+    if !ACCENT_PRESETS.contains(&a.preset.as_str()) {
+        return Err(SettingsError::Invalid(format!(
+            "unknown accent preset `{}`",
+            a.preset
+        )));
+    }
+    if a.source == AccentSource::Custom && a.custom.as_deref().is_none_or(|c| !is_hex_color(c)) {
+        return Err(SettingsError::Invalid(
+            "custom accent needs a #rrggbb colour".into(),
         ));
     }
     Ok(())
@@ -740,5 +760,21 @@ mod tests {
         assert!(apply_patch(&doc, &json!({ "performance": { "level": 9 } })).is_err());
         assert!(apply_patch(&doc, &json!({ "appearance": { "theme": "neon" } })).is_err());
         assert!(apply_patch(&doc, &json!({ "settings_version": 7 })).is_err());
+    }
+
+    #[test]
+    fn theme_accents_are_kept_per_theme_and_cleared_by_null() {
+        let (doc, _) = normalize(&json!({})).unwrap();
+        let set = json!({ "appearance": { "theme_accents": { "autumn": { "source": "preset", "preset": "blue" } } } });
+        let (doc, typed, _) = apply_patch(&doc, &set).unwrap();
+        let a = typed.appearance.theme_accents["autumn"].as_ref().unwrap();
+        assert_eq!(a.preset, "blue");
+        let clear = json!({ "appearance": { "theme_accents": { "autumn": null } } });
+        let (_, typed, _) = apply_patch(&doc, &clear).unwrap();
+        assert!(typed.appearance.theme_accents["autumn"].is_none());
+        let bad = json!({ "appearance": { "theme_accents": { "Autumn!": null } } });
+        assert!(apply_patch(&doc, &bad).is_err());
+        let bad = json!({ "appearance": { "theme_accents": { "winter": { "source": "custom", "custom": "red" } } } });
+        assert!(apply_patch(&doc, &bad).is_err());
     }
 }

@@ -75,6 +75,16 @@ async function mockTauri(page: Page) {
             return false;
           case "wave_season_card":
             return "preWinter";
+          case "theme_state":
+            return {
+              id: "autumn",
+              card: "preWinter",
+              source: "season",
+              seed: "#b2a832",
+              viz: ["#b2a832", "#8f7a52", "#5a4a6c"],
+              cover_variant: "autumn",
+              effect: "leaves",
+            };
           case "analysis_progress":
             return { done: 0, total: 0, paused: false };
           case "update_status":

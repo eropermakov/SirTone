@@ -1,4 +1,4 @@
-import { Check, Gauge, Plus } from "lucide-react";
+import { CalendarDays, Check, Gauge, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollectionSummary } from "@/app/library/CollectionScreen";
@@ -26,6 +26,7 @@ import {
   hotkeysStatus,
   setAutostart,
 } from "@/shared/ipc/window";
+import { inkOn } from "@/shared/lib/color";
 import { accelFromEvent } from "@/shared/lib/hotkeys";
 import { cn } from "@/shared/lib/utils";
 import { benchmark, score } from "@/shared/theme/autodetect";
@@ -41,9 +42,12 @@ import EQ_PRESETS_JSON from "../../../../../assets/eq/presets.json";
 
 type Props = {
   theme: ThemePref;
-  accent: AccentSource;
+  /** `null` — the seasonal theme's own colour (T4.18). */
+  accent: AccentSource | null;
+  /** «Тема по сезону» is on: today's seed for the season swatch. */
+  seasonSeed?: string | null;
   onTheme: (t: ThemePref) => void;
-  onAccent: (a: AccentSource) => void;
+  onAccent: (a: AccentSource | null) => void;
   /** «Хранилище» (FR-DATA-004, FR-ONB-003): library folder and counters. */
   library?: LibraryStatus;
   onChooseLibrary?: () => void;
@@ -66,6 +70,7 @@ const THEMES: { id: ThemePref; key: string }[] = [
 export function SettingsScreen({
   theme,
   accent,
+  seasonSeed,
   onTheme,
   onAccent,
   library,
@@ -93,7 +98,12 @@ export function SettingsScreen({
           {isPalette(theme) && (
             <span className="t-caption text-text-secondary">{t("settings.accentByTheme")}</span>
           )}
-          <AccentSwatches theme={theme} accent={accent} onAccent={onAccent} />
+          <AccentSwatches
+            theme={theme}
+            accent={accent}
+            seasonSeed={seasonSeed}
+            onAccent={onAccent}
+          />
           <SeasonSwitch />
 
           <div className="mt-2 flex items-center gap-4 border-t border-separator pt-4">
@@ -595,29 +605,50 @@ export function ThemeChips({
 export function AccentSwatches({
   theme,
   accent,
+  seasonSeed,
   onAccent,
 }: {
   theme: ThemePref;
-  accent: AccentSource;
-  onAccent: (a: AccentSource) => void;
+  /** `null` — the seasonal theme's own colour is chosen. */
+  accent: AccentSource | null;
+  /** «Тема по сезону» on (T4.18, FR-UI-003): the season swatch comes first; a pick is the
+   * current theme's own accent (Q-15), the season swatch returns to the theme's colour. */
+  seasonSeed?: string | null | undefined;
+  onAccent: (a: AccentSource | null) => void;
 }) {
   const { t } = useTranslation("shell");
-  const customHex = accent.kind === "custom" ? accent.hex : "#3b82f6";
+  const customHex = accent?.kind === "custom" ? accent.hex : "#3b82f6";
   return (
     <fieldset
       disabled={isPalette(theme)}
       className="m-0 border-0 p-0 flex flex-wrap gap-3 disabled:opacity-40"
       aria-label={t("settings.color")}
     >
+      {seasonSeed && (
+        <button
+          type="button"
+          aria-pressed={accent === null}
+          aria-label={t("accent.season")}
+          title={t("accent.season")}
+          onClick={() => onAccent(null)}
+          className={cn(
+            "relative flex size-8 items-center justify-center rounded-full",
+            accent === null && "ring-2 ring-text-primary ring-offset-[3px] ring-offset-bg-raised",
+          )}
+          style={{ background: seasonSeed }}
+        >
+          <CalendarDays size={16} strokeWidth={1.5} style={{ color: inkOn(seasonSeed) }} />
+        </button>
+      )}
       <button
         type="button"
-        aria-pressed={accent.kind === "auto"}
+        aria-pressed={accent?.kind === "auto"}
         aria-label={t("accent.auto")}
         title={t("accent.autoHint")}
         onClick={() => onAccent({ kind: "auto" })}
         className={cn(
           "relative flex size-8 items-center justify-center rounded-full",
-          accent.kind === "auto" &&
+          accent?.kind === "auto" &&
             "ring-2 ring-text-primary ring-offset-[3px] ring-offset-bg-raised",
         )}
         style={{
@@ -627,7 +658,7 @@ export function AccentSwatches({
         }}
       />
       {ACCENT_SLUGS.map((slug) => {
-        const selected = accent.kind === "preset" && accent.slug === slug;
+        const selected = accent?.kind === "preset" && accent.slug === slug;
         return (
           <button
             key={slug}
@@ -658,10 +689,10 @@ export function AccentSwatches({
         title={t("settings.custom")}
         className={cn(
           "relative flex size-8 cursor-pointer items-center justify-center rounded-full border border-border text-icon",
-          accent.kind === "custom" &&
+          accent?.kind === "custom" &&
             "ring-2 ring-text-primary ring-offset-[3px] ring-offset-bg-raised",
         )}
-        style={accent.kind === "custom" ? { background: customHex } : undefined}
+        style={accent?.kind === "custom" ? { background: customHex } : undefined}
       >
         <Plus size={16} strokeWidth={1.5} />
         <input
@@ -676,8 +707,8 @@ export function AccentSwatches({
   );
 }
 
-/** «Тема по сезону» (FR-ONB-001 step 2, FR-UI-003): stored now, the seasonal themes come with
- * Stage 4. */
+/** «Тема по сезону» (FR-ONB-001 step 2, FR-THEME-002, T4.18): the accent follows the season
+ * (the shell listens to the settings and applies it). */
 export function SeasonSwitch() {
   const { t } = useTranslation("shell");
   const [on, setOn] = useState(false);

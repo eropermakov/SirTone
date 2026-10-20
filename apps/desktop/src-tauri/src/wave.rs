@@ -512,3 +512,40 @@ pub fn wave_season_card() -> String {
     let ctx = ContextBuilder::default().snapshot(&SystemClock);
     sirtone_wave::season::card_key(&ctx.season_w).to_owned()
 }
+
+/// The seasonal/event theme of today (FR-THEME-001, docs/14 §12): the accent seed (the UI's
+/// generator makes the 6 tokens with their contrast), the visualiser palette, the cover
+/// placeholder variant and the linked effect. Same date path as `wave_season_card`, so the
+/// colour and the card name never disagree. Events join with T5.14.
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
+pub struct ThemeStateDto {
+    pub id: String,
+    pub card: String,
+    /// `season` | `event`
+    pub source: String,
+    pub seed: String,
+    pub viz: Vec<String>,
+    pub cover_variant: String,
+    pub effect: String,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn theme_state() -> ThemeStateDto {
+    use sirtone_wave::theme::{ThemeSource, ThemesConfig, resolve};
+    let ctx = ContextBuilder::default().snapshot(&SystemClock);
+    let s = resolve(&ThemesConfig::default(), &ctx.season_w, None);
+    ThemeStateDto {
+        id: s.id,
+        card: s.card,
+        source: match s.source {
+            ThemeSource::Season => "season",
+            ThemeSource::Event => "event",
+        }
+        .to_owned(),
+        seed: s.seed,
+        viz: s.viz,
+        cover_variant: s.cover_variant,
+        effect: s.effect,
+    }
+}

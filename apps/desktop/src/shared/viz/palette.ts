@@ -100,12 +100,16 @@ export type PaletteInput = {
   accent: string;
   followAccent: boolean;
   minimal: boolean;
+  /** The seasonal/event theme's visualiser palette (T4.18, FR-VIZ-006): mixed instead of the
+   * accent; absent — the accent (a theme's own manual accent also means the accent). */
+  themeViz?: string[] | null;
 };
 
 /** The track colour, then the shader's colours. Without a vibe — the cover, else the accent. */
 export function buildPalette(p: PaletteInput, c: WavesConfig = WAVES): WavesPalette {
   const col = p.colors;
-  const accent = hexToOklch(p.accent);
+  const tv = p.themeViz?.length ? p.themeViz.map(hexToOklch) : null;
+  const accent = tv?.[0] ?? hexToOklch(p.accent);
   let track: Oklch;
   if (col && col.valence !== null && col.arousal !== null)
     track = vibeColor(col.valence, col.arousal, c);
@@ -117,7 +121,9 @@ export function buildPalette(p: PaletteInput, c: WavesConfig = WAVES): WavesPale
   if (p.followAccent) main = mixOklab(main, tame(accent, c), c.mix.accent);
   const second = col?.cover[0]
     ? mixOklab(main, tame(fromSwatch(col.cover[0]), c), c.mix.cover)
-    : { ...main, h: (main.h + 325) % 360 };
+    : tv?.[1]
+      ? mixOklab(main, tame(tv[1], c), c.mix.cover)
+      : { ...main, h: (main.h + 325) % 360 };
   const light: Oklch = { l: Math.min(0.85, main.l + 0.12), c: main.c, h: (main.h + 25) % 360 };
   const deep: Oklch = { l: main.l * 0.42, c: main.c * 0.8, h: (main.h + 10) % 360 };
   const rgb = (o: Oklch): [number, number, number] => {
