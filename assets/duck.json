@@ -16,5 +16,19 @@
       "onset_ms": 500
     }
   },
-  "builtin_ignore": ["s01-output.exe"]
+  "builtin_ignore": ["s01-output.exe"],
+  "_doc_calls": "T5.18, D-49: a call = one of these apps capturing from the default communications microphone. Temporary list; executable names, lower case.",
+  "call_apps": [
+    "ms-teams.exe",
+    "teams.exe",
+    "discord.exe",
+    "zoom.exe",
+    "telegram.exe",
+    "skype.exe",
+    "whatsapp.exe",
+    "slack.exe",
+    "webex.exe",
+    "ciscocollabhost.exe"
+  ],
+  "call_poll_ms": 1000
 }

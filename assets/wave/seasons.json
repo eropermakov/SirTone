@@ -2,6 +2,12 @@
   "schema": "sirtone.seasons/1",
   "blend_days": 21,
   "weather_cap": 0.3,
+  "_note_nudge": "FR-SEAS-001, Q-1: fresh weather moves the season blend by at most weather_cap (snow in April adds winter, heat in May adds summer); the switch is settings wave.season.weather_nudge. Temporary values.",
+  "weather_nudge": [
+    { "class": "snow", "season": "winter", "amount": 0.3 },
+    { "min_c": 25, "season": "summer", "amount": 0.2 },
+    { "max_c": -10, "season": "winter", "amount": 0.2 }
+  ],
   "_note_aff": "Track seasonality from four sources (docs/14 §10.2): a tag decides; otherwise sound · words · history weighted. Sound counts only with deep analysis (weight × conf), so an unanalysed track is never given a season by library means.",
   "words_weight": 0.3,
   "words_fields": { "title": 1.0, "album": 0.7, "artist": 0.3 },

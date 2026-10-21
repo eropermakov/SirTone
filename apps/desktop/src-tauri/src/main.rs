@@ -7,18 +7,23 @@ mod artists;
 mod autostart;
 mod backgrounds;
 mod beatgrid;
+mod bluetooth;
 mod bootstrap;
+mod context;
 mod continuation;
 mod covers_online;
 mod diagnostics;
 mod duck;
 mod duplicates;
+mod events;
+mod export;
 mod feedback;
 mod focus;
 mod hotkeys;
 mod ipc;
 mod journal;
 mod library;
+mod memory;
 mod net;
 mod night;
 mod perf;
@@ -31,11 +36,13 @@ mod search;
 mod settings_store;
 mod sleep;
 mod storage;
+mod taskbar;
 mod tray;
 mod unknowns;
 mod updates;
 mod viz;
 mod wave;
+mod widget;
 mod window_chrome;
 
 use std::sync::Arc;
@@ -79,6 +86,11 @@ fn main() {
         // Second launch (or Jump List command, «Открыть с помощью») focuses the existing window
         // and plays the files it was given (FR-SHELL-004).
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // A Jump List task (T5.2): the command, without bringing the window up.
+            if let Some(cmd) = taskbar::command(&args) {
+                taskbar::run_command(app, cmd);
+                return;
+            }
             tray::show_main(app);
             if let Some(pb) = app.try_state::<playback::Playback>() {
                 pb.open_paths(app, &playback::paths_from_args(&args));
@@ -125,11 +137,18 @@ fn main() {
         // Native file drop (D-07): paths stay in Rust and go to the library import (FR-IMP-001).
         .on_window_event(|window, event| {
             // Close button / Alt+F4 hide to the tray; music keeps playing (FR-SHELL-003).
+            if let WindowEvent::Moved(p) = event
+                && window.label() == "widget"
+            {
+                widget::moved(window.app_handle(), p.x, p.y);
+                return;
+            }
             if let WindowEvent::CloseRequested { api, .. } = event
                 && window.label() == "main"
             {
                 api.prevent_close();
                 let _ = window.hide();
+                memory::hidden(window.app_handle()); // T5.10: suspend, destroy after 60 s
                 return;
             }
             if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event
@@ -154,6 +173,8 @@ fn main() {
             if let Err(e) = tray::build(app.handle()) {
                 tracing::error!(target: "sirtone::startup", error = %e, "tray failed");
             }
+            taskbar::start(app.handle());
+            widget::apply(app.handle());
             let store = app.state::<Arc<settings_store::SettingsStore>>().inner().clone();
             autostart::sync(app.handle(), &store);
             updates::start(app.handle());
@@ -164,6 +185,8 @@ fn main() {
             app.manage(net_state);
             analysis::start(app.handle().clone());
             duck::start(app.handle().clone());
+            context::start(app.handle(), diagnostics::data_dir());
+            events::start(app.handle(), diagnostics::data_dir());
             app.manage(sleep::Sleep::start(app.handle().clone()));
             app.manage(focus::Focus::start(
                 app.handle().clone(),
@@ -207,6 +230,15 @@ fn main() {
 
     match app {
         Ok(app) => app.run(|handle, event| {
+            // The main window destroyed in the tray (T5.10) is not «Выход»: only an explicit
+            // exit (with a code) ends the app.
+            if let tauri::RunEvent::ExitRequested {
+                api, code: None, ..
+            } = &event
+            {
+                api.prevent_exit();
+                return;
+            }
             if let tauri::RunEvent::Exit = event {
                 // Orderly exit (docs/07 §1): journal and engine stop, hotkeys are released.
                 use tauri_plugin_global_shortcut::GlobalShortcutExt;

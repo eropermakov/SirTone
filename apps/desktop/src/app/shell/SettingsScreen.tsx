@@ -1,10 +1,14 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { CalendarDays, Check, Gauge, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { openExport } from "@/app/export/ExportDialog";
 import { CollectionSummary } from "@/app/library/CollectionScreen";
 import { mb } from "@/app/library/TrackCard";
-import type { SignalInfo } from "@/shared/ipc/bindings";
+import { type AudioDevice, commands, type SignalInfo } from "@/shared/ipc/bindings";
+import { type City, cityLocate, citySearch, useWeather } from "@/shared/ipc/context";
 import { duplicatesCount } from "@/shared/ipc/duplicates";
+import { type EventInfo, eventList } from "@/shared/ipc/events";
 import {
   analysisProgress,
   type NeverEntry,
@@ -138,6 +142,15 @@ export function SettingsScreen({
             {library.root && <ServiceData />}
             {library.root && onShowDuplicates && <DuplicatesLine onShow={onShowDuplicates} />}
             {library.root && <OrganizeLine />}
+            {library.root && (
+              <Button
+                variant="secondary"
+                className="w-fit"
+                onClick={() => openExport({ kind: "all", title: t("export.all") })}
+              >
+                {t("export.allButton")}
+              </Button>
+            )}
             {!library.root && onChooseLibrary && (
               <button
                 type="button"
@@ -170,7 +183,13 @@ export function SettingsScreen({
       <HotkeysSection />
 
       <WaveLearningSection />
+      <PlaceSection />
+
+      <EventsSection />
+
       <VizSection />
+
+      <WidgetSection />
 
       <FxSection />
 
@@ -791,6 +810,101 @@ function SignalLine() {
   );
 }
 
+type OutputPrefs = { device: string; exclusive: boolean; pause_on_device_loss: boolean };
+
+/**
+ * «Устройство вывода» (T5.8, FR-PLAY-012, D-113): the system default (followed when it changes)
+ * or a device by name; «Монопольный режим» (the device for Sirtone alone; refused — shared, the
+ * signal line says so); «Пауза при отключении устройства». Optimistic switches.
+ */
+function OutputPicker() {
+  const { t } = useTranslation("shell");
+  const [o, setO] = useState<OutputPrefs>({
+    device: "default",
+    exclusive: false,
+    pause_on_device_loss: true,
+  });
+  const [devices, setDevices] = useState<AudioDevice[]>([]);
+  const [exclusiveOn, setExclusiveOn] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    let off: (() => void) | undefined;
+    getSettings().then((s) => {
+      const v = ((s.playback ?? {}) as { output?: Partial<OutputPrefs> }).output;
+      if (alive)
+        setO({
+          device: v?.device ?? "default",
+          exclusive: v?.exclusive ?? false,
+          pause_on_device_loss: v?.pause_on_device_loss ?? true,
+        });
+    });
+    if (isTauri()) void commands.audioDevices().then((d) => alive && setDevices(d));
+    getSnapshot().then((s) => alive && setExclusiveOn(s.signal?.exclusive ?? false));
+    onSnapshot((s) => alive && setExclusiveOn(s.signal?.exclusive ?? false)).then((u) => {
+      if (alive) off = u;
+      else u();
+    });
+    return () => {
+      alive = false;
+      off?.();
+    };
+  }, []);
+  const save = (next: OutputPrefs) => {
+    const prev = o;
+    setO(next);
+    patchSettings({ playback: { output: next } }).catch(() => setO(prev));
+  };
+  const known = o.device === "default" || devices.some((d) => d.id === o.device);
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="t-body text-text-primary">{t("settingsSound.output.title")}</div>
+      <fieldset
+        className="m-0 flex flex-wrap gap-2 border-0 p-0"
+        aria-label={t("settingsSound.output.title")}
+        data-testid="output-devices"
+      >
+        <Chip active={o.device === "default"} onClick={() => save({ ...o, device: "default" })}>
+          {t("settingsSound.output.system")}
+        </Chip>
+        {devices.map((d) => (
+          <Chip key={d.id} active={o.device === d.id} onClick={() => save({ ...o, device: d.id })}>
+            {d.name}
+          </Chip>
+        ))}
+      </fieldset>
+      {!known && (
+        <div className="t-caption text-text-secondary">{t("settingsSound.output.missing")}</div>
+      )}
+      <div className="flex items-center gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="t-body text-text-primary">{t("settingsSound.output.exclusive")}</div>
+          <div className="t-caption text-text-secondary">
+            {o.exclusive && !exclusiveOn
+              ? t("settingsSound.output.exclusiveRefused")
+              : t("settingsSound.output.exclusiveHint")}
+          </div>
+        </div>
+        <Switch
+          checked={o.exclusive}
+          label={t("settingsSound.output.exclusive")}
+          onChange={(v) => save({ ...o, exclusive: v })}
+        />
+      </div>
+      <div className="flex items-center gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="t-body text-text-primary">{t("settingsSound.output.pause")}</div>
+          <div className="t-caption text-text-secondary">{t("settingsSound.output.pauseHint")}</div>
+        </div>
+        <Switch
+          checked={o.pause_on_device_loss}
+          label={t("settingsSound.output.pause")}
+          onChange={(v) => save({ ...o, pause_on_device_loss: v })}
+        />
+      </div>
+    </div>
+  );
+}
+
 function SoundSection() {
   const { t } = useTranslation("shell");
   const [n, setN] = useState({ enabled: true, target: -14, album: true });
@@ -822,6 +936,7 @@ function SoundSection() {
       <h2 className="t-shelf-title text-primary-text">{t("settingsSound.title")}</h2>
       <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
         <SignalLine />
+        <OutputPicker />
         <div className="flex items-center gap-4">
           <div className="min-w-0 flex-1">
             <div className="t-body text-text-primary">{t("settingsSound.normalize")}</div>
@@ -1086,6 +1201,7 @@ type Duck = {
   pct: number;
   sensitivity: (typeof DUCK_SENS)[number];
   ignore: string[];
+  pauseOnCall: boolean;
 };
 const pctToDb = (pct: number) => (pct >= 100 ? -80 : Math.max(-80, 20 * Math.log10(1 - pct / 100)));
 const dbToPct = (db: number) => Math.round((1 - 10 ** (db / 20)) * 100);
@@ -1102,6 +1218,7 @@ function DuckSection() {
     pct: 75,
     sensitivity: "medium",
     ignore: [],
+    pauseOnCall: false,
   });
   const [adding, setAdding] = useState("");
   useEffect(() => {
@@ -1114,6 +1231,7 @@ function DuckSection() {
           ? (d?.sensitivity as Duck["sensitivity"])
           : "medium",
         ignore: Array.isArray(d?.ignore) ? (d.ignore as string[]) : [],
+        pauseOnCall: d?.pause_on_call === true,
       });
     });
   }, []);
@@ -1127,6 +1245,7 @@ function DuckSection() {
           amount_db: pctToDb(next.pct),
           sensitivity: next.sensitivity,
           ignore: next.ignore,
+          pause_on_call: next.pauseOnCall,
         },
       },
     }).catch(() => setDuck(prev));
@@ -1151,6 +1270,17 @@ function DuckSection() {
             checked={duck.enabled}
             label={t("settingsDuck.enable")}
             onChange={(v) => save({ ...duck, enabled: v })}
+          />
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsDuck.pauseOnCall")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsDuck.pauseOnCallHint")}</div>
+          </div>
+          <Switch
+            checked={duck.pauseOnCall}
+            label={t("settingsDuck.pauseOnCall")}
+            onChange={(v) => save({ ...duck, pauseOnCall: v })}
           />
         </div>
         {duck.enabled && (
@@ -1379,6 +1509,255 @@ function VizSection() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * «Место и погода» (T5.5, FR-CTX-001/002/004): the city by name (Open-Meteo geocoder) or
+ * «Определить автоматически» (the Windows location service, only on this press, D-54); the
+ * weather line. Without a city — the daypart by the clock and no weather (works offline).
+ */
+function PlaceSection() {
+  const { t } = useTranslation("shell");
+  const weather = useWeather();
+  const [city, setCity] = useState<City | null>(null);
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<City[]>([]);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    getSettings().then((s) => {
+      const c = (s.context as { city?: City | null } | undefined)?.city ?? null;
+      setCity(c);
+    });
+    const id = window.setInterval(() => tick((n) => n + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+  useEffect(() => {
+    const needle = q.trim();
+    if (needle.length < 2) {
+      setHits([]);
+      return;
+    }
+    const id = window.setTimeout(() => {
+      citySearch(needle)
+        .then((r) => {
+          setHits(r);
+          setProblem(r.length === 0 ? "none" : null);
+        })
+        .catch(() => setProblem("offline"));
+    }, 300);
+    return () => window.clearTimeout(id);
+  }, [q]);
+  const choose = (c: City | null) => {
+    const prev = city;
+    setCity(c);
+    setQ("");
+    setHits([]);
+    setProblem(null);
+    patchSettings({ context: { city: c } }).catch(() => setCity(prev));
+  };
+  const minutes = weather.fetchedAt ? Math.round((Date.now() - weather.fetchedAt) / 60_000) : 0;
+  const cityName = city ? city.name || t("settingsPlace.here") : t("settingsPlace.none");
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsPlace.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary" data-testid="place-city">
+              {cityName}
+              {city?.admin ? `, ${city.admin}` : ""}
+              {city?.country ? `, ${city.country}` : ""}
+            </div>
+            <div className="t-caption text-text-secondary">
+              {city ? t("settingsPlace.hintSet") : t("settingsPlace.hintNone")}
+            </div>
+          </div>
+          {city && (
+            <Button variant="ghost" onClick={() => choose(null)}>
+              {t("settingsPlace.clear")}
+            </Button>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={t("settingsPlace.search")}
+            aria-label={t("settingsPlace.search")}
+            className="t-body h-(--button-height) min-w-0 flex-1 rounded-full border border-border bg-bg-layer px-4 text-text-primary"
+          />
+          <Button
+            variant="secondary"
+            onClick={() =>
+              void cityLocate()
+                .then((c) => choose(c))
+                .catch(() => setProblem("denied"))
+            }
+          >
+            {t("settingsPlace.auto")}
+          </Button>
+        </div>
+        {hits.length > 0 && (
+          <ul className="m-0 flex list-none flex-col p-0" aria-label={t("settingsPlace.search")}>
+            {hits.map((h) => (
+              <li key={`${h.lat},${h.lon}`}>
+                <button
+                  type="button"
+                  onClick={() => choose(h)}
+                  className="t-body w-full rounded-(--radius-md) px-3 py-2 text-left text-text-primary hover:bg-bg-hover"
+                >
+                  {h.name}
+                  <span className="t-caption text-text-secondary">
+                    {[h.admin, h.country].filter(Boolean).join(", ") &&
+                      ` · ${[h.admin, h.country].filter(Boolean).join(", ")}`}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {problem && (
+          <div className="t-caption text-text-secondary">
+            {t(`settingsPlace.problem.${problem}`)}
+          </div>
+        )}
+        {city && (
+          <div className="t-caption text-text-secondary" data-testid="place-weather">
+            {weather.class
+              ? t("settingsPlace.weather", {
+                  what: t(`settingsPlace.class.${weather.class}`),
+                  temp: Math.round(weather.tempC ?? 0),
+                  minutes,
+                })
+              : t("settingsPlace.noWeather")}
+          </div>
+        )}
+        <SeasonNudgeSwitch />
+        <ActivitySwitch />
+        <div className="t-caption text-text-tertiary">{t("settingsPlace.credit")}</div>
+      </div>
+    </div>
+  );
+}
+
+/** «Занятие по активному приложению» (T5.6, FR-CTX-003): opt-in; only the program's name. */
+function ActivitySwitch() {
+  const { t } = useTranslation("shell");
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    getSettings().then((s) => {
+      const c = s.context as { activity_detection?: boolean } | undefined;
+      setOn(c?.activity_detection ?? false);
+    });
+  }, []);
+  const save = (v: boolean) => {
+    setOn(v);
+    patchSettings({ context: { activity_detection: v } }).catch(() => setOn(!v));
+  };
+  return (
+    <div className="flex items-center gap-4">
+      <div className="min-w-0 flex-1">
+        <div className="t-body text-text-primary">{t("settingsPlace.activity")}</div>
+        <div className="t-caption text-text-secondary">{t("settingsPlace.activityHint")}</div>
+      </div>
+      <Switch checked={on} label={t("settingsPlace.activity")} onChange={save} />
+    </div>
+  );
+}
+
+type WidgetPrefs = { enabled: boolean; on_top: boolean; scale: number };
+
+/** «Виджет на рабочем столе» (T5.1, FR-WIN-003): on/off, «Поверх окон», size 75–150 %. */
+function WidgetSection() {
+  const { t } = useTranslation("shell");
+  const [w, setW] = useState<WidgetPrefs>({ enabled: false, on_top: false, scale: 1 });
+  useEffect(() => {
+    getSettings().then((s) => {
+      const v = (s.widget ?? {}) as Partial<WidgetPrefs>;
+      setW({ enabled: v.enabled ?? false, on_top: v.on_top ?? false, scale: v.scale ?? 1 });
+    });
+  }, []);
+  const save = (next: WidgetPrefs) => {
+    const prev = w;
+    setW(next);
+    patchSettings({ widget: next }).catch(() => setW(prev));
+  };
+  const pct = Math.round(w.scale * 100);
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsWidget.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsWidget.enabled")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsWidget.enabledHint")}</div>
+          </div>
+          <Switch
+            checked={w.enabled}
+            label={t("settingsWidget.enabled")}
+            onChange={(v) => save({ ...w, enabled: v })}
+          />
+        </div>
+        {w.enabled && (
+          <>
+            <div className="flex items-center gap-4">
+              <div className="min-w-0 flex-1">
+                <div className="t-body text-text-primary">{t("settingsWidget.onTop")}</div>
+                <div className="t-caption text-text-secondary">{t("settingsWidget.onTopHint")}</div>
+              </div>
+              <Switch
+                checked={w.on_top}
+                label={t("settingsWidget.onTop")}
+                onChange={(v) => save({ ...w, on_top: v })}
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="t-body w-40 shrink-0 text-text-primary">
+                {t("settingsWidget.scale")}
+              </span>
+              <Slider
+                value={(w.scale - 0.75) / 0.75}
+                onCommit={(v) => save({ ...w, scale: Math.round((0.75 + v * 0.75) * 20) / 20 })}
+                label={t("settingsWidget.scale")}
+                valueText={t("settingsWidget.pct", { value: pct })}
+                className="flex-1"
+              />
+              <span className="t-caption w-12 shrink-0 text-right text-text-secondary">
+                {t("settingsWidget.pct", { value: pct })}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** «Учитывать погоду в сезоне» (FR-SEAS-001, Q-1): snow in April adds winter, ≤ 0.3. */
+function SeasonNudgeSwitch() {
+  const { t } = useTranslation("shell");
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    getSettings().then((s) => {
+      const w = s.wave as { season?: { weather_nudge?: boolean } } | undefined;
+      setOn(w?.season?.weather_nudge ?? true);
+    });
+  }, []);
+  const save = (v: boolean) => {
+    setOn(v);
+    patchSettings({ wave: { season: { weather_nudge: v } } }).catch(() => setOn(!v));
+  };
+  return (
+    <div className="flex items-center gap-4">
+      <div className="min-w-0 flex-1">
+        <div className="t-body text-text-primary">{t("settingsPlace.nudge")}</div>
+        <div className="t-caption text-text-secondary">{t("settingsPlace.nudgeHint")}</div>
+      </div>
+      <Switch checked={on} label={t("settingsPlace.nudge")} onChange={save} />
     </div>
   );
 }
@@ -1622,6 +2001,112 @@ function FxSection() {
             onChange={(v) => save({ ...fx, static_when_weak: v })}
           />
         </div>
+      </div>
+    </div>
+  );
+}
+
+type EventsPrefs = {
+  suggest: boolean;
+  auto_play: boolean;
+  religious: boolean;
+  micro: { weather: boolean; weekly: boolean; astro: boolean };
+};
+const MICRO_GROUPS = ["weather", "weekly", "astro"] as const;
+const EVENT_GROUPS = [
+  "secular",
+  "folk",
+  "religious",
+  "micro_weather",
+  "micro_weekly",
+  "micro_astro",
+] as const;
+
+/** «События» (T5.14, FR-EVT-002/004): cards, the auto mode, groups and every event's switch;
+ * an event switched off by three declines or «Никогда» says so. */
+function EventsSection() {
+  const { t } = useTranslation("shell");
+  const [ev, setEv] = useState<EventsPrefs | null>(null);
+  const [list, setList] = useState<EventInfo[]>([]);
+  const reload = () => {
+    void eventList().then(setList);
+  };
+  useEffect(() => {
+    getSettings().then((s) => {
+      const e = (s.events ?? {}) as Partial<EventsPrefs>;
+      setEv({
+        suggest: e.suggest ?? true,
+        auto_play: e.auto_play ?? false,
+        religious: e.religious ?? true,
+        micro: { weather: true, weekly: false, astro: true, ...(e.micro ?? {}) },
+      });
+    });
+    void eventList().then(setList);
+  }, []);
+  if (!ev) return null;
+  const save = (next: EventsPrefs) => {
+    const prev = ev;
+    setEv(next);
+    patchSettings({ events: next })
+      .then(reload)
+      .catch(() => setEv(prev));
+  };
+  const toggleOne = (id: string, on: boolean) => {
+    setList((l) => l.map((e) => (e.id === id ? { ...e, enabled: on, offReason: null } : e)));
+    patchSettings({ events: { enabled: { [id]: on }, off_reason: { [id]: null } } })
+      .then(reload)
+      .catch(reload);
+  };
+  const row = (label: string, hint: string | null, checked: boolean, on: (v: boolean) => void) => (
+    <div className="flex items-center gap-4">
+      <div className="min-w-0 flex-1">
+        <div className="t-body text-text-primary">{label}</div>
+        {hint && <div className="t-caption text-text-secondary">{hint}</div>}
+      </div>
+      <Switch checked={checked} label={label} onChange={on} />
+    </div>
+  );
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsEvents.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        {row(t("settingsEvents.suggest"), t("settingsEvents.suggestHint"), ev.suggest, (v) =>
+          save({ ...ev, suggest: v }),
+        )}
+        {row(t("settingsEvents.auto"), t("settingsEvents.autoHint"), ev.auto_play, (v) =>
+          save({ ...ev, auto_play: v }),
+        )}
+        {row(t("settingsEvents.religious"), null, ev.religious, (v) =>
+          save({ ...ev, religious: v }),
+        )}
+        {MICRO_GROUPS.map((g) => (
+          <div key={g}>
+            {row(t(`settingsEvents.micro.${g}`), null, ev.micro[g], (v) =>
+              save({ ...ev, micro: { ...ev.micro, [g]: v } }),
+            )}
+          </div>
+        ))}
+        {EVENT_GROUPS.map((g) => {
+          const items = list.filter((e) => e.group === g);
+          if (items.length === 0) return null;
+          return (
+            <div key={g} className="flex flex-col gap-3 border-t border-border pt-4">
+              <div className="t-group-label text-text-tertiary">
+                {t(`settingsEvents.group.${g}`)}
+              </div>
+              {items.map((e) => (
+                <div key={e.id} data-testid={`event-${e.id}`}>
+                  {row(
+                    t(`events.name.${e.id}`),
+                    e.offReason ? t(`settingsEvents.off.${e.offReason}`) : null,
+                    e.enabled,
+                    (v) => toggleOne(e.id, v),
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

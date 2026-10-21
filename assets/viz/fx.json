@@ -12,6 +12,8 @@
   "milkdrop_halve_max_level": 3,
   "static_count": 300,
   "season_density": 0.5,
+  "_note_weather": "«По реальной погоде» (T5.15): snow and rain fall as dense as the weather says (0.4…1 of the budget by intensity), the wind drifts them up to weather_wind (the shader's wind) to the side it blows.",
+  "weather_wind": 1.6,
   "transition_ms": 2500,
   "breath": {
     "swirl": 0.012,

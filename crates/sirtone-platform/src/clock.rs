@@ -43,11 +43,27 @@ pub fn offset_at(utc_ms: i64) -> Option<i32> {
     }
 }
 
+/// A test seam (T5.13, AT-13): `SIRTONE_SMOKE_SHIFT_MS` moves the app's clock — only together
+/// with `SIRTONE_DATA_DIR` (an isolated test instance), read once.
+fn shift_ms() -> i64 {
+    static SHIFT: std::sync::OnceLock<i64> = std::sync::OnceLock::new();
+    *SHIFT.get_or_init(|| {
+        if std::env::var_os("SIRTONE_DATA_DIR").is_none() {
+            return 0;
+        }
+        std::env::var("SIRTONE_SMOKE_SHIFT_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0)
+    })
+}
+
 impl Clock for SystemClock {
     fn now_utc_ms(&self) -> i64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_millis() as i64)
+            + shift_ms()
     }
     fn local_offset_min(&self, utc_ms: i64) -> i32 {
         offset_at(utc_ms).unwrap_or(0)

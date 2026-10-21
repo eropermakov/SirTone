@@ -26,6 +26,7 @@ pub struct Settings {
     pub sfx: Sfx,
     pub hotkeys: Hotkeys,
     pub window: WindowPrefs,
+    pub widget: WidgetPrefs,
     pub library: LibraryPrefs,
     pub network: Network,
     pub context: ContextPrefs,
@@ -50,6 +51,7 @@ impl Default for Settings {
             sfx: Sfx::default(),
             hotkeys: Hotkeys::default(),
             window: WindowPrefs::default(),
+            widget: WidgetPrefs::default(),
             library: LibraryPrefs::default(),
             network: Network::default(),
             context: ContextPrefs::default(),
@@ -324,6 +326,8 @@ impl Default for Fx {
 pub struct Wave {
     pub learning: bool,
     pub novelty: u8,
+    /// «Непохожесть» apart from «неслушанность» (expert, FR-NOV-003); `None` — one slider.
+    pub novelty_distance: Option<u8>,
     pub repeat_window_h: u32,
     pub artist_spacing: u32,
     pub season: Value,
@@ -331,6 +335,8 @@ pub struct Wave {
     /// «Настроить волну» (FR-WAVE-003): the saved setup «Моя волна» plays with (the UI's
     /// `WaveQueryIpc`; `wave_start` checks its keys); `null` — none.
     pub setup: Value,
+    /// «Мои волны» (T5.17, FR-WENG-008): `[{id, name, query}]`, ≤ 20.
+    pub mine: Value,
 }
 
 impl Default for Wave {
@@ -338,11 +344,13 @@ impl Default for Wave {
         Self {
             learning: true,
             novelty: 50,
+            novelty_distance: None,
             repeat_window_h: 24,
             artist_spacing: 5,
             season: serde_json::json!({ "mode": "auto", "weather_nudge": true, "blend_days": 21 }),
             influence: serde_json::json!({ "season": 1.0, "context": 1.0, "events": 1.0 }),
             setup: Value::Null,
+            mine: Value::Array(Vec::new()),
         }
     }
 }
@@ -354,6 +362,10 @@ pub struct Events {
     pub auto_play: bool,
     pub religious: bool,
     pub micro: Value,
+    /// Per event (T5.13, FR-EVT-002): on/off over its default.
+    pub enabled: BTreeMap<String, bool>,
+    /// Why an event went off for the person: `declined_3x` · `forever` (FR-EVT-004).
+    pub off_reason: BTreeMap<String, Option<String>>,
 }
 
 impl Default for Events {
@@ -363,6 +375,8 @@ impl Default for Events {
             auto_play: false,
             religious: true,
             micro: serde_json::json!({ "weather": true, "weekly": false, "astro": true }),
+            enabled: BTreeMap::new(),
+            off_reason: BTreeMap::new(),
         }
     }
 }
@@ -458,6 +472,32 @@ impl Default for Hotkeys {
     }
 }
 
+/// The desktop widget (T5.1, FR-WIN-003).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WidgetPrefs {
+    pub enabled: bool,
+    /// «Поверх окон» (option C); off — under every window (default).
+    pub on_top: bool,
+    /// 0.75…1.5.
+    pub scale: f32,
+    /// The remembered place (physical px of the virtual screen); `None` — lower right.
+    pub x: Option<i32>,
+    pub y: Option<i32>,
+}
+
+impl Default for WidgetPrefs {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            on_top: false,
+            scale: 1.0,
+            x: None,
+            y: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WindowPrefs {
@@ -528,6 +568,9 @@ impl Default for Geo {
 pub struct ContextPrefs {
     pub auto_atmosphere: bool,
     pub activity_detection: bool,
+    /// The chosen city (T5.5, FR-CTX-002): `{name, country, admin, lat, lon}`; `null` — none
+    /// (the daypart by the clock, no weather).
+    pub city: Value,
 }
 
 impl Default for ContextPrefs {
@@ -535,6 +578,7 @@ impl Default for ContextPrefs {
         Self {
             auto_atmosphere: true,
             activity_detection: false,
+            city: Value::Null,
         }
     }
 }
@@ -673,6 +717,36 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
             "sleep.fade_min must be 1..=30, sleep.final_s 5..=120".into(),
         ));
     }
+    if !s.context.city.is_null() {
+        let c = &s.context.city;
+        let ok = c["lat"]
+            .as_f64()
+            .is_some_and(|v| (-90.0..=90.0).contains(&v))
+            && c["lon"]
+                .as_f64()
+                .is_some_and(|v| (-180.0..=180.0).contains(&v))
+            && c["name"].is_string();
+        if !ok {
+            return Err(SettingsError::Invalid(
+                "context.city: {name, lat −90…90, lon −180…180}".into(),
+            ));
+        }
+    }
+    let id_ok = |id: &String| {
+        !id.is_empty() && id.len() <= 40 && id.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+    };
+    if !s.events.enabled.keys().all(id_ok)
+        || !s.events.off_reason.keys().all(id_ok)
+        || s.events
+            .off_reason
+            .values()
+            .flatten()
+            .any(|r| r != "declined_3x" && r != "forever")
+    {
+        return Err(SettingsError::Invalid(
+            "events: event ids [a-z_], off_reason declined_3x | forever".into(),
+        ));
+    }
     let fo = &s.focus;
     if !(5..=180).contains(&fo.work_min)
         || !(1..=60).contains(&fo.break_min)
@@ -716,9 +790,41 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
             "viz.milkdrop_lock: a preset name".into(),
         ));
     }
-    if s.wave.novelty > 100 {
+    if s.playback.output.device.is_empty() || s.playback.output.device.len() > 512 {
         return Err(SettingsError::Invalid(
-            "wave.novelty must be 0..=100".into(),
+            "playback.output.device: \"default\" or an endpoint id".into(),
+        ));
+    }
+    if !(0.75..=1.5).contains(&s.widget.scale) {
+        return Err(SettingsError::Invalid(
+            "widget.scale must be 0.75..=1.5".into(),
+        ));
+    }
+    let mine_ok = match &s.wave.mine {
+        Value::Null => true,
+        Value::Array(a) => {
+            a.len() <= 20
+                && a.iter().all(|w| {
+                    let name = w["name"].as_str().map(str::trim).unwrap_or("");
+                    let id = w["id"].as_str().unwrap_or("");
+                    !name.is_empty()
+                        && name.chars().count() <= 40
+                        && !id.is_empty()
+                        && id.len() <= 40
+                        && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+                        && w["query"].is_object()
+                })
+        }
+        _ => false,
+    };
+    if !mine_ok {
+        return Err(SettingsError::Invalid(
+            "wave.mine: ≤ 20 of {id [a-z0-9-], name 1..40, query {}}".into(),
+        ));
+    }
+    if s.wave.novelty > 100 || s.wave.novelty_distance.is_some_and(|d| d > 100) {
+        return Err(SettingsError::Invalid(
+            "wave.novelty and wave.novelty_distance must be 0..=100".into(),
         ));
     }
     Ok(())

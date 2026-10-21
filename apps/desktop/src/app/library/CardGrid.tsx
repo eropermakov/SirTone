@@ -1,9 +1,18 @@
 import { useDroppable } from "@dnd-kit/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Combine, ListEnd, ListStart, MoreHorizontal, Play, Trash2 } from "lucide-react";
+import {
+  Combine,
+  FolderOutput,
+  ListEnd,
+  ListStart,
+  MoreHorizontal,
+  Play,
+  Trash2,
+} from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { dropId } from "@/app/dnd/dnd";
+import { openExport } from "@/app/export/ExportDialog";
 import { cn } from "@/shared/lib/utils";
 import { Cover } from "@/shared/ui/Cover";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
@@ -89,6 +98,14 @@ export function CardGrid({
     { id: "play", label: t("collection.play"), icon: Play, onSelect: () => onPlay(c) },
     { id: "next", label: t("trackMenu.playNext"), icon: ListStart, onSelect: () => onPlayNext(c) },
     { id: "end", label: t("trackMenu.addToQueue"), icon: ListEnd, onSelect: () => onAppend(c) },
+    { separator: true },
+    {
+      id: "export",
+      label: t("export.menu"),
+      icon: FolderOutput,
+      onSelect: () =>
+        openExport({ kind: kind === "albums" ? "album" : "artist", id: c.id, title: c.title }),
+    },
     ...(onMerge
       ? ([
           { separator: true },

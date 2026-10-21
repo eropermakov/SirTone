@@ -1,0 +1,43 @@
+{
+  "schema": "sirtone.wave-profile/1",
+  "_note": "«Волна события» (FR-EVT-003, docs/14 §11.2, supplement §29): weights from the owner's table (§5.2). event(t) = max(direct, 0.5·tone); with ≥ 30 fitting tracks the rest stay out; fewer than 5 direct matches — «атмосферная»: by tone, the matches spread through the queue. Learning full: an event wave is chosen by the person, like the seasonal one (D-109).",
+  "id": "event",
+  "name_key": "wave.profile.event",
+  "weights": {
+    "taste": 0.25,
+    "session": 0.025,
+    "context": 0.05,
+    "season": 0.1,
+    "event": 0.55,
+    "curve": 0.0,
+    "novelty": 0.0,
+    "universal": 0.0,
+    "filters": 0.025
+  },
+  "novelty": {
+    "mode": "slider"
+  },
+  "learning_policy": "full",
+  "sequencing": {
+    "artist_spacing": 5,
+    "repeat_window_h": 24,
+    "max_energy_jump": 0.35,
+    "transition_bonus": true
+  },
+  "relax_order": [
+    "filters.atmosphere",
+    "filters.activity",
+    "filters.character",
+    "filters.mood",
+    "tempo",
+    "energy",
+    "language",
+    "frequency"
+  ],
+  "event_rules": {
+    "fit_min": 0.25,
+    "fit_enough": 30,
+    "atmospheric_below": 5,
+    "spread": 5
+  }
+}

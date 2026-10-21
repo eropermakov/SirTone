@@ -5,9 +5,10 @@
 use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::{
-    analysis, artists, autostart, backgrounds, bootstrap, continuation, duplicates, feedback,
-    focus, hotkeys, library, net, night, perf, playback, playlists, presets, search,
-    settings_store, sleep, storage, unknowns, updates, viz, wave, window_chrome,
+    analysis, artists, autostart, backgrounds, bluetooth, bootstrap, context, continuation,
+    duplicates, events, export, feedback, focus, hotkeys, library, net, night, perf, playback,
+    playlists, presets, search, settings_store, sleep, storage, unknowns, updates, viz, wave,
+    widget, window_chrome,
 };
 
 /// Free-form JSON across IPC, exported as TS `unknown`. specta inlines `serde_json::Value`
@@ -122,7 +123,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             wave::wave_retune,
             wave::wave_season_card,
             wave::theme_state,
-            wave::fx_season_effect,
+            wave::fx_sources,
             sleep::sleep_start,
             sleep::sleep_cancel,
             sleep::sleep_extend,
@@ -134,6 +135,27 @@ pub fn builder() -> Builder<tauri::Wry> {
             focus::focus_pause,
             focus::focus_skip,
             focus::focus_status,
+            context::city_search,
+            context::city_locate,
+            context::weather_get,
+            bluetooth::bt_devices,
+            bluetooth::bt_set,
+            bluetooth::bt_open_settings,
+            widget::widget_state,
+            widget::widget_texts,
+            widget::widget_open_main,
+            export::export_start,
+            export::export_cancel,
+            playback::audio_devices,
+            wave::wave_context_name,
+            wave::wave_composition,
+            wave::wave_set_off,
+            wave::wave_query_count,
+            continuation::wave_by,
+            events::event_offer,
+            events::event_answer,
+            events::event_list,
+            events::event_refresh,
             analysis::analysis_progress,
             library::library_organize,
             net::net_status,
@@ -164,7 +186,11 @@ pub fn builder() -> Builder<tauri::Wry> {
             backgrounds::VideosAdded,
             library::OrganizeSuggested,
             sleep::SleepStatus,
-            focus::FocusStatus
+            focus::FocusStatus,
+            context::WeatherNow,
+            events::EventOffer,
+            export::ExportProgress,
+            wave::FocusSuggest
         ])
 }
 

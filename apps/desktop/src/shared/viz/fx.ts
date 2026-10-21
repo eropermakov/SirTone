@@ -12,7 +12,17 @@ import { FlashClock, FX, type FxConfig, type FxPlan, fxColors } from "./fxPlan";
  * `FlashClock` (≤ 1 in 10 s, smooth).
  */
 
-export const fxStats = { drawn: 0, fps: 0, count: 0, type: "", lost: 0, still: 0, error: "" };
+export const fxStats = {
+  drawn: 0,
+  fps: 0,
+  count: 0,
+  type: "",
+  lost: 0,
+  still: 0,
+  error: "",
+  /** The real weather's wind in the plan (`null` — the type's own). */
+  wind: null as number | null,
+};
 
 const MAX = 5000;
 const SHAPES = { dot: 0, streak: 1, leaf: 2, glow: 3, noise: 0 } as const;
@@ -335,6 +345,7 @@ export class FxEngine {
     const p = this.plan;
     fxStats.type = p?.type ?? "";
     fxStats.count = p?.count ?? 0;
+    fxStats.wind = p?.wind ?? null;
     this.flash = p?.flash ? new FlashClock(performance.now()) : null;
     if (p) {
       const cs = fxColors(p.type, this.c).slice(0, 3);
@@ -511,7 +522,7 @@ export class FxEngine {
       gl.uniform2f(u.u_res ?? null, this.canvas.width, this.canvas.height);
       gl.uniform1f(u.u_time ?? null, this.time * (t.speed ?? 0.02) * 10);
       gl.uniform1f(u.u_scale ?? null, t.scale ?? 2);
-      gl.uniform1f(u.u_wind ?? null, t.wind * 0.1);
+      gl.uniform1f(u.u_wind ?? null, (plan.wind ?? t.wind) * 0.1);
       gl.uniform1f(u.u_alpha ?? null, t.alpha);
       gl.uniform1f(u.u_shadow ?? null, t.shadow ? 1 : 0);
       gl.uniform3fv(u.u_col ?? null, this.colors.subarray(0, 3));
@@ -533,7 +544,7 @@ export class FxEngine {
       gl.uniform1f(u.u_sway ?? null, t.sway ?? 0);
       gl.uniform2fv(u.u_swayHz ?? null, t.sway_hz ?? [0, 0]);
       gl.uniform1f(u.u_spin ?? null, t.spin ?? 0);
-      gl.uniform1f(u.u_wind ?? null, t.wind);
+      gl.uniform1f(u.u_wind ?? null, plan.wind ?? t.wind);
       gl.uniform1f(u.u_planes ?? null, plan.planes);
       gl.uniform1f(u.u_swirl ?? null, still ? 0 : this.c.breath.swirl * this.swirl);
       gl.uniform1i(u.u_shape ?? null, shape);

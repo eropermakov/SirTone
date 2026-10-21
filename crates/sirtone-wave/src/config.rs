@@ -11,6 +11,23 @@ pub struct SeasonsConfig {
     pub blend_days: i32,
     /// Weather may move season weights by at most this much.
     pub weather_cap: f32,
+    /// Which weather moves which season (FR-SEAS-001).
+    #[serde(default)]
+    pub weather_nudge: Vec<NudgeRule>,
+}
+
+/// One weather → season rule: a weather class, or a temperature at/above `min_c` or at/below
+/// `max_c`, adds `amount` to `season` (`winter` · `spring` · `summer` · `autumn`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct NudgeRule {
+    #[serde(default)]
+    pub class: Option<String>,
+    #[serde(default)]
+    pub min_c: Option<f32>,
+    #[serde(default)]
+    pub max_c: Option<f32>,
+    pub season: String,
+    pub amount: f32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -23,12 +40,39 @@ struct DaypartFrom {
 struct ContextJson {
     schema: String,
     daypart_by_clock: Vec<DaypartFrom>,
+    daypart_by_sun: BySunJson,
+    #[serde(default)]
+    activity_apps: std::collections::BTreeMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct BySunJson {
+    dawn_before_rise: u16,
+    morning_after_rise: u16,
+    day_from: String,
+    evening_before_set: u16,
+    dusk_before_set: u16,
+    night_after_set: u16,
+}
+
+/// Daypart boundaries around the sun (minutes), `context.json` `daypart_by_sun`.
+#[derive(Debug, Clone, Copy)]
+pub struct BySun {
+    pub dawn_before_rise: u16,
+    pub morning_after_rise: u16,
+    pub day_from: u16,
+    pub evening_before_set: u16,
+    pub dusk_before_set: u16,
+    pub night_after_set: u16,
 }
 
 /// Daypart boundaries by the clock: `(start minute, daypart)`, ascending.
 #[derive(Debug, Clone)]
 pub struct ContextConfig {
     pub daypart_by_clock: Vec<(u16, Daypart)>,
+    pub by_sun: BySun,
+    /// «Занятие» by the foreground application (FR-CTX-003): activity key → exe names.
+    pub activity_apps: Vec<(String, Vec<String>)>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -82,6 +126,15 @@ impl Default for SeasonsConfig {
 }
 
 impl ContextConfig {
+    /// The activity an application stands for (`code.exe` → `work`); `None` — says nothing.
+    pub fn activity_of(&self, exe: &str) -> Option<&str> {
+        let exe = exe.to_lowercase();
+        self.activity_apps
+            .iter()
+            .find(|(_, apps)| apps.contains(&exe))
+            .map(|(k, _)| k.as_str())
+    }
+
     pub fn from_json(s: &str) -> Result<Self, ConfigError> {
         let c: ContextJson = serde_json::from_str(s)?;
         if c.schema != "sirtone.context/1" {
@@ -97,9 +150,52 @@ impl ContextConfig {
         if v.is_empty() || v.windows(2).any(|w| w[0].0 >= w[1].0) {
             return Err(ConfigError::Invalid("daypart_by_clock must ascend".into()));
         }
+        let s = &c.daypart_by_sun;
+        let Some(day_from) = hhmm(&s.day_from) else {
+            return Err(ConfigError::Invalid(format!("day_from {}", s.day_from)));
+        };
         Ok(Self {
+            activity_apps: c
+                .activity_apps
+                .iter()
+                .map(|(k, v)| (k.clone(), v.iter().map(|e| e.to_lowercase()).collect()))
+                .collect(),
             daypart_by_clock: v,
+            by_sun: BySun {
+                dawn_before_rise: s.dawn_before_rise,
+                morning_after_rise: s.morning_after_rise,
+                day_from,
+                evening_before_set: s.evening_before_set,
+                dusk_before_set: s.dusk_before_set,
+                night_after_set: s.night_after_set,
+            },
         })
+    }
+
+    /// The daypart by the sun (FR-CTX-001): `rise`/`set` — local minutes of today's sunrise and
+    /// sunset. Boundaries keep their order even on short winter days (each clamped after the last).
+    pub fn daypart_by_sun(&self, minute: u16, rise: f64, set: f64) -> Daypart {
+        let b = &self.by_sun;
+        let m = f64::from(minute);
+        let dawn = rise - f64::from(b.dawn_before_rise);
+        let morning = (rise + f64::from(b.morning_after_rise)).max(dawn);
+        let evening = (set - f64::from(b.evening_before_set)).max(morning);
+        let day = f64::from(b.day_from).clamp(morning, evening);
+        let dusk = (set - f64::from(b.dusk_before_set)).max(evening);
+        let night = (set + f64::from(b.night_after_set)).max(dusk);
+        if m < dawn || m >= night {
+            Daypart::Night
+        } else if m < morning {
+            Daypart::Dawn
+        } else if m < day {
+            Daypart::Morning
+        } else if m < evening {
+            Daypart::Day
+        } else if m < dusk {
+            Daypart::Evening
+        } else {
+            Daypart::Dusk
+        }
     }
 
     /// The daypart at `minute` past local midnight; before the first boundary the last one
@@ -124,6 +220,14 @@ impl Default for ContextConfig {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn an_application_stands_for_an_activity() {
+        let c = ContextConfig::default();
+        assert_eq!(c.activity_of("Code.exe"), Some("work"));
+        assert_eq!(c.activity_of("chrome.exe"), None);
+    }
+
     use super::*;
 
     #[test]

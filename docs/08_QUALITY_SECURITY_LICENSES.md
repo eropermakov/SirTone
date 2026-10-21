@@ -124,6 +124,7 @@
 | Назначение | Крейт (версия) | Лицензия | Решение | Заметка |
 |---|---|---|---|---|
 | Оболочка | `tauri` 2.12.4 · `tauri-build` 2.7.3 | Apache-2.0 OR MIT | ✅ | есть 3.0.0-alpha — не берём |
+| Оболочка: усыпление WebView в трее (T5.10) | `webview2-com` 0.39.1 | MIT | ✅ | уже в дереве через `wry`; прямая зависимость — для `ICoreWebView2_3::TrySuspend` и `SetIsVisible` (D-113), `cargo deny` зелёный |
 | Плагины | `global-shortcut` 2.4.1 · `autostart` 2.7.0 · `updater` 2.14.0 · `single-instance` 2.5.4 · `dialog` 2.8.3 · `opener` 2.7.2 · `process` 2.4.0 · `os` 2.4.0 | Apache-2.0 OR MIT | ✅ | `window-state` 2.5.0, `store`, `notification`, `fs` — **не нужны** |
 | Типы IPC | `tauri-specta` + `specta` 2.0.0-rc.25 (MIT) | MIT | 🧪 ADR D-09 | запасной `ts-rs` 12.0.1 |
 | Шапка окна | `tauri-plugin-decorum` 1.1.1 | MIT | 🧪 опционально | версия на crates.io 2024-09, репозиторий активен |

@@ -902,3 +902,63 @@ fn focus_waves_keep_even_energy_and_pack_to_the_boundary() {
     let mut e = Engine::new(cfg, &calm, &synth::history(&calm, NOW), NOW, 8);
     assert_eq!(e.next(&ctx(Daypart::Day), &[], 0.3, 2, NOW).len(), 2);
 }
+
+#[test]
+fn event_waves_keep_the_tone_and_spread_the_few_direct_matches() {
+    use sirtone_wave::events::{EventsConfig, Matcher};
+
+    let events = EventsConfig::default();
+    // AT-13: Halloween — ≥ 70 % of the queue in its tone when the library has enough.
+    let tracks = synth::library(3_000, NOW, 1.0, 51);
+    let history = synth::history(&tracks, NOW);
+    let halloween = events.get("halloween").expect("halloween");
+    let m = Matcher::new(halloween);
+    let cfg = Config::builtin_profile("event").expect("assets");
+    assert_eq!(cfg.profile.id, "event");
+    let mut e = Engine::new(cfg, &tracks, &history, NOW, 13);
+    e.set_event(Some(halloween), &tracks);
+    let fit = e.event_fit().expect("fit");
+    assert!(fit.offerable(), "{fit:?}");
+    let picks: Vec<i64> = (0..8)
+        .flat_map(|i| e.next(&ctx(Daypart::Evening), &[], 0.3, 5, NOW + i * 60_000))
+        .collect();
+    let by_id: std::collections::HashMap<i64, &sirtone_core::wave::WaveTrack> =
+        tracks.iter().map(|t| (t.id, t)).collect();
+    let in_tone = picks
+        .iter()
+        .filter(|id| {
+            let t = by_id[id];
+            m.direct(t) >= 0.5 || t.features.is_some_and(|(x, c)| m.tone(&x, c) >= 0.5)
+        })
+        .count();
+    assert!(
+        in_tone * 10 >= picks.len() * 7,
+        "{in_tone} of {} in the Halloween tone",
+        picks.len()
+    );
+
+    // AT-23: two New Year tracks — «атмосферная», never side by side, spread out.
+    let mut tracks = synth::library(2_000, NOW, 1.0, 52);
+    tracks[10].title = Some("Новогодняя песня".into());
+    tracks[20].title = Some("Last Christmas".into());
+    let (a, b) = (tracks[10].id, tracks[20].id);
+    let history = synth::history(&tracks, NOW);
+    let ny = events.get("new_year").expect("ny");
+    let cfg = Config::builtin_profile("event").expect("assets");
+    let mut e = Engine::new(cfg, &tracks, &history, NOW, 14);
+    e.set_event(Some(ny), &tracks);
+    let fit = e.event_fit().expect("fit");
+    assert_eq!(fit.direct, 2);
+    assert!(fit.atmospheric());
+    let picks: Vec<i64> = (0..6)
+        .flat_map(|i| e.next(&ctx(Daypart::Evening), &[], 0.3, 5, NOW + i * 60_000))
+        .collect();
+    let pos: Vec<usize> = picks
+        .iter()
+        .enumerate()
+        .filter(|(_, id)| **id == a || **id == b)
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(pos.len(), 2, "both New Year tracks play: {pos:?}");
+    assert!(pos[1] - pos[0] >= 5, "spread: {pos:?}");
+}

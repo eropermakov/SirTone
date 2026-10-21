@@ -1,3 +1,4 @@
+import { isTauri } from "@tauri-apps/api/core";
 import {
   Ban,
   Briefcase,
@@ -29,15 +30,20 @@ import {
   Sun,
   Sunrise,
   Sunset,
+  Users,
   Wand2,
+  Waves,
   Zap,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { WaveQueryIpc } from "@/shared/ipc/bindings";
+import { commands, type WaveCount, type WaveQueryIpc } from "@/shared/ipc/bindings";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/Button";
 import { Dialog } from "@/shared/ui/Dialog";
+import { Slider } from "@/shared/ui/Slider";
+import { NoveltySlider } from "./NoveltySlider";
+import { WaveExpert } from "./WaveExpert";
 
 /**
  * «Настроить волну» (FR-WAVE-003, `14` §6, owner 2026-10-20 — like the old Яндекс Музыка
@@ -112,6 +118,84 @@ const SEASONS: [string, LucideIcon][] = [
   ["off", Ban],
 ];
 
+type Mode = "normal" | "sleep" | "focus" | "for_all";
+const MODES: [Mode, LucideIcon][] = [
+  ["normal", Waves],
+  ["sleep", Moon],
+  ["focus", Briefcase],
+  ["for_all", Users],
+];
+const INFLUENCES = ["season", "context", "events"] as const;
+/** The tempo range's ends, BPM. */
+const TEMPO: [number, number] = [60, 200];
+
+/** A 0…1 slider with its label and value (the influence strength 0…2). */
+function Range({
+  label,
+  value,
+  text,
+  onCommit,
+}: {
+  label: string;
+  value: number;
+  text: string;
+  onCommit: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="t-body w-40 shrink-0 text-text-primary">{label}</span>
+      <Slider value={value} onCommit={onCommit} label={label} valueText={text} className="flex-1" />
+      <span className="t-caption w-12 shrink-0 text-right text-text-secondary">{text}</span>
+    </div>
+  );
+}
+
+/** A range as two sliders, «от» and «до» (energy, tempo). */
+function Span({
+  label,
+  lo,
+  hi,
+  min,
+  max,
+  text,
+  onChange,
+}: {
+  label: string;
+  lo: number;
+  hi: number;
+  min: number;
+  max: number;
+  text: (v: number) => string;
+  onChange: (lo: number, hi: number) => void;
+}) {
+  const { t } = useTranslation("shell");
+  const at = (v: number) => (v - min) / (max - min);
+  const of = (x: number) => min + x * (max - min);
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="t-body text-text-primary">
+        {t("wave.setup.range", { what: label, lo: text(lo), hi: text(hi) })}
+      </span>
+      <div className="flex items-center gap-3">
+        <Slider
+          value={at(lo)}
+          onCommit={(x) => onChange(Math.min(of(x), hi), hi)}
+          label={t("wave.setup.from", { what: label })}
+          valueText={text(lo)}
+          className="flex-1"
+        />
+        <Slider
+          value={at(hi)}
+          onCommit={(x) => onChange(lo, Math.max(of(x), lo))}
+          label={t("wave.setup.to", { what: label })}
+          valueText={text(hi)}
+          className="flex-1"
+        />
+      </div>
+    </div>
+  );
+}
+
 /** How many blocks narrow the wave (the button's badge). */
 export function setupCount(q: WaveQueryIpc | null): number {
   if (!q) return 0;
@@ -120,7 +204,11 @@ export function setupCount(q: WaveQueryIpc | null): number {
     multi +
     (q.daypart != null ? 1 : 0) +
     (q.weather != null ? 1 : 0) +
-    (q.season && q.season !== "auto" ? 1 : 0)
+    (q.season && q.season !== "auto" ? 1 : 0) +
+    (q.influence?.some((v) => v != null && v !== 1) ? 1 : 0) +
+    (q.energy ? 1 : 0) +
+    (q.tempo ? 1 : 0) +
+    ((q.taste ?? 1) !== 1 || (q.excludeGenres?.length ?? 0) > 0 || q.artistSpacing != null ? 1 : 0)
   );
 }
 
@@ -159,6 +247,8 @@ export function WaveSetup({
   onPlay,
   onSleepWave,
   onFocus,
+  onForAll,
+  onSave,
 }: {
   initial: WaveQueryIpc | null;
   onClose: () => void;
@@ -166,10 +256,33 @@ export function WaveSetup({
   onPlay: (q: WaveQueryIpc) => void;
   onSleepWave: () => void;
   onFocus: () => void;
+  onForAll?: () => void;
+  /** «Сохранить как свою волну» (T5.17). */
+  onSave?: (q: WaveQueryIpc) => void;
 }) {
   const { t } = useTranslation("shell");
   const { t: tc } = useTranslation("common");
   const [q, setQ] = useState<WaveQueryIpc>(initial ?? {});
+  // «Режим» (FR-LEARN-011): which wave «Слушать» starts.
+  const [mode, setMode] = useState<Mode>("normal");
+  // «Подходит N треков» (T5.7, `06` §3): asked again 200 ms after the last press.
+  const [count, setCount] = useState<WaveCount | null>(null);
+  useEffect(() => {
+    if (!isTauri()) return;
+    let alive = true;
+    const id = window.setTimeout(() => {
+      commands
+        .waveQueryCount(q)
+        .then((r) => {
+          if (alive && r.status === "ok") setCount(r.data);
+        })
+        .catch(() => {});
+    }, 200);
+    return () => {
+      alive = false;
+      window.clearTimeout(id);
+    };
+  }, [q]);
   const toggle = (block: Multi, key: string) =>
     setQ((cur) => {
       const list = cur[block] ?? [];
@@ -178,6 +291,14 @@ export function WaveSetup({
         [block]: list.includes(key) ? list.filter((k) => k !== key) : [...list, key],
       };
     });
+  const byFrequency = (q.frequency?.length ?? 0) > 0;
+  const play = () => {
+    if (mode === "normal") return onPlay(q);
+    if (mode === "sleep") onSleepWave();
+    else if (mode === "focus") onFocus();
+    else onForAll?.();
+    onClose();
+  };
   const activity = q.activity ?? [];
   const workout = activity.includes(WORKOUT);
   const sleeping = activity.includes(SLEEP);
@@ -265,6 +386,79 @@ export function WaveSetup({
           </div>
         </section>
         <section className="flex flex-col gap-3">
+          <h3 className="t-card-title text-text-primary">{t("wave.setup.block.mode")}</h3>
+          <div className="flex flex-wrap gap-2">
+            {MODES.filter(([k]) => k !== "for_all" || onForAll).map(([key, icon]) => (
+              <Tile
+                key={key}
+                icon={icon}
+                label={t(`wave.setup.mode.${key}`)}
+                on={mode === key}
+                onClick={() => setMode(key)}
+              />
+            ))}
+          </div>
+        </section>
+        <section className="flex flex-col gap-3">
+          <h3 className="t-card-title text-text-primary">{t("wave.setup.block.novelty")}</h3>
+          <NoveltySlider disabled={byFrequency} />
+          {byFrequency && (
+            <span className="t-caption text-text-secondary">
+              {t("wave.setup.noveltyByFrequency")}
+            </span>
+          )}
+        </section>
+        <section className="flex flex-col gap-3">
+          <h3 className="t-card-title text-text-primary">{t("wave.setup.block.influence")}</h3>
+          {INFLUENCES.map((key, i) => (
+            <Range
+              key={key}
+              label={t(`wave.setup.influence.${key}`)}
+              value={(q.influence?.[i] ?? 1) / 2}
+              text={t("wave.setup.times", { value: (q.influence?.[i] ?? 1).toFixed(1) })}
+              onCommit={(v) =>
+                setQ((c) => {
+                  const inf: [number, number, number] = [
+                    c.influence?.[0] ?? 1,
+                    c.influence?.[1] ?? 1,
+                    c.influence?.[2] ?? 1,
+                  ];
+                  inf[i] = Math.round(v * 20) / 10;
+                  return { ...c, influence: inf };
+                })
+              }
+            />
+          ))}
+        </section>
+        <section className="flex flex-col gap-3">
+          <h3 className="t-card-title text-text-primary">{t("wave.setup.block.ranges")}</h3>
+          <Span
+            label={t("wave.setup.energy")}
+            lo={q.energy?.[0] ?? 0}
+            hi={q.energy?.[1] ?? 1}
+            min={0}
+            max={1}
+            text={(v) => String(Math.round(v * 100))}
+            onChange={(lo, hi) =>
+              setQ((c) => ({ ...c, energy: lo <= 0 && hi >= 1 ? null : [lo, hi] }))
+            }
+          />
+          <Span
+            label={t("wave.setup.tempo")}
+            lo={q.tempo?.[0] ?? TEMPO[0]}
+            hi={q.tempo?.[1] ?? TEMPO[1]}
+            min={TEMPO[0]}
+            max={TEMPO[1]}
+            text={(v) => t("wave.setup.bpm", { value: Math.round(v) })}
+            onChange={(lo, hi) =>
+              setQ((c) => ({
+                ...c,
+                tempo: lo <= TEMPO[0] && hi >= TEMPO[1] ? null : [Math.round(lo), Math.round(hi)],
+              }))
+            }
+          />
+        </section>
+        <section className="flex flex-col gap-3">
           <h3 className="t-card-title text-text-primary">{t("wave.setup.block.season")}</h3>
           <div className="flex flex-wrap gap-2">
             {SEASONS.map(([key, icon]) => (
@@ -278,12 +472,31 @@ export function WaveSetup({
             ))}
           </div>
         </section>
+        <WaveExpert q={q} setQ={setQ} />
       </div>
       <div className="flex flex-wrap items-center justify-end gap-3">
-        <Button variant="ghost" onClick={() => setQ({})}>
+        {count && (
+          <span data-testid="wave-count" className="t-caption mr-auto text-text-secondary">
+            {count.relaxed
+              ? t("wave.setup.countRelaxed", { count: count.tracks })
+              : t("wave.setup.count", { count: count.tracks })}
+          </span>
+        )}
+        <Button
+          variant="ghost"
+          onClick={() => {
+            setQ({});
+            setMode("normal");
+          }}
+        >
           {t("wave.setup.reset")}
         </Button>
-        <Button onClick={() => onPlay(q)}>{t("wave.setup.play")}</Button>
+        {onSave && (
+          <Button variant="secondary" disabled={setupCount(q) === 0} onClick={() => onSave(q)}>
+            {t("wave.mine.saveAs")}
+          </Button>
+        )}
+        <Button onClick={play}>{t("wave.setup.play")}</Button>
       </div>
     </Dialog>
   );

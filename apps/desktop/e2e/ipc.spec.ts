@@ -64,8 +64,15 @@ async function mockTauri(page: Page) {
           case "settings_get":
             return settings;
           case "settings_patch": {
-            const patch = args.patch as { appearance?: Record<string, unknown> };
+            const patch = args.patch as {
+              appearance?: Record<string, unknown>;
+              wave?: Record<string, unknown>;
+            };
             Object.assign(settings.appearance, patch.appearance ?? {});
+            if (patch.wave) {
+              const s = settings as unknown as { wave?: Record<string, unknown> };
+              s.wave = { ...(s.wave ?? {}), ...patch.wave };
+            }
             return settings;
           }
           case "hotkeys_status":
@@ -97,6 +104,83 @@ async function mockTauri(page: Page) {
               status: "ok",
               data: { queued: 5, relaxed: [], noPopularity: false, few: false },
             };
+          case "wave_composition":
+            return {
+              season: "autumn",
+              daypart: "evening",
+              weather: "rain",
+              event: null,
+              eventDays: 0,
+              off: { season: false, context: false, event: false, taste: false },
+            };
+          case "wave_set_off":
+            return null;
+          case "bt_devices":
+            return [
+              { name: "WH-1000XM4", connected: false, endpoints: ["{bt-1}"] },
+              { name: "JBL Flip", connected: true, endpoints: ["{dev-2}"] },
+            ];
+          case "bt_set":
+            return true;
+          case "bt_open_settings":
+            return null;
+          case "library_pick_folder":
+            return "E:/Export";
+          case "export_start":
+            return { files: 3, bytes: 300 };
+          case "export_cancel":
+            return null;
+          case "audio_devices":
+            return [
+              { id: "{dev-1}", name: "Динамики (Realtek)", isDefault: true },
+              { id: "{dev-2}", name: "Наушники USB", isDefault: false },
+            ];
+          case "wave_query_count":
+            return { tracks: 12, relaxed: false };
+          case "wave_by":
+            return null;
+          case "wave_context_name":
+            return {
+              daypart: "evening",
+              weather: "snow",
+              season: "autumn",
+              nextAt: Date.now() + 3_600_000,
+            };
+          case "event_offer":
+            return (
+              (window as unknown as Record<string, unknown>).__mockEvent ?? {
+                id: null,
+                daysToPeak: 0,
+                strong: false,
+                atmospheric: false,
+              }
+            );
+          case "event_answer":
+          case "event_refresh":
+            return null;
+          case "event_list":
+            return [
+              { id: "halloween", group: "secular", enabled: true, offReason: null },
+              {
+                id: "first_snow",
+                group: "micro_weather",
+                enabled: false,
+                offReason: "declined_3x",
+              },
+            ];
+          case "weather_get":
+            return {
+              class: null,
+              tempC: null,
+              isDay: true,
+              drift: 0,
+              intensity: 0,
+              fetchedAt: null,
+              fresh: false,
+            };
+          case "city_search":
+            // typedError wraps the bare answer itself.
+            return [{ name: "Москва", country: "Россия", admin: "Москва", lat: 55.75, lon: 37.62 }];
           case "sleep_start":
           case "focus_start":
             return null;
@@ -106,8 +190,8 @@ async function mockTauri(page: Page) {
             return { phase: "off", remainingMs: 0, segmentMs: 0, paused: false, today: 0 };
           case "sleep_caps":
             return { hibernate: true, modernStandby: true };
-          case "fx_season_effect":
-            return "snow";
+          case "fx_sources":
+            return { season: "snow", weather: null, event: null, drift: 0, intensity: 0 };
           case "theme_state":
             return {
               id: "autumn",
@@ -349,6 +433,7 @@ test("«Настроить волну»: tiles combine, «Слушать» start
   await dlg.getByRole("button", { name: "Спокойное", exact: true }).first().click();
   await dlg.getByRole("button", { name: "Без слов", exact: true }).click();
   await expect(dlg.getByText("Работаете?")).toBeVisible();
+  await expect(dlg.getByTestId("wave-count")).toHaveText("Подходит 12 треков");
   await dlg.getByRole("button", { name: "Слушать", exact: true }).click();
   const call = (await calls(page, "wave_start")).at(-1)?.args as {
     query: { activity: string[]; character: string[]; language: string[] };
@@ -361,4 +446,273 @@ test("«Настроить волну»: tiles combine, «Слушать» start
   };
   expect(saved.patch.wave.setup.activity).toEqual(["work"]);
   await expect(page.getByRole("button", { name: /Настроить\s*3/ })).toBeVisible();
+});
+
+test("«Место и погода»: a city is found and chosen (T5.5)", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
+  await expect(page.getByTestId("place-city")).toHaveText("Город не выбран");
+  await page.getByRole("searchbox", { name: "Найти город" }).fill("Моск");
+  await page.getByRole("button", { name: /Москва/ }).click();
+  await expect
+    .poll(async () => {
+      const last = (await calls(page, "settings_patch")).at(-1)?.args as {
+        patch: { context?: { city?: { name: string; lat: number } } };
+      };
+      return last?.patch.context?.city?.name;
+    })
+    .toBe("Москва");
+  await expect(page.getByTestId("place-city")).toContainText("Москва");
+});
+
+test("event card: «Скоро Хэллоуин», answers go to Rust; «События» lists every event (T5.14)", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 12,
+      artists: 3,
+      albums: 2,
+      unknown: 0,
+      durationSec: 3000,
+      bytes: 1,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+    (window as unknown as Record<string, unknown>).__mockEvent = {
+      id: "halloween",
+      daysToPeak: 5,
+      strong: false,
+      atmospheric: true,
+    };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  // The contextual name (T5.11): the weather and the part of the day, agreed.
+  await expect(page.getByTestId("wave-context")).toContainText("Снежный вечер");
+  await expect(page.getByTestId("wave-context")).toContainText("Обновится в");
+  const card = page.getByTestId("event-card");
+  await expect(card).toContainText("Скоро Хэллоуин");
+  await expect(card).toContainText("мало подходящих треков");
+  await card.getByRole("button", { name: "Ещё" }).click();
+  await page.getByRole("menuitem", { name: "Не в этом году" }).click();
+  await expect
+    .poll(async () => (await calls(page, "event_answer")).at(-1)?.args)
+    .toEqual({ id: "halloween", answer: "year" });
+  await expect(card).toHaveCount(0);
+  await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
+  await expect(page.getByRole("heading", { name: "События", exact: true })).toBeVisible();
+  await expect(page.getByTestId("event-first_snow")).toContainText("три раза подряд");
+  await page.getByTestId("event-halloween").getByRole("switch").click();
+  await expect
+    .poll(async () => {
+      const last = (await calls(page, "settings_patch")).at(-1)?.args as {
+        patch: { events?: { enabled?: Record<string, boolean> } };
+      };
+      return last?.patch.events?.enabled?.halloween;
+    })
+    .toBe(false);
+  const text = await page.locator("main").innerText();
+  expect(text).not.toMatch(/settingsEvents\.|events\.name/);
+});
+
+test("«Состав волны»: chips under the player switch an influence off (T5.16)", async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 12,
+      artists: 3,
+      albums: 2,
+      unknown: 0,
+      durationSec: 3000,
+      bytes: 1,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await expect(page.locator("footer").getByText("Mock track")).toBeVisible();
+  await emit(page, "playback-snapshot", {
+    state: "playing",
+    trackId: 7,
+    title: "Mock track",
+    positionMs: 1000,
+    durationMs: 200000,
+    volume: 0.5,
+    waveProfile: "my_wave",
+  });
+  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  const chips = page.getByTestId("wave-chips");
+  for (const c of ["Осень", "Вечер", "Дождь", "Твой вкус"]) {
+    await expect(chips.getByRole("button", { name: c, exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  }
+  await chips.getByRole("button", { name: "Осень", exact: true }).click();
+  await expect
+    .poll(async () => (await calls(page, "wave_set_off")).at(-1)?.args)
+    .toEqual({ off: { season: true, context: false, event: false, taste: false } });
+  await expect(chips.getByRole("button", { name: "Осень", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  // «Настроить волну» 2.0: mode, novelty, influence, ranges.
+  await page.getByRole("button", { name: /^Настроить/ }).click();
+  const dlg = page.getByRole("dialog");
+  for (const h of ["Режим", "Знакомое ↔ Неожиданное", "Сила влияния", "Энергия и темп"]) {
+    await expect(dlg.getByRole("heading", { name: h, exact: true })).toBeVisible();
+  }
+  await dlg.getByRole("button", { name: "Любимое", exact: true }).click();
+  await expect(dlg.getByText("ползунок не действует")).toBeVisible();
+  expect(await dlg.innerText()).not.toMatch(/wave\.setup\./);
+});
+
+test("«Мои волны»: a setup saved with a name becomes a card; rename (T5.17)", async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 12,
+      artists: 3,
+      albums: 2,
+      unknown: 0,
+      durationSec: 3000,
+      bytes: 1,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await page.getByRole("button", { name: /^Настроить/ }).click();
+  const dlg = page.getByRole("dialog");
+  await dlg.getByRole("button", { name: "Спокойное", exact: true }).first().click();
+  await dlg.getByRole("button", { name: "Сохранить как свою волну" }).click();
+  const name = page.getByRole("dialog").filter({ hasText: "Название" });
+  await name.getByRole("textbox").fill("Вечерняя тишина");
+  await name.getByRole("button", { name: "Сохранить", exact: true }).click();
+  const card = page.getByRole("button", { name: "Вечерняя тишина", exact: true });
+  await expect(card).toBeVisible();
+  const saved = (await calls(page, "settings_patch")).at(-1)?.args as {
+    patch: { wave: { mine: { name: string; query: { character?: string[] } }[] } };
+  };
+  expect(saved.patch.wave.mine[0]?.name).toBe("Вечерняя тишина");
+  await card.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Переименовать" }).click();
+  const ren = page.getByRole("dialog").filter({ hasText: "Название" });
+  await ren.getByRole("textbox").fill("Тихо");
+  await ren.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Тихо", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Тихо", exact: true }).click();
+  await expect.poll(async () => (await calls(page, "wave_start")).length).toBeGreaterThan(0);
+});
+
+test("«Устройство вывода»: a device by name, exclusive and pause switches (T5.8)", async ({
+  page,
+}) => {
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
+  const list = page.getByTestId("output-devices");
+  await expect(list.getByRole("button", { name: "Как в Windows" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await list.getByRole("button", { name: "Наушники USB" }).click();
+  await expect
+    .poll(async () => {
+      const last = (await calls(page, "settings_patch")).at(-1)?.args as {
+        patch: { playback?: { output?: { device?: string } } };
+      };
+      return last?.patch.playback?.output?.device;
+    })
+    .toBe("{dev-2}");
+  await page.getByRole("switch", { name: "Монопольный режим" }).click();
+  await expect
+    .poll(async () => {
+      const last = (await calls(page, "settings_patch")).at(-1)?.args as {
+        patch: { playback?: { output?: { exclusive?: boolean } } };
+      };
+      return last?.patch.playback?.output?.exclusive;
+    })
+    .toBe(true);
+  await expect(page.getByText("не приняло монопольный режим")).toBeVisible();
+});
+
+test("«Экспорт»: the whole library into a folder, progress, done (T5.9)", async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 3,
+      artists: 1,
+      albums: 1,
+      unknown: 0,
+      durationSec: 600,
+      bytes: 300,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
+  await page.getByRole("button", { name: "Экспортировать всю медиатеку" }).click();
+  const dlg = page.getByTestId("export-dialog");
+  await expect(dlg.getByRole("button", { name: "Экспортировать", exact: true })).toBeDisabled();
+  await dlg.getByRole("button", { name: "Выбрать папку" }).click();
+  await expect(page.getByTestId("export-dest")).toHaveText("E:/Export");
+  await dlg.getByRole("button", { name: "Экспортировать", exact: true }).click();
+  await expect
+    .poll(async () => (await calls(page, "export_start")).at(-1)?.args)
+    .toEqual({
+      req: { kind: "all", id: null, dest: "E:/Export", keepStructure: true, number: false },
+    });
+  await expect(page.getByText("Скопировано 0 из 3")).toBeVisible();
+  await emit(page, "export-progress", {
+    done: 3,
+    total: 3,
+    bytes: 300,
+    totalBytes: 300,
+    skipped: 0,
+    finished: true,
+    cancelled: false,
+    error: null,
+  });
+  await expect(page.getByText("Скопировано 3 файла")).toBeVisible();
+  await expect(page.getByTestId("export-dialog")).toHaveCount(0);
+});
+
+test("Bluetooth in the player: paired devices, connect, play through (T5.4)", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Bluetooth", exact: true }).click();
+  await page.getByRole("menuitem", { name: "WH-1000XM4" }).click();
+  await page.getByRole("menuitem", { name: "Подключить" }).click();
+  await expect
+    .poll(async () => (await calls(page, "bt_set")).at(-1)?.args)
+    .toEqual({ name: "WH-1000XM4", connect: true });
+  await page.getByRole("button", { name: "Bluetooth", exact: true }).click();
+  await page.getByRole("menuitem", { name: "JBL Flip" }).click();
+  await page.getByRole("menuitem", { name: "Играть через него" }).click();
+  await expect
+    .poll(async () => {
+      const last = (await calls(page, "settings_patch")).at(-1)?.args as {
+        patch: { playback?: { output?: { device?: string } } };
+      };
+      return last?.patch.playback?.output?.device;
+    })
+    .toBe("{dev-2}");
 });

@@ -29,6 +29,13 @@ pub struct ThemesConfig {
     /// Dayparts of the clock that count as night for `night_effect`.
     #[serde(default)]
     pub night_dayparts: Vec<String>,
+    /// «По реальной погоде»: weather class key → effect (`snow`, `rain`, `storm`, `fog`,
+    /// `cloudy`, `clear_day`).
+    #[serde(default)]
+    pub weather_effects: BTreeMap<String, String>,
+    /// Dry weather in these seasons — their effect (autumn leaves, spring petals).
+    #[serde(default)]
+    pub dry_season_effects: BTreeMap<String, String>,
     pub seasons: BTreeMap<String, ThemeDef>,
     pub events: BTreeMap<String, ThemeDef>,
 }
@@ -162,6 +169,32 @@ pub fn season_effect(cfg: &ThemesConfig, season_w: &[f32; 4], daypart: &str) -> 
     match (&def.night_effect, night) {
         (Some(n), true) => n.clone(),
         _ => def.effect.clone(),
+    }
+}
+
+/// The «По реальной погоде» effect (supplement §31): `class` — `snow` · `rain` · `storm` · `fog`
+/// · `cloudy` · `clear`. Precipitation and fog decide; dry weather in autumn/spring — their
+/// effect; cloudy — shadows; clear by day — motes; a clear night — the season's night effect if
+/// it has one (a summer night's fireflies), else nothing.
+pub fn weather_effect(
+    cfg: &ThemesConfig,
+    season_w: &[f32; 4],
+    class: &str,
+    is_day: bool,
+) -> Option<String> {
+    let w = |k: &str| cfg.weather_effects.get(k).cloned();
+    match class {
+        "snow" | "rain" | "storm" | "fog" => return w(class),
+        _ => {}
+    }
+    let season = SEASONS[dominant(season_w)];
+    if let Some(e) = cfg.dry_season_effects.get(season) {
+        return Some(e.clone());
+    }
+    match (class, is_day) {
+        ("cloudy", _) => w("cloudy"),
+        (_, true) => w("clear_day"),
+        (_, false) => cfg.seasons.get(season).and_then(|d| d.night_effect.clone()),
     }
 }
 
@@ -337,6 +370,25 @@ mod tests {
         assert_eq!(season_effect(&cfg, &w(2026, 7, 15), "day"), "motes");
         assert_eq!(season_effect(&cfg, &w(2026, 7, 15), "dusk"), "fireflies");
         assert_eq!(season_effect(&cfg, &w(2026, 10, 20), "night"), "leaves");
+    }
+
+    #[test]
+    fn real_weather_picks_the_effect_of_supplement_31() {
+        let cfg = ThemesConfig::default();
+        let w = |y, m, d| season_weights(days_from_civil(y, m, d), false, 21);
+        let e = |m, c, day| weather_effect(&cfg, &w(2026, m, 15), c, day);
+        assert_eq!(e(1, "snow", true).as_deref(), Some("snow"));
+        assert_eq!(e(7, "rain", true).as_deref(), Some("rain"));
+        assert_eq!(e(7, "storm", false).as_deref(), Some("storm"));
+        assert_eq!(e(10, "fog", true).as_deref(), Some("fog"));
+        // Dry autumn and spring — their own.
+        assert_eq!(e(10, "clear", true).as_deref(), Some("leaves"));
+        assert_eq!(e(4, "cloudy", true).as_deref(), Some("petals"));
+        // Summer: cloudy shadows, motes by day, fireflies at night; a clear winter night — none.
+        assert_eq!(e(7, "cloudy", true).as_deref(), Some("clouds"));
+        assert_eq!(e(7, "clear", true).as_deref(), Some("motes"));
+        assert_eq!(e(7, "clear", false).as_deref(), Some("fireflies"));
+        assert_eq!(e(1, "clear", false), None);
     }
 
     #[test]

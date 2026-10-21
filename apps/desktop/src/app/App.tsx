@@ -1,13 +1,16 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ExportHost } from "@/app/export/ExportDialog";
 import { CollectionScreen } from "@/app/library/CollectionScreen";
 import { GenresScreen } from "@/app/library/GenresScreen";
 import { RootPanel } from "@/app/library/RootPanel";
 import { UnknownScreen } from "@/app/library/UnknownScreen";
 import { useLibrary } from "@/app/library/useLibrary";
+import { events } from "@/shared/ipc/bindings";
 import { bootstrap } from "@/shared/ipc/bootstrap";
 import { onDuplicatesFound } from "@/shared/ipc/duplicates";
+import { focusStart } from "@/shared/ipc/focus";
 import {
   cancelImport,
   confirmMissing,
@@ -201,6 +204,27 @@ export function App() {
     });
     return () => off?.();
   }, []);
+  // «Работаете? Включить фокус» (T5.18, FR-FOCUS-007): only offered, once a day.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let off: (() => void) | undefined;
+    let alive = true;
+    void events.focusSuggest
+      .listen(() =>
+        notify(t("focus.suggest"), {
+          label: t("focus.suggestStart"),
+          onClick: () => void focusStart(25, 5).catch(() => {}),
+        }),
+      )
+      .then((u) => {
+        if (alive) off = u;
+        else u();
+      });
+    return () => {
+      alive = false;
+      off?.();
+    };
+  }, [t]);
   const dupsShownAt = useRef(0);
   useEffect(() => {
     let off: (() => void) | undefined;
@@ -552,6 +576,7 @@ export function App() {
         <div className="t-caption bg-bg-base px-4 pt-1 text-center text-text-tertiary">
           {t("proto")}
         </div>
+        <ExportHost />
         <PlayerBar
           snap={snap}
           receivedAt={receivedAt}

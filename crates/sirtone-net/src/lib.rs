@@ -51,8 +51,9 @@ impl Host {
             // ≤ 0.8 req/s, 503 beyond.
             Self::MusicBrainz => p("https://musicbrainz.org/ws/2/", 1250, 30 * DAY, MB),
             Self::CoverArt => p("https://coverartarchive.org/", 250, 90 * DAY, 10 * MB),
-            // Weather is «stale» after 3 h.
-            Self::OpenMeteo => p("https://api.open-meteo.com/v1/", 1000, 3 * 3600, MB),
+            // Fetched every 30–60 min (FR-CTX-002): the cache must not outlive that; the app
+            // keeps the last answer itself and calls it «stale» after 3 h.
+            Self::OpenMeteo => p("https://api.open-meteo.com/v1/", 1000, 20 * 60, MB),
             Self::Geocoding => p(
                 "https://geocoding-api.open-meteo.com/v1/",
                 1000,

@@ -38,6 +38,9 @@ async function refresh(): Promise<void> {
   }
 }
 
+/** Ask Rust again now (an event accepted or over, T5.13). */
+export const refreshSeasonTheme = (): Promise<void> => refresh();
+
 const onVisible = () => {
   if (!document.hidden) void refresh();
 };

@@ -1,6 +1,15 @@
-import { Copy, ListFilter, MoreHorizontal, Play, RefreshCw, Trash2 } from "lucide-react";
+import {
+  Copy,
+  FolderOutput,
+  ListFilter,
+  MoreHorizontal,
+  Play,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { openExport } from "@/app/export/ExportDialog";
 import { mb } from "@/app/library/TrackCard";
 import { type GoTo, TrackList } from "@/app/library/TrackList";
 import { playTracks } from "@/shared/ipc/library";
@@ -240,6 +249,12 @@ export function PlaylistScreen({
                   },
                 ]
               : []),
+            {
+              id: "export",
+              label: t("export.menu"),
+              icon: FolderOutput,
+              onSelect: () => openExport({ kind: "playlist", id, title: meta?.name ?? "" }),
+            },
             {
               id: "delete",
               label: t("playlists.delete"),

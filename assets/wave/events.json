@@ -1,0 +1,264 @@
+{
+  "schema": "sirtone.events/1",
+  "_note": "The offline event calendar (FR-EVT-001/002, docs/14 §11, supplement §29). Windows are days around the rule's date (start ≤ peak ≤ end). Tone: moods of the track vibe (happy, upbeat, calm, sad, aggressive, tender, gloomy, festive — features 18–25), «minor» — the minor mode, exclude_moods — never these (9 May: nothing entertaining). Defaults by Q-2: all twelve on except the Catholic Christmas and Easter; weather and astronomical micro-events on, weekly off; 9 May never starts by itself. Keywords and tones are temporary until the owner's calibration (OWN-08).",
+  "events": [
+    {
+      "id": "new_year",
+      "group": "secular",
+      "rule": { "kind": "fixed", "month": 12, "day": 31 },
+      "window": { "start": -16, "peak": 0, "end": 8 },
+      "tone": { "moods": ["festive", "happy"] },
+      "keywords": [
+        "новый год",
+        "новогодн*",
+        "ёлк*",
+        "елк*",
+        "снегурочк*",
+        "дед мороз",
+        "new year",
+        "christmas",
+        "xmas",
+        "jingle",
+        "santa",
+        "snowman"
+      ],
+      "genre_bonus": { "christmas": 0.8, "holiday": 0.6 },
+      "theme": "new_year",
+      "effect": "snow",
+      "suggest_strength": "high",
+      "default_on": true
+    },
+    {
+      "id": "christmas_orthodox",
+      "group": "religious",
+      "rule": { "kind": "fixed", "month": 1, "day": 7 },
+      "window": { "start": -3, "peak": 0, "end": 1 },
+      "tone": { "moods": ["calm", "tender", "festive"] },
+      "keywords": ["рождеств*", "рождённ*", "вифлеем*", "christmas", "silent night", "noel"],
+      "genre_bonus": { "christmas": 0.6 },
+      "effect": "snow",
+      "default_on": true
+    },
+    {
+      "id": "christmas_western",
+      "group": "religious",
+      "rule": { "kind": "fixed", "month": 12, "day": 25 },
+      "window": { "start": -3, "peak": 0, "end": 1 },
+      "tone": { "moods": ["calm", "tender", "festive"] },
+      "keywords": ["christmas", "xmas", "silent night", "noel", "рождеств*"],
+      "genre_bonus": { "christmas": 0.8 },
+      "effect": "snow",
+      "default_on": false
+    },
+    {
+      "id": "valentines",
+      "group": "secular",
+      "rule": { "kind": "fixed", "month": 2, "day": 14 },
+      "window": { "start": -4, "peak": 0, "end": 0 },
+      "tone": { "moods": ["tender"], "valence": [0.45, 1.0] },
+      "keywords": [
+        "любов*",
+        "любим*",
+        "люблю",
+        "сердц*",
+        "поцелу*",
+        "love",
+        "valentine",
+        "heart",
+        "kiss"
+      ],
+      "default_on": true
+    },
+    {
+      "id": "defender_day",
+      "group": "secular",
+      "rule": { "kind": "fixed", "month": 2, "day": 23 },
+      "window": { "start": -3, "peak": 0, "end": 0 },
+      "tone": { "moods": ["upbeat", "festive"] },
+      "keywords": ["арми*", "солдат*", "защитник*", "офицер*", "служб*"],
+      "default_on": true
+    },
+    {
+      "id": "maslenitsa",
+      "group": "folk",
+      "rule": { "kind": "computed", "base": "easter_orthodox", "offset": -55 },
+      "window": { "start": 0, "peak": 6, "end": 6 },
+      "tone": { "moods": ["happy", "upbeat"] },
+      "keywords": ["маслениц*", "блин*", "весн*"],
+      "genre_bonus": { "folk": 0.6, "народ": 0.6 },
+      "default_on": true
+    },
+    {
+      "id": "womens_day",
+      "group": "secular",
+      "rule": { "kind": "fixed", "month": 3, "day": 8 },
+      "window": { "start": -3, "peak": 0, "end": 0 },
+      "tone": { "moods": ["tender", "happy"] },
+      "keywords": ["женщин*", "мам*", "весн*", "цвет*", "мимоз*", "woman", "women", "flowers"],
+      "default_on": true
+    },
+    {
+      "id": "april_fools",
+      "group": "secular",
+      "rule": { "kind": "fixed", "month": 4, "day": 1 },
+      "window": { "start": 0, "peak": 0, "end": 0 },
+      "tone": { "moods": ["happy"] },
+      "keywords": ["шут*", "смех*", "смешн*", "fool*", "funny", "joke*"],
+      "default_on": true
+    },
+    {
+      "id": "easter_orthodox",
+      "group": "religious",
+      "rule": { "kind": "computed", "base": "easter_orthodox", "offset": 0 },
+      "window": { "start": -3, "peak": 0, "end": 1 },
+      "tone": { "moods": ["calm", "tender"] },
+      "keywords": ["пасх*", "воскрес*", "благовест*", "easter"],
+      "default_on": true
+    },
+    {
+      "id": "easter_western",
+      "group": "religious",
+      "rule": { "kind": "computed", "base": "easter_western", "offset": 0 },
+      "window": { "start": -3, "peak": 0, "end": 1 },
+      "tone": { "moods": ["calm", "tender"] },
+      "keywords": ["easter", "пасх*"],
+      "default_on": false
+    },
+    {
+      "id": "victory_day",
+      "group": "secular",
+      "rule": { "kind": "fixed", "month": 5, "day": 9 },
+      "window": { "start": -2, "peak": 0, "end": 0 },
+      "tone": { "moods": ["calm"], "exclude_moods": ["happy", "festive", "aggressive"] },
+      "keywords": ["побед*", "войн*", "солдат*", "ветеран*", "катюш*", "журавл*", "день победы"],
+      "auto": false,
+      "default_on": true
+    },
+    {
+      "id": "music_day",
+      "group": "secular",
+      "rule": { "kind": "fixed", "month": 6, "day": 21 },
+      "window": { "start": 0, "peak": 0, "end": 0 },
+      "tone": { "moods": [] },
+      "keywords": ["музык*", "music", "song", "песн*"],
+      "default_on": true
+    },
+    {
+      "id": "knowledge_day",
+      "group": "secular",
+      "rule": { "kind": "fixed", "month": 9, "day": 1 },
+      "window": { "start": -3, "peak": 0, "end": 0 },
+      "tone": { "moods": ["upbeat", "happy"] },
+      "keywords": ["школ*", "учител*", "урок*", "сентябр*", "звонок", "school", "teacher"],
+      "default_on": true
+    },
+    {
+      "id": "halloween",
+      "group": "secular",
+      "rule": { "kind": "fixed", "month": 10, "day": 31 },
+      "window": { "start": -7, "peak": 0, "end": 0 },
+      "tone": { "moods": ["gloomy"], "minor": true },
+      "keywords": [
+        "хэллоуин*",
+        "хеллоуин*",
+        "ведьм*",
+        "призрак*",
+        "тыкв*",
+        "вампир*",
+        "halloween",
+        "witch*",
+        "ghost*",
+        "zombie*",
+        "spooky",
+        "vampire*",
+        "monster*"
+      ],
+      "genre_bonus": { "darkwave": 0.5, "gothic": 0.5, "horror": 0.6 },
+      "theme": "halloween",
+      "effect": "fog",
+      "suggest_strength": "high",
+      "default_on": true
+    },
+    {
+      "id": "first_snow",
+      "group": "micro_weather",
+      "rule": { "kind": "weather", "trigger": "first_snowfall_of_season" },
+      "window": { "start": 0, "peak": 0, "end": 0 },
+      "tone": { "moods": ["calm", "tender"] },
+      "keywords": ["снег*", "снеж*", "snow*"],
+      "effect": "snow",
+      "default_on": true
+    },
+    {
+      "id": "first_warm_day",
+      "group": "micro_weather",
+      "rule": { "kind": "weather", "trigger": "first_warm_day" },
+      "window": { "start": 0, "peak": 0, "end": 0 },
+      "tone": { "moods": ["happy", "upbeat"] },
+      "keywords": ["весн*", "солнц*", "тепл*", "spring", "sun*"],
+      "default_on": true
+    },
+    {
+      "id": "thunderstorm",
+      "group": "micro_weather",
+      "rule": { "kind": "weather", "trigger": "thunderstorm" },
+      "window": { "start": 0, "peak": 0, "end": 0 },
+      "tone": { "moods": ["gloomy", "aggressive"] },
+      "keywords": ["гроз*", "гром*", "молни*", "storm*", "thunder*", "lightning"],
+      "effect": "storm",
+      "default_on": true
+    },
+    {
+      "id": "friday_evening",
+      "group": "micro_weekly",
+      "rule": { "kind": "weekly", "weekday": 4, "from": "18:00", "to": "23:59" },
+      "tone": { "moods": ["upbeat", "happy"] },
+      "keywords": ["пятниц*", "friday", "weekend"],
+      "default_on": false
+    },
+    {
+      "id": "sunday_morning",
+      "group": "micro_weekly",
+      "rule": { "kind": "weekly", "weekday": 6, "from": "08:00", "to": "12:00" },
+      "tone": { "moods": ["calm", "tender"] },
+      "keywords": ["воскресен*", "утр*", "sunday", "morning"],
+      "default_on": false
+    },
+    {
+      "id": "march_equinox",
+      "group": "micro_astro",
+      "rule": { "kind": "astro", "which": "march_equinox" },
+      "window": { "start": 0, "peak": 0, "end": 0 },
+      "tone": { "moods": ["calm", "upbeat"] },
+      "keywords": ["весн*", "equinox", "spring"],
+      "default_on": true
+    },
+    {
+      "id": "summer_solstice",
+      "group": "micro_astro",
+      "rule": { "kind": "astro", "which": "june_solstice" },
+      "window": { "start": 0, "peak": 0, "end": 0 },
+      "tone": { "moods": ["happy", "upbeat"] },
+      "keywords": ["лет*", "солнц*", "summer", "sun*"],
+      "default_on": true
+    },
+    {
+      "id": "september_equinox",
+      "group": "micro_astro",
+      "rule": { "kind": "astro", "which": "september_equinox" },
+      "window": { "start": 0, "peak": 0, "end": 0 },
+      "tone": { "moods": ["calm"] },
+      "keywords": ["осен*", "autumn", "fall"],
+      "default_on": true
+    },
+    {
+      "id": "longest_night",
+      "group": "micro_astro",
+      "rule": { "kind": "astro", "which": "longest_night" },
+      "window": { "start": 0, "peak": 0, "end": 0 },
+      "tone": { "moods": ["calm", "gloomy"] },
+      "keywords": ["ноч*", "звёзд*", "звезд*", "night", "star*", "moon"],
+      "default_on": true
+    }
+  ]
+}
