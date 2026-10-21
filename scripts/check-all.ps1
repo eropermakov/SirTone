@@ -16,6 +16,8 @@ if (Test-Path 'Cargo.toml') {
     Step 'cargo fmt'      { cargo fmt --all -- --check }
     Step 'cargo clippy'   { cargo clippy --workspace --all-targets -- -D warnings }
     Step 'cargo deny'     { cargo deny check }
+    # T6.6: the third-party notices match the dependencies (regenerate: python tools/notices.py).
+    Step 'notices'        { python tools/notices.py; git diff --exit-code -- assets/legal/notices.json THIRD_PARTY_NOTICES.txt }
     # --no-tests=warn: empty crates of Stage 0 have no tests yet; nextest's default (auto) exits with code 4.
     Step 'cargo nextest'  { cargo nextest run --workspace --no-tests=warn }
     # NFR-PERF-004 (T3.24): a wave rebuild on 50 000 synthetic tracks stays under 15 ms p95.

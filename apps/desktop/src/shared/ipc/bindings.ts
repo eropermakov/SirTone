@@ -242,6 +242,7 @@ export const commands = {
 	cityLocate: () => typedError<City, AppError>(__TAURI_INVOKE("city_locate")),
 	/**  The weather now (UI line, effects). */
 	weatherGet: () => __TAURI_INVOKE<WeatherNow>("weather_get"),
+	legalNotices: () => __TAURI_INVOKE<Notices>("legal_notices"),
 	btDevices: () => typedError<BtDevice[], AppError>(__TAURI_INVOKE("bt_devices")),
 	/**
 	 *  «Подключить» / «Отключить»; `false` — the device did not take it (then the UI offers the
@@ -679,6 +680,20 @@ export type NeverEntry = {
 };
 
 export type NeverScope = "track" | "artist";
+
+export type NoticeSection = {
+	title: string,
+	license: string,
+	/**  Packages under this text (`name version`); empty for the font, models, data. */
+	items: string[],
+	text: string,
+};
+
+export type Notices = {
+	rust: number,
+	js: number,
+	sections: NoticeSection[],
+};
 
 /**
  *  Files added in Explorer lie elsewhere than the layout rules say (T3.19, FR-FS-005): the UI

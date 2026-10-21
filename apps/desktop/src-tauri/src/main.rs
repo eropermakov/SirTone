@@ -23,6 +23,7 @@ mod hotkeys;
 mod i18n;
 mod ipc;
 mod journal;
+mod legal;
 mod library;
 mod memory;
 mod net;

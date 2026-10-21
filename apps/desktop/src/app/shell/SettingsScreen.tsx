@@ -45,6 +45,7 @@ import { Slider } from "@/shared/ui/Slider";
 import { Switch } from "@/shared/ui/Switch";
 import { FX_TYPES, type FxType, isFxType } from "@/shared/viz/fxPlan";
 import EQ_PRESETS_JSON from "../../../../../assets/eq/presets.json";
+import { LicensesDialog } from "./LicensesDialog";
 
 type Props = {
   theme: ThemePref;
@@ -86,6 +87,7 @@ export function SettingsScreen({
   onShowDuplicates,
 }: Props) {
   const { t } = useTranslation("shell");
+  const [licenses, setLicenses] = useState(false);
 
   return (
     <section className="flex max-w-3xl flex-col gap-12">
@@ -218,8 +220,12 @@ export function SettingsScreen({
               {t("onboarding.again")}
             </Button>
           )}
+          <Button variant="ghost" onClick={() => setLicenses(true)}>
+            {t("licenses.button")}
+          </Button>
         </div>
       </div>
+      {licenses && <LicensesDialog onClose={() => setLicenses(false)} />}
     </section>
   );
 }
