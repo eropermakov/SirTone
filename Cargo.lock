@@ -4767,6 +4767,7 @@ name = "sirtone-cli"
 version = "0.1.34"
 dependencies = [
  "rusqlite",
+ "serde_json",
  "sirtone-analysis",
  "sirtone-audio",
  "sirtone-core",
