@@ -180,6 +180,9 @@ export function CardGrid({
                     >
                       {kind === "albums" ? (
                         <Cover hash={c.cover} px={CARD} rounded="md" art={c.art} />
+                      ) : c.cover ? (
+                        // Until a photo source exists: their main album's cover, round (D-114).
+                        <Cover hash={c.cover} px={CARD} rounded="full" />
                       ) : (
                         <span className="t-hero flex size-full items-center justify-center bg-artwork-placeholder text-text-tertiary">
                           {initials(c.title)}

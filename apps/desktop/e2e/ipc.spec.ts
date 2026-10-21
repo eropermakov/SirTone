@@ -699,6 +699,10 @@ test("Bluetooth in the player: paired devices, connect, play through (T5.4)", as
   await mockTauri(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Bluetooth", exact: true }).click();
+  // The menu grows up from the bottom bar and stays inside the window (owner, proto 32).
+  const box = await page.getByRole("menu", { name: "Bluetooth" }).boundingBox();
+  const vh = page.viewportSize()?.height ?? 0;
+  expect(box && box.y >= 0 && box.y + box.height <= vh).toBe(true);
   await page.getByRole("menuitem", { name: "WH-1000XM4" }).click();
   await page.getByRole("menuitem", { name: "Подключить" }).click();
   await expect
@@ -715,4 +719,22 @@ test("Bluetooth in the player: paired devices, connect, play through (T5.4)", as
       return last?.patch.playback?.output?.device;
     })
     .toBe("{dev-2}");
+});
+
+test("the mouse wheel over the volume turns it, 5 % a notch (owner, proto 32)", async ({
+  page,
+}) => {
+  await mockTauri(page);
+  await page.goto("/");
+  const vol = page.getByRole("slider", { name: "Громкость" });
+  await vol.hover();
+  await page.mouse.wheel(0, 100);
+  await expect
+    .poll(async () => (await calls(page, "playback_set_volume")).at(-1)?.args)
+    .toEqual({ volume: 0.45 });
+  await page.mouse.wheel(0, -100);
+  await page.mouse.wheel(0, -100);
+  await expect
+    .poll(async () => (await calls(page, "playback_set_volume")).at(-1)?.args)
+    .toEqual({ volume: 0.55 });
 });

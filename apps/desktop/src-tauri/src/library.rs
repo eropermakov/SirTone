@@ -100,6 +100,8 @@ pub struct ArtistItem {
     pub id: u32,
     pub name: String,
     pub tracks: u32,
+    /// The round picture: their main album's cover (D-114); `None` — initials.
+    pub cover: Option<String>,
     /// Newest track, ms (sort «Недавно добавленные»).
     pub added_at: f64,
 }
@@ -1233,11 +1235,14 @@ pub fn collection_artists(
     });
     lib.with_read(|c| {
         let (rows, next) = collection::artists_page(c, cur.as_ref(), limit.clamp(1, 500))?;
+        let ids: Vec<i64> = rows.iter().map(|a| a.id).collect();
+        let covers = collection::artist_covers(c, &ids)?;
         Ok(ArtistPage {
             rows: rows
                 .into_iter()
                 .map(|a| ArtistItem {
                     id: a.id as u32,
+                    cover: covers.get(&a.id).cloned(),
                     name: a.name,
                     tracks: a.tracks,
                     added_at: a.added_at as f64,

@@ -1,5 +1,5 @@
 import { ListMusic, Repeat, Repeat1, Shuffle, Volume, Volume2 } from "lucide-react";
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useRef, useState, type WheelEvent } from "react";
 import { useTranslation } from "react-i18next";
 import {
   next,
@@ -57,6 +57,15 @@ export function PlayerBar({
   const [volume, setVolumeLocal] = useState(snap.volume ?? 1);
 
   useEffect(() => setVolumeLocal(snap.volume ?? 1), [snap.volume]);
+  const wheelVolume = (e: WheelEvent<HTMLDivElement>) => {
+    if (e.deltaY === 0) return;
+    const v = Math.min(
+      1,
+      Math.max(0, Math.round((volume - Math.sign(e.deltaY) * 0.05) * 100) / 100),
+    );
+    setVolumeLocal(v);
+    setVolume(v);
+  };
 
   // Smooth progress between 4 Hz snapshots: extrapolate while playing, transform only.
   useEffect(() => {
@@ -188,28 +197,37 @@ export function PlayerBar({
       <div className="flex w-72 items-center justify-end gap-2">
         <BluetoothButton />
         {toggle(ListMusic, t("player.queue"), queueOpen, onQueue)}
-        <Volume size={20} strokeWidth={1.5} fill="currentColor" aria-hidden className="text-icon" />
-        <Slider
-          className="w-24"
-          label={t("player.volume")}
-          valueText={`${Math.round(volume * 100)}%`}
-          value={volume}
-          onInput={(v) => {
-            setVolumeLocal(v);
-            setVolume(v);
-          }}
-          onCommit={(v) => {
-            setVolumeLocal(v);
-            setVolume(v);
-          }}
-        />
-        <Volume2
-          size={20}
-          strokeWidth={1.5}
-          fill="currentColor"
-          aria-hidden
-          className="text-icon"
-        />
+        {/* The wheel over the volume (icons and bar) turns it, 5 % a notch — the owner's ask. */}
+        <div className="flex items-center gap-2" onWheel={wheelVolume}>
+          <Volume
+            size={20}
+            strokeWidth={1.5}
+            fill="currentColor"
+            aria-hidden
+            className="text-icon"
+          />
+          <Slider
+            className="w-24"
+            label={t("player.volume")}
+            valueText={`${Math.round(volume * 100)}%`}
+            value={volume}
+            onInput={(v) => {
+              setVolumeLocal(v);
+              setVolume(v);
+            }}
+            onCommit={(v) => {
+              setVolumeLocal(v);
+              setVolume(v);
+            }}
+          />
+          <Volume2
+            size={20}
+            strokeWidth={1.5}
+            fill="currentColor"
+            aria-hidden
+            className="text-icon"
+          />
+        </div>
       </div>
     </footer>
   );

@@ -378,6 +378,8 @@ export type ArtistItem = {
 	id: number,
 	name: string,
 	tracks: number,
+	/**  The round picture: their main album's cover (D-114); `None` — initials. */
+	cover: string | null,
 	/**  Newest track, ms (sort «Недавно добавленные»). */
 	addedAt: number | null,
 };

@@ -139,7 +139,7 @@ export function SearchScreen({
       id: a.id,
       title: a.name,
       subtitle: tc("count.tracks", { count: a.tracks }),
-      cover: null,
+      cover: a.cover ?? null,
     }),
   );
   const albumCards = (res?.albums ?? []).map(albumCard);

@@ -75,7 +75,7 @@ export class MilkDropEngine {
         height: h,
         meshWidth: this.q.mesh[0],
         meshHeight: this.q.mesh[1],
-        pixelRatio: this.q.pixel_ratio,
+        pixelRatio: 1,
         textureRatio: this.q.texture_ratio,
       });
       this.canvas.addEventListener("webglcontextlost", this.onLost);
@@ -121,20 +121,23 @@ export class MilkDropEngine {
     if (this.queue.length > 4) this.queue.shift();
   }
 
+  /** The drawing buffer in device pixels: CSS size × the preset's pixel ratio. butterchurn
+   * draws to the screen at its `width × height` (no pixel ratio), so it gets the buffer's own
+   * size and ratio 1 — otherwise a ratio ≠ 1 crops the picture into a corner (owner, proto 32). */
   private size() {
+    const pr = this.q.pixel_ratio;
     return {
-      w: Math.max(1, Math.round(this.canvas.clientWidth)),
-      h: Math.max(1, Math.round(this.canvas.clientHeight)),
+      w: Math.max(1, Math.round(this.canvas.clientWidth * pr)),
+      h: Math.max(1, Math.round(this.canvas.clientHeight * pr)),
     };
   }
 
   resize(): void {
     const { w, h } = this.size();
-    const pr = this.q.pixel_ratio;
-    this.canvas.width = Math.round(w * pr);
-    this.canvas.height = Math.round(h * pr);
+    this.canvas.width = w;
+    this.canvas.height = h;
     this.viz?.setRendererSize(w, h, {
-      pixelRatio: pr,
+      pixelRatio: 1,
       textureRatio: this.q.texture_ratio,
       meshWidth: this.q.mesh[0],
       meshHeight: this.q.mesh[1],

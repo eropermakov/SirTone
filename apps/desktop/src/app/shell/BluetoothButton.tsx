@@ -80,13 +80,13 @@ export function BluetoothButton() {
         aria-label={t("bt.button")}
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
-          open(r.left, r.top);
+          open(r.right - 240, r.top);
         }}
         className="flex size-9 items-center justify-center rounded-full text-icon hover:bg-bg-hover"
       >
         <Bluetooth size={20} strokeWidth={1.5} />
       </button>
-      {at && <Menu items={items} at={at} label={t("bt.button")} onClose={() => setAt(null)} />}
+      {at && <Menu items={items} at={at} up label={t("bt.button")} onClose={() => setAt(null)} />}
     </>
   );
 }
