@@ -115,6 +115,26 @@ async function mockTauri(page: Page) {
             };
           case "wave_set_off":
             return null;
+          case "bt_devices":
+            return [
+              { name: "WH-1000XM4", connected: false, endpoints: ["{bt-1}"] },
+              { name: "JBL Flip", connected: true, endpoints: ["{dev-2}"] },
+            ];
+          case "bt_set":
+            return true;
+          case "bt_open_settings":
+            return null;
+          case "library_pick_folder":
+            return "E:/Export";
+          case "export_start":
+            return { files: 3, bytes: 300 };
+          case "export_cancel":
+            return null;
+          case "audio_devices":
+            return [
+              { id: "{dev-1}", name: "Динамики (Realtek)", isDefault: true },
+              { id: "{dev-2}", name: "Наушники USB", isDefault: false },
+            ];
           case "wave_query_count":
             return { tracks: 12, relaxed: false };
           case "wave_by":
@@ -596,4 +616,103 @@ test("«Мои волны»: a setup saved with a name becomes a card; rename (T
   await expect(page.getByRole("button", { name: "Тихо", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Тихо", exact: true }).click();
   await expect.poll(async () => (await calls(page, "wave_start")).length).toBeGreaterThan(0);
+});
+
+test("«Устройство вывода»: a device by name, exclusive and pause switches (T5.8)", async ({
+  page,
+}) => {
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
+  const list = page.getByTestId("output-devices");
+  await expect(list.getByRole("button", { name: "Как в Windows" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await list.getByRole("button", { name: "Наушники USB" }).click();
+  await expect
+    .poll(async () => {
+      const last = (await calls(page, "settings_patch")).at(-1)?.args as {
+        patch: { playback?: { output?: { device?: string } } };
+      };
+      return last?.patch.playback?.output?.device;
+    })
+    .toBe("{dev-2}");
+  await page.getByRole("switch", { name: "Монопольный режим" }).click();
+  await expect
+    .poll(async () => {
+      const last = (await calls(page, "settings_patch")).at(-1)?.args as {
+        patch: { playback?: { output?: { exclusive?: boolean } } };
+      };
+      return last?.patch.playback?.output?.exclusive;
+    })
+    .toBe(true);
+  await expect(page.getByText("не приняло монопольный режим")).toBeVisible();
+});
+
+test("«Экспорт»: the whole library into a folder, progress, done (T5.9)", async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 3,
+      artists: 1,
+      albums: 1,
+      unknown: 0,
+      durationSec: 600,
+      bytes: 300,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
+  await page.getByRole("button", { name: "Экспортировать всю медиатеку" }).click();
+  const dlg = page.getByTestId("export-dialog");
+  await expect(dlg.getByRole("button", { name: "Экспортировать", exact: true })).toBeDisabled();
+  await dlg.getByRole("button", { name: "Выбрать папку" }).click();
+  await expect(page.getByTestId("export-dest")).toHaveText("E:/Export");
+  await dlg.getByRole("button", { name: "Экспортировать", exact: true }).click();
+  await expect
+    .poll(async () => (await calls(page, "export_start")).at(-1)?.args)
+    .toEqual({
+      req: { kind: "all", id: null, dest: "E:/Export", keepStructure: true, number: false },
+    });
+  await expect(page.getByText("Скопировано 0 из 3")).toBeVisible();
+  await emit(page, "export-progress", {
+    done: 3,
+    total: 3,
+    bytes: 300,
+    totalBytes: 300,
+    skipped: 0,
+    finished: true,
+    cancelled: false,
+    error: null,
+  });
+  await expect(page.getByText("Скопировано 3 файла")).toBeVisible();
+  await expect(page.getByTestId("export-dialog")).toHaveCount(0);
+});
+
+test("Bluetooth in the player: paired devices, connect, play through (T5.4)", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Bluetooth", exact: true }).click();
+  await page.getByRole("menuitem", { name: "WH-1000XM4" }).click();
+  await page.getByRole("menuitem", { name: "Подключить" }).click();
+  await expect
+    .poll(async () => (await calls(page, "bt_set")).at(-1)?.args)
+    .toEqual({ name: "WH-1000XM4", connect: true });
+  await page.getByRole("button", { name: "Bluetooth", exact: true }).click();
+  await page.getByRole("menuitem", { name: "JBL Flip" }).click();
+  await page.getByRole("menuitem", { name: "Играть через него" }).click();
+  await expect
+    .poll(async () => {
+      const last = (await calls(page, "settings_patch")).at(-1)?.args as {
+        patch: { playback?: { output?: { device?: string } } };
+      };
+      return last?.patch.playback?.output?.device;
+    })
+    .toBe("{dev-2}");
 });

@@ -219,6 +219,7 @@ fn apply(app: &AppHandle, s: &TrayState) {
 }
 
 pub fn show_main(app: &AppHandle) {
+    crate::memory::ensure_main(app); // T5.10: built again if it was destroyed in the tray
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.unminimize();
         let _ = w.show();
@@ -227,9 +228,14 @@ pub fn show_main(app: &AppHandle) {
 }
 
 fn toggle_main(app: &AppHandle) {
+    if app.get_webview_window("main").is_none() {
+        show_main(app);
+        return;
+    }
     if let Some(w) = app.get_webview_window("main") {
         if w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false) {
             let _ = w.hide();
+            crate::memory::hidden(app);
         } else {
             show_main(app);
         }

@@ -273,6 +273,7 @@ mod tests {
             volume: 1.0,
             underruns: 0,
             device: None,
+            exclusive: false,
             signal: None,
             mixing: false,
         }

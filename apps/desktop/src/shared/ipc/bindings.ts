@@ -242,6 +242,22 @@ export const commands = {
 	cityLocate: () => typedError<City, AppError>(__TAURI_INVOKE("city_locate")),
 	/**  The weather now (UI line, effects). */
 	weatherGet: () => __TAURI_INVOKE<WeatherNow>("weather_get"),
+	btDevices: () => typedError<BtDevice[], AppError>(__TAURI_INVOKE("bt_devices")),
+	/**
+	 *  «Подключить» / «Отключить»; `false` — the device did not take it (then the UI offers the
+	 *  Windows page).
+	 */
+	btSet: (name: string, connect: boolean) => typedError<boolean, AppError>(__TAURI_INVOKE("bt_set", { name, connect })),
+	btOpenSettings: () => __TAURI_INVOKE<void>("bt_open_settings"),
+	widgetState: () => __TAURI_INVOKE<WidgetState>("widget_state"),
+	/**  The widget's texts (Russian, from the shell strings — the page carries no i18n bundle). */
+	widgetTexts: () => __TAURI_INVOKE<{ [key in string]: string }>("widget_texts"),
+	/**  A click on the cover: the main window. */
+	widgetOpenMain: () => __TAURI_INVOKE<void>("widget_open_main"),
+	/**  Plans and starts the export on its own thread; progress comes as `ExportProgress`. */
+	exportStart: (req: ExportRequest) => typedError<ExportPlan, AppError>(__TAURI_INVOKE("export_start", { req })),
+	exportCancel: () => __TAURI_INVOKE<void>("export_cancel"),
+	audioDevices: () => __TAURI_INVOKE<AudioDevice[]>("audio_devices"),
 	waveContextName: () => __TAURI_INVOKE<WaveContextName>("wave_context_name"),
 	waveComposition: () => __TAURI_INVOKE<WaveComposition>("wave_composition"),
 	/**
@@ -305,7 +321,9 @@ export const commands = {
 export const events = {
 	duplicatesFound: makeEvent<DuplicatesFound>("duplicates-found"),
 	eventOffer: makeEvent<EventOffer>("event-offer"),
+	exportProgress: makeEvent<ExportProgress>("export-progress"),
 	focusStatus: makeEvent<FocusStatus>("focus-status"),
+	focusSuggest: makeEvent<FocusSuggest>("focus-suggest"),
 	hotkeyConflict: makeEvent<HotkeyConflict>("hotkey-conflict"),
 	importFinished: makeEvent<ImportFinished>("import-finished"),
 	importProgress: makeEvent<ImportProgress>("import-progress"),
@@ -381,6 +399,13 @@ export type ArtistSuggestion = {
 	drop: ArtistRef,
 };
 
+/**  One output device for the picker (T5.8). */
+export type AudioDevice = {
+	id: string,
+	name: string,
+	isDefault: boolean,
+};
+
 export type BestMatch = { kind: "track"; item: TrackItem } | { kind: "artist"; item: ArtistItem } | { kind: "album"; item: AlbumItem };
 
 export type Bootstrap = {
@@ -388,6 +413,13 @@ export type Bootstrap = {
 	settings: unknown,
 	playback: PlaybackSnapshot | null,
 	library: LibraryStatus | null,
+};
+
+export type BtDevice = {
+	name: string,
+	connected: boolean,
+	/**  Its endpoint ids (the output picker may choose one). */
+	endpoints: string[],
 };
 
 export type City = {
@@ -454,6 +486,38 @@ export type EventOffer = {
 	atmospheric: boolean,
 };
 
+/**  What `export_start` is about to copy. */
+export type ExportPlan = {
+	files: number,
+	bytes: number | null,
+};
+
+/**  Progress of the running export (a few times a second and at the end). */
+export type ExportProgress = {
+	done: number,
+	total: number,
+	bytes: number | null,
+	totalBytes: number | null,
+	/**  Already there with the same size. */
+	skipped: number,
+	finished: boolean,
+	cancelled: boolean,
+	/**  The first error that stopped it (disk full, no access). */
+	error: AppError | null,
+};
+
+/**  What to export and how. */
+export type ExportRequest = {
+	/**  `all` · `playlist` · `album` · `artist` */
+	kind: string,
+	id: number | null,
+	dest: string,
+	/**  `Артист/Альбом/файл` as in the library; off — all files in one folder. */
+	keepStructure: boolean,
+	/**  `01 - …` in the list's order. */
+	number: boolean,
+};
+
 /**  What the UI and the tray show (FR-FOCUS-002). */
 export type FocusStatus = {
 	/**  `off` · `work` · `break` · `long_break` */
@@ -465,6 +529,12 @@ export type FocusStatus = {
 	/**  Work segments done today. */
 	today: number,
 };
+
+/**
+ *  «Работаете? Включить фокус» (T5.18, FR-FOCUS-007): offered, never started — once a day,
+ *  only while the focus timer is off.
+ */
+export type FocusSuggest = null;
 
 /**
  *  The live effects' sources right now (T4.20, T5.15, `14` §13.1, supplement §31): «По сезону»
@@ -762,6 +832,8 @@ export type SignalInfo = {
 	kind: SignalKind,
 	sourceRate: number,
 	deviceRate: number,
+	/**  Exclusive WASAPI mode is on (T5.8): no system mixer in the path. */
+	exclusive: boolean,
 };
 
 export type SignalKind = "bitperfect" | "resampled" | "dsp";
@@ -1083,6 +1155,13 @@ export type WhyReason = {
 	kind: string,
 	/**  Genre group (0…5), daypart code or season (0 winter … 3 autumn). */
 	arg: number | null,
+};
+
+/**  The widget's look: the app's theme and accent preset. */
+export type WidgetState = {
+	theme: string,
+	accent: string,
+	scale: number | null,
 };
 
 /* Tauri Specta runtime */

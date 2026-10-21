@@ -11,5 +11,15 @@ export default defineConfig({
   clearScreen: false,
   server: { port: 1420, strictPort: true, watch: { ignored: ["**/src-tauri/**"] } },
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
-  build: { target: "chrome120", sourcemap: true },
+  build: {
+    target: "chrome120",
+    sourcemap: true,
+    // The desktop widget is its own small page (T5.1, ≤ 100 KB of JS).
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        widget: fileURLToPath(new URL("./widget.html", import.meta.url)),
+      },
+    },
+  },
 });

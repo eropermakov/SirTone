@@ -11,6 +11,24 @@ use std::thread::JoinHandle;
 use sirtone_core::error::{AppError, ErrorCode};
 use wasapi::{AudioClient, DeviceEnumerator, Direction, SampleType, StreamMode, WaveFormat};
 
+/// What the device takes (T5.8): shared mode is always float; exclusive mode may need integers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Sample {
+    F32,
+    /// 32-bit container (24 or 32 valid bits — written at full scale).
+    I32,
+    I16,
+}
+
+/// Where and how to play (T5.8, FR-PLAY-012).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OutputPrefs {
+    /// An endpoint id; `None` — the system default (followed when it changes).
+    pub device: Option<String>,
+    /// «Монопольный режим WASAPI»: the device for Sirtone alone, no system mixer.
+    pub exclusive: bool,
+}
+
 /// State shared between the engine thread and the render thread.
 #[derive(Default)]
 pub struct Shared {
@@ -87,6 +105,8 @@ pub struct Output {
     pub format: DeviceFormat,
     /// Endpoint id of the device this output plays to (for loss detection, T1.6).
     pub device_id: String,
+    /// Exclusive mode is on (asked for and the device accepted it).
+    pub exclusive: bool,
     thread: Option<JoinHandle<()>>,
     shared: Arc<Shared>,
     /// UI sound triggers to the render thread (T4.15).
@@ -108,8 +128,12 @@ pub static RT_ENTER: std::sync::OnceLock<fn()> = std::sync::OnceLock::new();
 impl Output {
     /// Opens the default render endpoint at its mix format. Returns the ring producer the engine
     /// fills. COM objects are thread-bound, so the device is opened on the render thread.
-    pub fn open(shared: Arc<Shared>) -> Result<(Self, rtrb::Producer<f32>), AppError> {
-        let (tx_fmt, rx_fmt) = mpsc::channel::<Result<(DeviceFormat, String), AppError>>();
+    pub fn open(
+        shared: Arc<Shared>,
+        prefs: &OutputPrefs,
+    ) -> Result<(Self, rtrb::Producer<f32>), AppError> {
+        let prefs = prefs.clone();
+        let (tx_fmt, rx_fmt) = mpsc::channel::<Result<(DeviceFormat, String, bool), AppError>>();
         let (tx_ring, rx_ring) = mpsc::channel::<(
             rtrb::Consumer<f32>,
             rtrb::Producer<f32>,
@@ -122,17 +146,19 @@ impl Output {
             .name("sirtone-render".into())
             .spawn(move || {
                 let _ = wasapi::initialize_mta().ok();
-                match open_default() {
-                    Ok((client, fmt, id)) => {
+                match open_device(&prefs) {
+                    Ok((client, fmt, id, sample)) => {
                         let format = DeviceFormat {
                             rate: fmt.get_samplespersec(),
                             channels: usize::from(fmt.get_nchannels()),
                         };
-                        let _ = tx_fmt.send(Ok((format, id)));
+                        let exclusive = sample.is_some();
+                        let _ = tx_fmt.send(Ok((format, id, exclusive)));
                         let Ok((ring, tap, sfx)) = rx_ring.recv() else {
                             return;
                         };
-                        if render_loop(client, fmt, ring, tap, sfx, &rt_shared).is_err() {
+                        let sample = sample.unwrap_or(Sample::F32);
+                        if render_loop(client, fmt, sample, ring, tap, sfx, &rt_shared).is_err() {
                             rt_shared.failed.store(true, Ordering::Release);
                         }
                     }
@@ -142,7 +168,7 @@ impl Output {
                 }
             })
             .map_err(|e| AppError::new(ErrorCode::Internal).with_details(e))?;
-        let (format, device_id) = rx_fmt
+        let (format, device_id, exclusive) = rx_fmt
             .recv()
             .map_err(|e| AppError::new(ErrorCode::DeviceUnavailable).with_details(e))??;
         let (prod, cons) =
@@ -160,11 +186,12 @@ impl Output {
         tx_ring
             .send((cons, tap_prod, voices))
             .map_err(|e| AppError::new(ErrorCode::DeviceUnavailable).with_details(e))?;
-        tracing::info!(target: "sirtone::audio", rate = format.rate, channels = format.channels, "output opened");
+        tracing::info!(target: "sirtone::audio", rate = format.rate, channels = format.channels, exclusive, "output opened");
         Ok((
             Self {
                 format,
                 device_id,
+                exclusive,
                 thread: Some(thread),
                 shared,
                 sfx: sfx_prod,
@@ -189,12 +216,112 @@ fn device_err(e: impl std::fmt::Display) -> AppError {
         .with_details(e)
 }
 
-fn open_default() -> Result<(AudioClient, WaveFormat, String), AppError> {
-    let enumerator = DeviceEnumerator::new().map_err(device_err)?;
-    let device = enumerator
+/// One output device for the picker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceInfo {
+    pub id: String,
+    pub name: String,
+    pub is_default: bool,
+}
+
+/// The active render endpoints (T5.8). Call from a thread that may enter COM.
+pub fn devices() -> Vec<DeviceInfo> {
+    let _ = wasapi::initialize_mta().ok();
+    let Ok(e) = DeviceEnumerator::new() else {
+        return Vec::new();
+    };
+    let default = e
         .get_default_device(&Direction::Render)
-        .map_err(device_err)?;
+        .and_then(|d| d.get_id())
+        .unwrap_or_default();
+    let Ok(all) = e.get_device_collection(&Direction::Render) else {
+        return Vec::new();
+    };
+    (&all)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter_map(|d| {
+            let id = d.get_id().ok()?;
+            Some(DeviceInfo {
+                name: d.get_friendlyname().unwrap_or_else(|_| id.clone()),
+                is_default: id == default,
+                id,
+            })
+        })
+        .collect()
+}
+
+/// Opens the chosen device (gone — the default), exclusive when asked and accepted: float,
+/// then 32- and 16-bit integers at the device's own rate; anything refused — shared mode
+/// (`None` sample = shared).
+fn open_device(
+    prefs: &OutputPrefs,
+) -> Result<(AudioClient, WaveFormat, String, Option<Sample>), AppError> {
+    let enumerator = DeviceEnumerator::new().map_err(device_err)?;
+    let chosen = prefs
+        .device
+        .as_deref()
+        .and_then(|id| enumerator.get_device(id).ok())
+        .filter(|d| {
+            d.get_state()
+                .is_ok_and(|s| matches!(s, wasapi::DeviceState::Active))
+        });
+    let device = match chosen {
+        Some(d) => d,
+        None => enumerator
+            .get_default_device(&Direction::Render)
+            .map_err(device_err)?,
+    };
     let id = device.get_id().unwrap_or_default();
+    if prefs.exclusive {
+        match open_exclusive(&device) {
+            Ok((client, fmt, sample)) => return Ok((client, fmt, id, Some(sample))),
+            Err(e) => {
+                tracing::info!(target: "sirtone::audio", error = %e, "exclusive refused — shared");
+            }
+        }
+    }
+    let (client, fmt) = open_shared(&device)?;
+    Ok((client, fmt, id, None))
+}
+
+fn open_exclusive(device: &wasapi::Device) -> Result<(AudioClient, WaveFormat, Sample), AppError> {
+    let probe = device.get_iaudioclient().map_err(device_err)?;
+    let mix = probe.get_mixformat().map_err(device_err)?;
+    let rate = mix.get_samplespersec() as usize;
+    let ch = usize::from(mix.get_nchannels());
+    for (bits, valid, kind, sample) in [
+        (32, 32, SampleType::Float, Sample::F32),
+        (32, 24, SampleType::Int, Sample::I32),
+        (32, 32, SampleType::Int, Sample::I32),
+        (16, 16, SampleType::Int, Sample::I16),
+    ] {
+        let want = WaveFormat::new(bits, valid, &kind, rate, ch, None);
+        let Ok(fmt) = probe.is_supported_exclusive_with_quirks(&want) else {
+            continue;
+        };
+        // A fresh client per attempt: a refused Initialize leaves the old one unusable.
+        let mut client = device.get_iaudioclient().map_err(device_err)?;
+        let (def_period, _) = client.get_device_period().map_err(device_err)?;
+        let period = client
+            .calculate_aligned_period_near(def_period, Some(128), &fmt)
+            .map_err(device_err)?;
+        if client
+            .initialize_client(
+                &fmt,
+                &Direction::Render,
+                &StreamMode::EventsExclusive { period_hns: period },
+            )
+            .is_ok()
+        {
+            no_system_ducking(&client);
+            return Ok((client, fmt, sample));
+        }
+    }
+    Err(device_err("no exclusive format accepted"))
+}
+
+fn open_shared(device: &wasapi::Device) -> Result<(AudioClient, WaveFormat), AppError> {
     let mut client = device.get_iaudioclient().map_err(device_err)?;
     let mix = client.get_mixformat().map_err(device_err)?;
     let (def_period, _min) = client.get_device_period().map_err(device_err)?;
@@ -216,7 +343,49 @@ fn open_default() -> Result<(AudioClient, WaveFormat, String), AppError> {
             },
         )
         .map_err(device_err)?;
-    Ok((client, fmt, id))
+    no_system_ducking(&client);
+    Ok((client, fmt))
+}
+
+/// The float samples of `buf` (little-endian, `n` of them) in the device's format, in place:
+/// integers are written over the floats front to back (16-bit ones take half the bytes).
+fn to_device(buf: &mut [u8], n: usize, sample: Sample) -> usize {
+    match sample {
+        Sample::F32 => n * 4,
+        Sample::I32 => {
+            for i in 0..n {
+                let v = f32::from_le_bytes([
+                    buf[i * 4],
+                    buf[i * 4 + 1],
+                    buf[i * 4 + 2],
+                    buf[i * 4 + 3],
+                ]);
+                let x = (f64::from(v.clamp(-1.0, 1.0)) * f64::from(i32::MAX)) as i32;
+                buf[i * 4..i * 4 + 4].copy_from_slice(&x.to_le_bytes());
+            }
+            n * 4
+        }
+        Sample::I16 => {
+            for i in 0..n {
+                let v = f32::from_le_bytes([
+                    buf[i * 4],
+                    buf[i * 4 + 1],
+                    buf[i * 4 + 2],
+                    buf[i * 4 + 3],
+                ]);
+                let x = (v.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16;
+                buf[i * 2..i * 2 + 2].copy_from_slice(&x.to_le_bytes());
+            }
+            n * 2
+        }
+    }
+}
+
+/// Windows' own ducking on calls is off for our session (D-49): Sirtone ducks itself.
+fn no_system_ducking(client: &AudioClient) {
+    if let Ok(s) = client.get_audiosessioncontrol() {
+        let _ = s.set_ducking_preference(true);
+    }
 }
 
 fn register_mmcss() {
@@ -234,6 +403,7 @@ fn register_mmcss() {
 fn render_loop(
     client: AudioClient,
     fmt: WaveFormat,
+    sample: Sample,
     mut ring: rtrb::Consumer<f32>,
     mut tap: rtrb::Producer<f32>,
     mut sfx: crate::sfx::SfxVoices,
@@ -353,8 +523,9 @@ fn render_loop(
                 }
             }
         }
+        let len = to_device(out, frames * ch, sample);
         render
-            .write_to_device(frames, out, None)
+            .write_to_device(frames, &out[..len], None)
             .map_err(device_err)?;
         if let Ok(p) = client.get_current_padding() {
             shared.padding.store(u64::from(p), Ordering::Relaxed);
@@ -382,6 +553,29 @@ fn render_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exclusive_integer_formats_are_written_in_place() {
+        let src = [0.5f32, -1.0, 2.0, 0.0];
+        let mut buf = Vec::new();
+        for v in src {
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        let mut b16 = buf.clone();
+        assert_eq!(to_device(&mut b16, 4, Sample::I16), 8);
+        let s16: Vec<i16> = b16[..8]
+            .chunks(2)
+            .map(|c| i16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        assert_eq!(s16, vec![16383, -32767, 32767, 0]);
+        let mut b32 = buf.clone();
+        assert_eq!(to_device(&mut b32, 4, Sample::I32), 16);
+        let s32 = i32::from_le_bytes([b32[4], b32[5], b32[6], b32[7]]);
+        assert_eq!(s32, -i32::MAX);
+        let mut f = buf.clone();
+        assert_eq!(to_device(&mut f, 4, Sample::F32), 16);
+        assert_eq!(f, buf);
+    }
 
     #[test]
     fn sleep_word_round_trips_and_zero_db_is_exactly_one() {

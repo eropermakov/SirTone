@@ -74,6 +74,8 @@ pub struct SignalInfo {
     pub kind: SignalKind,
     pub source_rate: u32,
     pub device_rate: u32,
+    /// Exclusive WASAPI mode is on (T5.8): no system mixer in the path.
+    pub exclusive: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -97,6 +99,7 @@ fn signal_of(s: &sirtone_audio::engine::Snapshot) -> Option<SignalInfo> {
         kind,
         source_rate: p.source_rate,
         device_rate: p.device_rate,
+        exclusive: s.exclusive,
     })
 }
 
@@ -162,6 +165,40 @@ impl Norm {
 }
 
 /// The equalizer settings (T4.12, FR-PLAY-009) for the engine.
+/// The output device and exclusive mode from settings (T5.8): `"default"` — follow the system.
+fn output_prefs(doc: &serde_json::Value) -> sirtone_audio::output::OutputPrefs {
+    let o = &doc["playback"]["output"];
+    sirtone_audio::output::OutputPrefs {
+        device: o["device"]
+            .as_str()
+            .filter(|d| !d.is_empty() && *d != "default")
+            .map(str::to_owned),
+        exclusive: o["exclusive"].as_bool().unwrap_or(false),
+    }
+}
+
+/// One output device for the picker (T5.8).
+#[derive(Debug, Clone, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioDevice {
+    pub id: String,
+    pub name: String,
+    pub is_default: bool,
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+pub fn audio_devices() -> Vec<AudioDevice> {
+    sirtone_audio::output::devices()
+        .into_iter()
+        .map(|d| AudioDevice {
+            id: d.id,
+            name: d.name,
+            is_default: d.is_default,
+        })
+        .collect()
+}
+
 pub fn eq_from_settings(doc: &serde_json::Value) -> sirtone_audio::eq::EqParams {
     let e = &doc["playback"]["eq"];
     sirtone_audio::eq::EqParams {
@@ -696,6 +733,13 @@ impl Playback {
                         has_next: snap.has_next,
                     },
                 );
+                crate::taskbar::update(
+                    &app,
+                    snap.state == PlaybackState::Playing,
+                    matches!(snap.state, PlaybackState::Playing | PlaybackState::Paused),
+                    snap.position_ms,
+                    snap.duration_ms.unwrap_or(0),
+                );
                 let _ = snap.emit(&app);
             }
             EngineEvent::Error { error, path } => {
@@ -715,6 +759,7 @@ impl Playback {
             .as_bool()
             .unwrap_or(true);
         engine.send(EngineCmd::SetPauseOnDeviceLoss(pause_on_loss));
+        engine.send(EngineCmd::SetOutput(output_prefs(&settings.get())));
         engine.send(EngineCmd::SetEq(eq_from_settings(&settings.get())));
         engine.send(EngineCmd::SetLimiter(limiter_wanted(&settings.get())));
         engine.send(EngineCmd::SetSfxVolume(sfx_volume(&settings.get())));
@@ -941,6 +986,12 @@ impl Playback {
         self.engine
             .send(EngineCmd::SetLimiter(limiter_wanted(&doc)));
         self.engine.send(EngineCmd::SetSfxVolume(sfx_volume(&doc)));
+        self.engine.send(EngineCmd::SetPauseOnDeviceLoss(
+            doc["playback"]["output"]["pause_on_device_loss"]
+                .as_bool()
+                .unwrap_or(true),
+        ));
+        self.engine.send(EngineCmd::SetOutput(output_prefs(&doc)));
     }
 
     /// After a queue edit: the engine gets the new «next», the player bar its flags, the panel
@@ -1243,6 +1294,13 @@ impl Playback {
 
     pub fn play(&self) {
         self.engine.send(EngineCmd::Play);
+    }
+
+    /// Music is sounding now (the last snapshot).
+    pub fn is_playing(&self) -> bool {
+        self.last
+            .lock()
+            .is_ok_and(|s| s.state == PlaybackState::Playing)
     }
 
     /// Current player volume (0..1), as the engine last reported it.

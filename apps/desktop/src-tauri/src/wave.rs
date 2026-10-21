@@ -305,6 +305,23 @@ fn detect_activity(
         .and_then(Activity::from_key)
 }
 
+/// «Работаете? Включить фокус» (T5.18, FR-FOCUS-007): offered, never started — once a day,
+/// only while the focus timer is off.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, tauri_specta::Event)]
+pub struct FocusSuggest;
+
+fn suggest_focus(app: &AppHandle) {
+    use tauri_specta::Event;
+    static DAY: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(-1);
+    let day = sirtone_wave::clock::local_time(&SystemClock, SystemClock.now_utc_ms()).day as i64;
+    let focus_off = app
+        .try_state::<crate::focus::Focus>()
+        .is_none_or(|f| f.status().phase == "off");
+    if focus_off && DAY.swap(day, Ordering::Relaxed) != day {
+        let _ = FocusSuggest.emit(app);
+    }
+}
+
 fn with_activity(q: &WaveQuery, a: Option<Activity>) -> WaveQuery {
     let mut q = q.clone();
     if let Some(a) = a {
@@ -631,6 +648,9 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                 if engine.is_some() {
                     let now_auto = detect_activity(app, &profile, &query, auto);
                     if now_auto != auto {
+                        if now_auto == Some(Activity::Work) {
+                            suggest_focus(app);
+                        }
                         auto = now_auto;
                         if let Some(e) = engine.as_mut() {
                             let eff = off().apply(&with_activity(&query, auto));

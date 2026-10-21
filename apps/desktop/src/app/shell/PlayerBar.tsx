@@ -16,6 +16,7 @@ import { cn } from "@/shared/lib/utils";
 import { Cover } from "@/shared/ui/Cover";
 import { Slider } from "@/shared/ui/Slider";
 import { ForwardIcon, PlayPauseIcon, RewindIcon } from "@/shared/ui/TransportIcons";
+import { BluetoothButton } from "./BluetoothButton";
 
 /** m:ss / h:mm:ss timecode (format, not text). */
 export function timecode(ms: number): string {
@@ -185,6 +186,7 @@ export function PlayerBar({
       </div>
 
       <div className="flex w-72 items-center justify-end gap-2">
+        <BluetoothButton />
         {toggle(ListMusic, t("player.queue"), queueOpen, onQueue)}
         <Volume size={20} strokeWidth={1.5} fill="currentColor" aria-hidden className="text-icon" />
         <Slider

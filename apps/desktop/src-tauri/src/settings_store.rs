@@ -140,6 +140,9 @@ pub fn settings_patch(
     {
         pb.renormalize(); // T4.11: a new target or the switch — heard at once
     }
+    if changed.iter().any(|k| k == "widget" || k == "appearance") {
+        crate::widget::apply(&app); // T5.1: on/off, «поверх окон», size, the look
+    }
     if changed.iter().any(|k| k == "events") {
         crate::events::kick(); // T5.13: switches apply at once
     }

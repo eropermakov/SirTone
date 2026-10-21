@@ -10,7 +10,7 @@ use windows::Win32::Foundation::{CloseHandle, S_OK};
 use windows::Win32::Media::Audio::Endpoints::IAudioMeterInformation;
 use windows::Win32::Media::Audio::{
     AudioSessionStateActive, IAudioSessionControl, IAudioSessionControl2, IAudioSessionManager2,
-    IMMDeviceEnumerator, MMDeviceEnumerator, eConsole, eRender,
+    IMMDeviceEnumerator, MMDeviceEnumerator, eCapture, eCommunications, eConsole, eRender,
 };
 use windows::Win32::System::Com::{
     CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
@@ -149,6 +149,49 @@ pub fn foreign(own: &HashSet<u32>) -> Vec<Foreign> {
                 exe: names.get(&pid).map(|n| n.1.clone()).unwrap_or_default(),
                 peak,
             });
+        }
+    }
+    out
+}
+
+/// Executable names (lower case) of the processes with an active session on the default
+/// communications microphone (T5.18, D-49): a call app that is capturing is in a call.
+pub fn capturing() -> HashSet<String> {
+    let mut out = HashSet::new();
+    let names = processes();
+    // SAFETY: COM calls on interfaces obtained here; a failure yields fewer names.
+    unsafe {
+        let Ok(en) =
+            CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL)
+        else {
+            return out;
+        };
+        let Ok(dev) = en.GetDefaultAudioEndpoint(eCapture, eCommunications) else {
+            return out;
+        };
+        let Ok(mgr) = dev.Activate::<IAudioSessionManager2>(CLSCTX_ALL, None) else {
+            return out;
+        };
+        let Ok(list) = mgr.GetSessionEnumerator() else {
+            return out;
+        };
+        for i in 0..list.GetCount().unwrap_or(0) {
+            let Ok(ctl) = list.GetSession(i) else {
+                continue;
+            };
+            if !matches!(IAudioSessionControl::GetState(&ctl), Ok(s) if s == AudioSessionStateActive)
+            {
+                continue;
+            }
+            let Ok(pid) = ctl
+                .cast::<IAudioSessionControl2>()
+                .and_then(|c| c.GetProcessId())
+            else {
+                continue;
+            };
+            if let Some((_, exe)) = names.get(&pid) {
+                out.insert(exe.clone());
+            }
         }
     }
     out

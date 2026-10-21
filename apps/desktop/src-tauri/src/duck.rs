@@ -7,7 +7,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use sirtone_playback::duck::{DuckParams, Ducker};
+use sirtone_playback::duck::{CallAction, CallGuard, DuckParams, Ducker};
 use tauri::{AppHandle, Manager};
 
 use crate::settings_store::SettingsStore;
@@ -28,6 +28,9 @@ pub fn start(app: AppHandle) {
             let mut own = sirtone_platform::sessions::own_tree();
             let mut own_at = Instant::now();
             let mut sent: Option<f32> = None;
+            // Calls (T5.18, D-49): looked at once a second.
+            let mut calls = CallGuard::default();
+            let mut call_at = Instant::now();
             // Foreign pids already checked against our process tree.
             let mut seen = std::collections::HashSet::new();
             loop {
@@ -83,6 +86,24 @@ pub fn start(app: AppHandle) {
                         (false, String::new())
                     }
                 };
+                if call_at.elapsed() >= Duration::from_millis(p.call_poll_ms) {
+                    call_at = Instant::now();
+                    let mic = sirtone_platform::sessions::capturing();
+                    let call = p.call_apps.iter().any(|a| mic.contains(a));
+                    let pause_on_call = s["pause_on_call"].as_bool().unwrap_or(false);
+                    if let Some(pb) = app.try_state::<crate::playback::Playback>() {
+                        let playing = pb.is_playing();
+                        let was = calls.in_call();
+                        match calls.step(call, playing, pause_on_call) {
+                            CallAction::Pause => pb.pause(),
+                            CallAction::Resume => pb.play(),
+                            CallAction::None => {}
+                        }
+                        if was != call {
+                            tracing::info!(target: "sirtone::duck", call, "call");
+                        }
+                    }
+                }
                 let want = if ducked { amount.min(0.0) } else { 0.0 };
                 if sent != Some(want) {
                     tracing::info!(target: "sirtone::duck", ducked, db = want, by = %who, "duck");

@@ -1,9 +1,11 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { CalendarDays, Check, Gauge, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { openExport } from "@/app/export/ExportDialog";
 import { CollectionSummary } from "@/app/library/CollectionScreen";
 import { mb } from "@/app/library/TrackCard";
-import type { SignalInfo } from "@/shared/ipc/bindings";
+import { type AudioDevice, commands, type SignalInfo } from "@/shared/ipc/bindings";
 import { type City, cityLocate, citySearch, useWeather } from "@/shared/ipc/context";
 import { duplicatesCount } from "@/shared/ipc/duplicates";
 import { type EventInfo, eventList } from "@/shared/ipc/events";
@@ -140,6 +142,15 @@ export function SettingsScreen({
             {library.root && <ServiceData />}
             {library.root && onShowDuplicates && <DuplicatesLine onShow={onShowDuplicates} />}
             {library.root && <OrganizeLine />}
+            {library.root && (
+              <Button
+                variant="secondary"
+                className="w-fit"
+                onClick={() => openExport({ kind: "all", title: t("export.all") })}
+              >
+                {t("export.allButton")}
+              </Button>
+            )}
             {!library.root && onChooseLibrary && (
               <button
                 type="button"
@@ -177,6 +188,8 @@ export function SettingsScreen({
       <EventsSection />
 
       <VizSection />
+
+      <WidgetSection />
 
       <FxSection />
 
@@ -797,6 +810,101 @@ function SignalLine() {
   );
 }
 
+type OutputPrefs = { device: string; exclusive: boolean; pause_on_device_loss: boolean };
+
+/**
+ * «Устройство вывода» (T5.8, FR-PLAY-012, D-113): the system default (followed when it changes)
+ * or a device by name; «Монопольный режим» (the device for Sirtone alone; refused — shared, the
+ * signal line says so); «Пауза при отключении устройства». Optimistic switches.
+ */
+function OutputPicker() {
+  const { t } = useTranslation("shell");
+  const [o, setO] = useState<OutputPrefs>({
+    device: "default",
+    exclusive: false,
+    pause_on_device_loss: true,
+  });
+  const [devices, setDevices] = useState<AudioDevice[]>([]);
+  const [exclusiveOn, setExclusiveOn] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    let off: (() => void) | undefined;
+    getSettings().then((s) => {
+      const v = ((s.playback ?? {}) as { output?: Partial<OutputPrefs> }).output;
+      if (alive)
+        setO({
+          device: v?.device ?? "default",
+          exclusive: v?.exclusive ?? false,
+          pause_on_device_loss: v?.pause_on_device_loss ?? true,
+        });
+    });
+    if (isTauri()) void commands.audioDevices().then((d) => alive && setDevices(d));
+    getSnapshot().then((s) => alive && setExclusiveOn(s.signal?.exclusive ?? false));
+    onSnapshot((s) => alive && setExclusiveOn(s.signal?.exclusive ?? false)).then((u) => {
+      if (alive) off = u;
+      else u();
+    });
+    return () => {
+      alive = false;
+      off?.();
+    };
+  }, []);
+  const save = (next: OutputPrefs) => {
+    const prev = o;
+    setO(next);
+    patchSettings({ playback: { output: next } }).catch(() => setO(prev));
+  };
+  const known = o.device === "default" || devices.some((d) => d.id === o.device);
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="t-body text-text-primary">{t("settingsSound.output.title")}</div>
+      <fieldset
+        className="m-0 flex flex-wrap gap-2 border-0 p-0"
+        aria-label={t("settingsSound.output.title")}
+        data-testid="output-devices"
+      >
+        <Chip active={o.device === "default"} onClick={() => save({ ...o, device: "default" })}>
+          {t("settingsSound.output.system")}
+        </Chip>
+        {devices.map((d) => (
+          <Chip key={d.id} active={o.device === d.id} onClick={() => save({ ...o, device: d.id })}>
+            {d.name}
+          </Chip>
+        ))}
+      </fieldset>
+      {!known && (
+        <div className="t-caption text-text-secondary">{t("settingsSound.output.missing")}</div>
+      )}
+      <div className="flex items-center gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="t-body text-text-primary">{t("settingsSound.output.exclusive")}</div>
+          <div className="t-caption text-text-secondary">
+            {o.exclusive && !exclusiveOn
+              ? t("settingsSound.output.exclusiveRefused")
+              : t("settingsSound.output.exclusiveHint")}
+          </div>
+        </div>
+        <Switch
+          checked={o.exclusive}
+          label={t("settingsSound.output.exclusive")}
+          onChange={(v) => save({ ...o, exclusive: v })}
+        />
+      </div>
+      <div className="flex items-center gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="t-body text-text-primary">{t("settingsSound.output.pause")}</div>
+          <div className="t-caption text-text-secondary">{t("settingsSound.output.pauseHint")}</div>
+        </div>
+        <Switch
+          checked={o.pause_on_device_loss}
+          label={t("settingsSound.output.pause")}
+          onChange={(v) => save({ ...o, pause_on_device_loss: v })}
+        />
+      </div>
+    </div>
+  );
+}
+
 function SoundSection() {
   const { t } = useTranslation("shell");
   const [n, setN] = useState({ enabled: true, target: -14, album: true });
@@ -828,6 +936,7 @@ function SoundSection() {
       <h2 className="t-shelf-title text-primary-text">{t("settingsSound.title")}</h2>
       <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
         <SignalLine />
+        <OutputPicker />
         <div className="flex items-center gap-4">
           <div className="min-w-0 flex-1">
             <div className="t-body text-text-primary">{t("settingsSound.normalize")}</div>
@@ -1092,6 +1201,7 @@ type Duck = {
   pct: number;
   sensitivity: (typeof DUCK_SENS)[number];
   ignore: string[];
+  pauseOnCall: boolean;
 };
 const pctToDb = (pct: number) => (pct >= 100 ? -80 : Math.max(-80, 20 * Math.log10(1 - pct / 100)));
 const dbToPct = (db: number) => Math.round((1 - 10 ** (db / 20)) * 100);
@@ -1108,6 +1218,7 @@ function DuckSection() {
     pct: 75,
     sensitivity: "medium",
     ignore: [],
+    pauseOnCall: false,
   });
   const [adding, setAdding] = useState("");
   useEffect(() => {
@@ -1120,6 +1231,7 @@ function DuckSection() {
           ? (d?.sensitivity as Duck["sensitivity"])
           : "medium",
         ignore: Array.isArray(d?.ignore) ? (d.ignore as string[]) : [],
+        pauseOnCall: d?.pause_on_call === true,
       });
     });
   }, []);
@@ -1133,6 +1245,7 @@ function DuckSection() {
           amount_db: pctToDb(next.pct),
           sensitivity: next.sensitivity,
           ignore: next.ignore,
+          pause_on_call: next.pauseOnCall,
         },
       },
     }).catch(() => setDuck(prev));
@@ -1157,6 +1270,17 @@ function DuckSection() {
             checked={duck.enabled}
             label={t("settingsDuck.enable")}
             onChange={(v) => save({ ...duck, enabled: v })}
+          />
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsDuck.pauseOnCall")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsDuck.pauseOnCallHint")}</div>
+          </div>
+          <Switch
+            checked={duck.pauseOnCall}
+            label={t("settingsDuck.pauseOnCall")}
+            onChange={(v) => save({ ...duck, pauseOnCall: v })}
           />
         </div>
         {duck.enabled && (
@@ -1541,6 +1665,74 @@ function ActivitySwitch() {
         <div className="t-caption text-text-secondary">{t("settingsPlace.activityHint")}</div>
       </div>
       <Switch checked={on} label={t("settingsPlace.activity")} onChange={save} />
+    </div>
+  );
+}
+
+type WidgetPrefs = { enabled: boolean; on_top: boolean; scale: number };
+
+/** «Виджет на рабочем столе» (T5.1, FR-WIN-003): on/off, «Поверх окон», size 75–150 %. */
+function WidgetSection() {
+  const { t } = useTranslation("shell");
+  const [w, setW] = useState<WidgetPrefs>({ enabled: false, on_top: false, scale: 1 });
+  useEffect(() => {
+    getSettings().then((s) => {
+      const v = (s.widget ?? {}) as Partial<WidgetPrefs>;
+      setW({ enabled: v.enabled ?? false, on_top: v.on_top ?? false, scale: v.scale ?? 1 });
+    });
+  }, []);
+  const save = (next: WidgetPrefs) => {
+    const prev = w;
+    setW(next);
+    patchSettings({ widget: next }).catch(() => setW(prev));
+  };
+  const pct = Math.round(w.scale * 100);
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsWidget.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="t-body text-text-primary">{t("settingsWidget.enabled")}</div>
+            <div className="t-caption text-text-secondary">{t("settingsWidget.enabledHint")}</div>
+          </div>
+          <Switch
+            checked={w.enabled}
+            label={t("settingsWidget.enabled")}
+            onChange={(v) => save({ ...w, enabled: v })}
+          />
+        </div>
+        {w.enabled && (
+          <>
+            <div className="flex items-center gap-4">
+              <div className="min-w-0 flex-1">
+                <div className="t-body text-text-primary">{t("settingsWidget.onTop")}</div>
+                <div className="t-caption text-text-secondary">{t("settingsWidget.onTopHint")}</div>
+              </div>
+              <Switch
+                checked={w.on_top}
+                label={t("settingsWidget.onTop")}
+                onChange={(v) => save({ ...w, on_top: v })}
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="t-body w-40 shrink-0 text-text-primary">
+                {t("settingsWidget.scale")}
+              </span>
+              <Slider
+                value={(w.scale - 0.75) / 0.75}
+                onCommit={(v) => save({ ...w, scale: Math.round((0.75 + v * 0.75) * 20) / 20 })}
+                label={t("settingsWidget.scale")}
+                valueText={t("settingsWidget.pct", { value: pct })}
+                className="flex-1"
+              />
+              <span className="t-caption w-12 shrink-0 text-right text-text-secondary">
+                {t("settingsWidget.pct", { value: pct })}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

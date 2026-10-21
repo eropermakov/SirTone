@@ -26,6 +26,7 @@ pub struct Settings {
     pub sfx: Sfx,
     pub hotkeys: Hotkeys,
     pub window: WindowPrefs,
+    pub widget: WidgetPrefs,
     pub library: LibraryPrefs,
     pub network: Network,
     pub context: ContextPrefs,
@@ -50,6 +51,7 @@ impl Default for Settings {
             sfx: Sfx::default(),
             hotkeys: Hotkeys::default(),
             window: WindowPrefs::default(),
+            widget: WidgetPrefs::default(),
             library: LibraryPrefs::default(),
             network: Network::default(),
             context: ContextPrefs::default(),
@@ -470,6 +472,32 @@ impl Default for Hotkeys {
     }
 }
 
+/// The desktop widget (T5.1, FR-WIN-003).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WidgetPrefs {
+    pub enabled: bool,
+    /// «Поверх окон» (option C); off — under every window (default).
+    pub on_top: bool,
+    /// 0.75…1.5.
+    pub scale: f32,
+    /// The remembered place (physical px of the virtual screen); `None` — lower right.
+    pub x: Option<i32>,
+    pub y: Option<i32>,
+}
+
+impl Default for WidgetPrefs {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            on_top: false,
+            scale: 1.0,
+            x: None,
+            y: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WindowPrefs {
@@ -760,6 +788,16 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
     {
         return Err(SettingsError::Invalid(
             "viz.milkdrop_lock: a preset name".into(),
+        ));
+    }
+    if s.playback.output.device.is_empty() || s.playback.output.device.len() > 512 {
+        return Err(SettingsError::Invalid(
+            "playback.output.device: \"default\" or an endpoint id".into(),
+        ));
+    }
+    if !(0.75..=1.5).contains(&s.widget.scale) {
+        return Err(SettingsError::Invalid(
+            "widget.scale must be 0.75..=1.5".into(),
         ));
     }
     let mine_ok = match &s.wave.mine {

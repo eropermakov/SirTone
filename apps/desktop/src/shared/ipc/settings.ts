@@ -55,14 +55,17 @@ export type SettingsPatch = {
   focus?: Record<string, unknown>;
   context?: Record<string, unknown>;
   events?: Record<string, unknown>;
+  widget?: { enabled?: boolean; on_top?: boolean; scale?: number };
   playback?: {
     normalization?: { enabled?: boolean; target_lufs?: number; album_mode?: "auto" | "off" };
+    output?: { device?: string; exclusive?: boolean; pause_on_device_loss?: boolean };
     eq?: { enabled?: boolean; preset?: string; preamp_db?: number; bands_db?: number[] };
     duck?: {
       enabled?: boolean;
       amount_db?: number;
       sensitivity?: "low" | "medium" | "high";
       ignore?: string[];
+      pause_on_call?: boolean;
     };
     automix?: {
       mode?: "gapless" | "crossfade" | "smart";

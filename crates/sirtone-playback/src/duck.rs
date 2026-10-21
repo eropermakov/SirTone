@@ -20,11 +20,60 @@ pub struct DuckParams {
     /// Executables never counted (capture tools carry Sirtone's own sound).
     #[serde(default)]
     pub builtin_ignore: Vec<String>,
+    /// Call apps (T5.18): capturing from the communications microphone = a call.
+    #[serde(default)]
+    pub call_apps: Vec<String>,
+    #[serde(default = "call_poll_default")]
+    pub call_poll_ms: u64,
+}
+
+fn call_poll_default() -> u64 {
+    1000
 }
 
 impl DuckParams {
     pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(s)
+    }
+}
+
+/// «Пауза во время звонка» (T5.18, FR-PLAY-011, D-49): pauses when a call begins while music
+/// plays, and plays again when it ends — only what it paused itself (a pause by the person
+/// stays a pause).
+#[derive(Debug, Default)]
+pub struct CallGuard {
+    in_call: bool,
+    paused_by_us: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallAction {
+    None,
+    Pause,
+    Resume,
+}
+
+impl CallGuard {
+    pub fn step(&mut self, call: bool, playing: bool, enabled: bool) -> CallAction {
+        let began = call && !self.in_call;
+        let ended = !call && self.in_call;
+        self.in_call = call;
+        if began && enabled && playing {
+            self.paused_by_us = true;
+            return CallAction::Pause;
+        }
+        if call && playing {
+            // The person pressed play during the call: theirs now.
+            self.paused_by_us = false;
+        }
+        if ended && std::mem::take(&mut self.paused_by_us) && !playing {
+            return CallAction::Resume;
+        }
+        CallAction::None
+    }
+
+    pub fn in_call(&self) -> bool {
+        self.in_call
     }
 }
 
@@ -65,6 +114,26 @@ impl Ducker {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_call_pauses_only_what_it_paused() {
+        let mut g = CallGuard::default();
+        // Off — nothing.
+        assert_eq!(g.step(true, true, false), CallAction::None);
+        assert_eq!(g.step(false, true, false), CallAction::None);
+        // Playing, a call: pause; the call ends: play again.
+        assert_eq!(g.step(true, true, true), CallAction::Pause);
+        assert_eq!(g.step(true, false, true), CallAction::None);
+        assert_eq!(g.step(false, false, true), CallAction::Resume);
+        // Paused by the person before the call: stays paused after it.
+        assert_eq!(g.step(true, false, true), CallAction::None);
+        assert_eq!(g.step(false, false, true), CallAction::None);
+        // Pressed play during the call: no resume needed, nothing paused after.
+        assert_eq!(g.step(true, true, true), CallAction::Pause);
+        assert_eq!(g.step(true, true, true), CallAction::None);
+        assert_eq!(g.step(false, true, true), CallAction::None);
+    }
+
     use super::*;
 
     fn params() -> DuckParams {

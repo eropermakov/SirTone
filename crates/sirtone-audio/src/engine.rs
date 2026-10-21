@@ -64,6 +64,8 @@ pub enum EngineCmd {
     SetLimiter(bool),
     /// FR-PLAY-012: pause when the output device disappears (default on), else follow the new default.
     SetPauseOnDeviceLoss(bool),
+    /// The output device and exclusive mode (T5.8, FR-PLAY-012): reopened at the same position.
+    SetOutput(crate::output::OutputPrefs),
     /// From the device watcher: the system default output changed.
     DefaultDeviceChanged,
     /// From the device watcher: an endpoint was unplugged, disabled or removed.
@@ -148,6 +150,8 @@ pub struct Snapshot {
     pub underruns: u64,
     /// Endpoint id of the current output device.
     pub device: Option<String>,
+    /// Exclusive mode is on (asked for and accepted by the device).
+    pub exclusive: bool,
     /// What the sound goes through (T4.13, FR-PLAY-002): rates, channels, DSP.
     pub signal: Option<SignalPath>,
     /// The previous track is still sounding under this one (an automix overlap, T4.9): the
@@ -321,6 +325,7 @@ struct Engine {
     /// The next track in another format, opened early (docs/04 §3) and used at the joint.
     next_source: Option<(Source, PathBuf)>,
     pause_on_device_loss: bool,
+    output_prefs: crate::output::OutputPrefs,
     /// A default-device change waiting to settle (see `DEVICE_SETTLE`).
     default_changed_at: Option<Instant>,
     /// Underruns already reported in the log (diagnostics; the RT thread only counts).
@@ -499,6 +504,7 @@ impl Engine {
             next_attached: false,
             next_source: None,
             pause_on_device_loss: true,
+            output_prefs: crate::output::OutputPrefs::default(),
             default_changed_at: None,
             logged_underruns: 0,
             gains: Vec::new(),
@@ -702,6 +708,13 @@ impl Engine {
                 self.pause_on_device_loss = on;
                 return;
             }
+            EngineCmd::SetOutput(p) => {
+                if p != self.output_prefs {
+                    self.output_prefs = p;
+                    self.reopen_output();
+                }
+                return;
+            }
             EngineCmd::DefaultDeviceChanged => {
                 self.default_changed_at = Some(Instant::now());
                 return;
@@ -721,7 +734,7 @@ impl Engine {
         if let Some((out, _)) = &self.output {
             return Ok(out.format);
         }
-        let (out, prod) = Output::open(self.shared.clone())?;
+        let (out, prod) = Output::open(self.shared.clone(), &self.output_prefs)?;
         let f = out.format;
         self.output = Some((out, prod));
         Ok(f)
@@ -1125,6 +1138,15 @@ impl Engine {
             self.on_output_gone();
             return;
         }
+        // A device chosen by hand stays chosen while it is there (T5.8).
+        if self.output_prefs.device.as_deref() == Some(id.as_str()) {
+            return;
+        }
+        self.reopen_output();
+    }
+
+    /// The output again (another device, exclusive on/off, a new default): same position.
+    fn reopen_output(&mut self) {
         if self.deck.is_none() {
             self.output = None; // reopened lazily on the next Load
             return;
@@ -1133,7 +1155,7 @@ impl Engine {
         self.output = None;
         match self.ensure_output().and_then(|_| self.seek(pos)) {
             Ok(()) => {
-                tracing::info!(target: "sirtone::audio", "output moved to the new default device");
+                tracing::info!(target: "sirtone::audio", "output reopened at the same position");
                 self.emit_snapshot();
             }
             Err(e) => self.fail(e),
@@ -1218,6 +1240,7 @@ impl Engine {
             volume: self.volume,
             underruns: self.shared.underruns.load(Ordering::Relaxed),
             device: self.output.as_ref().map(|(o, _)| o.device_id.clone()),
+            exclusive: self.output.as_ref().is_some_and(|(o, _)| o.exclusive),
             signal: match (self.deck.as_ref(), self.output.as_ref()) {
                 (Some(d), Some((o, _))) => Some(SignalPath {
                     source_rate: d.source.rate,

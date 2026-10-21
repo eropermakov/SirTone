@@ -5,9 +5,10 @@
 use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::{
-    analysis, artists, autostart, backgrounds, bootstrap, context, continuation, duplicates,
-    events, feedback, focus, hotkeys, library, net, night, perf, playback, playlists, presets,
-    search, settings_store, sleep, storage, unknowns, updates, viz, wave, window_chrome,
+    analysis, artists, autostart, backgrounds, bluetooth, bootstrap, context, continuation,
+    duplicates, events, export, feedback, focus, hotkeys, library, net, night, perf, playback,
+    playlists, presets, search, settings_store, sleep, storage, unknowns, updates, viz, wave,
+    widget, window_chrome,
 };
 
 /// Free-form JSON across IPC, exported as TS `unknown`. specta inlines `serde_json::Value`
@@ -137,6 +138,15 @@ pub fn builder() -> Builder<tauri::Wry> {
             context::city_search,
             context::city_locate,
             context::weather_get,
+            bluetooth::bt_devices,
+            bluetooth::bt_set,
+            bluetooth::bt_open_settings,
+            widget::widget_state,
+            widget::widget_texts,
+            widget::widget_open_main,
+            export::export_start,
+            export::export_cancel,
+            playback::audio_devices,
             wave::wave_context_name,
             wave::wave_composition,
             wave::wave_set_off,
@@ -178,7 +188,9 @@ pub fn builder() -> Builder<tauri::Wry> {
             sleep::SleepStatus,
             focus::FocusStatus,
             context::WeatherNow,
-            events::EventOffer
+            events::EventOffer,
+            export::ExportProgress,
+            wave::FocusSuggest
         ])
 }
 
