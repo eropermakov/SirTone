@@ -39,7 +39,8 @@
         "type": "embedBootstrapper"
       },
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "installerHooks": "windows/hooks.nsh"
       }
     },
     "resources": { "../../../THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt" },

@@ -48,7 +48,7 @@ export type SettingsPatch = {
     setup?: unknown;
     mine?: unknown[];
   };
-  library?: { organize_external?: "suggest" | "auto" | "never" };
+  library?: { organize_external?: "suggest" | "auto" | "never"; inbox?: boolean };
   network?: { offline_mode?: boolean };
   sfx?: { enabled?: boolean; volume?: number };
   fx?: { mode?: string; manual?: string | null; static_when_weak?: boolean };

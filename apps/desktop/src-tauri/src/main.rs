@@ -189,6 +189,7 @@ fn main() {
             autostart::sync(app.handle(), &store);
             updates::start(app.handle());
             app.manage(library::Library::start(app.handle().clone(), store.clone()));
+            library::ensure_inbox(app.handle());
             app.manage(wave::Wave::start(app.handle().clone()));
             app.manage(artists::Merges::default());
             let net_state = net::start(app.handle());

@@ -1031,13 +1031,31 @@ fn organize_adopted(
     if adopted.is_empty() {
         return;
     }
-    let mode = tauri::Manager::try_state::<Arc<SettingsStore>>(app)
-        .and_then(|s| {
-            s.get()["library"]["organize_external"]
+    let doc = tauri::Manager::try_state::<Arc<SettingsStore>>(app).map(|s| s.get());
+    let mode = doc
+        .as_ref()
+        .and_then(|d| {
+            d["library"]["organize_external"]
                 .as_str()
                 .map(str::to_owned)
         })
         .unwrap_or_else(|| "suggest".into());
+    // «Папка Inbox» (T6.8, FR-IMP-010): what was put there is laid out at once, whatever the mode.
+    let inbox = doc
+        .as_ref()
+        .is_some_and(|d| d["library"]["inbox"].as_bool() == Some(true));
+    let (dropped, adopted): (Vec<i64>, Vec<i64>) = adopted
+        .iter()
+        .copied()
+        .partition(|&t| inbox && in_inbox(db, t));
+    let any = !dropped.is_empty();
+    for t in dropped {
+        let _ = sirtone_library::relocate::relayout(db, root, t, deps.fs.as_ref());
+    }
+    if any {
+        // The move tidies empty folders away — Inbox itself stays.
+        let _ = std::fs::create_dir_all(root.join(INBOX));
+    }
     if mode == "never" {
         return;
     }
@@ -1065,6 +1083,32 @@ fn organize_adopted(
         s.organize.len() as u32
     };
     let _ = OrganizeSuggested { tracks: total }.emit(app);
+}
+
+pub const INBOX: &str = "Inbox";
+
+fn in_inbox(db: &Connection, track: i64) -> bool {
+    db.query_row("SELECT rel_path FROM track WHERE id = ?1", [track], |r| {
+        r.get::<_, String>(0)
+    })
+    .is_ok_and(|p| {
+        let p = p.replace('\\', "/");
+        p.split('/')
+            .next()
+            .is_some_and(|first| first.eq_ignore_ascii_case(INBOX))
+    })
+}
+
+/// «Папка Inbox» switched on: the folder appears in the library (nothing else changes).
+pub fn ensure_inbox(app: &AppHandle) {
+    let on = tauri::Manager::try_state::<Arc<SettingsStore>>(app)
+        .is_some_and(|s| s.get()["library"]["inbox"].as_bool() == Some(true));
+    if let (true, Some(root)) = (
+        on,
+        tauri::Manager::try_state::<Library>(app).and_then(|l| l.root()),
+    ) {
+        let _ = std::fs::create_dir_all(root.join(INBOX));
+    }
 }
 
 /// Files moved: queued tracks take their new paths (the playing one keeps its own).

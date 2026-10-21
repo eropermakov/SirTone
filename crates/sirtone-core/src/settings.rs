@@ -524,6 +524,8 @@ pub struct LibraryPrefs {
     pub root: Option<String>,
     pub adopt_external_files: bool,
     pub organize_external: String,
+    /// «Папка Inbox» (T6.8, FR-IMP-010): files put into `<root>/Inbox` are laid out at once.
+    pub inbox: bool,
 }
 
 impl Default for LibraryPrefs {
@@ -532,6 +534,7 @@ impl Default for LibraryPrefs {
             root: None,
             adopt_external_files: true,
             organize_external: "suggest".into(),
+            inbox: false,
         }
     }
 }

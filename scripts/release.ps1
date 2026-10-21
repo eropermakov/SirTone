@@ -14,7 +14,10 @@ param(
     [string]$Repo = 'eropermakov/SirTone',
     # GitHub Actions (.github/workflows/release.yml): the key comes from the secret
     # TAURI_SIGNING_PRIVATE_KEY, no local toolchain setup, no desktop copy.
-    [switch]$Ci
+    [switch]$Ci,
+    # Code signing (T6.7, OWN-05): the thumbprint of a code-signing certificate in the Windows
+    # store (CurrentUser\My). Empty — unsigned, as before (SmartScreen may warn).
+    [string]$CertThumbprint = ''
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -43,8 +46,19 @@ if ($Ci) {
 # 1. Signed build: the bundler writes SirTone_<v>_x64-setup.exe and its .sig.
 $env:TAURI_SIGNING_PRIVATE_KEY = $key
 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ''
+$buildArgs = @()
+if ($CertThumbprint) {
+    $sign = Join-Path $env:TEMP 'sirtone-sign.json'
+    $signConf = [ordered]@{ bundle = [ordered]@{ windows = [ordered]@{
+        certificateThumbprint = $CertThumbprint
+        digestAlgorithm       = 'sha256'
+        timestampUrl          = 'http://timestamp.digicert.com'
+    } } }
+    [IO.File]::WriteAllText($sign, ($signConf | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+    $buildArgs = @('--config', $sign)
+}
 Push-Location (Join-Path $root 'apps\desktop')
-try { pnpm tauri build; Must 'tauri build' } finally { Pop-Location }
+try { pnpm tauri build @buildArgs; Must 'tauri build' } finally { Pop-Location }
 Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY, Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
 
 $bundle = Join-Path $root 'target\release\bundle\nsis'

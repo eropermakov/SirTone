@@ -143,6 +143,9 @@ pub fn settings_patch(
     if changed.iter().any(|k| k == "widget" || k == "appearance") {
         crate::widget::apply(&app); // T5.1: on/off, «поверх окон», size, the look
     }
+    if changed.iter().any(|k| k == "library") {
+        crate::library::ensure_inbox(&app); // T6.8: «Папка Inbox» appears at once
+    }
     if changed.iter().any(|k| k == "language") {
         crate::i18n::apply(&app); // T6.5: the tray, the taskbar, the widget speak it at once
     }

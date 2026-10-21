@@ -2285,12 +2285,14 @@ function DuplicatesLine({ onShow }: { onShow: () => void }) {
 function OrganizeLine() {
   const { t } = useTranslation("shell");
   const [auto, setAuto] = useState(false);
+  const [inbox, setInbox] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     getSettings()
       .then((s) => {
-        const l = s.library as { organize_external?: string } | undefined;
+        const l = s.library as { organize_external?: string; inbox?: boolean } | undefined;
         setAuto(l?.organize_external === "auto");
+        setInbox(l?.inbox === true);
       })
       .catch(() => {});
   }, []);
@@ -2309,6 +2311,21 @@ function OrganizeLine() {
             patchSettings({ library: { organize_external: on ? "auto" : "suggest" } }).catch(() =>
               setAuto(!on),
             );
+          }}
+        />
+      </div>
+      {/* «Папка Inbox» (T6.8, FR-IMP-010): what is put there is laid out at once. */}
+      <div className="flex items-center gap-4">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="t-body text-text-primary">{t("organize.inbox")}</span>
+          <span className="t-caption text-text-secondary">{t("organize.inboxHint")}</span>
+        </div>
+        <Switch
+          checked={inbox}
+          label={t("organize.inbox")}
+          onChange={(on) => {
+            setInbox(on);
+            patchSettings({ library: { inbox: on } }).catch(() => setInbox(!on));
           }}
         />
       </div>
