@@ -25,6 +25,8 @@ type Props = {
   onClose: () => void;
   /** A nested menu closes the whole tree when an item is chosen. */
   onChosen?: () => void;
+  /** Grow up from `at` (menus of the bottom player bar), not down. */
+  up?: boolean;
 };
 
 const isItem = (i: MenuItem): i is Exclude<MenuItem, { separator: true }> => !("separator" in i);
@@ -35,24 +37,32 @@ const isItem = (i: MenuItem): i is Exclude<MenuItem, { separator: true }> => !("
  * at the bottom in `danger`. Opens from the point of call in 150 ms, stays inside the window;
  * ↑/↓/Home/End move the highlight, Enter/Space choose, → opens a submenu, ←/Esc close.
  */
-export function Menu({ items, at, label, onClose, onChosen }: Props) {
+export function Menu({ items, at, label, onClose, onChosen, up }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState(at);
   const [active, setActive] = useState(-1);
   const [sub, setSub] = useState<{ index: number; at: { x: number; y: number } } | null>(null);
   const enabled = items.map((i, n) => (isItem(i) && !i.disabled ? n : -1)).filter((n) => n >= 0);
 
-  // Keep the whole flyout inside the window.
+  // Keep the whole flyout inside the window — again whenever its size changes (a list that
+  // arrives after the menu opened).
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const r = el.getBoundingClientRect();
-    setPos({
-      x: Math.max(8, Math.min(at.x, window.innerWidth - r.width - 8)),
-      y: Math.max(8, Math.min(at.y, window.innerHeight - r.height - 8)),
-    });
+    const place = () => {
+      const r = el.getBoundingClientRect();
+      const y = up ? at.y - r.height - 4 : at.y;
+      setPos({
+        x: Math.max(8, Math.min(at.x, window.innerWidth - r.width - 8)),
+        y: Math.max(8, Math.min(y, window.innerHeight - r.height - 8)),
+      });
+    };
+    place();
     el.focus();
-  }, [at]);
+    const ro = new ResizeObserver(place);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [at, up]);
 
   useEffect(() => {
     const down = (e: PointerEvent) => {

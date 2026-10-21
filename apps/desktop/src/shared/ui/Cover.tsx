@@ -45,13 +45,18 @@ export function Cover({
   hash: string | null | undefined;
   px: number;
   className?: string;
-  rounded?: "sm" | "md";
+  rounded?: "sm" | "md" | "full";
   /** Placeholder hint; absent — the plain note placeholder. */
   art?: number | undefined;
 }) {
   const { t } = useTranslation("common");
   const [failed, setFailed] = useState<string | null>(null);
-  const radius = rounded === "md" ? "rounded-(--radius-md)" : "rounded-(--radius-sm)";
+  const radius =
+    rounded === "full"
+      ? "rounded-full"
+      : rounded === "md"
+        ? "rounded-(--radius-md)"
+        : "rounded-(--radius-sm)";
   const box = cn("shrink-0 overflow-hidden", radius, className);
   if (!hash || failed === hash) {
     if (art === undefined) {

@@ -59,6 +59,29 @@ fn finish<T>(rows: Vec<T>, last: Option<Cursor>, limit: u32) -> (Vec<T>, Option<
 }
 
 /// Canonical artists that have at least one playable track, by name.
+/// The artist's picture until a photo source exists (D-114): the cover of their album with the
+/// most tracks here (ties — the newer album). `None` — no album of theirs has a cover.
+pub fn artist_covers(
+    conn: &Connection,
+    ids: &[ArtistId],
+) -> Result<std::collections::HashMap<ArtistId, String>, LibraryError> {
+    let mut st = conn.prepare_cached(
+        "SELECT cv.hash FROM track_artist ta
+         JOIN track t ON t.id = ta.track_id AND t.state = 'ok'
+         JOIN album al ON al.id = t.album_id
+         JOIN cover cv ON cv.id = al.cover_id
+         WHERE ta.artist_id = ?1
+         GROUP BY al.id ORDER BY count(*) DESC, al.id DESC LIMIT 1",
+    )?;
+    let mut out = std::collections::HashMap::new();
+    for id in ids {
+        if let Ok(h) = st.query_row([id], |r| r.get::<_, String>(0)) {
+            out.insert(*id, h);
+        }
+    }
+    Ok(out)
+}
+
 pub fn artists_page(
     conn: &Connection,
     after: Option<&Cursor>,

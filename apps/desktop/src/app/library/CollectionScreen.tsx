@@ -215,7 +215,7 @@ export function CollectionScreen({
           id: a.id,
           title: a.name,
           subtitle: tc("count.tracks", { count: a.tracks }),
-          cover: null,
+          cover: a.cover ?? null,
           count: a.tracks,
         }));
   const current: Sort<string> = kind === "albums" ? albumSort : artistSort;

@@ -107,6 +107,7 @@ fn vibe_query(facets: &[Facet]) -> (Vec<String>, WaveQueryIpc) {
 fn artist(a: ArtistRow) -> ArtistItem {
     ArtistItem {
         id: a.id as u32,
+        cover: None,
         name: a.name,
         tracks: a.tracks,
         added_at: a.added_at as f64,
@@ -178,6 +179,21 @@ pub fn library_search(lib: State<'_, Library>, query: String) -> Result<SearchRe
             })
             .collect(),
     };
+    // Artists' pictures (D-114).
+    let mut aids: Vec<i64> = out.artists.iter().map(|a| i64::from(a.id)).collect();
+    aids.extend(out.suggestions.iter().map(|a| i64::from(a.id)));
+    if let Some(BestMatch::Artist(a)) = &out.best {
+        aids.push(i64::from(a.id));
+    }
+    if !aids.is_empty() {
+        let covers = lib.with_read(|c| sirtone_library::collection::artist_covers(c, &aids))?;
+        let fill = |a: &mut ArtistItem| a.cover = covers.get(&i64::from(a.id)).cloned();
+        out.artists.iter_mut().for_each(fill);
+        out.suggestions.iter_mut().for_each(fill);
+        if let Some(BestMatch::Artist(a)) = &mut out.best {
+            fill(a);
+        }
+    }
     // Placeholders of albums without a cover (T3.20).
     let mut ids: Vec<i64> = out
         .albums

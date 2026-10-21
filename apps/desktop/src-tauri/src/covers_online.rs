@@ -78,6 +78,12 @@ fn run(app: &AppHandle, me: &CoversOnline) -> usize {
                 .filter(|r| valid_mbid(r))
                 .map(|r| format!("release/{r}/front-500")),
         ];
+        // Asked again next run unless an answer came (a cover, or «no art» for every edition).
+        let forget = || {
+            if let Ok(mut a) = me.asked.lock() {
+                a.remove(&album);
+            }
+        };
         for path in paths.into_iter().flatten() {
             match net.get(Host::CoverArt, &path) {
                 Ok(bytes) => {
@@ -90,9 +96,18 @@ fn run(app: &AppHandle, me: &CoversOnline) -> usize {
                     }
                     break;
                 }
-                Err(NetError::Offline | NetError::Network(_)) => return got,
-                // 404: this edition has no art; 429/503: next time.
-                Err(_) => {}
+                Err(NetError::Offline | NetError::Network(_)) => {
+                    // No network right now (a laptop just woke): this album and the rest wait
+                    // for the next run, not for a restart.
+                    forget();
+                    return got;
+                }
+                Err(NetError::Status(404)) => {}
+                // 429/503 and the like: next run.
+                Err(_) => {
+                    forget();
+                    break;
+                }
             }
         }
     }
