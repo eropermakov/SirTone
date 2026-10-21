@@ -41,6 +41,8 @@ struct ContextJson {
     schema: String,
     daypart_by_clock: Vec<DaypartFrom>,
     daypart_by_sun: BySunJson,
+    #[serde(default)]
+    activity_apps: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -69,6 +71,8 @@ pub struct BySun {
 pub struct ContextConfig {
     pub daypart_by_clock: Vec<(u16, Daypart)>,
     pub by_sun: BySun,
+    /// «Занятие» by the foreground application (FR-CTX-003): activity key → exe names.
+    pub activity_apps: Vec<(String, Vec<String>)>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -122,6 +126,15 @@ impl Default for SeasonsConfig {
 }
 
 impl ContextConfig {
+    /// The activity an application stands for (`code.exe` → `work`); `None` — says nothing.
+    pub fn activity_of(&self, exe: &str) -> Option<&str> {
+        let exe = exe.to_lowercase();
+        self.activity_apps
+            .iter()
+            .find(|(_, apps)| apps.contains(&exe))
+            .map(|(k, _)| k.as_str())
+    }
+
     pub fn from_json(s: &str) -> Result<Self, ConfigError> {
         let c: ContextJson = serde_json::from_str(s)?;
         if c.schema != "sirtone.context/1" {
@@ -142,6 +155,11 @@ impl ContextConfig {
             return Err(ConfigError::Invalid(format!("day_from {}", s.day_from)));
         };
         Ok(Self {
+            activity_apps: c
+                .activity_apps
+                .iter()
+                .map(|(k, v)| (k.clone(), v.iter().map(|e| e.to_lowercase()).collect()))
+                .collect(),
             daypart_by_clock: v,
             by_sun: BySun {
                 dawn_before_rise: s.dawn_before_rise,
@@ -202,6 +220,14 @@ impl Default for ContextConfig {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn an_application_stands_for_an_activity() {
+        let c = ContextConfig::default();
+        assert_eq!(c.activity_of("Code.exe"), Some("work"));
+        assert_eq!(c.activity_of("chrome.exe"), None);
+    }
+
     use super::*;
 
     #[test]

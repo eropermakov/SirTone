@@ -35,5 +35,34 @@
     "evening_before_set": 150,
     "dusk_before_set": 20,
     "night_after_set": 40
+  },
+  "_note_activity": "FR-CTX-003, D-112: «занятие» by the foreground application — opt-in (settings context.activity_detection), the exe file name only, never window titles, nothing stored. Temporary list.",
+  "activity_apps": {
+    "work": [
+      "code.exe",
+      "devenv.exe",
+      "idea64.exe",
+      "pycharm64.exe",
+      "rider64.exe",
+      "clion64.exe",
+      "webstorm64.exe",
+      "goland64.exe",
+      "sublime_text.exe",
+      "notepad++.exe",
+      "winword.exe",
+      "excel.exe",
+      "powerpnt.exe",
+      "onenote.exe",
+      "outlook.exe",
+      "obsidian.exe",
+      "notion.exe",
+      "figma.exe",
+      "acrobat.exe",
+      "windowsterminal.exe",
+      "cursor.exe"
+    ],
+    "workout": [],
+    "road": [],
+    "rest": []
   }
 }

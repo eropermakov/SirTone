@@ -276,6 +276,43 @@ fn novelty(app: &AppHandle) -> f32 {
         .map_or(0.5, |v| (v.min(100) as f32) / 100.0)
 }
 
+/// «Занятие» by the foreground application (T5.6, FR-CTX-003): only when switched on in
+/// Settings, only for «Моя волна» without a chosen activity; the exe name is read, matched
+/// against `context.json` and dropped (never a window title, nothing stored). Sirtone itself in
+/// front keeps the last answer.
+fn detect_activity(
+    app: &AppHandle,
+    profile: &str,
+    q: &WaveQuery,
+    last: Option<Activity>,
+) -> Option<Activity> {
+    let on = app
+        .try_state::<std::sync::Arc<SettingsStore>>()
+        .is_some_and(|s| s.get()["context"]["activity_detection"].as_bool() == Some(true));
+    if !on || profile != "my_wave" || !q.activity.is_empty() {
+        return None;
+    }
+    let Some(exe) = sirtone_platform::sessions::foreground_exe() else {
+        return last;
+    };
+    if exe == "sirtone-app.exe" || exe == "msedgewebview2.exe" {
+        return last;
+    }
+    static CFG: std::sync::OnceLock<sirtone_wave::config::ContextConfig> =
+        std::sync::OnceLock::new();
+    CFG.get_or_init(sirtone_wave::config::ContextConfig::default)
+        .activity_of(&exe)
+        .and_then(Activity::from_key)
+}
+
+fn with_activity(q: &WaveQuery, a: Option<Activity>) -> WaveQuery {
+    let mut q = q.clone();
+    if let Some(a) = a {
+        q.activity = vec![a];
+    }
+    q
+}
+
 /// «Непохожесть» of the expert level (FR-NOV-003); `None` — the main slider sets both.
 fn distance(app: &AppHandle) -> Option<f32> {
     app.try_state::<std::sync::Arc<SettingsStore>>()
@@ -463,6 +500,8 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
     let mut slot: Conn = None;
     let mut profile = String::from("my_wave");
     let mut query = WaveQuery::default();
+    // «Занятие» by the foreground application (T5.6), kept while Sirtone itself is in front.
+    let mut auto: Option<Activity> = None;
     while let Ok(cmd) = rx.recv() {
         match cmd {
             Cmd::Start(p, q, reply) => {
@@ -472,9 +511,11 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                 *OFF.lock().unwrap_or_else(|p| p.into_inner()) = WaveOff::default();
                 profile = p;
                 query = q;
+                auto = detect_activity(app, &profile, &query, None);
                 app.state::<Playback>().set_wave_profile(&profile);
-                let r = next_ids(app, &mut slot, &mut engine, &profile, &query, FIRST).and_then(
-                    |ids| {
+                let eff = with_activity(&query, auto);
+                let r =
+                    next_ids(app, &mut slot, &mut engine, &profile, &eff, FIRST).and_then(|ids| {
                         let lib = app.state::<Library>();
                         let items = items_for(&lib, &ids, PlayContext::Wave)?;
                         let n = items.len() as u32;
@@ -492,8 +533,7 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                             no_popularity,
                             few,
                         })
-                    },
-                );
+                    });
                 let _ = reply.send(r);
             }
             Cmd::Why(id, reply) => {
@@ -529,7 +569,7 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                 }
             }
             Cmd::Off => {
-                let eff = off().apply(&query);
+                let eff = off().apply(&with_activity(&query, auto));
                 if let Some(e) = engine.as_mut() {
                     e.set_query(eff.clone(), SystemClock.now_utc_ms());
                     retune(app, &mut slot, &mut engine, &profile, &eff);
@@ -589,6 +629,14 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
             }
             Cmd::More => {
                 if engine.is_some() {
+                    let now_auto = detect_activity(app, &profile, &query, auto);
+                    if now_auto != auto {
+                        auto = now_auto;
+                        if let Some(e) = engine.as_mut() {
+                            let eff = off().apply(&with_activity(&query, auto));
+                            e.set_query(eff, SystemClock.now_utc_ms());
+                        }
+                    }
                     match next_ids(app, &mut slot, &mut engine, &profile, &query, MORE)
                         .and_then(|ids| items_for(&app.state::<Library>(), &ids, PlayContext::Wave))
                     {

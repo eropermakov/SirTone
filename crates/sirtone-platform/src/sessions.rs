@@ -63,6 +63,23 @@ fn processes() -> HashMap<u32, (u32, String)> {
     out
 }
 
+/// The foreground window's application — its exe file name, lower case (T5.6, FR-CTX-003).
+/// Window titles are never read.
+pub fn foreground_exe() -> Option<String> {
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+    // SAFETY: plain calls; a null window gives pid 0.
+    let pid = unsafe {
+        let hwnd = GetForegroundWindow();
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        pid
+    };
+    if pid == 0 {
+        return None;
+    }
+    processes().remove(&pid).map(|(_, exe)| exe)
+}
+
 /// Sirtone's process and everything it started (WebView2 and its helpers).
 pub fn own_tree() -> HashSet<u32> {
     let me = std::process::id();

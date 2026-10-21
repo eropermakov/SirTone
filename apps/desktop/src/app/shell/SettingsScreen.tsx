@@ -1513,8 +1513,34 @@ function PlaceSection() {
           </div>
         )}
         <SeasonNudgeSwitch />
+        <ActivitySwitch />
         <div className="t-caption text-text-tertiary">{t("settingsPlace.credit")}</div>
       </div>
+    </div>
+  );
+}
+
+/** «Занятие по активному приложению» (T5.6, FR-CTX-003): opt-in; only the program's name. */
+function ActivitySwitch() {
+  const { t } = useTranslation("shell");
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    getSettings().then((s) => {
+      const c = s.context as { activity_detection?: boolean } | undefined;
+      setOn(c?.activity_detection ?? false);
+    });
+  }, []);
+  const save = (v: boolean) => {
+    setOn(v);
+    patchSettings({ context: { activity_detection: v } }).catch(() => setOn(!v));
+  };
+  return (
+    <div className="flex items-center gap-4">
+      <div className="min-w-0 flex-1">
+        <div className="t-body text-text-primary">{t("settingsPlace.activity")}</div>
+        <div className="t-caption text-text-secondary">{t("settingsPlace.activityHint")}</div>
+      </div>
+      <Switch checked={on} label={t("settingsPlace.activity")} onChange={save} />
     </div>
   );
 }
