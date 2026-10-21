@@ -6,6 +6,7 @@ import { mb } from "@/app/library/TrackCard";
 import type { SignalInfo } from "@/shared/ipc/bindings";
 import { type City, cityLocate, citySearch, useWeather } from "@/shared/ipc/context";
 import { duplicatesCount } from "@/shared/ipc/duplicates";
+import { type EventInfo, eventList } from "@/shared/ipc/events";
 import {
   analysisProgress,
   type NeverEntry,
@@ -172,6 +173,8 @@ export function SettingsScreen({
 
       <WaveLearningSection />
       <PlaceSection />
+
+      <EventsSection />
 
       <VizSection />
 
@@ -1509,8 +1512,34 @@ function PlaceSection() {
               : t("settingsPlace.noWeather")}
           </div>
         )}
+        <SeasonNudgeSwitch />
         <div className="t-caption text-text-tertiary">{t("settingsPlace.credit")}</div>
       </div>
+    </div>
+  );
+}
+
+/** «Учитывать погоду в сезоне» (FR-SEAS-001, Q-1): snow in April adds winter, ≤ 0.3. */
+function SeasonNudgeSwitch() {
+  const { t } = useTranslation("shell");
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    getSettings().then((s) => {
+      const w = s.wave as { season?: { weather_nudge?: boolean } } | undefined;
+      setOn(w?.season?.weather_nudge ?? true);
+    });
+  }, []);
+  const save = (v: boolean) => {
+    setOn(v);
+    patchSettings({ wave: { season: { weather_nudge: v } } }).catch(() => setOn(!v));
+  };
+  return (
+    <div className="flex items-center gap-4">
+      <div className="min-w-0 flex-1">
+        <div className="t-body text-text-primary">{t("settingsPlace.nudge")}</div>
+        <div className="t-caption text-text-secondary">{t("settingsPlace.nudgeHint")}</div>
+      </div>
+      <Switch checked={on} label={t("settingsPlace.nudge")} onChange={save} />
     </div>
   );
 }
@@ -1754,6 +1783,112 @@ function FxSection() {
             onChange={(v) => save({ ...fx, static_when_weak: v })}
           />
         </div>
+      </div>
+    </div>
+  );
+}
+
+type EventsPrefs = {
+  suggest: boolean;
+  auto_play: boolean;
+  religious: boolean;
+  micro: { weather: boolean; weekly: boolean; astro: boolean };
+};
+const MICRO_GROUPS = ["weather", "weekly", "astro"] as const;
+const EVENT_GROUPS = [
+  "secular",
+  "folk",
+  "religious",
+  "micro_weather",
+  "micro_weekly",
+  "micro_astro",
+] as const;
+
+/** «События» (T5.14, FR-EVT-002/004): cards, the auto mode, groups and every event's switch;
+ * an event switched off by three declines or «Никогда» says so. */
+function EventsSection() {
+  const { t } = useTranslation("shell");
+  const [ev, setEv] = useState<EventsPrefs | null>(null);
+  const [list, setList] = useState<EventInfo[]>([]);
+  const reload = () => {
+    void eventList().then(setList);
+  };
+  useEffect(() => {
+    getSettings().then((s) => {
+      const e = (s.events ?? {}) as Partial<EventsPrefs>;
+      setEv({
+        suggest: e.suggest ?? true,
+        auto_play: e.auto_play ?? false,
+        religious: e.religious ?? true,
+        micro: { weather: true, weekly: false, astro: true, ...(e.micro ?? {}) },
+      });
+    });
+    void eventList().then(setList);
+  }, []);
+  if (!ev) return null;
+  const save = (next: EventsPrefs) => {
+    const prev = ev;
+    setEv(next);
+    patchSettings({ events: next })
+      .then(reload)
+      .catch(() => setEv(prev));
+  };
+  const toggleOne = (id: string, on: boolean) => {
+    setList((l) => l.map((e) => (e.id === id ? { ...e, enabled: on, offReason: null } : e)));
+    patchSettings({ events: { enabled: { [id]: on }, off_reason: { [id]: null } } })
+      .then(reload)
+      .catch(reload);
+  };
+  const row = (label: string, hint: string | null, checked: boolean, on: (v: boolean) => void) => (
+    <div className="flex items-center gap-4">
+      <div className="min-w-0 flex-1">
+        <div className="t-body text-text-primary">{label}</div>
+        {hint && <div className="t-caption text-text-secondary">{hint}</div>}
+      </div>
+      <Switch checked={checked} label={label} onChange={on} />
+    </div>
+  );
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsEvents.title")}</h2>
+      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        {row(t("settingsEvents.suggest"), t("settingsEvents.suggestHint"), ev.suggest, (v) =>
+          save({ ...ev, suggest: v }),
+        )}
+        {row(t("settingsEvents.auto"), t("settingsEvents.autoHint"), ev.auto_play, (v) =>
+          save({ ...ev, auto_play: v }),
+        )}
+        {row(t("settingsEvents.religious"), null, ev.religious, (v) =>
+          save({ ...ev, religious: v }),
+        )}
+        {MICRO_GROUPS.map((g) => (
+          <div key={g}>
+            {row(t(`settingsEvents.micro.${g}`), null, ev.micro[g], (v) =>
+              save({ ...ev, micro: { ...ev.micro, [g]: v } }),
+            )}
+          </div>
+        ))}
+        {EVENT_GROUPS.map((g) => {
+          const items = list.filter((e) => e.group === g);
+          if (items.length === 0) return null;
+          return (
+            <div key={g} className="flex flex-col gap-3 border-t border-border pt-4">
+              <div className="t-group-label text-text-tertiary">
+                {t(`settingsEvents.group.${g}`)}
+              </div>
+              {items.map((e) => (
+                <div key={e.id} data-testid={`event-${e.id}`}>
+                  {row(
+                    t(`events.name.${e.id}`),
+                    e.offReason ? t(`settingsEvents.off.${e.offReason}`) : null,
+                    e.enabled,
+                    (v) => toggleOne(e.id, v),
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

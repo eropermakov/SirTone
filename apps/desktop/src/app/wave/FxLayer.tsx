@@ -2,6 +2,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { commands } from "@/shared/ipc/bindings";
 import { useWeather } from "@/shared/ipc/context";
+import { useEventOffer } from "@/shared/ipc/events";
 import { getSettings, onSettingsChanged } from "@/shared/ipc/settings";
 import { FxEngine, fxStats } from "@/shared/viz/fx";
 import { type FxMode, type FxPlan, planFx } from "@/shared/viz/fxPlan";
@@ -30,13 +31,15 @@ export function FxLayer() {
   const [forced, setForced] = useState<FxPlan | null | undefined>(undefined);
   const [weatherSrc, setWeatherSrc] = useState<{
     effect: string | null;
+    event: string | null;
     drift: number;
     intensity: number;
-  }>({ effect: null, drift: 0, intensity: 0 });
+  }>({ effect: null, event: null, drift: 0, intensity: 0 });
+  const eventOffer = useEventOffer();
   const weatherNow = useWeather();
   const [failed, setFailed] = useState(false);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a weather update is the trigger itself.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a weather or event update is the trigger itself.
   useEffect(() => {
     let alive = true;
     let off: (() => void) | undefined;
@@ -64,6 +67,7 @@ export function FxLayer() {
             setSeason(e.season);
             setWeatherSrc({
               effect: e.weather,
+              event: e.event,
               drift: e.drift ?? 0,
               intensity: e.intensity ?? 0,
             });
@@ -87,7 +91,7 @@ export function FxLayer() {
       window.clearInterval(hourly);
       off?.();
     };
-  }, [weatherNow]);
+  }, [weatherNow, eventOffer]);
 
   const plan = useMemo(() => {
     if (forced !== undefined) return forced;
@@ -96,6 +100,7 @@ export function FxLayer() {
       mode: fx.mode,
       manual: fx.manual,
       seasonEffect: season,
+      eventEffect: weatherSrc.event,
       weatherEffect: weatherSrc.effect,
       weatherDrift: weatherSrc.drift,
       weatherIntensity: weatherSrc.intensity,

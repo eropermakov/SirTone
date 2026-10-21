@@ -116,6 +116,33 @@ pub struct Profile {
     /// The focus wave (§15): work or break rules.
     #[serde(default)]
     pub focus: Option<FocusRules>,
+    /// The event wave (§11.2).
+    #[serde(default)]
+    pub event_rules: Option<EventRules>,
+}
+
+/// The event wave's rules (`profiles/event.json`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct EventRules {
+    /// A track «fits» the event from this `event(t)`.
+    pub fit_min: f32,
+    /// With this many fitting tracks the rest stay out of the queue.
+    pub fit_enough: usize,
+    /// Fewer direct matches — the wave is «атмосферная».
+    pub atmospheric_below: usize,
+    /// …and a direct match comes at most once in this many tracks.
+    pub spread: u32,
+}
+
+/// The running event for the event wave: the matcher and what the library has for it.
+struct EventRun {
+    matcher: crate::events::Matcher,
+    /// `event(t)` and «direct match» per catalog index.
+    score: Vec<f32>,
+    direct: Vec<bool>,
+    fit: crate::events::Fit,
+    /// Tracks with `event(t) ≥ fit_min`.
+    fitting: usize,
 }
 
 /// The focus wave's rules (`profiles/focus*.json`, §15, FR-FOCUS-003/005).
@@ -342,7 +369,7 @@ pub struct ConfigError {
 }
 
 /// Built-in profiles (docs/14 §5): id → file.
-const PROFILES: [(&str, &str, &str); 6] = [
+const PROFILES: [(&str, &str, &str); 7] = [
     (
         "my_wave",
         "profiles/my_wave.json",
@@ -372,6 +399,11 @@ const PROFILES: [(&str, &str, &str); 6] = [
         "focus_break",
         "profiles/focus_break.json",
         include_str!("../../../assets/wave/profiles/focus_break.json"),
+    ),
+    (
+        "event",
+        "profiles/event.json",
+        include_str!("../../../assets/wave/profiles/event.json"),
     ),
 ];
 
@@ -534,6 +566,8 @@ pub struct Catalog {
     pub season: Vec<[f32; 4]>,
     /// «Убрать из сезонной» — out of the seasonal wave only.
     pub no_season: Vec<bool>,
+    /// The genre tag, lower case (the expert level's exclusions).
+    pub(crate) genre: Vec<String>,
     /// «Для всех» (§16): the static part of universality — Σ wᵢ·sᵢ and Σ wᵢ over the parts
     /// the track has (popularity, sound, genre); the guests' part is added per rebuild.
     pub(crate) univ: Vec<f32>,
@@ -630,6 +664,7 @@ impl Catalog {
             never: Vec::with_capacity(n),
             season: Vec::with_capacity(n),
             no_season: Vec::with_capacity(n),
+            genre: Vec::with_capacity(n),
             univ: Vec::with_capacity(n),
             univ_w: Vec::with_capacity(n),
             company_ok: Vec::with_capacity(n),
@@ -708,6 +743,8 @@ impl Catalog {
             c.never.push(t.never);
             c.season.push([0.5; 4]);
             c.no_season.push(t.season_tags & NO_SEASON != 0);
+            c.genre
+                .push(t.genre.as_deref().unwrap_or("").trim().to_lowercase());
         }
         // Cold-start centre of taste: weight ∝ ln(1 + tracks of the artist) (§8.3).
         let mut per_artist = std::collections::HashMap::<i64, u32>::new();
@@ -993,6 +1030,8 @@ struct Session {
     slots: u32,
     /// Track ids chosen in this session (survive a catalog reload).
     queued: Vec<i64>,
+    /// Picks since the last direct event match (the «атмосферная» spread).
+    since_direct: u32,
 }
 
 pub struct Engine {
@@ -1020,6 +1059,10 @@ pub struct Engine {
     qs: QueryState,
     /// The sleep timer for the sleep wave (§14); `None` — not running.
     sleep: Option<SleepState>,
+    /// The event of the event wave (§11); `None` — none.
+    event: Option<EventRun>,
+    /// «Непохожесть» 0…1 of the expert level (FR-NOV-003); `None` — follows the slider.
+    distance: Option<f32>,
     /// «Слова» for the focus wave (Q-5).
     vocals: Vocals,
     /// The mode's hard filters (sleep, focus) apply; off for one rebuild when they leave nothing
@@ -1095,6 +1138,8 @@ impl Engine {
             query,
             qs,
             sleep: None,
+            event: None,
+            distance: None,
             vocals: Vocals::default(),
             mode_strict: true,
             segment: None,
@@ -1103,6 +1148,16 @@ impl Engine {
 
     fn evaluate(cfg: &Config, cat: &Catalog, q: &WaveQuery, now_ms: i64) -> QueryState {
         QueryState::evaluate(cat, q, cfg, now_ms)
+    }
+
+    /// «Подходит N треков» in «Настроить волну» (T5.7, `06` §3): tracks the filters `q` let
+    /// through, and whether they had to be relaxed to get enough.
+    pub fn query_count(&self, q: &WaveQuery, now_ms: i64) -> (usize, bool) {
+        let qs = Self::evaluate(&self.cfg, &self.cat, q, now_ms);
+        (
+            qs.pass.iter().filter(|p| **p).count(),
+            !qs.relaxed.is_empty(),
+        )
     }
 
     /// «Настроить волну» (T3.18): the filters for this session; returns the relaxation steps
@@ -1146,6 +1201,51 @@ impl Engine {
         self.context = models.context;
         self.session_vec = models.session;
         self.qs = Self::evaluate(&self.cfg, &self.cat, &self.query, now_ms);
+        if let Some(run) = self.event.take() {
+            self.event = Some(self.event_run(run.matcher, tracks));
+        }
+    }
+
+    /// «Неслушанность» and «непохожесть» apart (expert, FR-NOV-003, `14` §9): the slider then
+    /// sets only the quotas; `None` — one slider for both.
+    pub fn set_distance(&mut self, d: Option<f32>) {
+        self.distance = d.map(|v| v.clamp(0.0, 1.0));
+    }
+
+    /// The event for the event wave (§11.2): scores every track, counts the fit.
+    pub fn set_event(&mut self, def: Option<&crate::events::EventDef>, tracks: &[WaveTrack]) {
+        self.event = def.map(|d| self.event_run(crate::events::Matcher::new(d), tracks));
+        self.session.since_direct = u32::MAX / 2;
+    }
+
+    /// What the library has for the event: direct matches, tracks by tone.
+    pub fn event_fit(&self) -> Option<crate::events::Fit> {
+        self.event.as_ref().map(|e| e.fit)
+    }
+
+    fn event_run(&self, matcher: crate::events::Matcher, tracks: &[WaveTrack]) -> EventRun {
+        let n = self.cat.len();
+        let mut score = vec![0f32; n];
+        let mut direct = vec![false; n];
+        for t in tracks {
+            if let Some(i) = self.cat.idx(t.id) {
+                score[i] = matcher.score(t);
+                direct[i] = matcher.direct(t) >= 0.5;
+            }
+        }
+        let fit_min = self
+            .cfg
+            .profile
+            .event_rules
+            .as_ref()
+            .map_or(0.25, |r| r.fit_min);
+        EventRun {
+            fit: crate::events::fit(&matcher, tracks),
+            fitting: score.iter().filter(|s| **s >= fit_min).count(),
+            matcher,
+            score,
+            direct,
+        }
     }
 
     fn learnt(
@@ -1287,12 +1387,17 @@ impl Engine {
         let cfg = &self.cfg;
         let e = &cfg.engine;
         let pw = &cfg.profile.weights;
-        // The event weight goes to taste outside an event window (§5.2); no event yet. Season
+        // The event's weight goes to taste unless an event runs (§5.2) or its chip is off. Season
         // pick and influence of «Настроить волну» rescale the weights (T3.18).
+        let w_event = if self.event.is_some() {
+            pw.event * self.query.influence[2].clamp(0.0, 2.0)
+        } else {
+            0.0
+        };
         let [w_taste, w_context, w_session, w_season, w_filters, w_univ] = QueryState::weights(
             &self.query,
             [
-                pw.taste + pw.event,
+                pw.taste + pw.event - w_event,
                 pw.context,
                 pw.session,
                 pw.season,
@@ -1350,7 +1455,9 @@ impl Engine {
         let repel = &self.repel;
         let repel_w = e.session.repel;
         let inv2s2 = 1.0 / (2.0 * e.session.repel_sigma * e.session.repel_sigma).max(1e-6);
-        let sigma = e.taste_sigma * (0.5 + novelty);
+        // «Непохожесть» (expert, FR-NOV-003): its own slider, else the main one.
+        let distance = self.distance.unwrap_or(novelty);
+        let sigma = e.taste_sigma * (0.5 + distance);
         let wt = self.taste.sample(&mut self.rng, sigma);
         let bias = self.taste.b;
         let repeat_ms = i64::from(cfg.profile.sequencing.repeat_window_h) * 3600 * 1000;
@@ -1384,6 +1491,8 @@ impl Engine {
             // «Настроить волну».
             if !qs.pass[t]
                 || cat.never[t]
+                || (!self.query.exclude_genres.is_empty()
+                    && self.query.exclude_genres.contains(&cat.genre[t]))
                 || self.blocked[t]
                 || cat.mean(t) < fam.never_return_mean
                 || now_ms - cat.last_played[t] < repeat_ms
@@ -1402,6 +1511,13 @@ impl Engine {
                 continue;
             }
             let x = &cat.feat[t];
+            // The event wave (§11.2): with enough fitting tracks the rest stay out.
+            if let (Some(ev), Some(r)) = (&self.event, &cfg.profile.event_rules)
+                && ev.fitting >= r.fit_enough
+                && ev.score[t] < r.fit_min
+            {
+                continue;
+            }
             // The sleep wave's hard filters: nothing aggressive, nothing above the curve, slow
             // in the last third (only what the analysis knows; unanalysed tracks carry means).
             if let Some((r, e_max, last_third, tempo_max)) = sleep
@@ -1453,13 +1569,13 @@ impl Engine {
             sums[4] += w_univ * universal;
             counted += 1;
             let g = cat.group(t, now_ms, fam);
-            if g == 2 && novelty > 0.0 {
+            if g == 2 && distance > 0.0 {
                 let mut d2 = 0.0;
                 for (i, v) in x.iter().enumerate() {
                     let d = v - cat.center[i];
                     d2 += d * d;
                 }
-                s += e.novelty_pull * novelty * (d2 / D as f32).sqrt();
+                s += e.novelty_pull * distance * (d2 / D as f32).sqrt();
             }
             // The session's skips push away the same vibe (D-92).
             if !repel.is_empty() && cat.conf[t] > 0.0 {
@@ -1478,6 +1594,9 @@ impl Engine {
                 && vocals == Vocals::PreferNone
             {
                 s -= r.vocal_penalty * x[f::VOCAL];
+            }
+            if let Some(ev) = &self.event {
+                s += w_event * ev.score[t];
             }
             // The sleep wave: soft intros and outros up; words down in the last third.
             if let Some((r, _, last_third, _)) = sleep {
@@ -1591,7 +1710,12 @@ impl Engine {
         let deficit = |g: usize| q[g] * (ss.slots + 1) as f32 - ss.group_counts[g] as f32;
         let mut order = [0usize, 1, 2];
         order.sort_by(|&a, &b| deficit(b).total_cmp(&deficit(a)));
-        let explore = e.explore_base + e.explore_slope * novelty;
+        let explore = e.explore_base + e.explore_slope * self.distance.unwrap_or(novelty);
+        let spacing = self
+            .query
+            .artist_spacing
+            .unwrap_or(seq.artist_spacing)
+            .max(1);
         let cat = &self.cat;
         // «Частота» on: no quotas — one pool over all groups (Q-12).
         let merged = self.qs.frequency_on;
@@ -1616,8 +1740,21 @@ impl Engine {
                     let mut taken = 0;
                     for c in &self.buf[pg] {
                         let t = c.idx as usize;
+                        // «Атмосферная» event wave: a direct match at most once in `spread`.
+                        let spaced_out = self.event.as_ref().is_some_and(|ev| {
+                            ev.fit.atmospheric()
+                                && ev.direct[t]
+                                && ss.since_direct
+                                    < self
+                                        .cfg
+                                        .profile
+                                        .event_rules
+                                        .as_ref()
+                                        .map_or(5, |r| r.spread)
+                        });
                         if ss.queued.contains(&cat.id[t])
                             || ss.recent_artists.contains(&cat.artist[t])
+                            || spaced_out
                         {
                             continue;
                         }
@@ -1683,13 +1820,18 @@ impl Engine {
                     }
                     ss.queued.push(cat.id[t]);
                     ss.recent_artists.push(cat.artist[t]);
-                    if ss.recent_artists.len() > seq.artist_spacing.saturating_sub(1) {
+                    if ss.recent_artists.len() > spacing.saturating_sub(1) {
                         ss.recent_artists.remove(0);
                     }
                     ss.prev_energy = Some(cat.feat[t][f::ENERGY]);
                     ss.prev_tempo = Some(cat.feat[t][f::TEMPO]);
                     ss.group_counts[cg] += 1;
                     ss.slots += 1;
+                    ss.since_direct = if self.event.as_ref().is_some_and(|e| e.direct[t]) {
+                        0
+                    } else {
+                        ss.since_direct.saturating_add(1)
+                    };
                     return Some(chosen);
                 }
                 let max = pool.iter().map(|p| p.0).fold(f32::MIN, f32::max);
@@ -1709,13 +1851,18 @@ impl Engine {
                 let t = chosen as usize;
                 ss.queued.push(cat.id[t]);
                 ss.recent_artists.push(cat.artist[t]);
-                if ss.recent_artists.len() > seq.artist_spacing.saturating_sub(1) {
+                if ss.recent_artists.len() > spacing.saturating_sub(1) {
                     ss.recent_artists.remove(0);
                 }
                 ss.prev_energy = Some(cat.feat[t][f::ENERGY]);
                 ss.prev_tempo = Some(cat.feat[t][f::TEMPO]);
                 ss.group_counts[cg] += 1;
                 ss.slots += 1;
+                ss.since_direct = if self.event.as_ref().is_some_and(|e| e.direct[t]) {
+                    0
+                } else {
+                    ss.since_direct.saturating_add(1)
+                };
                 return Some(chosen);
             }
         }

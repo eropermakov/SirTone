@@ -197,6 +197,12 @@ export const commands = {
 	tempo?: [(number | null), (number | null)] | null,
 	/**  «Для всех» atmospheres (FR-ALL-003): background · company · party. */
 	gathering?: string | null,
+	/**  Expert level (FR-LEARN-012): the taste's weight 0…2. */
+	taste?: number | null,
+	/**  Expert level: genres never in this wave. */
+	excludeGenres?: string[],
+	/**  Expert level: one artist at most once in this many tracks (2…20). */
+	artistSpacing?: number | null,
 } | null) => typedError<WaveStarted, AppError>(__TAURI_INVOKE("wave_start", { profile, query })),
 	/**  «Сбросить обучение» (docs/14 §8.4): the models start over from now; the journal stays. */
 	waveResetLearning: () => typedError<null, AppError>(__TAURI_INVOKE("wave_reset_learning")),
@@ -236,6 +242,31 @@ export const commands = {
 	cityLocate: () => typedError<City, AppError>(__TAURI_INVOKE("city_locate")),
 	/**  The weather now (UI line, effects). */
 	weatherGet: () => __TAURI_INVOKE<WeatherNow>("weather_get"),
+	waveContextName: () => __TAURI_INVOKE<WaveContextName>("wave_context_name"),
+	waveComposition: () => __TAURI_INVOKE<WaveComposition>("wave_composition"),
+	/**
+	 *  A chip pressed: the influence off (or back on) for this session; the upcoming tracks are
+	 *  picked again.
+	 */
+	waveSetOff: (off: WaveOff) => __TAURI_INVOKE<void>("wave_set_off", { off }),
+	waveQueryCount: (query: WaveQueryIpc) => typedError<{
+	tracks: number,
+	/**  Fewer than enough — the wave will widen the filters («Расширил подбор»). */
+	relaxed: boolean,
+} | null, AppError>(__TAURI_INVOKE("wave_query_count", { query })),
+	/**
+	 *  «Волна по треку / исполнителю / альбому» from the context menus (T5.7, FR-WAVE-004; `01b`
+	 *  F-14 — Roon Radio, Spotify song/artist radio): the track (or the album's first, the artist's
+	 *  first) plays, then the closest tracks of the library follow and keep following — no stop.
+	 */
+	waveBy: (kind: WaveBy, id: number) => typedError<null, AppError>(__TAURI_INVOKE("wave_by", { kind, id })),
+	/**  The card now. */
+	eventOffer: () => __TAURI_INVOKE<EventOffer>("event_offer"),
+	/**  The answer to the card: `accept` · `later` · `year` · `never`. */
+	eventAnswer: (id: string, answer: string) => typedError<null, AppError>(__TAURI_INVOKE("event_answer", { id, answer })),
+	eventList: () => __TAURI_INVOKE<EventInfo[]>("event_list"),
+	/**  For the settings screen: re-read after a switch. */
+	eventRefresh: () => __TAURI_INVOKE<void>("event_refresh"),
 	analysisProgress: () => typedError<AnalysisProgress, AppError>(__TAURI_INVOKE("analysis_progress")),
 	/**
 	 *  «Навести порядок» (T3.19, FR-FS-005): the adopted files waiting for it (`all` = false) or
@@ -273,6 +304,7 @@ export const commands = {
 /** Events */
 export const events = {
 	duplicatesFound: makeEvent<DuplicatesFound>("duplicates-found"),
+	eventOffer: makeEvent<EventOffer>("event-offer"),
 	focusStatus: makeEvent<FocusStatus>("focus-status"),
 	hotkeyConflict: makeEvent<HotkeyConflict>("hotkey-conflict"),
 	importFinished: makeEvent<ImportFinished>("import-finished"),
@@ -402,6 +434,26 @@ export type ErrorCode = "FileNotFound" | "UnsupportedFormat" | "DecodeFailed" | 
 /**  No library folder chosen yet (docs/03 §8.2): the UI asks for one. */
 "LibraryRootNotSet" | "NotSupported" | "InvalidConfig" | "Internal";
 
+/**  One event for the settings list. */
+export type EventInfo = {
+	id: string,
+	group: string,
+	enabled: boolean,
+	/**  `declined_3x` · `forever` — why it is off, if it was switched off for the person. */
+	offReason: string | null,
+};
+
+/**  The card on «Моя волна» and the tray line (FR-EVT-004). */
+export type EventOffer = {
+	/**  `None` — no card now. */
+	id: string | null,
+	daysToPeak: number,
+	/**  `high` on the peak day of a strong event — the card stands out. */
+	strong: boolean,
+	/**  Few direct matches — «волна в … настроении» (the honest caption, AT-23). */
+	atmospheric: boolean,
+};
+
 /**  What the UI and the tray show (FR-FOCUS-002). */
 export type FocusStatus = {
 	/**  `off` · `work` · `break` · `long_break` */
@@ -423,6 +475,8 @@ export type FocusStatus = {
 export type FxSources = {
 	season: string,
 	weather: string | null,
+	/**  The accepted event's effect (fog for Halloween, AT-13): above the weather and the season. */
+	event: string | null,
 	/**  −1…1, + — to the right. */
 	drift: number | null,
 	/**  0…1. */
@@ -907,6 +961,55 @@ export type VizSwatch = {
 	w: number | null,
 };
 
+/**  What a wave is started by (T5.7, FR-WAVE-004). */
+export type WaveBy = "track" | "artist" | "album";
+
+/**  The chips under the player: what steers the wave now. */
+export type WaveComposition = {
+	season: string,
+	daypart: string,
+	/**  `None` — no fresh weather (no chip). */
+	weather: string | null,
+	/**  The event of the event wave and its days to the peak. */
+	event: string | null,
+	eventDays: number,
+	off: WaveOff,
+};
+
+/**
+ *  The contextual name of «Моя волна» (T5.11, FR-WAVE-007): «Дождливый вечер», «Зимнее утро»
+ *  — the weather (fresh only) or else the season, and the part of the day (by the sun where the
+ *  city is known), plus when the part of the day changes next. The UI builds the words.
+ */
+export type WaveContextName = {
+	daypart: string,
+	/**  `clear` · `cloudy` · `fog` · `rain` · `snow` · `storm`; `None` — no fresh weather. */
+	weather: string | null,
+	/**  The dominant season: `winter` · `spring` · `summer` · `autumn`. */
+	season: string,
+	/**  UTC ms of the next change of the part of the day (the name changes then). */
+	nextAt: number | null,
+};
+
+/**  «Подходит N треков» (T5.7, `06` §3): the live counter of «Настроить волну». */
+export type WaveCount = {
+	tracks: number,
+	/**  Fewer than enough — the wave will widen the filters («Расширил подбор»). */
+	relaxed: boolean,
+};
+
+/**
+ *  «Состав волны» (T5.16, FR-LEARN-010, `14` §17; `01c` W-02 — the YouTube Music tuner): which
+ *  influences the session has switched off (weight → 0, the rest renormalised).
+ */
+export type WaveOff = {
+	season: boolean,
+	/**  Time of day and weather. */
+	context: boolean,
+	event: boolean,
+	taste: boolean,
+};
+
 /**
  *  «Настроить волну» (T3.18, docs/05 §10.1) as the UI sends it: chip keys per block; empty or
  *  absent — no filter.
@@ -937,6 +1040,12 @@ export type WaveQueryIpc = {
 	tempo?: [(number | null), (number | null)] | null,
 	/**  «Для всех» atmospheres (FR-ALL-003): background · company · party. */
 	gathering?: string | null,
+	/**  Expert level (FR-LEARN-012): the taste's weight 0…2. */
+	taste?: number | null,
+	/**  Expert level: genres never in this wave. */
+	excludeGenres?: string[],
+	/**  Expert level: one artist at most once in this many tracks (2…20). */
+	artistSpacing?: number | null,
 };
 
 /**

@@ -20,7 +20,7 @@ import { type DragTrack, dropId } from "@/app/dnd/dnd";
 import { useAddToPlaylist } from "@/app/playlists/useAddToPlaylist";
 import { useTrackTags } from "@/app/playlists/useTrackTags";
 import { timecode } from "@/app/shell/PlayerBar";
-import { type PlayContext, revealTrack, type TrackItem } from "@/shared/ipc/library";
+import { type PlayContext, revealTrack, type TrackItem, waveBy } from "@/shared/ipc/library";
 import { queueAppend, queuePlayNext } from "@/shared/ipc/playback";
 import { cn } from "@/shared/lib/utils";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
@@ -82,6 +82,9 @@ export function TrackList({
     overscan: 8,
   });
 
+  const startBy = (kind: "track" | "artist" | "album", id: number) => {
+    waveBy(kind, id).catch(() => notify(t("trackMenu.waveFailed")));
+  };
   const items = (tr: TrackItem, index: number): MenuItem[] => [
     {
       id: "next",
@@ -108,7 +111,30 @@ export function TrackList({
       icon: ListPlus,
       submenu: toPlaylist.submenu([tr.id]),
     },
-    { id: "wave", label: t("trackMenu.wave"), icon: Radio, disabled: true },
+    {
+      id: "wave",
+      label: t("trackMenu.wave"),
+      icon: Radio,
+      submenu: [
+        {
+          id: "waveTrack",
+          label: t("trackMenu.waveTrack"),
+          onSelect: () => startBy("track", tr.id),
+        },
+        {
+          id: "waveArtist",
+          label: t("trackMenu.waveArtist"),
+          disabled: tr.artistId == null,
+          onSelect: () => tr.artistId != null && startBy("artist", tr.artistId),
+        },
+        {
+          id: "waveAlbum",
+          label: t("trackMenu.waveAlbum"),
+          disabled: tr.albumId == null,
+          onSelect: () => tr.albumId != null && startBy("album", tr.albumId),
+        },
+      ],
+    },
     {
       id: "goto",
       label: t("trackMenu.goTo"),

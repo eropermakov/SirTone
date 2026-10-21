@@ -11,6 +11,23 @@ pub struct SeasonsConfig {
     pub blend_days: i32,
     /// Weather may move season weights by at most this much.
     pub weather_cap: f32,
+    /// Which weather moves which season (FR-SEAS-001).
+    #[serde(default)]
+    pub weather_nudge: Vec<NudgeRule>,
+}
+
+/// One weather → season rule: a weather class, or a temperature at/above `min_c` or at/below
+/// `max_c`, adds `amount` to `season` (`winter` · `spring` · `summer` · `autumn`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct NudgeRule {
+    #[serde(default)]
+    pub class: Option<String>,
+    #[serde(default)]
+    pub min_c: Option<f32>,
+    #[serde(default)]
+    pub max_c: Option<f32>,
+    pub season: String,
+    pub amount: f32,
 }
 
 #[derive(Debug, Clone, Deserialize)]

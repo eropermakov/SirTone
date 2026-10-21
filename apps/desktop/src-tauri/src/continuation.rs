@@ -34,6 +34,8 @@ pub enum Origin {
     Playlist(i64),
     /// An album, artist, collection or search list (`playback.autoplay_albums`).
     List,
+    /// «Волна по треку / исполнителю / альбому» (T5.7): always on, never stops.
+    Radio,
 }
 
 #[derive(Default)]
@@ -130,11 +132,14 @@ impl Continuation {
                     .and_then(|s| s.get()["playback"]["autoplay_albums"].as_bool())
                     .unwrap_or(false),
             ),
+            // A wave by a track has no ∞ switch: it is the point.
+            Origin::Radio => None,
         }
     }
 
     fn refresh(&self, app: &AppHandle) {
-        let on = self.enabled(app) == Some(true) && !lock(&self.session).exhausted;
+        let on = (self.origin() == Origin::Radio || self.enabled(app) == Some(true))
+            && !lock(&self.session).exhausted;
         self.active.store(on, Ordering::Relaxed);
     }
 
@@ -197,13 +202,17 @@ impl Continuation {
         let playlist = match origin {
             Origin::None => return Ok(()),
             Origin::Playlist(id) => Some(id),
-            Origin::List => None,
+            Origin::List | Origin::Radio => None,
         };
         let lib = app.state::<Library>();
         let sim = self.similar(&lib)?;
         let mut blocked = lib.with_read(|c| store::blocked(c, playlist, now_ms() - RECENT_MS))?;
         blocked.extend(minus);
-        let picks = sim.continuation(&seeds, &blocked, &picked, MORE);
+        let picks = if origin == Origin::Radio {
+            sim.radio(&seeds, &blocked, &picked, MORE)
+        } else {
+            sim.continuation(&seeds, &blocked, &picked, MORE)
+        };
         let ids: Vec<u32> = picks.iter().map(|p| p.id as u32).collect();
         let items = if ids.is_empty() {
             Vec::new()
@@ -264,7 +273,7 @@ impl Continuation {
         let ours = match self.origin() {
             Origin::Playlist(id) => playlist == Some(id),
             Origin::List => playlist.is_none(),
-            Origin::None => false,
+            Origin::None | Origin::Radio => false,
         };
         if ours {
             lock(&self.session).exhausted = false;
@@ -297,7 +306,7 @@ impl Continuation {
             let mut s = lock(&self.session);
             let ours = match s.origin {
                 Origin::Playlist(id) => playlist.is_none_or(|p| p == id),
-                Origin::List => playlist.is_none(),
+                Origin::List | Origin::Radio => playlist.is_none(),
                 Origin::None => false,
             };
             if ours {
@@ -387,5 +396,48 @@ pub fn continuation_exclude(
     if let Some(id) = playlist {
         crate::playlists::changed(&app, id);
     }
+    Ok(())
+}
+
+/// What a wave is started by (T5.7, FR-WAVE-004).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum WaveBy {
+    Track,
+    Artist,
+    Album,
+}
+
+/// «Волна по треку / исполнителю / альбому» from the context menus (T5.7, FR-WAVE-004; `01b`
+/// F-14 — Roon Radio, Spotify song/artist radio): the track (or the album's first, the artist's
+/// first) plays, then the closest tracks of the library follow and keep following — no stop.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn wave_by(app: AppHandle, kind: WaveBy, id: u32) -> Result<(), AppError> {
+    use sirtone_library::collection;
+    let lib = app.state::<Library>();
+    let seeds: Vec<i64> = match kind {
+        WaveBy::Track => vec![i64::from(id)],
+        WaveBy::Album => lib.with_read(|c| {
+            Ok(collection::album_tracks(c, i64::from(id))?
+                .into_iter()
+                .map(|t| t.id)
+                .collect())
+        })?,
+        WaveBy::Artist => lib.with_read(|c| {
+            Ok(collection::artist_tracks(c, i64::from(id))?
+                .into_iter()
+                .map(|t| t.id)
+                .collect())
+        })?,
+    };
+    let Some(first) = seeds.first().and_then(|&f| u32::try_from(f).ok()) else {
+        return Err(AppError::new(ErrorCode::InvalidArgument).with_details("empty"));
+    };
+    let items = items_with_source(&lib, &[first], PlaySource::Hybrid)?;
+    app.state::<Playback>().play_queue(items, 0);
+    let cont = app.state::<Continuation>();
+    cont.start(&app, Origin::Radio, seeds);
+    cont.request_more(&app);
     Ok(())
 }

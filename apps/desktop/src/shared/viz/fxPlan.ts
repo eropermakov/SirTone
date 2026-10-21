@@ -84,6 +84,8 @@ export type FxInput = {
   manual: string | null;
   /** «По сезону» right now (Rust, by the clock). */
   seasonEffect: string | null;
+  /** The accepted event's effect (Halloween — fog, T5.13): above the weather and the season. */
+  eventEffect?: string | null;
   /** The real weather's effect; `null` — no weather or older than 3 h (T5.15). */
   weatherEffect: string | null;
   /** The real weather's wind drift (−1…1, + right) and intensity (0…1) — T5.15. */
@@ -114,6 +116,7 @@ export function planFx(p: FxInput, c: FxConfig = FX): FxPlan | null {
   let type: FxType | null;
   let decorative = false;
   if (p.mode === "manual") type = isFxType(p.manual) ? p.manual : fromSeason;
+  else if (isFxType(p.eventEffect)) type = p.eventEffect;
   else if (p.mode === "weather" && isFxType(p.weatherEffect)) type = p.weatherEffect;
   else {
     // «По сезону», or the weather is unknown (AT-16): decorative and sparser.
@@ -127,7 +130,7 @@ export function planFx(p: FxInput, c: FxConfig = FX): FxPlan | null {
   const still = weak || p.reduced;
   const b = weak ? { count: c.static_count, fps: 0, planes: 1 } : budget(p.level, p.milkdrop, c);
   // The real weather: snow and rain as dense as it falls, the wind pushes them (supplement §31).
-  const real = !decorative && p.mode === "weather";
+  const real = !decorative && p.mode === "weather" && type === p.weatherEffect;
   const falls = type === "snow" || type === "rain" || type === "storm";
   const byWeather =
     real && falls ? 0.4 + 0.6 * Math.min(1, Math.max(0, p.weatherIntensity ?? 1)) : 1;

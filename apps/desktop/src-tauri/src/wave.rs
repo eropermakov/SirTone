@@ -35,6 +35,12 @@ enum Cmd {
     Skipped(i64),
     /// Another profile from the next track on (focus segments).
     Switch(String),
+    /// «Подходит N треков» for «Настроить волну».
+    Count(WaveQuery, Sender<Option<WaveCount>>),
+    /// «Состав волны»: an influence switched on or off for the session.
+    Off,
+    /// What the library has for an event (direct matches, by tone) — the card's gate.
+    EventFit(String, Sender<Option<sirtone_wave::events::Fit>>),
 }
 
 /// One reason of «Почему этот трек» (§17); the UI words it as `wave.why.<kind>`.
@@ -77,6 +83,12 @@ pub struct WaveQueryIpc {
     pub tempo: Option<[f32; 2]>,
     /// «Для всех» atmospheres (FR-ALL-003): background · company · party.
     pub gathering: Option<String>,
+    /// Expert level (FR-LEARN-012): the taste's weight 0…2.
+    pub taste: Option<f32>,
+    /// Expert level: genres never in this wave.
+    pub exclude_genres: Vec<String>,
+    /// Expert level: one artist at most once in this many tracks (2…20).
+    pub artist_spacing: Option<u32>,
 }
 
 fn keys<T>(v: &[String], parse: fn(&str) -> Option<T>) -> Result<Vec<T>, AppError> {
@@ -174,6 +186,19 @@ impl WaveQueryIpc {
             influence: self.influence.unwrap_or([1.0; 3]),
             energy: energy.map(|[a, b]| (a, b)),
             tempo: self.tempo.map(|[a, b]| (a, b)),
+            taste: self.taste.map_or(1.0, |v| v.clamp(0.0, 2.0)),
+            exclude_genres: self
+                .exclude_genres
+                .iter()
+                .take(64)
+                .map(|g| g.trim().to_lowercase())
+                .filter(|g| !g.is_empty())
+                .collect(),
+            artist_spacing: match self.artist_spacing {
+                None => None,
+                Some(n @ 2..=20) => Some(n as usize),
+                Some(_) => return Err(bad("artistSpacing")),
+            },
         })
     }
 }
@@ -223,6 +248,13 @@ impl Wave {
             .send(Cmd::Start(id.to_owned(), WaveQuery::default(), tx));
     }
 
+    /// The library's fit for an event (waits ≤ 10 s for the wave thread).
+    pub fn event_fit(&self, id: &str) -> Option<sirtone_wave::events::Fit> {
+        let (tx, rx) = mpsc::channel();
+        self.tx.send(Cmd::EventFit(id.to_owned(), tx)).ok()?;
+        rx.recv_timeout(Duration::from_secs(10)).ok().flatten()
+    }
+
     /// The wave goes on with another profile after the current track (focus work ↔ break):
     /// the upcoming wave tracks are dropped and picked again.
     pub fn switch_profile(&self, id: &str) {
@@ -242,6 +274,13 @@ fn novelty(app: &AppHandle) -> f32 {
     app.try_state::<std::sync::Arc<SettingsStore>>()
         .and_then(|s| s.get()["wave"]["novelty"].as_u64())
         .map_or(0.5, |v| (v.min(100) as f32) / 100.0)
+}
+
+/// «Непохожесть» of the expert level (FR-NOV-003); `None` — the main slider sets both.
+fn distance(app: &AppHandle) -> Option<f32> {
+    app.try_state::<std::sync::Arc<SettingsStore>>()
+        .and_then(|s| s.get()["wave"]["novelty_distance"].as_u64())
+        .map(|v| (v.min(100) as f32) / 100.0)
 }
 
 /// The wave thread's own connection to the current library: reading the catalog on a refill
@@ -341,6 +380,12 @@ fn next_ids(
             let cfg = Config::builtin_profile(profile)
                 .map_err(|e| AppError::new(ErrorCode::Internal).with_details(e.to_string()))?;
             let mut e = Engine::new(cfg, &tracks, &history, now, now as u64 | 1);
+            // The event wave (T5.13): the accepted event scores the tracks.
+            if profile == "event" {
+                let events = sirtone_wave::events::EventsConfig::default();
+                let id = crate::events::accepted();
+                e.set_event(id.as_deref().and_then(|i| events.get(i)), &tracks);
+            }
             e.set_query(query.clone(), now);
             *engine = Some(e);
         }
@@ -406,6 +451,7 @@ fn next_ids(
             });
         e.set_segment(pack);
     }
+    e.set_distance(distance(app));
     Ok(e.next(&ctx, &shelf, novelty(app), n, now)
         .into_iter()
         .filter_map(|id| u32::try_from(id).ok())
@@ -420,8 +466,10 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
     while let Ok(cmd) = rx.recv() {
         match cmd {
             Cmd::Start(p, q, reply) => {
-                // A new wave: a new session (spacing and group counts start over).
+                // A new wave: a new session (spacing and group counts start over, every
+                // influence is back on).
                 engine = None;
+                *OFF.lock().unwrap_or_else(|p| p.into_inner()) = WaveOff::default();
                 profile = p;
                 query = q;
                 app.state::<Playback>().set_wave_profile(&profile);
@@ -479,6 +527,43 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                     e.skipped(id, SystemClock.now_utc_ms());
                     retune(app, &mut slot, &mut engine, &profile, &query);
                 }
+            }
+            Cmd::Off => {
+                let eff = off().apply(&query);
+                if let Some(e) = engine.as_mut() {
+                    e.set_query(eff.clone(), SystemClock.now_utc_ms());
+                    retune(app, &mut slot, &mut engine, &profile, &eff);
+                }
+            }
+            Cmd::Count(q, reply) => {
+                let now = SystemClock.now_utc_ms();
+                let count = |e: &Engine| {
+                    let (n, relaxed) = e.query_count(&q, now);
+                    WaveCount {
+                        tracks: n as u32,
+                        relaxed,
+                    }
+                };
+                let r = match &engine {
+                    Some(e) => Some(count(e)),
+                    None => read(app, &mut slot, now)
+                        .ok()
+                        .and_then(|(tracks, _, history)| {
+                            let cfg = Config::builtin_profile("my_wave").ok()?;
+                            Some(count(&Engine::new(cfg, &tracks, &history, now, 1)))
+                        }),
+                };
+                let _ = reply.send(r);
+            }
+            Cmd::EventFit(id, reply) => {
+                let now = SystemClock.now_utc_ms();
+                let fit = read(app, &mut slot, now).ok().and_then(|(tracks, _, _)| {
+                    let events = sirtone_wave::events::EventsConfig::default();
+                    events.get(&id).map(|def| {
+                        sirtone_wave::events::fit(&sirtone_wave::events::Matcher::new(def), &tracks)
+                    })
+                });
+                let _ = reply.send(fit);
             }
             Cmd::Switch(p) => {
                 engine = None;
@@ -557,6 +642,7 @@ pub fn wave_start(
         Some("seasonal") => "seasonal",
         Some("for_all") => "for_all",
         Some("sleep") => "sleep",
+        Some("event") => "event",
         _ => "my_wave",
     };
     let query = query.unwrap_or_default().into_query()?;
@@ -566,6 +652,28 @@ pub fn wave_start(
         .map_err(|_| AppError::new(ErrorCode::Internal))?;
     rx.recv_timeout(Duration::from_secs(20))
         .map_err(|_| AppError::new(ErrorCode::Internal).with_details("wave start timed out"))?
+}
+
+/// «Подходит N треков» (T5.7, `06` §3): the live counter of «Настроить волну».
+#[derive(Debug, Clone, Copy, serde::Serialize, specta::Type)]
+pub struct WaveCount {
+    pub tracks: u32,
+    /// Fewer than enough — the wave will widen the filters («Расширил подбор»).
+    pub relaxed: bool,
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+pub fn wave_query_count(
+    wave: State<'_, Wave>,
+    query: WaveQueryIpc,
+) -> Result<Option<WaveCount>, AppError> {
+    let query = query.into_query()?;
+    let (tx, rx) = mpsc::channel();
+    wave.tx
+        .send(Cmd::Count(query, tx))
+        .map_err(|_| AppError::new(ErrorCode::Internal))?;
+    Ok(rx.recv_timeout(Duration::from_secs(10)).ok().flatten())
 }
 
 /// «Сбросить обучение» (docs/14 §8.4): the models start over from now; the journal stays.
@@ -624,7 +732,9 @@ pub struct ThemeStateDto {
 pub fn theme_state() -> ThemeStateDto {
     use sirtone_wave::theme::{ThemeSource, ThemesConfig, resolve};
     let ctx = crate::context::builder().snapshot(&SystemClock);
-    let s = resolve(&ThemesConfig::default(), &ctx.season_w, None);
+    // An accepted event inside its window brings its theme (Q-3), then the season again.
+    let event = crate::events::accepted();
+    let s = resolve(&ThemesConfig::default(), &ctx.season_w, event.as_deref());
     ThemeStateDto {
         id: s.id,
         card: s.card,
@@ -649,6 +759,8 @@ pub fn theme_state() -> ThemeStateDto {
 pub struct FxSources {
     pub season: String,
     pub weather: Option<String>,
+    /// The accepted event's effect (fog for Halloween, AT-13): above the weather and the season.
+    pub event: Option<String>,
     /// −1…1, + — to the right.
     pub drift: f32,
     /// 0…1.
@@ -658,17 +770,9 @@ pub struct FxSources {
 #[tauri::command]
 #[specta::specta]
 pub fn fx_sources() -> FxSources {
-    use sirtone_core::wave::Daypart;
     use sirtone_wave::theme::{ThemesConfig, season_effect, weather_effect};
     let ctx = crate::context::builder().snapshot(&SystemClock);
-    let daypart = match ctx.daypart {
-        Daypart::Dawn => "dawn",
-        Daypart::Morning => "morning",
-        Daypart::Day => "day",
-        Daypart::Evening => "evening",
-        Daypart::Dusk => "dusk",
-        Daypart::Night => "night",
-    };
+    let daypart = daypart_id(ctx.daypart);
     let cfg = ThemesConfig::default();
     let w = crate::context::weather_now();
     let night = cfg.night_dayparts.iter().any(|d| d == daypart);
@@ -678,7 +782,142 @@ pub fn fx_sources() -> FxSources {
             .class
             .as_deref()
             .and_then(|c| weather_effect(&cfg, &ctx.season_w, c, w.is_day && !night)),
+        event: crate::events::accepted_effect(),
         drift: w.drift,
         intensity: w.intensity,
     }
+}
+
+fn daypart_id(d: sirtone_core::wave::Daypart) -> &'static str {
+    use sirtone_core::wave::Daypart;
+    match d {
+        Daypart::Dawn => "dawn",
+        Daypart::Morning => "morning",
+        Daypart::Day => "day",
+        Daypart::Evening => "evening",
+        Daypart::Dusk => "dusk",
+        Daypart::Night => "night",
+    }
+}
+
+/// The contextual name of «Моя волна» (T5.11, FR-WAVE-007): «Дождливый вечер», «Зимнее утро»
+/// — the weather (fresh only) or else the season, and the part of the day (by the sun where the
+/// city is known), plus when the part of the day changes next. The UI builds the words.
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct WaveContextName {
+    pub daypart: String,
+    /// `clear` · `cloudy` · `fog` · `rain` · `snow` · `storm`; `None` — no fresh weather.
+    pub weather: Option<String>,
+    /// The dominant season: `winter` · `spring` · `summer` · `autumn`.
+    pub season: String,
+    /// UTC ms of the next change of the part of the day (the name changes then).
+    pub next_at: f64,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn wave_context_name() -> WaveContextName {
+    let b = crate::context::builder();
+    let clock = SystemClock;
+    let now = clock.now_utc_ms();
+    let ctx = b.snapshot_at(&clock, now);
+    // The next boundary, to 5 minutes (≤ 26 h ahead).
+    const STEP: i64 = 5 * 60_000;
+    let next_at = (1..=26 * 12)
+        .map(|i| now - now % STEP + i * STEP)
+        .find(|&t| b.snapshot_at(&clock, t).daypart != ctx.daypart)
+        .unwrap_or(now + 26 * 3_600_000);
+    let season = ctx
+        .season_w
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.total_cmp(b.1))
+        .map_or(0, |(i, _)| i);
+    WaveContextName {
+        daypart: daypart_id(ctx.daypart).to_owned(),
+        weather: crate::context::weather_now().class,
+        season: ["winter", "spring", "summer", "autumn"][season].to_owned(),
+        next_at: next_at as f64,
+    }
+}
+
+/// «Состав волны» (T5.16, FR-LEARN-010, `14` §17; `01c` W-02 — the YouTube Music tuner): which
+/// influences the session has switched off (weight → 0, the rest renormalised).
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, specta::Type,
+)]
+pub struct WaveOff {
+    pub season: bool,
+    /// Time of day and weather.
+    pub context: bool,
+    pub event: bool,
+    pub taste: bool,
+}
+
+impl WaveOff {
+    fn apply(&self, q: &WaveQuery) -> WaveQuery {
+        let mut q = q.clone();
+        for (i, off) in [self.season, self.context, self.event]
+            .into_iter()
+            .enumerate()
+        {
+            if off {
+                q.influence[i] = 0.0;
+            }
+        }
+        if self.taste {
+            q.taste = 0.0;
+        }
+        q
+    }
+}
+
+static OFF: std::sync::Mutex<WaveOff> = std::sync::Mutex::new(WaveOff {
+    season: false,
+    context: false,
+    event: false,
+    taste: false,
+});
+
+fn off() -> WaveOff {
+    *OFF.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// The chips under the player: what steers the wave now.
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct WaveComposition {
+    pub season: String,
+    pub daypart: String,
+    /// `None` — no fresh weather (no chip).
+    pub weather: Option<String>,
+    /// The event of the event wave and its days to the peak.
+    pub event: Option<String>,
+    pub event_days: i32,
+    pub off: WaveOff,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn wave_composition() -> WaveComposition {
+    let c = wave_context_name();
+    let ev = crate::events::accepted_days();
+    WaveComposition {
+        season: c.season,
+        daypart: c.daypart,
+        weather: c.weather,
+        event_days: ev.as_ref().map_or(0, |e| e.1),
+        event: ev.map(|e| e.0),
+        off: off(),
+    }
+}
+
+/// A chip pressed: the influence off (or back on) for this session; the upcoming tracks are
+/// picked again.
+#[tauri::command]
+#[specta::specta]
+pub fn wave_set_off(wave: State<'_, Wave>, off: WaveOff) {
+    *OFF.lock().unwrap_or_else(|p| p.into_inner()) = off;
+    let _ = wave.tx.send(Cmd::Off);
 }

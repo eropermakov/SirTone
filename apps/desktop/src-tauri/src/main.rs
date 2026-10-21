@@ -14,6 +14,7 @@ mod covers_online;
 mod diagnostics;
 mod duck;
 mod duplicates;
+mod events;
 mod feedback;
 mod focus;
 mod hotkeys;
@@ -166,6 +167,7 @@ fn main() {
             analysis::start(app.handle().clone());
             duck::start(app.handle().clone());
             context::start(app.handle(), diagnostics::data_dir());
+            events::start(app.handle(), diagnostics::data_dir());
             app.manage(sleep::Sleep::start(app.handle().clone()));
             app.manage(focus::Focus::start(
                 app.handle().clone(),

@@ -226,6 +226,11 @@ export const waveStart = async (
     ? unwrap(await commands.waveStart(profile ?? null, query ?? null))
     : { queued: 0, relaxed: [], noPopularity: false, few: false };
 
+/** «Волна по треку / исполнителю / альбому» (T5.7, FR-WAVE-004): plays it, then the closest. */
+export const waveBy = async (kind: "track" | "artist" | "album", id: number): Promise<void> => {
+  if (isTauri()) unwrap(await commands.waveBy(kind, id));
+};
+
 /** The seasonal card's name key under `wave.season` (FR-SEAS-004). */
 export const waveSeasonCard = async (): Promise<string | null> =>
   isTauri() ? commands.waveSeasonCard() : null;

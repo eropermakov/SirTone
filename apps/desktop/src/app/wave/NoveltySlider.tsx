@@ -9,7 +9,7 @@ import { Slider } from "@/shared/ui/Slider";
  * familiar / forgotten / new tracks, the distance from the taste and the exploration; the
  * upcoming wave tracks follow at once. Saved in `wave.novelty`.
  */
-export function NoveltySlider() {
+export function NoveltySlider({ disabled }: { disabled?: boolean } = {}) {
   const { t } = useTranslation("shell");
   const [value, setValue] = useState(0.5);
   const timer = useRef<number | undefined>(undefined);
@@ -37,6 +37,7 @@ export function NoveltySlider() {
         label={t("wave.novelty")}
         valueText={String(Math.round(value * 100))}
         step={0.05}
+        disabled={disabled ?? false}
         className="flex-1"
       />
       <span className="t-caption shrink-0 text-text-secondary">{t("wave.unexpected")}</span>

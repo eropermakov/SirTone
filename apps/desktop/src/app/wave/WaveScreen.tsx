@@ -42,14 +42,18 @@ import { Cover } from "@/shared/ui/Cover";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
 import { PlayPauseIcon } from "@/shared/ui/TransportIcons";
+import { EventCard } from "./EventCard";
 import { FocusButton } from "./FocusButton";
 import { ForAllButton, type Gathering } from "./ForAllButton";
+import { MY_WAVES_MAX, MyWaves, NameDialog, useMyWaves } from "./MyWaves";
 import { NightVibe } from "./NightVibe";
 import { NoveltySlider } from "./NoveltySlider";
 import { SeasonWaveButton } from "./SeasonWaveButton";
 import { SleepButton } from "./SleepButton";
 import { VizBackground } from "./VizBackground";
 import { VizToolbar } from "./VizToolbar";
+import { WaveChips } from "./WaveChips";
+import { WaveContextName } from "./WaveContextName";
 import { setupCount, WaveSetup } from "./WaveSetup";
 import { pulseWaves } from "./WavesBackground";
 
@@ -87,6 +91,8 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
   // «Настроить волну» (FR-WAVE-003): the saved setup steers «Моя волна» until «Сбросить».
   const [setup, setSetup] = useState<WaveQueryIpc | null>(null);
   const [setupOpen, setSetupOpen] = useState(false);
+  const [naming, setNaming] = useState<WaveQueryIpc | null>(null);
+  const [mine, saveMine] = useMyWaves();
   useEffect(() => {
     getSettings()
       .then((d) => setSetup(((d.wave ?? {}) as { setup?: WaveQueryIpc | null }).setup ?? null))
@@ -143,6 +149,35 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       onPlay={playSetup}
       onSleepWave={() => void sleepStart("minutes", 30).then(() => startWave("sleep"))}
       onFocus={() => void focusStart(25, 5)}
+      onForAll={() => forAll(null)}
+      onSave={(q) => setNaming(q)}
+    />
+  );
+  const namingDialog = naming && (
+    <NameDialog
+      title={t("wave.mine.saveAs")}
+      initial=""
+      onClose={() => setNaming(null)}
+      onDone={(name) => {
+        const q = naming;
+        setNaming(null);
+        setSetupOpen(false);
+        if (mine.length >= MY_WAVES_MAX) return notify(t("wave.mine.full"));
+        const id = `w-${Date.now().toString(36)}`;
+        saveMine([...mine, { id, name, query: q }])
+          .then(() => notify(t("wave.mine.saved", { name })))
+          .catch(() => notify(t("wave.mine.failed")));
+      }}
+    />
+  );
+  const myWaves = (
+    <MyWaves
+      list={mine}
+      save={saveMine}
+      onPlay={(w) => {
+        setSetupOpen(false);
+        void startWave(undefined, null, w.query);
+      }}
     />
   );
 
@@ -150,7 +185,9 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
     return (
       <section className="flex h-full flex-col items-center justify-center gap-4 text-center">
         <h1 className="t-page-title text-primary-text">{t("wave.title")}</h1>
+        <WaveContextName />
         <p className="t-body max-w-md text-text-secondary">{t("wave.idle")}</p>
+        <EventCard />
         <div className="flex flex-wrap justify-center gap-3">
           <Button variant="primary" onClick={() => void startWave()}>
             <Waves size={16} strokeWidth={1.5} />
@@ -159,12 +196,14 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
           {setupButton}
           <SeasonWaveButton onStart={() => void startWave("seasonal")} />
           <ForAllButton onStart={forAll} />
+          {myWaves}
           <Button variant="secondary" onClick={() => void shuffleAll()}>
             <Shuffle size={16} strokeWidth={1.5} />
             {t("wave.shuffleAll")}
           </Button>
         </div>
         {setupDialog}
+        {namingDialog}
       </section>
     );
   }
@@ -334,6 +373,9 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
           {snap.artists}
         </button>
       </div>
+      {snap.waveProfile === "my_wave" && <WaveContextName />}
+      {snap.waveProfile && <WaveChips profile={snap.waveProfile} />}
+      {snap.waveProfile !== "event" && <EventCard />}
       {/* Which wave plays; the other one starts from here (FR-SEAS-003). */}
       <div className="relative flex flex-wrap justify-center gap-3">
         {snap.waveProfile !== "my_wave" && (
@@ -347,6 +389,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
           <SeasonWaveButton onStart={() => void startWave("seasonal")} />
         )}
         <ForAllButton onStart={forAll} />
+        {myWaves}
       </div>
       <div className="relative flex items-center gap-4">
         <button
@@ -421,6 +464,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       )}
       {toPlaylist.dialog}
       {setupDialog}
+      {namingDialog}
       {card && (
         <TrackCard
           key={card.id}

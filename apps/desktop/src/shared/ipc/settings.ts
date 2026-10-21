@@ -39,7 +39,14 @@ export type SettingsPatch = {
     degraded_from?: number | null;
   };
   onboarding?: { done?: boolean; tips_seen?: boolean };
-  wave?: { learning?: boolean; novelty?: number; setup?: unknown };
+  wave?: {
+    learning?: boolean;
+    novelty?: number;
+    novelty_distance?: number | null;
+    season?: { weather_nudge?: boolean };
+    setup?: unknown;
+    mine?: unknown[];
+  };
   library?: { organize_external?: "suggest" | "auto" | "never" };
   network?: { offline_mode?: boolean };
   sfx?: { enabled?: boolean; volume?: number };
@@ -47,6 +54,7 @@ export type SettingsPatch = {
   sleep?: { fade_min?: number; final_s?: number; warm?: boolean; after?: string };
   focus?: Record<string, unknown>;
   context?: Record<string, unknown>;
+  events?: Record<string, unknown>;
   playback?: {
     normalization?: { enabled?: boolean; target_lufs?: number; album_mode?: "auto" | "off" };
     eq?: { enabled?: boolean; preset?: string; preamp_db?: number; bands_db?: number[] };

@@ -109,6 +109,13 @@ pub struct WaveQuery {
     pub energy: Option<(f32, f32)>,
     /// Tempo in BPM.
     pub tempo: Option<(f32, f32)>,
+    /// «Твой вкус» 0…2 (the chip «Состав волны» switches it off for the session, `14` §17;
+    /// the expert level sets its weight, FR-LEARN-012).
+    pub taste: f32,
+    /// Expert level (FR-LEARN-012): genres never in this wave (lower case, as tagged).
+    pub exclude_genres: Vec<String>,
+    /// Expert level: one artist at most once in this many tracks (over the profile's rule).
+    pub artist_spacing: Option<usize>,
 }
 
 impl Default for WaveQuery {
@@ -126,6 +133,9 @@ impl Default for WaveQuery {
             influence: [1.0; 3],
             energy: None,
             tempo: None,
+            taste: 1.0,
+            exclude_genres: Vec::new(),
+            artist_spacing: None,
         }
     }
 }
@@ -712,7 +722,7 @@ impl QueryState {
         let mc = q.influence[1].clamp(0.0, 2.0);
         let total = taste + context + session + season + filters + universal;
         let out = [
-            taste,
+            taste * q.taste.clamp(0.0, 2.0),
             context * mc,
             session,
             season * ms,

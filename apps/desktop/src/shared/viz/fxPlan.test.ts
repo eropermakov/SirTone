@@ -64,6 +64,13 @@ describe("live effects plan (T4.20, FR-FX-001…007)", () => {
     expect(
       planFx({ ...base, mode: "weather", weatherEffect: "snow", weatherDrift: -1 })?.wind,
     ).toBeLessThan(0);
+    // An accepted event (Halloween — fog) is above the weather; manual is above both (D-109).
+    const ev = planFx({ ...base, mode: "weather", weatherEffect: "snow", eventEffect: "fog" });
+    expect(ev?.type).toBe("fog");
+    expect(ev?.wind).toBeNull();
+    expect(planFx({ ...base, mode: "manual", manual: "rain", eventEffect: "fog" })?.type).toBe(
+      "rain",
+    );
     // No weather (AT-16): the season's, with its own wind.
     const season = planFx({
       ...base,

@@ -394,6 +394,31 @@ impl Similar {
         already: &[i64],
         want: usize,
     ) -> Vec<Pick> {
+        let budget = self.cfg.max_picks.saturating_sub(already.len());
+        self.sequence(seeds, exclude, already, want.min(budget), true)
+    }
+
+    /// «Волна по треку / исполнителю / альбому» (T5.7, FR-WAVE-004; `01b` F-14 — Roon Radio,
+    /// Spotify song radio): the same sequence, but a wave does not end — no stop threshold and
+    /// no length budget, the closest first until the library runs out.
+    pub fn radio(
+        &self,
+        seeds: &[i64],
+        exclude: &HashSet<i64>,
+        already: &[i64],
+        want: usize,
+    ) -> Vec<Pick> {
+        self.sequence(seeds, exclude, already, want, false)
+    }
+
+    fn sequence(
+        &self,
+        seeds: &[i64],
+        exclude: &HashSet<i64>,
+        already: &[i64],
+        want: usize,
+        stop: bool,
+    ) -> Vec<Pick> {
         let seed_idx: Vec<usize> = seeds
             .iter()
             .filter_map(|id| self.index.get(id).copied())
@@ -401,7 +426,7 @@ impl Similar {
         if seed_idx.is_empty() {
             return Vec::new();
         }
-        let theta = self.theta(seeds);
+        let theta = if stop { self.theta(seeds) } else { f32::MIN };
         let c = self.centroid(&seed_idx);
         let seed_set: HashSet<i64> = seeds.iter().copied().collect();
         let already_set: HashSet<i64> = already.iter().copied().collect();
@@ -410,17 +435,21 @@ impl Similar {
                 let id = self.ids[i];
                 !seed_set.contains(&id) && !exclude.contains(&id) && !already_set.contains(&id)
             })
-            .filter_map(|i| self.cos(&c, i).filter(|v| *v >= theta).map(|v| (i, v)))
+            .filter_map(|i| match self.cos(&c, i) {
+                Some(v) if v >= theta => Some((i, v)),
+                // A wave by a track keeps going: the not yet analysed come last.
+                None if !stop => Some((i, -1.0)),
+                _ => None,
+            })
             .collect();
         pool.sort_by(|a, b| b.1.total_cmp(&a.1).then(self.ids[a.0].cmp(&self.ids[b.0])));
         pool.truncate(POOL);
         // The sequence so far: the playlist's last track, then the earlier picks.
         let mut history: Vec<usize> = seed_idx.last().copied().into_iter().collect();
         history.extend(already.iter().filter_map(|id| self.index.get(id).copied()));
-        let budget = self.cfg.max_picks.saturating_sub(already.len());
         let s = &self.cfg.score;
         let mut out = Vec::new();
-        while out.len() < want.min(budget) && !pool.is_empty() {
+        while out.len() < want && !pool.is_empty() {
             let prev = history.last().map(|&i| self.point(i));
             let recent: Vec<Point> = history
                 .iter()
@@ -527,6 +556,17 @@ mod tests {
         let mut c: Vec<f32> = picks.iter().map(|p| p.closeness).collect();
         c.sort_by(|a, b| b.total_cmp(a));
         assert!(picks[0].closeness >= c[1], "{picks:?}");
+    }
+
+    #[test]
+    fn a_track_wave_starts_close_and_does_not_end() {
+        let s = sim();
+        // One A track: its cluster first, then — where the continuation stops — on and on.
+        let picks = s.radio(&[1], &HashSet::new(), &[], 50);
+        let ids: Vec<i64> = picks.iter().map(|p| p.id).collect();
+        assert_eq!(ids.len(), 23, "{ids:?}");
+        assert!(ids[..7].iter().all(|id| (2..=8).contains(id)), "{ids:?}");
+        assert!(s.continuation(&[1], &HashSet::new(), &[], 50).len() < ids.len());
     }
 
     #[test]

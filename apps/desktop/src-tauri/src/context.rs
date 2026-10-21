@@ -14,7 +14,7 @@ use sirtone_core::wave::Clock;
 use sirtone_net::Host;
 use sirtone_platform::clock::SystemClock;
 use sirtone_wave::context::ContextBuilder;
-use sirtone_wave::weather::{self, WeatherState};
+use sirtone_wave::weather::{self, WeatherState, class_key};
 use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
 
@@ -76,18 +76,6 @@ fn city_of(app: &AppHandle) -> Option<City> {
     serde_json::from_value(doc["context"]["city"].clone()).ok()
 }
 
-fn class_key(c: sirtone_core::wave::WeatherClass) -> &'static str {
-    use sirtone_core::wave::WeatherClass as W;
-    match c {
-        W::Clear => "clear",
-        W::Cloudy => "cloudy",
-        W::Fog => "fog",
-        W::DrizzleRain => "rain",
-        W::Snow => "snow",
-        W::Storm => "storm",
-    }
-}
-
 /// The weather for the UI and the effects (`class: None` — none or stale).
 pub fn weather_now() -> WeatherNow {
     let now = SystemClock.now_utc_ms();
@@ -112,12 +100,15 @@ pub fn weather_now() -> WeatherNow {
 }
 
 /// The settings or the weather changed: rebuild the shared builder.
-fn rebuild(app: &AppHandle) {
+pub fn rebuild(app: &AppHandle) {
     let Some(st) = STATE.get() else { return };
     let city = city_of(app);
     if let Ok(mut s) = st.lock() {
         s.builder.coords = city.as_ref().map(|c| (c.lat, c.lon));
         s.builder.southern = city.as_ref().is_some_and(|c| c.lat < 0.0);
+        s.builder.no_weather_nudge = app
+            .try_state::<Arc<SettingsStore>>()
+            .is_some_and(|st| st.get()["wave"]["season"]["weather_nudge"].as_bool() == Some(false));
         // Weather for another place is not this place's.
         if let (Some(w), Some(c)) = (&s.builder.weather, &city)
             && ((w.lat - c.lat).abs() > 0.05 || (w.lon - c.lon).abs() > 0.05)
@@ -202,6 +193,8 @@ pub fn start(app: &AppHandle, data: PathBuf) {
                             s.builder.weather = Some(w);
                         }
                         let _ = weather_now().emit(&app);
+                        // «Первый снег», «Гроза» — the calendar looks again.
+                        crate::events::kick();
                     }
                 }
                 // A settings change kicks it; otherwise look again in a minute.

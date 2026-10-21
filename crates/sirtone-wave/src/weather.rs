@@ -15,6 +15,18 @@ pub fn forecast_query(lat: f64, lon: f64) -> String {
 }
 
 /// The WMO code's class (`14` §3.3); unknown codes — `None`.
+/// The class as the UI and the configs name it.
+pub fn class_key(c: WeatherClass) -> &'static str {
+    match c {
+        WeatherClass::Clear => "clear",
+        WeatherClass::Cloudy => "cloudy",
+        WeatherClass::Fog => "fog",
+        WeatherClass::DrizzleRain => "rain",
+        WeatherClass::Snow => "snow",
+        WeatherClass::Storm => "storm",
+    }
+}
+
 pub fn class_of(code: u32) -> Option<WeatherClass> {
     Some(match code {
         0 | 1 => WeatherClass::Clear,

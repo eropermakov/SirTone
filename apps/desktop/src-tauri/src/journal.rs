@@ -103,6 +103,10 @@ impl Journal {
     }
 
     fn send(&self, open: Open, reason: EndReason) {
+        // An event wave's plays name their event (T5.13).
+        let event_id = (open.profile.as_deref() == Some("event"))
+            .then(crate::events::accepted)
+            .flatten();
         let event = PlayEvent {
             ts: open.ts,
             track_id: open.track_id,
@@ -112,7 +116,7 @@ impl Journal {
             source: open.source,
             profile: open.profile,
             context: open.context,
-            event_id: None,
+            event_id,
             novelty: None,
             category: None,
         };

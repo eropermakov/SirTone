@@ -32,6 +32,10 @@ struct Labels {
     focus_on: String,
     focus_work: String,
     focus_break: String,
+    event_none: String,
+    event_offer: String,
+    /// i18n event names (`events.name.<id>`).
+    event_names: std::collections::BTreeMap<String, String>,
 }
 
 fn labels() -> Labels {
@@ -60,6 +64,16 @@ fn labels() -> Labels {
         focus_on: get("focusOn", "Focus: {phase}, {min} min — stop"),
         focus_work: get("focusWork", "work"),
         focus_break: get("focusBreak", "break"),
+        event_none: get("eventNone", "No event wave now"),
+        event_offer: get("eventOffer", "{event}: play the event wave"),
+        event_names: doc["events"]["name"]
+            .as_object()
+            .map(|m| {
+                m.iter()
+                    .filter_map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_owned())))
+                    .collect()
+            })
+            .unwrap_or_default(),
     }
 }
 
@@ -71,6 +85,7 @@ struct Items {
     next: MenuItem<Wry>,
     sleep: MenuItem<Wry>,
     focus: MenuItem<Wry>,
+    event: MenuItem<Wry>,
     labels: Labels,
     /// Last shown state, so unchanged snapshots do not touch the native menu.
     last: Option<TrayState>,
@@ -86,8 +101,8 @@ pub struct TrayMenu {
 
 enum Msg {
     Play(TrayState),
-    /// The sleep timer and focus lines (T4.21, T4.24, FR-SHELL-006).
-    Modes(String, String),
+    /// The sleep timer, focus and event lines (T4.21, T4.24, T5.14, FR-SHELL-006).
+    Modes(String, String, Option<String>),
 }
 
 /// The sleep line: start, the minutes left (a click cancels), or «+15 мин» while woken.
@@ -129,10 +144,14 @@ pub fn refresh_modes(app: &AppHandle) {
             .try_state::<crate::focus::Focus>()
             .map(|f| focus_text(&items.labels, &f.status()))
             .unwrap_or_else(|| items.labels.focus_start.clone());
-        (sleep, focus)
+        let event = crate::events::offer().id.map(|id| {
+            let name = items.labels.event_names.get(&id).cloned().unwrap_or(id);
+            items.labels.event_offer.replace("{event}", &name)
+        });
+        (sleep, focus, event)
     };
     if let Some(tx) = menu.tx.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
-        let _ = tx.send(Msg::Modes(texts.0, texts.1));
+        let _ = tx.send(Msg::Modes(texts.0, texts.1, texts.2));
     }
 }
 
@@ -224,6 +243,11 @@ fn on_menu(app: &AppHandle, event: MenuEvent) {
         ("play_pause", Some(pb)) => pb.toggle(),
         ("prev", Some(pb)) => pb.prev(),
         ("next", Some(pb)) => pb.next(),
+        ("event", _) => {
+            if let Some(id) = crate::events::offer().id {
+                let _ = crate::events::event_answer(app.clone(), id, "accept".into());
+            }
+        }
         ("focus", _) => {
             if let Some(f) = app.try_state::<crate::focus::Focus>() {
                 f.tray_action();
@@ -247,6 +271,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
     let next = MenuItem::with_id(app, "next", &l.next, false, None::<&str>)?;
     let sleep = MenuItem::with_id(app, "sleep", &l.sleep_start, true, None::<&str>)?;
     let focus = MenuItem::with_id(app, "focus", &l.focus_start, true, None::<&str>)?;
+    let event = MenuItem::with_id(app, "event", &l.event_none, false, None::<&str>)?;
     let menu = Menu::with_items(
         app,
         &[
@@ -259,6 +284,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
             &PredefinedMenuItem::separator(app)?,
             &sleep,
             &focus,
+            &event,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "quit", &l.quit, true, None::<&str>)?,
         ],
@@ -291,6 +317,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
         next,
         sleep,
         focus,
+        event,
         labels: l,
         last: None,
     });
@@ -305,13 +332,13 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
                 for m in std::iter::once(first).chain(rx.try_iter()) {
                     match m {
                         Msg::Play(s) => play = Some(s),
-                        Msg::Modes(s, f) => sleep = Some((s, f)),
+                        Msg::Modes(s, f, e) => sleep = Some((s, f, e)),
                     }
                 }
                 if let Some(s) = play {
                     apply(&handle, &s);
                 }
-                if let Some((s, f)) = sleep
+                if let Some((s, f, e)) = sleep
                     && let Some(menu) = handle.try_state::<TrayMenu>()
                     && let Some(items) = menu
                         .items
@@ -321,6 +348,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
                 {
                     let _ = items.sleep.set_text(s);
                     let _ = items.focus.set_text(f);
+                    let _ = items.event.set_enabled(e.is_some());
+                    let _ = items
+                        .event
+                        .set_text(e.unwrap_or_else(|| items.labels.event_none.clone()));
                 }
             }
         })
