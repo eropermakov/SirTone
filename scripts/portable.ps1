@@ -1,6 +1,6 @@
 ﻿# Portable Сиртон (T6.4, FR-PORT-001/002): a folder (and a zip of it) that runs from a USB stick
 # without installation — sirtone-app.exe, the sirtone.portable marker, the notices and a short
-# guide; optionally a WebView2 Fixed Runtime for PCs without WebView2.
+# guide (README-RU.txt: an ASCII name — Compress-Archive of PowerShell 5.1 mangles Cyrillic ones); optionally a WebView2 Fixed Runtime for PCs without WebView2.
 #
 # Usage (after `pnpm tauri build`; nothing is installed or registered on this PC):
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\portable.ps1
@@ -38,7 +38,7 @@ Copy-Item (Join-Path $root 'THIRD_PARTY_NOTICES.txt') $dir
 Нужен WebView2 (есть в Windows 11 и в обновлённой Windows 10). Если на компьютере
 его нет, положите Fixed Runtime в папку WebView2Runtime рядом с SirTone.exe.
 Автозапуска, обновлений и ассоциаций файлов в портативной версии нет.
-"@ | Set-Content -Path (Join-Path $dir 'ПРОЧТИ.txt') -Encoding UTF8
+"@ | Set-Content -Path (Join-Path $dir 'README-RU.txt') -Encoding UTF8
 
 if ($Runtime) {
     $rtExe = Join-Path $Runtime 'msedgewebview2.exe'
