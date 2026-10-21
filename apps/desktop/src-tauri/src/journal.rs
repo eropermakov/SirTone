@@ -60,7 +60,7 @@ impl Journal {
         Self::with(Arc::new(SystemClock), move || {
             settings.get()["library"]["root"]
                 .as_str()
-                .map(PathBuf::from)
+                .map(crate::portable::resolve)
                 .filter(|p| p.is_absolute())
         })
     }

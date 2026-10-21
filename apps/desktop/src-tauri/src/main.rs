@@ -32,6 +32,7 @@ mod perf;
 mod playback;
 mod playlists;
 mod popularity;
+mod portable;
 mod presets;
 mod resolve;
 mod search;
@@ -66,6 +67,10 @@ fn main() {
     // Test isolation (stage-1 plan): with SIRTONE_DATA_DIR the instance has its own settings, logs,
     // WebView2 profile and identity, and never joins or forwards to the owner's running Сиртон.
     let isolated = std::env::var_os("SIRTONE_DATA_DIR").is_some_and(|d| !d.is_empty());
+    // T6.4: a portable copy keeps its WebView profile next to it and may bring its own runtime.
+    if !isolated {
+        portable::prepare();
+    }
     let data_dir = diagnostics::data_dir();
     if isolated {
         // SAFETY: first statement of `main`, before any other thread exists.
@@ -83,6 +88,9 @@ fn main() {
         // Test instances get their own identity: the single-instance lock and forwarding work
         // between test instances only and never reach the owner's app (D-37 id is untouched).
         context.config_mut().identifier = "studio.serkov.sirtone.test".into();
+    } else if portable::is_portable() {
+        // A portable copy is its own instance: starting it never just focuses an installed one.
+        context.config_mut().identifier = "studio.serkov.sirtone.portable".into();
     }
     let app = tauri::Builder::default()
         // Second launch (or Jump List command, «Открыть с помощью») focuses the existing window

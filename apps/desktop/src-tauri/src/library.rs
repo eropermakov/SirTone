@@ -327,6 +327,10 @@ pub fn default_root() -> PathBuf {
     if let Some(dir) = std::env::var_os("SIRTONE_DATA_DIR").filter(|d| !d.is_empty()) {
         return PathBuf::from(dir).join("Music").join("SirTone");
     }
+    // T6.4: the portable copy's music lives next to it.
+    if let Some(dir) = crate::portable::default_library() {
+        return dir;
+    }
     std::env::var_os("USERPROFILE")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir)
@@ -342,7 +346,7 @@ impl Library {
     pub fn start(app: AppHandle, settings: Arc<SettingsStore>) -> Self {
         let root = settings.get()["library"]["root"]
             .as_str()
-            .map(PathBuf::from)
+            .map(crate::portable::resolve)
             .filter(|p| p.is_absolute());
         let uid = settings_uid(&settings);
         let read = root.as_deref().and_then(|r| open_known(r, uid.as_deref()));
@@ -444,7 +448,7 @@ impl Library {
             .unwrap_or_default();
         self.settings
             .patch_durable(&serde_json::json!({
-                "library": { "root": path.to_string_lossy(), "uid": uid }
+                "library": { "root": crate::portable::store(path), "uid": uid }
             }))
             .map_err(|e| AppError::new(ErrorCode::InvalidConfig).with_details(e))?;
         let watch = arm_watch(path, &self.jobs);

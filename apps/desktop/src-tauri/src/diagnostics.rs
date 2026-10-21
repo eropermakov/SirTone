@@ -20,14 +20,17 @@ const LOG_SUFFIX: &str = "log";
 const KEEP_FILES: usize = 7;
 const MAX_TOTAL_BYTES: u64 = 20 * 1024 * 1024;
 
-/// Application data directory: `%LOCALAPPDATA%\SirTone` (installed mode, docs/03 §8.2).
-/// Portable mode (`sirtone.portable` next to the exe) is wired in T6.4.
+/// Application data directory: `%LOCALAPPDATA%\SirTone` (installed mode, docs/03 §8.2);
+/// `Data` next to the exe in portable mode (T6.4).
 ///
 /// `SIRTONE_DATA_DIR` overrides it: tests against the real app run on their own settings, logs and
 /// library database and never touch the owner's (stage-1 plan).
 pub fn data_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("SIRTONE_DATA_DIR").filter(|d| !d.is_empty()) {
         return PathBuf::from(dir);
+    }
+    if let Some(dir) = crate::portable::data_dir() {
+        return dir;
     }
     std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)

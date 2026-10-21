@@ -209,7 +209,8 @@ pub fn start(app: &AppHandle) {
 /// The Jump List's tasks in the current language — never by a test instance (it would replace
 /// the installed app's list).
 fn write_jump_list() {
-    if std::env::var_os("SIRTONE_DATA_DIR").is_some() {
+    // A test instance would replace the installed app's list; a portable copy leaves no traces.
+    if std::env::var_os("SIRTONE_DATA_DIR").is_some() || crate::portable::is_portable() {
         return;
     }
     let Ok(exe) = std::env::current_exe() else {
