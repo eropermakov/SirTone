@@ -34,7 +34,8 @@ pub fn available() -> bool {
     let Some(local) = std::env::var_os("LOCALAPPDATA") else {
         return false;
     };
-    !isolated && is_installed_path(&exe, Path::new(&local))
+    // A portable copy writes nothing to the host: no Run entry, no updater (T6.4).
+    !isolated && !crate::portable::is_portable() && is_installed_path(&exe, Path::new(&local))
 }
 
 fn is_installed_path(exe: &Path, local_app_data: &Path) -> bool {

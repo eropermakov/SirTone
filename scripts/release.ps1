@@ -11,11 +11,17 @@ param(
     [Parameter(Mandatory = $true)][int]$Proto,
     [Parameter(Mandatory = $true)][string]$Notes,
     [string]$KeyPath = 'D:\SirVault\SirTone-secrets\sirtone-updater.key',
-    [string]$Repo = 'eropermakov/SirTone'
+    [string]$Repo = 'eropermakov/SirTone',
+    # GitHub Actions (.github/workflows/release.yml): the key comes from the secret
+    # TAURI_SIGNING_PRIVATE_KEY, no local toolchain setup, no desktop copy.
+    [switch]$Ci,
+    # Code signing (T6.7, OWN-05): the thumbprint of a code-signing certificate in the Windows
+    # store (CurrentUser\My). Empty — unsigned, as before (SmartScreen may warn).
+    [string]$CertThumbprint = ''
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-. (Join-Path $PSScriptRoot 'dev-env.ps1')
+if (-not $Ci) { . (Join-Path $PSScriptRoot 'dev-env.ps1') }
 
 function Must($what) { if ($LASTEXITCODE -ne 0) { throw "FAILED: $what (exit $LASTEXITCODE)" } }
 
@@ -29,13 +35,30 @@ $head = (git -C $root rev-parse HEAD).Trim()
 git -C $root fetch -q origin
 $branch = (git -C $root rev-parse --abbrev-ref HEAD).Trim()
 if ((git -C $root rev-parse "origin/$branch").Trim() -ne $head) { throw 'HEAD is not pushed' }
-if (-not (Test-Path $KeyPath)) { throw "signing key not found: $KeyPath" }
+if ($Ci) {
+    if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw 'secret TAURI_SIGNING_PRIVATE_KEY is not set' }
+    $key = $env:TAURI_SIGNING_PRIVATE_KEY.Trim()
+} else {
+    if (-not (Test-Path $KeyPath)) { throw "signing key not found: $KeyPath" }
+    $key = (Get-Content $KeyPath -Raw).Trim()
+}
 
 # 1. Signed build: the bundler writes SirTone_<v>_x64-setup.exe and its .sig.
-$env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content $KeyPath -Raw).Trim()
+$env:TAURI_SIGNING_PRIVATE_KEY = $key
 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ''
+$buildArgs = @()
+if ($CertThumbprint) {
+    $sign = Join-Path $env:TEMP 'sirtone-sign.json'
+    $signConf = [ordered]@{ bundle = [ordered]@{ windows = [ordered]@{
+        certificateThumbprint = $CertThumbprint
+        digestAlgorithm       = 'sha256'
+        timestampUrl          = 'http://timestamp.digicert.com'
+    } } }
+    [IO.File]::WriteAllText($sign, ($signConf | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+    $buildArgs = @('--config', $sign)
+}
 Push-Location (Join-Path $root 'apps\desktop')
-try { pnpm tauri build; Must 'tauri build' } finally { Pop-Location }
+try { pnpm tauri build @buildArgs; Must 'tauri build' } finally { Pop-Location }
 Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY, Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
 
 $bundle = Join-Path $root 'target\release\bundle\nsis'
@@ -44,13 +67,19 @@ $sig = "$exe.sig"
 foreach ($f in @($exe, $sig)) { if (-not (Test-Path $f)) { throw "missing artifact: $f" } }
 $sha = (Get-FileHash $exe -Algorithm SHA256).Hash
 
+# 1b. The portable zip (T6.4, D-115) from the same build.
+$portableOut = Join-Path $root 'target\portable'
+& (Join-Path $PSScriptRoot 'portable.ps1') -Out $portableOut
+$portable = Join-Path $portableOut "SirTone-$version-portable.zip"
+if (-not (Test-Path $portable)) { throw "missing artifact: $portable" }
+
 # 2. The prerelease with the installer and its signature.
 $notesText = (Get-Content $Notes -Raw -Encoding UTF8).TrimEnd() + "`n`nSHA-256: $sha`n"
 $notesFile = Join-Path $env:TEMP "sirtone-notes-$tag.md"
 [IO.File]::WriteAllText($notesFile, $notesText, [Text.UTF8Encoding]::new($false))
 git -C $root tag $tag $head; Must 'git tag'
 git -C $root push -q origin $tag; Must 'git push tag'
-gh release create $tag $exe $sig --repo $Repo --prerelease --title "Сиртон $version — прототип $Proto" --notes-file $notesFile --verify-tag
+gh release create $tag $exe $sig $portable --repo $Repo --prerelease --title "Сиртон $version — прототип $Proto" --notes-file $notesFile --verify-tag
 Must 'gh release create'
 
 # 3. The update channel: one fixed release whose latest.json points at this installer.
@@ -73,9 +102,11 @@ if ($LASTEXITCODE -ne 0) {
 }
 gh release upload update-channel $latestFile --repo $Repo --clobber; Must 'upload latest.json'
 
-# 4. A copy on the owner's desktop.
-$desktop = [Environment]::GetFolderPath('Desktop')
-Copy-Item $exe (Join-Path $desktop "SirTone_$version-proto.${Proto}_x64-setup.exe") -Force
+# 4. A copy on the owner's desktop (a local release only).
+if (-not $Ci) {
+    $desktop = [Environment]::GetFolderPath('Desktop')
+    Copy-Item $exe (Join-Path $desktop "SirTone_$version-proto.${Proto}_x64-setup.exe") -Force
+}
 
 Write-Host "published $tag  sha256 $sha"
 Write-Host "update channel -> $url"

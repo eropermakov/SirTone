@@ -134,6 +134,11 @@ pub fn apply(app: &AppHandle) {
     }
 }
 
+/// The language changed (T6.5): the open widget asks for its texts again.
+pub fn relabel(app: &AppHandle) {
+    let _ = app.emit_to(LABEL, "widget-texts", ());
+}
+
 static MOVED: Mutex<Option<Instant>> = Mutex::new(None);
 
 /// The card was dragged: remember the place (debounced 600 ms).
@@ -159,12 +164,16 @@ pub fn widget_state(app: AppHandle) -> WidgetState {
     look(&app)
 }
 
-/// The widget's texts (Russian, from the shell strings — the page carries no i18n bundle).
+/// The widget's texts in the app's language (from the shell strings — the page carries no i18n
+/// bundle).
 #[tauri::command]
 #[specta::specta]
-pub fn widget_texts() -> std::collections::BTreeMap<String, String> {
-    const RU_SHELL: &str = include_str!("../../../../assets/i18n/ru/shell.json");
-    let doc: serde_json::Value = serde_json::from_str(RU_SHELL).unwrap_or_default();
+pub fn widget_texts(app: AppHandle) -> std::collections::BTreeMap<String, String> {
+    texts_of(&crate::i18n::lang(&app))
+}
+
+fn texts_of(lang: &str) -> std::collections::BTreeMap<String, String> {
+    let doc = crate::i18n::shell_of(lang);
     let w = &doc["widget"];
     [
         "prev",
@@ -194,7 +203,7 @@ pub fn widget_open_main(app: AppHandle) {
 mod tests {
     #[test]
     fn every_widget_text_is_there() {
-        let t = super::widget_texts();
+        let t = super::texts_of("ru");
         assert_eq!(t.len(), 10);
         assert!(t.iter().all(|(k, v)| v != k && !v.is_empty()), "{t:?}");
     }

@@ -130,6 +130,20 @@ async function mockTauri(page: Page) {
             return { files: 3, bytes: 300 };
           case "export_cancel":
             return null;
+          case "legal_notices":
+            return {
+              rust: 400,
+              js: 25,
+              sections: [
+                {
+                  title: "Шрифт Geologica",
+                  license: "SIL Open Font License 1.1",
+                  items: [],
+                  text: "SIL OPEN FONT LICENSE Version 1.1",
+                },
+                { title: "MIT", license: "MIT", items: ["serde 1.0"], text: "MIT License text" },
+              ],
+            };
           case "audio_devices":
             return [
               { id: "{dev-1}", name: "Динамики (Realtek)", isDefault: true },
@@ -737,4 +751,34 @@ test("the mouse wheel over the volume turns it, 5 % a notch (owner, proto 32)", 
   await expect
     .poll(async () => (await calls(page, "playback_set_volume")).at(-1)?.args)
     .toEqual({ volume: 0.55 });
+});
+
+test("«Язык»: English switches the UI at once and is saved (T6.5)", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Language", exact: true })).toBeVisible();
+  await expect
+    .poll(async () => {
+      const last = (await calls(page, "settings_patch")).at(-1)?.args as {
+        patch: { language?: string };
+      };
+      return last?.patch.language;
+    })
+    .toBe("en");
+  await page.getByRole("button", { name: "Русский", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Язык", exact: true })).toBeVisible();
+});
+
+test("«Лицензии»: the font, models and every package with its text (T6.6)", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
+  await page.getByRole("button", { name: "Лицензии", exact: true }).click();
+  const list = page.getByTestId("licenses");
+  await expect(list).toContainText("400 библиотек Rust");
+  await list.getByRole("button", { name: /Шрифт Geologica/ }).click();
+  await expect(list).toContainText("SIL OPEN FONT LICENSE");
+  await expect(list.getByRole("button", { name: /serde 1\.0/ })).toBeVisible();
 });

@@ -184,9 +184,7 @@
     "addToPlaylist": "Add to playlist",
     "toAlbum": "Go to album",
     "toArtist": "Go to artist",
-    "share": "Copy title",
     "remove": "Remove from library",
-    "copied": "Copied: {text}",
     "queuedNext": "Plays next: {title}",
     "queued": "Added to queue: {title}"
   },
@@ -226,5 +224,13 @@
       "needs_review": "Needs review",
       "none": "No reason"
     }
+  },
+  "settingsLanguage": {
+    "title": "Language",
+    "name": {
+      "ru": "Русский",
+      "en": "English"
+    },
+    "partial": "The English translation is not complete yet — what is missing shows in Russian."
   }
 }

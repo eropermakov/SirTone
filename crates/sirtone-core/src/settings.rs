@@ -524,6 +524,8 @@ pub struct LibraryPrefs {
     pub root: Option<String>,
     pub adopt_external_files: bool,
     pub organize_external: String,
+    /// «Папка Inbox» (T6.8, FR-IMP-010): files put into `<root>/Inbox` are laid out at once.
+    pub inbox: bool,
 }
 
 impl Default for LibraryPrefs {
@@ -532,6 +534,7 @@ impl Default for LibraryPrefs {
             root: None,
             adopt_external_files: true,
             organize_external: "suggest".into(),
+            inbox: false,
         }
     }
 }
@@ -794,6 +797,9 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
         return Err(SettingsError::Invalid(
             "playback.output.device: \"default\" or an endpoint id".into(),
         ));
+    }
+    if s.language != "ru" && s.language != "en" {
+        return Err(SettingsError::Invalid("language must be ru or en".into()));
     }
     if !(0.75..=1.5).contains(&s.widget.scale) {
         return Err(SettingsError::Invalid(

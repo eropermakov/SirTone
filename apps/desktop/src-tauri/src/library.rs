@@ -327,6 +327,10 @@ pub fn default_root() -> PathBuf {
     if let Some(dir) = std::env::var_os("SIRTONE_DATA_DIR").filter(|d| !d.is_empty()) {
         return PathBuf::from(dir).join("Music").join("SirTone");
     }
+    // T6.4: the portable copy's music lives next to it.
+    if let Some(dir) = crate::portable::default_library() {
+        return dir;
+    }
     std::env::var_os("USERPROFILE")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir)
@@ -342,7 +346,7 @@ impl Library {
     pub fn start(app: AppHandle, settings: Arc<SettingsStore>) -> Self {
         let root = settings.get()["library"]["root"]
             .as_str()
-            .map(PathBuf::from)
+            .map(crate::portable::resolve)
             .filter(|p| p.is_absolute());
         let uid = settings_uid(&settings);
         let read = root.as_deref().and_then(|r| open_known(r, uid.as_deref()));
@@ -444,7 +448,7 @@ impl Library {
             .unwrap_or_default();
         self.settings
             .patch_durable(&serde_json::json!({
-                "library": { "root": path.to_string_lossy(), "uid": uid }
+                "library": { "root": crate::portable::store(path), "uid": uid }
             }))
             .map_err(|e| AppError::new(ErrorCode::InvalidConfig).with_details(e))?;
         let watch = arm_watch(path, &self.jobs);
@@ -1027,13 +1031,31 @@ fn organize_adopted(
     if adopted.is_empty() {
         return;
     }
-    let mode = tauri::Manager::try_state::<Arc<SettingsStore>>(app)
-        .and_then(|s| {
-            s.get()["library"]["organize_external"]
+    let doc = tauri::Manager::try_state::<Arc<SettingsStore>>(app).map(|s| s.get());
+    let mode = doc
+        .as_ref()
+        .and_then(|d| {
+            d["library"]["organize_external"]
                 .as_str()
                 .map(str::to_owned)
         })
         .unwrap_or_else(|| "suggest".into());
+    // «Папка Inbox» (T6.8, FR-IMP-010): what was put there is laid out at once, whatever the mode.
+    let inbox = doc
+        .as_ref()
+        .is_some_and(|d| d["library"]["inbox"].as_bool() == Some(true));
+    let (dropped, adopted): (Vec<i64>, Vec<i64>) = adopted
+        .iter()
+        .copied()
+        .partition(|&t| inbox && in_inbox(db, t));
+    let any = !dropped.is_empty();
+    for t in dropped {
+        let _ = sirtone_library::relocate::relayout(db, root, t, deps.fs.as_ref());
+    }
+    if any {
+        // The move tidies empty folders away — Inbox itself stays.
+        let _ = std::fs::create_dir_all(root.join(INBOX));
+    }
     if mode == "never" {
         return;
     }
@@ -1061,6 +1083,32 @@ fn organize_adopted(
         s.organize.len() as u32
     };
     let _ = OrganizeSuggested { tracks: total }.emit(app);
+}
+
+pub const INBOX: &str = "Inbox";
+
+fn in_inbox(db: &Connection, track: i64) -> bool {
+    db.query_row("SELECT rel_path FROM track WHERE id = ?1", [track], |r| {
+        r.get::<_, String>(0)
+    })
+    .is_ok_and(|p| {
+        let p = p.replace('\\', "/");
+        p.split('/')
+            .next()
+            .is_some_and(|first| first.eq_ignore_ascii_case(INBOX))
+    })
+}
+
+/// «Папка Inbox» switched on: the folder appears in the library (nothing else changes).
+pub fn ensure_inbox(app: &AppHandle) {
+    let on = tauri::Manager::try_state::<Arc<SettingsStore>>(app)
+        .is_some_and(|s| s.get()["library"]["inbox"].as_bool() == Some(true));
+    if let (true, Some(root)) = (
+        on,
+        tauri::Manager::try_state::<Library>(app).and_then(|l| l.root()),
+    ) {
+        let _ = std::fs::create_dir_all(root.join(INBOX));
+    }
 }
 
 /// Files moved: queued tracks take their new paths (the playing one keeps its own).

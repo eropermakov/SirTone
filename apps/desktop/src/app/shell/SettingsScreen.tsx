@@ -45,6 +45,7 @@ import { Slider } from "@/shared/ui/Slider";
 import { Switch } from "@/shared/ui/Switch";
 import { FX_TYPES, type FxType, isFxType } from "@/shared/viz/fxPlan";
 import EQ_PRESETS_JSON from "../../../../../assets/eq/presets.json";
+import { LicensesDialog } from "./LicensesDialog";
 
 type Props = {
   theme: ThemePref;
@@ -86,6 +87,7 @@ export function SettingsScreen({
   onShowDuplicates,
 }: Props) {
   const { t } = useTranslation("shell");
+  const [licenses, setLicenses] = useState(false);
 
   return (
     <section className="flex max-w-3xl flex-col gap-12">
@@ -178,6 +180,8 @@ export function SettingsScreen({
 
       <PerformanceSection />
 
+      <LanguageSection />
+
       <StartupSection />
 
       <HotkeysSection />
@@ -216,14 +220,56 @@ export function SettingsScreen({
               {t("onboarding.again")}
             </Button>
           )}
+          <Button variant="ghost" onClick={() => setLicenses(true)}>
+            {t("licenses.button")}
+          </Button>
         </div>
       </div>
+      {licenses && <LicensesDialog onClose={() => setLicenses(false)} />}
     </section>
   );
 }
 
 /** «Запуск» (FR-SHELL-007): start with Windows, minimized to the tray. Optimistic: the switch
  * moves at once and rolls back if Windows refuses. */
+const LANGS = ["ru", "en"] as const;
+
+/** «Язык» (T6.5, FR-I18N-001): the UI changes at once, the tray and the widget too. English is a
+ * slot for now — what is not translated stays Russian. */
+function LanguageSection() {
+  const { t, i18n } = useTranslation("shell");
+  const [lang, setLang] = useState<(typeof LANGS)[number]>(i18n.language === "en" ? "en" : "ru");
+  const pick = (l: (typeof LANGS)[number]) => {
+    const prev = lang;
+    setLang(l);
+    void i18n.changeLanguage(l);
+    patchSettings({ language: l }).catch(() => {
+      setLang(prev);
+      void i18n.changeLanguage(prev);
+    });
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsLanguage.title")}</h2>
+      <div className="flex flex-col gap-3 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <fieldset
+          className="m-0 flex flex-wrap gap-2 border-0 p-0"
+          aria-label={t("settingsLanguage.title")}
+        >
+          {LANGS.map((l) => (
+            <Chip key={l} active={lang === l} onClick={() => pick(l)}>
+              {t(`settingsLanguage.name.${l}`)}
+            </Chip>
+          ))}
+        </fieldset>
+        {lang === "en" && (
+          <div className="t-caption text-text-secondary">{t("settingsLanguage.partial")}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function StartupSection() {
   const { t } = useTranslation("shell");
   const [available, setAvailable] = useState(false);
@@ -2239,12 +2285,14 @@ function DuplicatesLine({ onShow }: { onShow: () => void }) {
 function OrganizeLine() {
   const { t } = useTranslation("shell");
   const [auto, setAuto] = useState(false);
+  const [inbox, setInbox] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     getSettings()
       .then((s) => {
-        const l = s.library as { organize_external?: string } | undefined;
+        const l = s.library as { organize_external?: string; inbox?: boolean } | undefined;
         setAuto(l?.organize_external === "auto");
+        setInbox(l?.inbox === true);
       })
       .catch(() => {});
   }, []);
@@ -2263,6 +2311,21 @@ function OrganizeLine() {
             patchSettings({ library: { organize_external: on ? "auto" : "suggest" } }).catch(() =>
               setAuto(!on),
             );
+          }}
+        />
+      </div>
+      {/* «Папка Inbox» (T6.8, FR-IMP-010): what is put there is laid out at once. */}
+      <div className="flex items-center gap-4">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="t-body text-text-primary">{t("organize.inbox")}</span>
+          <span className="t-caption text-text-secondary">{t("organize.inboxHint")}</span>
+        </div>
+        <Switch
+          checked={inbox}
+          label={t("organize.inbox")}
+          onChange={(on) => {
+            setInbox(on);
+            patchSettings({ library: { inbox: on } }).catch(() => setInbox(!on));
           }}
         />
       </div>
