@@ -40,7 +40,8 @@ pub enum Progress {
 }
 
 type ClickFn = Box<dyn Fn(Thumb) + Send + Sync>;
-type CreatedFn = Box<dyn Fn() + Send + Sync>;
+/// Gets the window whose taskbar button was (re)created — a rebuilt window has a new one.
+type CreatedFn = Box<dyn Fn(isize) + Send + Sync>;
 static ON_CLICK: OnceLock<ClickFn> = OnceLock::new();
 static ON_CREATED: OnceLock<CreatedFn> = OnceLock::new();
 static CREATED_MSG: OnceLock<u32> = OnceLock::new();
@@ -72,18 +73,19 @@ unsafe extern "system" fn subclass(
     if CREATED_MSG.get() == Some(&msg)
         && let Some(f) = ON_CREATED.get()
     {
-        f();
+        f(hwnd.0 as isize);
     }
     // SAFETY: the default handling of a subclassed window, same arguments.
     unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
 }
 
-/// Hooks the window: `on_click` for the buttons, `on_created` when the taskbar button exists
-/// (add the buttons then). Call once, on the window's thread.
+/// Hooks the window: `on_click` for the buttons, `on_created(hwnd)` when its taskbar button
+/// exists (add the buttons then). Call on the window's thread — again for a rebuilt window (the
+/// callbacks stay those of the first call; they get the window from the message).
 pub fn hook(
     hwnd: isize,
     on_click: impl Fn(Thumb) + Send + Sync + 'static,
-    on_created: impl Fn() + Send + Sync + 'static,
+    on_created: impl Fn(isize) + Send + Sync + 'static,
 ) -> bool {
     let _ = ON_CLICK.set(Box::new(on_click));
     let _ = ON_CREATED.set(Box::new(on_created));

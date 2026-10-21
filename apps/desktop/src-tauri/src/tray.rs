@@ -220,6 +220,7 @@ fn apply(app: &AppHandle, s: &TrayState) {
 
 pub fn show_main(app: &AppHandle) {
     crate::memory::ensure_main(app); // T5.10: built again if it was destroyed in the tray
+    crate::memory::resume(app); // …and awake if it was only suspended
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.unminimize();
         let _ = w.show();

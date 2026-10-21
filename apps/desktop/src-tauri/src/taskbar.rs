@@ -149,10 +149,11 @@ pub fn start(app: &AppHandle) {
                     },
                 );
             },
-            move || {
-                // The taskbar button exists (again): a fresh object, then the buttons.
+            move |created| {
+                // The taskbar button exists (again) — for the window that got it (a rebuilt
+                // window has a new handle): a fresh object, then the buttons.
                 let light = !sirtone_platform::taskbar::light_taskbar();
-                BAR.with(|b| *b.borrow_mut() = Taskbar::new(hwnd, light));
+                BAR.with(|b| *b.borrow_mut() = Taskbar::new(created, light));
                 let _ = created_app.run_on_main_thread(add_buttons);
             },
         );

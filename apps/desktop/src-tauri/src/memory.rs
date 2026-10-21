@@ -57,6 +57,19 @@ fn suspend(app: &AppHandle) {
     });
 }
 
+/// Before the window shows again: the WebView visible, which also resumes it (`TrySuspend`
+/// is undone only by `IsVisible = true`; showing the window does not do it).
+pub fn resume(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.with_webview(|wv| {
+            // SAFETY: WebView2 call on the UI thread (`with_webview` runs there).
+            unsafe {
+                let _ = wv.controller().SetIsVisible(true);
+            }
+        });
+    }
+}
+
 /// The main window was hidden to the tray.
 pub fn hidden(app: &AppHandle) {
     suspend(app);

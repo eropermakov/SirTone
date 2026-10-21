@@ -40,6 +40,8 @@ spawnSync("ffmpeg", [
   "libmp3lame",
   "-b:a",
   "32k",
+  "-metadata",
+  "title=Memory Tone",
   tone,
 ]);
 const env = {
@@ -70,6 +72,29 @@ const memMb = () =>
       `$all = Get-CimInstance Win32_Process; $ids = @(${app.pid}); do { $n = $ids.Count; $ids = @($ids + ($all | Where-Object { $ids -contains $_.ParentProcessId } | ForEach-Object ProcessId)) | Select-Object -Unique } while ($ids.Count -gt $n); [math]::Round(((Get-Process -Id $ids -ErrorAction SilentlyContinue | Measure-Object PrivateMemorySize64 -Sum).Sum) / 1MB)`,
     ),
   );
+// Titles of the system media sessions (SMTC) — Windows' own list, read only.
+const smtcTitles = () =>
+  ps(
+    `Add-Type -AssemblyName System.Runtime.WindowsRuntime; $as = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1' })[0]; function Await($op, $t) { $task = $as.MakeGenericMethod($t).Invoke($null, @($op)); $task.Wait(5000) | Out-Null; $task.Result }; [void][Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]; $m = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]); ($m.GetSessions() | ForEach-Object { (Await ($_.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])).Title }) -join '|'`,
+  );
+const frames = () =>
+  page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        let n = 0;
+        const t0 = performance.now();
+        const step = () => {
+          n += 1;
+          if (performance.now() - t0 < 600) requestAnimationFrame(step);
+          else resolve(n);
+        };
+        requestAnimationFrame(step);
+      }),
+  );
+const relaunch = async () => {
+  spawn(exe, [], { env, stdio: "ignore" });
+  await sleep(2500);
+};
 const webviews = () =>
   Number(
     ps(
@@ -84,6 +109,18 @@ try {
   await invoke("settings_patch", { patch: { onboarding: { done: true, tips_seen: true } } });
   await invoke("playback_open", { paths: [tone] });
   await sleep(3000);
+  const playingTitle = (await invoke("playback_snapshot", {})).title;
+  // A short trip to the tray (before the window is destroyed): the page wakes up again.
+  ps(`(Get-Process -Id ${app.pid}).CloseMainWindow() | Out-Null`);
+  await sleep(1500);
+  await relaunch();
+  const f = await frames();
+  const footer = await page.locator("footer").innerText();
+  check(
+    "hidden and opened again within the delay: the page is awake (frames run, player shown)",
+    f > 10 && !!playingTitle && footer.includes(playingTitle),
+    `${f} frames in 0.6 s`,
+  );
   const shownMb = memMb();
   const s0 = await invoke("playback_snapshot", {});
   // Close to the tray: WM_CLOSE to this test's own process window only.
@@ -96,8 +133,15 @@ try {
     trayMb <= 120 && wv === 0,
     `shown ${shownMb} MB → tray ${trayMb} MB, webview processes ${wv}`,
   );
+  const titles = smtcTitles();
+  check(
+    "without the window the media keys and the Windows flyout still have Сиртон (SMTC, AT-03)",
+    titles.split("|").includes(playingTitle),
+    titles,
+  );
   // Second start → single instance → the window is built again.
   spawn(exe, [], { env, stdio: "ignore" });
+  await sleep(1000);
   page = await connect();
   await page.waitForSelector("footer", { timeout: 15000 });
   invoke = (cmd, args) =>
