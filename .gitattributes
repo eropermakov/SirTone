@@ -36,3 +36,5 @@ fonts/OFL.txt text eol=lf
 *.jsx  text eol=lf
 *.html text eol=lf
 *.sql  text eol=lf
+THIRD_PARTY_NOTICES.txt text eol=lf
+assets/legal/notices.json text eol=lf
