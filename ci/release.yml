@@ -1,0 +1,61 @@
+# TEMPLATE — to turn it on, copy to .github/workflows/release.yml (the git token used here has no
+# `workflow` scope, so the file waits outside .github; the owner adds it: `gh auth refresh -s
+# workflow`, or copies it through the GitHub web editor).
+#
+# Release on GitHub Actions (T6.2, FR-UPD-003): the same as a local `scripts/release.ps1` —
+# signed installer, portable zip, prerelease, update channel — on a Windows runner.
+#
+# Runs ONLY when started by hand (Actions → «Release» → Run workflow): the repository's
+# Actions minutes are the owner's. Needs the repository secret TAURI_SIGNING_PRIVATE_KEY (the
+# contents of the minisign key, no password; the owner adds it — OWN-04). The version must
+# already be bumped and pushed, and the release notes committed (docs/release-notes/proto-N.md).
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      proto:
+        description: "Prototype number (N in v<version>-proto.N)"
+        required: true
+        type: number
+      notes:
+        description: "Release notes file, e.g. docs/release-notes/proto-34.md"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Release
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          # Inputs go through the environment, never into the script text.
+          PROTO: ${{ inputs.proto }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          ./scripts/release.ps1 -Proto ([int]$env:PROTO) -Notes $env:NOTES -Ci
