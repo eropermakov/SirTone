@@ -186,6 +186,11 @@ async function start() {
     focus = e.payload;
     render();
   });
+  await listen("widget-texts", async () => {
+    texts = (await invoke("widget_texts")) as Texts;
+    lastTitle = null;
+    render();
+  });
   await listen<{ theme: string; accent: string }>("widget-look", (e) => {
     document.documentElement.dataset.theme = e.payload.theme;
     document.documentElement.dataset.accent = e.payload.accent;

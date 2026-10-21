@@ -795,6 +795,9 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
             "playback.output.device: \"default\" or an endpoint id".into(),
         ));
     }
+    if s.language != "ru" && s.language != "en" {
+        return Err(SettingsError::Invalid("language must be ru or en".into()));
+    }
     if !(0.75..=1.5).contains(&s.widget.scale) {
         return Err(SettingsError::Invalid(
             "widget.scale must be 0.75..=1.5".into(),

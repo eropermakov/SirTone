@@ -25,6 +25,7 @@ export type SettingsDoc = {
   [key: string]: unknown;
 };
 export type SettingsPatch = {
+  language?: "ru" | "en";
   appearance?: {
     theme?: string;
     accent?: Record<string, unknown>;

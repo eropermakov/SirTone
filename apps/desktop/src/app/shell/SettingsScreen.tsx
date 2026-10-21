@@ -178,6 +178,8 @@ export function SettingsScreen({
 
       <PerformanceSection />
 
+      <LanguageSection />
+
       <StartupSection />
 
       <HotkeysSection />
@@ -224,6 +226,44 @@ export function SettingsScreen({
 
 /** «Запуск» (FR-SHELL-007): start with Windows, minimized to the tray. Optimistic: the switch
  * moves at once and rolls back if Windows refuses. */
+const LANGS = ["ru", "en"] as const;
+
+/** «Язык» (T6.5, FR-I18N-001): the UI changes at once, the tray and the widget too. English is a
+ * slot for now — what is not translated stays Russian. */
+function LanguageSection() {
+  const { t, i18n } = useTranslation("shell");
+  const [lang, setLang] = useState<(typeof LANGS)[number]>(i18n.language === "en" ? "en" : "ru");
+  const pick = (l: (typeof LANGS)[number]) => {
+    const prev = lang;
+    setLang(l);
+    void i18n.changeLanguage(l);
+    patchSettings({ language: l }).catch(() => {
+      setLang(prev);
+      void i18n.changeLanguage(prev);
+    });
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("settingsLanguage.title")}</h2>
+      <div className="flex flex-col gap-3 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <fieldset
+          className="m-0 flex flex-wrap gap-2 border-0 p-0"
+          aria-label={t("settingsLanguage.title")}
+        >
+          {LANGS.map((l) => (
+            <Chip key={l} active={lang === l} onClick={() => pick(l)}>
+              {t(`settingsLanguage.name.${l}`)}
+            </Chip>
+          ))}
+        </fieldset>
+        {lang === "en" && (
+          <div className="t-caption text-text-secondary">{t("settingsLanguage.partial")}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function StartupSection() {
   const { t } = useTranslation("shell");
   const [available, setAvailable] = useState(false);

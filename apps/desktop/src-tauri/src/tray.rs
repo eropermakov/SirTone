@@ -12,8 +12,6 @@ use tauri::{AppHandle, Manager, Wry};
 
 use crate::playback::Playback;
 
-const RU_SHELL: &str = include_str!("../../../../assets/i18n/ru/shell.json");
-
 #[derive(Debug, Clone)]
 struct Labels {
     open: String,
@@ -38,8 +36,11 @@ struct Labels {
     event_names: std::collections::BTreeMap<String, String>,
 }
 
-fn labels() -> Labels {
-    let doc: serde_json::Value = serde_json::from_str(RU_SHELL).unwrap_or_default();
+fn labels(app: &AppHandle) -> Labels {
+    labels_of(&crate::i18n::shell(app))
+}
+
+fn labels_of(doc: &serde_json::Value) -> Labels {
     let get = |k: &str, fallback: &str| {
         doc["tray"][k]
             .as_str()
@@ -270,8 +271,32 @@ fn on_menu(app: &AppHandle, event: MenuEvent) {
     }
 }
 
+/// The language changed (T6.5): the tray is built again with the new labels and shows the same
+/// state.
+pub fn relabel(app: &AppHandle) {
+    let last = app.try_state::<TrayMenu>().and_then(|m| {
+        m.items
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+            .and_then(|i| i.last.clone())
+    });
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let _ = a.remove_tray_by_id("main");
+        if let Err(e) = build(&a) {
+            tracing::warn!(target: "sirtone::tray", error = %e, "tray rebuild failed");
+            return;
+        }
+        if let Some(s) = last {
+            update(&a, &s);
+        }
+        refresh_modes(&a);
+    });
+}
+
 pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
-    let l = labels();
+    let l = labels(app);
     let now = MenuItem::with_id(app, "now", &l.nothing, true, None::<&str>)?;
     let play_pause = MenuItem::with_id(app, "play_pause", &l.play, false, None::<&str>)?;
     let prev = MenuItem::with_id(app, "prev", &l.prev, false, None::<&str>)?;
@@ -373,7 +398,7 @@ mod tests {
 
     #[test]
     fn tray_labels_come_from_ru_strings() {
-        let l = labels();
+        let l = labels_of(&crate::i18n::shell_of("ru"));
         assert_eq!(l.quit, "Выход");
         assert_eq!(l.pause, "Пауза");
         assert!(l.now_playing.contains("{title}"));
@@ -381,7 +406,7 @@ mod tests {
 
     #[test]
     fn now_playing_line_and_tooltip() {
-        let l = labels();
+        let l = labels_of(&crate::i18n::shell_of("ru"));
         let s = TrayState {
             title: Some("Город".into()),
             artists: Some("Кино".into()),

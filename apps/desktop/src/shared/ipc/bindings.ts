@@ -250,7 +250,10 @@ export const commands = {
 	btSet: (name: string, connect: boolean) => typedError<boolean, AppError>(__TAURI_INVOKE("bt_set", { name, connect })),
 	btOpenSettings: () => __TAURI_INVOKE<void>("bt_open_settings"),
 	widgetState: () => __TAURI_INVOKE<WidgetState>("widget_state"),
-	/**  The widget's texts (Russian, from the shell strings — the page carries no i18n bundle). */
+	/**
+	 *  The widget's texts in the app's language (from the shell strings — the page carries no i18n
+	 *  bundle).
+	 */
 	widgetTexts: () => __TAURI_INVOKE<{ [key in string]: string }>("widget_texts"),
 	/**  A click on the cover: the main window. */
 	widgetOpenMain: () => __TAURI_INVOKE<void>("widget_open_main"),

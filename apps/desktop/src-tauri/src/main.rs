@@ -20,6 +20,7 @@ mod export;
 mod feedback;
 mod focus;
 mod hotkeys;
+mod i18n;
 mod ipc;
 mod journal;
 mod library;

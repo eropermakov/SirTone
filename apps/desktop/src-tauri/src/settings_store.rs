@@ -143,6 +143,9 @@ pub fn settings_patch(
     if changed.iter().any(|k| k == "widget" || k == "appearance") {
         crate::widget::apply(&app); // T5.1: on/off, «поверх окон», size, the look
     }
+    if changed.iter().any(|k| k == "language") {
+        crate::i18n::apply(&app); // T6.5: the tray, the taskbar, the widget speak it at once
+    }
     if changed.iter().any(|k| k == "events") {
         crate::events::kick(); // T5.13: switches apply at once
     }

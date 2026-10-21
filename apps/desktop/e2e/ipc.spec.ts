@@ -738,3 +738,21 @@ test("the mouse wheel over the volume turns it, 5 % a notch (owner, proto 32)", 
     .poll(async () => (await calls(page, "playback_set_volume")).at(-1)?.args)
     .toEqual({ volume: 0.55 });
 });
+
+test("«Язык»: English switches the UI at once and is saved (T6.5)", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Language", exact: true })).toBeVisible();
+  await expect
+    .poll(async () => {
+      const last = (await calls(page, "settings_patch")).at(-1)?.args as {
+        patch: { language?: string };
+      };
+      return last?.patch.language;
+    })
+    .toBe("en");
+  await page.getByRole("button", { name: "Русский", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Язык", exact: true })).toBeVisible();
+});
