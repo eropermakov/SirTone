@@ -12,10 +12,14 @@ import { WavesBackground } from "./WavesBackground";
 
 /**
  * The visualisation behind «Моя волна» (FR-VIZ-001): the mode from the settings, switched on the
- * fly. Only one engine and one GL context live at a time. «MilkDrop» needs motion and WebGL2:
- * under `prefers-reduced-motion`, on level 0 or when it fails, «Волны» stand in (their still
- * frame or gradient); so do they for «Видео» until the person has dropped a clip in.
+ * fly. Only one engine and one GL context live at a time. «MilkDrop» and «Видео» are heavy: only
+ * from «Мощное» up (`06` §6, the level table; D-118). «MilkDrop» needs motion and WebGL2: under
+ * `prefers-reduced-motion`, below «Мощное» or when it fails, «Волны» stand in (their still frame
+ * or gradient); so do they for «Видео» until the person has dropped a clip in.
  */
+/** «Мощное»: MilkDrop and the video background start here (`06` §6). */
+const HEAVY_LEVEL = 3;
+
 export function VizBackground({
   trackId,
   cover,
@@ -54,7 +58,8 @@ export function VizBackground({
   }, [clips]);
   if (!prefs) return null;
   let bg: React.ReactNode;
-  const milkdrop = mode === "milkdrop" && prefs.level > 0 && !reduced && !failed;
+  const heavy = prefs.level >= HEAVY_LEVEL;
+  const milkdrop = mode === "milkdrop" && heavy && !reduced && !failed;
   if (milkdrop) {
     bg = (
       <MilkDropBackground
@@ -64,7 +69,7 @@ export function VizBackground({
         onFail={() => setFailed(true)}
       />
     );
-  } else if (mode === "video" && prefs.level > 0 && !noClips) {
+  } else if (mode === "video" && heavy && !noClips) {
     bg = (
       <VideoBackground
         trackId={trackId}

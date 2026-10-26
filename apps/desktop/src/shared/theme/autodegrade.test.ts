@@ -41,6 +41,30 @@ describe("auto-degrade D-47 (T4.16)", () => {
     expect(run(w, 8_000, 10_000, 1_000)).toEqual([]);
   });
 
+  it("a very weak machine: ≈ 380 ms frames are slow frames, not pauses (T7.1, D-118)", () => {
+    const w = new FrameWatch();
+    w.reset(0);
+    const hits = run(w, 0, 8_000, 380);
+    expect(hits.length).toBe(1);
+    expect(hits[0]).toBeGreaterThan(4_900);
+  });
+
+  it("one 600 ms stall at 60 FPS does not degrade", () => {
+    const w = new FrameWatch();
+    w.reset(0);
+    run(w, 0, 3_000, 16.7);
+    w.frame(3_600);
+    w.check(3_600);
+    expect(run(w, 3_616, 6_000, 16.7)).toEqual([]);
+  });
+
+  it("a 1.5 s gap is a pause: the sustain starts again", () => {
+    const w = new FrameWatch();
+    w.reset(0);
+    run(w, 0, 4_500, 30); // slow for 2.5 s past the grace — almost
+    expect(run(w, 6_000, 2_000, 30)).toEqual([]); // the gap reset it
+  });
+
   it("a screen change restarts the grace", () => {
     const w = new FrameWatch();
     w.reset(0);
