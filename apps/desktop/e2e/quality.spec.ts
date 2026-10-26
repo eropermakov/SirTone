@@ -4,12 +4,21 @@ import { expect, type Page, test } from "@playwright/test";
 /**
  * Stage 2 quality gates (T2.16, T2.18; `docs/08` §2) in the browser preview (no Tauri: the
  * library is empty, settings live in localStorage):
- *  - axe on every screen in both themes — no critical violations (serious ones are listed);
+ *  - axe on every screen in both themes — no critical or serious violations (WCAG AA, T7.5),
+ *    checked once the screen's entry animation has finished (a half-faded element is no contrast
+ *    finding);
  *  - screenshot baselines: 2 themes × Sir.kov/Чёрный/Жёлтый/Бордовый × 3 widths, animations off.
  * Re-record baselines on purpose only: `pnpm e2e --update-snapshots`.
  */
 
 const SCREENS = ["Моя волна", "Альбомы", "Исполнители", "Неизвестные", "Настройки"];
+
+/** Waits for running CSS animations and transitions (a screen's fade-in) to finish. */
+export async function settle(page: Page) {
+  await page.evaluate(() =>
+    Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))),
+  );
+}
 
 async function open(page: Page, theme: "dark" | "light", accent: string, width: number) {
   await page.addInitScript(
@@ -29,21 +38,15 @@ async function open(page: Page, theme: "dark" | "light", accent: string, width: 
 }
 
 for (const theme of ["dark", "light"] as const) {
-  test(`axe: no critical violations (${theme})`, async ({ page }) => {
+  test(`axe: no critical or serious violations (${theme})`, async ({ page }) => {
     await open(page, theme, "sirkov", 1280);
-    const serious: string[] = [];
     for (const name of SCREENS) {
       await page.getByRole("button", { name, exact: true }).first().click();
+      await settle(page);
       const r = await new AxeBuilder({ page }).analyze();
-      const critical = r.violations.filter((v) => v.impact === "critical");
-      expect(critical.map((v) => `${name}: ${v.id} — ${v.help}`)).toEqual([]);
-      serious.push(
-        ...r.violations.filter((v) => v.impact === "serious").map((v) => `${name}: ${v.id}`),
-      );
+      const bad = r.violations.filter((v) => v.impact === "critical" || v.impact === "serious");
+      expect(bad.map((v) => `${name}: ${v.id} — ${v.help}`)).toEqual([]);
     }
-    test
-      .info()
-      .annotations.push({ type: "axe serious", description: serious.join(", ") || "none" });
   });
 }
 

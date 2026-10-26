@@ -67,6 +67,7 @@ import { nextName, usePlaylists } from "./playlists/usePlaylists";
 import { SearchScreen } from "./search/SearchScreen";
 import { EmptyScreen } from "./shell/EmptyScreen";
 import { FocusBanner } from "./shell/FocusBanner";
+import { HelpHost, openHelp } from "./shell/HelpDialog";
 import { PlayerBar } from "./shell/PlayerBar";
 import { QueuePanel } from "./shell/QueuePanel";
 import { SettingsScreen } from "./shell/SettingsScreen";
@@ -284,6 +285,10 @@ export function App() {
       } else if (e.ctrlKey && e.key === ",") {
         e.preventDefault();
         setScreen("settings");
+      } else if (e.key === "F1") {
+        // T7.8: the help.
+        e.preventDefault();
+        openHelp();
       }
     };
     const mouse = (e: MouseEvent) => {
@@ -577,6 +582,7 @@ export function App() {
           {t("proto")}
         </div>
         <ExportHost />
+        <HelpHost />
         <PlayerBar
           snap={snap}
           receivedAt={receivedAt}

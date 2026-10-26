@@ -361,17 +361,19 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       />
       <div className="relative flex max-w-xl flex-col items-center gap-1 text-center">
         <h1 className="t-hero line-clamp-2 text-text-primary">{snap.title}</h1>
-        <button
-          type="button"
-          onClick={() =>
-            primaryArtist(id)
-              .then((a) => onGo("artists", a, snap.artists?.split(", ")[0] ?? ""))
-              .catch(() => {})
-          }
-          className="t-body truncate text-text-secondary hover:text-text-primary"
-        >
-          {snap.artists}
-        </button>
+        {snap.artists && (
+          <button
+            type="button"
+            onClick={() =>
+              primaryArtist(id)
+                .then((a) => onGo("artists", a, snap.artists?.split(", ")[0] ?? ""))
+                .catch(() => {})
+            }
+            className="t-body truncate text-text-secondary hover:text-text-primary"
+          >
+            {snap.artists}
+          </button>
+        )}
       </div>
       {snap.waveProfile === "my_wave" && <WaveContextName />}
       {snap.waveProfile && <WaveChips profile={snap.waveProfile} />}

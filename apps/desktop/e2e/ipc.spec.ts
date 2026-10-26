@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 
 /**
@@ -115,6 +116,8 @@ async function mockTauri(page: Page) {
             };
           case "wave_set_off":
             return null;
+          case "collection_genres":
+            return [{ key: "rock", name: "Rock", tracks: 3 }];
           case "bt_devices":
             return [
               { name: "WH-1000XM4", connected: false, endpoints: ["{bt-1}"] },
@@ -781,4 +784,88 @@ test("«Лицензии»: the font, models and every package with its text (T6
   await list.getByRole("button", { name: /Шрифт Geologica/ }).click();
   await expect(list).toContainText("SIL OPEN FONT LICENSE");
   await expect(list.getByRole("button", { name: /serde 1\.0/ })).toBeVisible();
+});
+
+test("WCAG AA on the new UI: wave screen, dialogs, menus (T7.5)", async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 12,
+      artists: 3,
+      albums: 2,
+      unknown: 0,
+      durationSec: 3000,
+      bytes: 1,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+    w.__mockEvent = { id: "halloween", daysToPeak: 5, strong: true, atmospheric: false };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await expect(page.locator("footer").getByText("Mock track")).toBeVisible();
+  await emit(page, "playback-snapshot", {
+    state: "playing",
+    trackId: 7,
+    title: "Mock track",
+    positionMs: 1000,
+    durationMs: 200000,
+    volume: 0.5,
+    waveProfile: "my_wave",
+  });
+  const settled = () =>
+    page.evaluate(() =>
+      Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))),
+    );
+  const check = async (where: string) => {
+    await settled();
+    const r = await new AxeBuilder({ page }).analyze();
+    const bad = r.violations.filter((v) => v.impact === "critical" || v.impact === "serious");
+    expect(bad.map((v) => `${where}: ${v.id} — ${v.help} (${v.nodes[0]?.target})`)).toEqual([]);
+  };
+  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await expect(page.getByTestId("wave-chips")).toBeVisible();
+  await check("wave");
+  await page.getByRole("button", { name: /^Настроить/ }).click();
+  await page.getByRole("button", { name: "Для знатоков" }).click();
+  await check("setup");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Bluetooth", exact: true }).click();
+  await check("bluetooth menu");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
+  await check("settings");
+  await page.getByRole("button", { name: "Лицензии", exact: true }).click();
+  await check("licenses");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Экспортировать всю медиатеку" }).click();
+  await check("export");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("export-dialog")).toHaveCount(0);
+  await page.keyboard.press("F1");
+  await expect(page.getByTestId("help")).toBeVisible();
+  await check("help");
+});
+
+test("«Справка»: F1 and Settings → «Справка», one section at a time (T7.8)", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("/");
+  await expect(page.locator("footer")).toBeVisible();
+  await page.keyboard.press("F1");
+  const help = page.getByTestId("help");
+  await expect(help).toContainText("Перетащите папку");
+  await help.getByRole("button", { name: "Клавиши" }).click();
+  await expect(help.getByRole("button", { name: "Клавиши" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(help).toContainText("Ctrl+Alt+Пробел");
+  await page.keyboard.press("Escape");
+  await expect(help).toHaveCount(0);
+  await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
+  await page.getByRole("button", { name: "Справка", exact: true }).click();
+  await expect(help).toContainText("Перетащите папку");
 });
