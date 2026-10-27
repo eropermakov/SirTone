@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { contrast } from "../../lib/color";
 import { BeatClock, Onsets, stepEveryBeats } from "./clock";
 import { TITLES, type TitlesQuality } from "./config";
+import { japanOf, kanjiNumber, roleTag } from "./japan";
 import type { Painter, TextOpts } from "./painter";
 import {
   actOf,
@@ -552,5 +553,52 @@ describe("flash audit (WCAG 2.3.1: ≥ 10 % luminance change over ≥ 25 % of th
     expect(hash32(1, 2, 3)).toBe(hash32(1, 2, 3));
     expect(rand(7, 7)).toBeGreaterThanOrEqual(0);
     expect(rand(7, 7)).toBeLessThan(1);
+  });
+});
+
+describe("the Japanese layer (D-123)", () => {
+  it("kanji numbers: 1…99", () => {
+    expect([1, 9, 10, 11, 12, 20, 23, 99].map(kanjiNumber)).toEqual([
+      "一",
+      "九",
+      "十",
+      "十一",
+      "十二",
+      "二十",
+      "二十三",
+      "九十九",
+    ]);
+  });
+
+  it("a card's marks are the same every time and every set is filled", () => {
+    expect(japanOf(42, 3)).toEqual(japanOf(42, 3));
+    expect(japanOf(42, 3).episode).toBe("第四幕");
+    for (let k = 0; k < 40; k++) {
+      const j = japanOf(7, k);
+      expect(j.column.length).toBeGreaterThan(0);
+      expect(j.column.length).toBeLessThanOrEqual(5);
+      expect(j.tag.length).toBeGreaterThan(0);
+      expect([0, 1, 2]).toContain(j.shape);
+    }
+    const shapes = new Set(Array.from({ length: 60 }, (_, k) => japanOf(7, k).shape));
+    expect(shapes.size).toBe(3);
+  });
+
+  it("every role has its Japanese tag", () => {
+    for (const r of ["title", "artist", "album", "year", "genre", "tempo", "mood"] as const)
+      expect(roleTag(r).length).toBeGreaterThan(0);
+  });
+
+  it("album, year and genre become cards only when the track has them", () => {
+    expect(rolesOf({ tempo: false, mood: false })).toEqual(["title", "artist"]);
+    expect(rolesOf({ tempo: true, mood: true, album: true, year: true, genre: true })).toEqual([
+      "title",
+      "artist",
+      "album",
+      "year",
+      "genre",
+      "tempo",
+      "mood",
+    ]);
   });
 });

@@ -31,6 +31,17 @@
   "auto": { "bpm_split": 108, "arousal_split": 0.5 },
   "text": { "xscale_wide": 1.25, "xscale_narrow": 0.6, "role_size": 0.026, "max_lines": 3 },
   "scrim": { "shock": 0.62, "poster": 0.56, "auto": 0.62 },
+  "japan": {
+    "roles": { "title": "曲", "artist": "歌手", "tempo": "拍子", "mood": "気分", "album": "盤", "year": "年", "genre": "種類" },
+    "words": ["音楽", "夜明け", "夢", "光", "風", "都市", "未来", "心", "電脳", "静寂", "鼓動", "夜の街"],
+    "tags": ["オープニング", "ミュージック", "ネオン", "リズム", "ナイト", "サウンド", "シティ", "ドリーム"],
+    "seals": ["音", "夜", "夢", "楽", "響", "光"],
+    "numerals": ["〇", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"],
+    "episode": ["第", "幕"],
+    "column_size": 0.075,
+    "tag_size": 0.038,
+    "seal_size": 0.11
+  },
   "styles": {
     "shock": {
       "field": "#FCEE0A",

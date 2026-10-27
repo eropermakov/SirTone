@@ -1,6 +1,7 @@
 import { tryFlash } from "../flashBudget";
 import { BeatClock, type ClockFrame, Onsets, stepEveryBeats } from "./clock";
 import { type LevelKey, levelKey, TITLES, type TitlesStylePref } from "./config";
+import { roleTag } from "./japan";
 import { CanvasPainter } from "./painter";
 import {
   actOf,
@@ -25,10 +26,16 @@ export type TrackMeta = {
   seed: number;
   title: string | null;
   artist: string | null;
+  album: string | null;
+  year: number | null;
+  genre: string | null;
   vibe: Vibe | null;
   labels: {
     title: string;
     artist: string;
+    album: string;
+    year: string;
+    genre: string;
     tempo: string;
     mood: string;
     moods: Record<Mood, string>;
@@ -183,7 +190,13 @@ export class TitlesEngine {
     const bpm = this.bpmLock > 0 ? this.bpmLock : 0;
     const pos = this.clock.pos(now);
     const tempo = bpm > 0 ? bpm : TITLES.card.fallback_bpm;
-    const roles: Role[] = rolesOf({ tempo: bpm > 0, mood: moodOf(meta.vibe) !== null });
+    const roles: Role[] = rolesOf({
+      tempo: bpm > 0,
+      mood: moodOf(meta.vibe) !== null,
+      album: !!meta.album?.trim(),
+      year: meta.year !== null && meta.year > 0,
+      genre: !!meta.genre?.trim(),
+    });
     const key = `${bpm}|${roles.join()}`;
     if (key !== this.roleKey) {
       this.roleKey = key;
@@ -275,7 +288,7 @@ export class TitlesEngine {
     h: number,
     meta: TrackMeta,
   ) {
-    const cacheKey = `${card.k}|${style}|${w}|${meta.title}|${meta.artist}`;
+    const cacheKey = `${card.k}|${style}|${w}|${meta.title}|${meta.artist}|${meta.album}|${meta.year}|${meta.genre}`;
     if (this.lines?.key === cacheKey) return this.lines;
     let text = "";
     let label = "";
@@ -287,6 +300,18 @@ export class TitlesEngine {
       case "artist":
         text = meta.artist ?? "";
         label = meta.labels.artist;
+        break;
+      case "album":
+        text = meta.album ?? "";
+        label = meta.labels.album;
+        break;
+      case "year":
+        text = meta.year === null ? "" : String(meta.year);
+        label = meta.labels.year;
+        break;
+      case "genre":
+        text = meta.genre ?? "";
+        label = meta.labels.genre;
         break;
       case "tempo":
         text = String(Math.round(bpm));
@@ -313,7 +338,7 @@ export class TitlesEngine {
           (s) => p.measure(s, 100, shock ? 900 : 800, xs) / 100,
         )
       : [];
-    this.lines = { key: cacheKey, lines, label };
+    this.lines = { key: cacheKey, lines, label: `${roleTag(card.role)}・${label}` };
     return this.lines;
   }
 

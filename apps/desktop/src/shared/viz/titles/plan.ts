@@ -7,7 +7,7 @@ import { hash32, rand } from "./rng";
  * Levels of time, as in the reference (`01a` §B.5): section → act; phrase → card; strong beat →
  * entry / layout jump; beat → colour step; sub-beat → flicker; hit → doubling, slices, spike.
  */
-export type Role = "title" | "artist" | "tempo" | "mood";
+export type Role = "title" | "artist" | "album" | "year" | "genre" | "tempo" | "mood";
 export type Variant = "fill" | "outline" | "echo" | "split";
 export type Act = "prologue" | "ramp" | "climax";
 
@@ -49,8 +49,17 @@ export function beatsFor(bpm: number, seed: number, k: number): number {
 }
 
 /** The roles available for a track, in the order the cards use them. */
-export function rolesOf(has: { tempo: boolean; mood: boolean }): Role[] {
+export function rolesOf(has: {
+  tempo: boolean;
+  mood: boolean;
+  album?: boolean;
+  year?: boolean;
+  genre?: boolean;
+}): Role[] {
   const r: Role[] = ["title", "artist"];
+  if (has.album) r.push("album");
+  if (has.year) r.push("year");
+  if (has.genre) r.push("genre");
   if (has.tempo) r.push("tempo");
   if (has.mood) r.push("mood");
   return r;

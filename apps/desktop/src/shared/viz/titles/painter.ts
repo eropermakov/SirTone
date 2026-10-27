@@ -50,7 +50,10 @@ export interface Painter {
   scanlines(alpha: number, step: number): void;
 }
 
-const FONT = 'Geologica, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
+// Geologica has no kana or kanji: the decorative Japanese marks (D-123) fall back to the fonts
+// Windows 10/11 ship with. The Latin and Cyrillic text is always Geologica.
+const FONT =
+  'Geologica, "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI", "Yu Gothic", Meiryo, system-ui, sans-serif';
 
 export class CanvasPainter implements Painter {
   private noise: HTMLCanvasElement | null = null;

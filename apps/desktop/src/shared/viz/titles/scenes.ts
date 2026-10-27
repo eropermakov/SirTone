@@ -1,4 +1,5 @@
 import { type StyleId, TITLES, type TitlesQuality } from "./config";
+import { drawJapanShape, drawJapanText } from "./japan";
 import type { Painter } from "./painter";
 import type { Act, Card } from "./plan";
 import { hash32, rand } from "./rng";
@@ -159,6 +160,9 @@ export function renderPoster(p: Painter, s: SceneState): void {
   }
   p.line(pts, c.pulse, 0.005 * h);
 
+  drawJapanShape(p, s, { ink, accent: c.pulse, onAccent: ink });
+  drawJapanText(p, s, c.text, 700);
+
   if (!s.quiet && s.lines.length > 0) {
     const wt = 800;
     const xs = TITLES.text.xscale_narrow;
@@ -261,9 +265,12 @@ export function renderShock(p: Painter, s: SceneState): void {
     }
   }
 
+  drawJapanShape(p, s, { ink: c.ink, accent: c.marker, onAccent: c.field });
+
   if (!s.quiet && s.lines.length > 0) {
     // The titles are black on yellow; where they cross a cut-out they turn yellow (still legible).
     const paintTitles = (ink: string) => {
+      drawJapanText(p, s, ink, 700);
       const wt = 900;
       const xs = TITLES.text.xscale_wide;
       const outline = s.card.variant === "outline";

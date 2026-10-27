@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { trackDetails } from "@/shared/ipc/library";
 import { getSnapshot, onSnapshot } from "@/shared/ipc/playback";
 import { startViz, vizColors } from "@/shared/ipc/viz";
 import { TitlesEngine, type TrackMeta, titlesStats } from "@/shared/viz/titles/engine";
@@ -30,6 +31,12 @@ export function TitlesBackground({
     title: null,
     artist: null,
   });
+  const [extra, setExtra] = useState<{
+    id: number | null;
+    album: string | null;
+    year: number | null;
+    genre: string | null;
+  } | null>(null);
   const [vibe, setVibe] = useState<{ valence: number | null; arousal: number | null } | null>(null);
   const failRef = useRef(onFail);
   failRef.current = onFail;
@@ -74,15 +81,36 @@ export function TitlesBackground({
     };
   }, [trackId, cover]);
 
+  // The rest of the track's card: the album, the year, the genre (FR-LIB-006).
+  useEffect(() => {
+    let alive = true;
+    if (trackId === null) return;
+    trackDetails(trackId)
+      .then((d) => {
+        if (alive) setExtra({ id: trackId, album: d.album, year: d.year, genre: d.genre });
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [trackId]);
+  const mine = extra && extra.id === trackId ? extra : null;
+
   const meta = useMemo<TrackMeta>(
     () => ({
       seed: seedOf(trackId, now.title),
       title: now.title,
       artist: now.artist,
+      album: mine?.album ?? null,
+      year: mine?.year ?? null,
+      genre: mine?.genre ?? null,
       vibe,
       labels: {
         title: t("viz.titles.role.title"),
         artist: t("viz.titles.role.artist"),
+        album: t("viz.titles.role.album"),
+        year: t("viz.titles.role.year"),
+        genre: t("viz.titles.role.genre"),
         tempo: t("viz.titles.role.tempo"),
         mood: t("viz.titles.role.mood"),
         moods: {
@@ -93,7 +121,7 @@ export function TitlesBackground({
         },
       },
     }),
-    [trackId, now, vibe, t],
+    [trackId, now, mine, vibe, t],
   );
   const latest = useRef({ meta, style: prefs?.titlesStyle ?? "auto", level: effectiveLevel });
   latest.current = { meta, style: prefs?.titlesStyle ?? "auto", level: effectiveLevel };

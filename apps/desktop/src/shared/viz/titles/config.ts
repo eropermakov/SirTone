@@ -42,6 +42,18 @@ export type TitlesConfig = {
   auto: { bpm_split: number; arousal_split: number };
   text: { xscale_wide: number; xscale_narrow: number; role_size: number; max_lines: number };
   scrim: { shock: number; poster: number; auto: number };
+  /** Decoration in Japanese (D-123): only words, marks and shapes — the colours are the style's own. */
+  japan: {
+    roles: Record<"title" | "artist" | "tempo" | "mood" | "album" | "year" | "genre", string>;
+    words: string[];
+    tags: string[];
+    seals: string[];
+    numerals: string[];
+    episode: [string, string];
+    column_size: number;
+    tag_size: number;
+    seal_size: number;
+  };
   styles: {
     shock: {
       field: string;
