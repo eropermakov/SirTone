@@ -125,7 +125,7 @@ try {
     const contexts = await page.evaluate(
       () =>
         document.querySelectorAll(
-          'canvas[data-testid="fx"], canvas[data-testid="waves"], canvas[data-testid="milkdrop"]',
+          'canvas[data-testid="fx"], canvas[data-testid="waves"], canvas[data-testid="milkdrop"], canvas[data-testid="titles"]',
         ).length,
     );
     rows.push({
@@ -137,7 +137,7 @@ try {
       canvases: contexts,
     });
   };
-  for (const mode of ["waves", "milkdrop", "video"]) {
+  for (const mode of ["waves", "milkdrop", "video", "titles"]) {
     if (mode === "video") {
       const bgDir = join(libDir, ".sirtone", "backgrounds");
       mkdirSync(bgDir, { recursive: true });
@@ -167,6 +167,7 @@ try {
     await invoke("settings_patch", { patch: { viz: { mode } } });
     await sleep(mode === "milkdrop" ? 5000 : 2500);
     await measure(mode, "no fx", null);
+    if (mode === "titles") continue; // the scene is its own: no live effects over it (D-122)
     await measure(mode, "300", snow(300));
     await measure(mode, "1500", snow(1500));
     await measure(mode, "5000 ×3", snow(5000, 3));
