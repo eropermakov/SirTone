@@ -10,6 +10,7 @@ import { mkdirSync, mkdtempSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { closeMainScript } from "./close-main.mjs";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("@playwright/test");
@@ -65,6 +66,10 @@ const connect = async () => {
 };
 const ps = (script) =>
   execFileSync("powershell", ["-NoProfile", "-Command", script], { encoding: "utf8" }).trim();
+// WM_CLOSE to this test's own main window (D-124: not Process.CloseMainWindow).
+const closeMain = () => {
+  if (ps(closeMainScript(app.pid)) !== "closed") throw new Error("no main window to close");
+};
 // Private memory (MB) of the app and every process it started (WebView2).
 const memMb = () =>
   Number(
@@ -111,7 +116,7 @@ try {
   await sleep(3000);
   const playingTitle = (await invoke("playback_snapshot", {})).title;
   // A short trip to the tray (before the window is destroyed): the page wakes up again.
-  ps(`(Get-Process -Id ${app.pid}).CloseMainWindow() | Out-Null`);
+  closeMain();
   await sleep(1500);
   await relaunch();
   const f = await frames();
@@ -124,7 +129,7 @@ try {
   const shownMb = memMb();
   const s0 = await invoke("playback_snapshot", {});
   // Close to the tray: WM_CLOSE to this test's own process window only.
-  ps(`(Get-Process -Id ${app.pid}).CloseMainWindow() | Out-Null`);
+  closeMain();
   await sleep(8000);
   const trayMb = memMb();
   const wv = webviews();
@@ -150,7 +155,7 @@ try {
   check(
     "opened again: the same track, further on, still playing",
     s1.state === "playing" && s1.title === s0.title && s1.positionMs > s0.positionMs + 8000,
-    `${s0.positionMs} → ${s1.positionMs} ${s1.state}`,
+    `${s0.positionMs} ${s0.state} → ${s1.positionMs} ${s1.state}`,
   );
   await invoke("playback_toggle", {});
 } catch (e) {

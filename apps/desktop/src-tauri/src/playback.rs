@@ -621,6 +621,8 @@ impl Playback {
             let Some(pb) = smtc_app.try_state::<Playback>() else {
                 return;
             };
+            // A pause from a media key or the Windows flyout leaves no other trace (T7.2).
+            tracing::info!(target: "sirtone::smtc", button = ?b, "button");
             match b {
                 // Explicit Play/Pause (headsets, lock screen, the play key after Windows maps it):
                 // a stale status must never turn «Pause» into «play».

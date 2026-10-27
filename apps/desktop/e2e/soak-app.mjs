@@ -24,6 +24,7 @@ import {
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { closeMainScript } from "./close-main.mjs";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("@playwright/test");
@@ -84,6 +85,10 @@ const app = spawn(exe, [], { env, stdio: "ignore" });
 const SHOWN_HOURS = Number(process.env.SOAK_SHOWN_HOURS ?? 6);
 const ps = (script) =>
   execFileSync("powershell", ["-NoProfile", "-Command", script], { encoding: "utf8" }).trim();
+// WM_CLOSE to this test's own main window (D-124: not Process.CloseMainWindow).
+const closeMain = () => {
+  if (ps(closeMainScript(app.pid)) !== "closed") throw new Error("no main window to close");
+};
 // Private memory (MB): the core process and its WebView processes apart.
 const mem = () => {
   const [core, web] = ps(
@@ -93,6 +98,14 @@ const mem = () => {
     .map(Number);
   return { core, web, text: `core ${core} + webview ${web} MB` };
 };
+// The WebView by process kind (browser, renderer, gpu-process, utility): the sum alone moves with
+// the GPU process and cannot tell a leak from a cache.
+const memSplit = () =>
+  ps(
+    `$all = Get-CimInstance Win32_Process; $ids = @(${app.pid}); do { $n = $ids.Count; $ids = @($ids + ($all | Where-Object { $ids -contains $_.ParentProcessId } | ForEach-Object ProcessId)) | Select-Object -Unique } while ($ids.Count -gt $n); $all | Where-Object { $ids -contains $_.ProcessId -and $_.ProcessId -ne ${app.pid} } | ForEach-Object { $k = if ($_.CommandLine -match '--type=([a-z-]+)') { $Matches[1] } else { 'browser' }; [pscustomobject]@{ k = $k; mb = (Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue).PrivateMemorySize64 / 1MB } } | Group-Object k | ForEach-Object { '{0} {1:N0}' -f $_.Name, ($_.Group | Measure-Object mb -Sum).Sum } | Sort-Object`,
+  )
+    .split(/\r?\n/)
+    .join(", ");
 // Attach, do, detach.
 const withPage = async (fn) => {
   for (let i = 0; i < 120; i++) {
@@ -175,6 +188,7 @@ try {
       hour += 1;
       if (hour <= SHOWN_HOURS) {
         shown.push(mem().web);
+        log(`webview by kind: ${memSplit()} MB`);
       } else {
         const dir = batch(2);
         await withPage(async (page, invoke) => {
@@ -185,12 +199,20 @@ try {
             .catch(() => {});
         });
         log(`before the tray: ${mem().text}`);
-        ps(`(Get-Process -Id ${app.pid}).CloseMainWindow() | Out-Null`);
+        closeMain();
         await sleep(90_000);
         const trayMb = mem().core;
         tray.push(trayMb);
-        spawn(exe, [], { env, stdio: "ignore" });
-        await sleep(3000);
+        // A second launch hands over to the running app and exits (FR-SHELL-004, D-124).
+        const again = spawn(exe, [], { env, stdio: "ignore" });
+        await sleep(10_000);
+        const copies = ps(
+          `@(Get-CimInstance Win32_Process -Filter "Name='sirtone-app.exe'" | Where-Object { $_.ExecutablePath -eq '${exe}' }).Count`,
+        ).trim();
+        if (again.exitCode === null || copies !== "1") {
+          if (again.exitCode === null) again.kill();
+          throw new Error(`a second launch stayed up: ${copies} copies of the app`);
+        }
         if (def)
           await withPage(async (_, invoke) => {
             await invoke("settings_patch", { patch: { playback: { output: { device: def.id } } } });

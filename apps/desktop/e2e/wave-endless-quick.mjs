@@ -10,6 +10,7 @@ import { mkdirSync, mkdtempSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { closeMainScript } from "./close-main.mjs";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("@playwright/test");
@@ -56,6 +57,10 @@ const env = {
 const app = spawn(exe, [], { env, stdio: "ignore" });
 const ps = (script) =>
   execFileSync("powershell", ["-NoProfile", "-Command", script], { encoding: "utf8" }).trim();
+// WM_CLOSE to this test's own main window (D-124: not Process.CloseMainWindow).
+const closeMain = () => {
+  if (ps(closeMainScript(app.pid)) !== "closed") throw new Error("no main window to close");
+};
 let browser = null;
 const connect = async () => {
   await browser?.close().catch(() => {});
@@ -124,7 +129,7 @@ try {
     const s = await snap();
     check(`after ${step}: still playing`, s.state === "playing", `${s.state} «${s.title}»`);
   };
-  ps(`(Get-Process -Id ${app.pid}).CloseMainWindow() | Out-Null`);
+  closeMain();
   await sleep(70000); // the window is destroyed after 60 s in the tray
   spawn(exe, [], { env, stdio: "ignore" });
   page = await connect();
