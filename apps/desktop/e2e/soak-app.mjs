@@ -6,11 +6,21 @@
 // again, and the output reopened on the Windows default by its id and back (this app's own
 // setting only). DevTools (CDP) is attached only for each check and detached at once: attached,
 // it keeps every IPC request in the renderer and the memory numbers would be its own (T7.2).
-// The first stop of the music fails the run. Nothing else may build or run heavy work meanwhile.
+// The first stop of the music fails the run — except the app's own pause when Windows takes the
+// output away (a Bluetooth device or driver event, FR: pause rather than jump to another device):
+// that is logged and played on only when the default output is the same one the run started on,
+// so the soak never plays into someone's headphones. Nothing else may build or run heavy work meanwhile.
 // SOAK_HOURS=24 SMOKE_PORT=9373 node apps/desktop/e2e/soak-app.mjs   (log: target/soak-app/)
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync, mkdtempSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -111,6 +121,19 @@ const withPage = async (fn) => {
 const snap = () => withPage((_, invoke) => invoke("playback_snapshot", {}));
 let failed = false;
 let stopped = false;
+let deviceLost = 0; // the app's own pauses when Windows took the output away
+// How many times the app logged «output device lost — paused» so far (all daily log files).
+const lostInLog = () => {
+  const dir = join(dataDir, "logs");
+  if (!existsSync(dir)) return 0;
+  return readdirSync(dir)
+    .filter((f) => f.startsWith("sirtone."))
+    .reduce(
+      (n, f) =>
+        n + readFileSync(join(dir, f), "utf8").split("output device lost — paused").length - 1,
+      0,
+    );
+};
 const titles = new Set();
 try {
   await withPage(async (page, invoke) => {
@@ -187,6 +210,24 @@ try {
       `${((Date.now() - start) / HOUR_MS).toFixed(2)} h: underruns ${s.underruns - u0}, ${s.state}, «${s.title}», tracks seen ${titles.size}, ${mem().text}`,
     );
     // «Моя волна» never ends: the first stop fails the run at once (a restart would hide it).
+    const lost = lostInLog();
+    if (s.state === "paused" && lost > deviceLost) {
+      deviceLost = lost;
+      const now = await withPage((_, invoke) =>
+        invoke("audio_devices", {}).then((d) => d.find((x) => x.isDefault)),
+      );
+      if (def && now?.id === def.id) {
+        await withPage((_, invoke) => invoke("playback_toggle", {}));
+        await sleep(5000);
+        const r = await snap();
+        log(`device event: Windows took the output away, the app paused; resumed — ${r.state}`);
+        if (r.state === "playing") continue;
+      } else {
+        log(
+          `device event: the default output is now «${now?.name ?? "?"}», not the run's — not resuming`,
+        );
+      }
+    }
     if (s.state !== "playing") {
       stopped = true;
       log(`!! STOPPED (${s.state}) — the run ends here`);
@@ -195,7 +236,9 @@ try {
   }
   const s = await snap();
   const under = s.underruns - u0;
-  log(`end: underruns ${under} (P-13 ≤ 1), ${mem().text}, tracks seen ${titles.size}`);
+  log(
+    `end: underruns ${under} (P-13 ≤ 1), ${mem().text}, tracks seen ${titles.size}, device events ${deviceLost}`,
+  );
   // No leak while shown: the WebView at the last shown hour within 60 MB of the first.
   const grewShown = shown.length >= 2 ? (shown.at(-1) ?? 0) - (shown[0] ?? 0) : 0;
   log(`webview while shown, by hour: ${shown.join(", ")} MB (growth ${grewShown} MB, limit 60)`);
