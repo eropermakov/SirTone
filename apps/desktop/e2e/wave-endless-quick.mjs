@@ -145,6 +145,8 @@ try {
     s1.underruns === u0 && s1.state === "playing",
     `underruns ${u0} → ${s1.underruns}, ${s1.state}`,
   );
+  // A reopen is a planned gap (D-121): the whole run, tray and reopens included, is clean.
+  check("no underrun over the whole run (P-13)", s1.underruns === 0, `${s1.underruns}`);
   await invoke("playback_toggle", {});
 } catch (e) {
   failed = true;

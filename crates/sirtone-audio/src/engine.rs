@@ -528,11 +528,19 @@ impl Engine {
             } else {
                 Duration::from_millis(50)
             };
-            match rx.recv_timeout(wait) {
+            let got = rx.recv_timeout(wait);
+            // A step slower than this lets the 200 ms ring run dry: logged with what it was.
+            let t0 = Instant::now();
+            let what = match got {
                 Ok(EngineCmd::Shutdown) | Err(RecvTimeoutError::Disconnected) => break,
-                Ok(cmd) => self.handle(cmd),
-                Err(RecvTimeoutError::Timeout) => {}
-            }
+                Ok(cmd) => {
+                    let name = cmd_name(&cmd);
+                    self.handle(cmd);
+                    name
+                }
+                Err(RecvTimeoutError::Timeout) => "",
+            };
+            slow(t0, "command", what);
             if self.shared.failed.load(Ordering::Acquire) {
                 self.on_device_lost();
             }
@@ -557,18 +565,23 @@ impl Engine {
                 self.default_changed_at = None;
                 self.on_default_changed();
             }
+            let t1 = Instant::now();
             if let Err(e) = self.pump() {
                 self.fail(e);
             }
+            slow(t1, "pump", "");
+            let t2 = Instant::now();
             self.check_end();
             if self.state == PlayState::Playing && self.last_snapshot.elapsed() >= SNAPSHOT_EVERY {
                 self.emit_snapshot();
             }
+            slow(t2, "snapshot", "");
         }
         self.output = None;
     }
 
     fn handle(&mut self, cmd: EngineCmd) {
+        // (`cmd_name` and `slow` below: diagnostics of a stalled engine thread, T7.2.)
         match cmd {
             EngineCmd::Load {
                 path,
@@ -1153,6 +1166,9 @@ impl Engine {
         }
         let pos = self.position_ms();
         self.output = None;
+        // The new stream starts empty until the seek refills it: a planned gap, not an
+        // underrun (as for a seek).
+        self.shared.starving_ok.store(true, Ordering::Relaxed);
         match self.ensure_output().and_then(|_| self.seek(pos)) {
             Ok(()) => {
                 tracing::info!(target: "sirtone::audio", "output reopened at the same position");
@@ -1625,6 +1641,42 @@ fn map_channels(input: &[f32], in_ch: usize, mask: u64, out_ch: usize, out: &mut
                 _ => 0.0,
             });
         }
+    }
+}
+
+/// A step of the engine loop that took long enough to starve the output ring (T7.2 soak: the
+/// underruns come in bursts — this names the step).
+fn slow(t: Instant, phase: &str, cmd: &str) {
+    let ms = t.elapsed().as_millis();
+    if ms >= SLOW_STEP_MS {
+        tracing::warn!(target: "sirtone::audio", phase, cmd, ms = ms as u64, "slow engine step");
+    }
+}
+
+const SLOW_STEP_MS: u128 = 80;
+
+fn cmd_name(c: &EngineCmd) -> &'static str {
+    match c {
+        EngineCmd::Load { .. } => "Load",
+        EngineCmd::Play => "Play",
+        EngineCmd::Pause => "Pause",
+        EngineCmd::Toggle => "Toggle",
+        EngineCmd::Seek { .. } => "Seek",
+        EngineCmd::SetVolume { .. } => "SetVolume",
+        EngineCmd::SetDuck { .. } => "SetDuck",
+        EngineCmd::Sfx { .. } => "Sfx",
+        EngineCmd::SetSfxVolume { .. } => "SetSfxVolume",
+        EngineCmd::SetSleepGain { .. } => "SetSleepGain",
+        EngineCmd::SetWarm { .. } => "SetWarm",
+        EngineCmd::SetNext { .. } => "SetNext",
+        EngineCmd::SetGain { .. } => "SetGain",
+        EngineCmd::SetEq { .. } => "SetEq",
+        EngineCmd::SetLimiter { .. } => "SetLimiter",
+        EngineCmd::SetPauseOnDeviceLoss { .. } => "SetPauseOnDeviceLoss",
+        EngineCmd::SetOutput { .. } => "SetOutput",
+        EngineCmd::DefaultDeviceChanged => "DefaultDeviceChanged",
+        EngineCmd::DeviceLost { .. } => "DeviceLost",
+        EngineCmd::Shutdown => "Shutdown",
     }
 }
 
