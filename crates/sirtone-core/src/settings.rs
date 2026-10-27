@@ -289,6 +289,8 @@ pub struct Viz {
     pub milkdrop_lock: Option<String>,
     /// MilkDrop «Только мои пресеты»: rotation among the ♥ ones only (owner, 2026-10-20).
     pub milkdrop_favorites_only: bool,
+    /// «Титры» (D-122): the style of the edit — `auto` (by the track), `shock` or `poster`.
+    pub titles_style: String,
 }
 
 impl Default for Viz {
@@ -299,6 +301,7 @@ impl Default for Viz {
             minimal: false,
             milkdrop_lock: None,
             milkdrop_favorites_only: false,
+            titles_style: "auto".into(),
         }
     }
 }
@@ -779,9 +782,14 @@ fn validate(s: &Settings) -> Result<(), SettingsError> {
     {
         return Err(SettingsError::Invalid("unknown fx.manual effect".into()));
     }
-    if !["waves", "milkdrop", "video"].contains(&s.viz.mode.as_str()) {
+    if !["waves", "milkdrop", "video", "titles"].contains(&s.viz.mode.as_str()) {
         return Err(SettingsError::Invalid(
-            "viz.mode must be waves, milkdrop or video".into(),
+            "viz.mode must be waves, milkdrop, video or titles".into(),
+        ));
+    }
+    if !["auto", "shock", "poster"].contains(&s.viz.titles_style.as_str()) {
+        return Err(SettingsError::Invalid(
+            "viz.titles_style must be auto, shock or poster".into(),
         ));
     }
     if s.viz
@@ -952,6 +960,22 @@ mod tests {
         assert!(apply_patch(&doc, &ok).is_ok());
         assert!(apply_patch(&doc, &json!({ "sleep": { "fade_min": 0 } })).is_err());
         assert!(apply_patch(&doc, &json!({ "sleep": { "after": "shutdown" } })).is_err());
+    }
+
+    #[test]
+    fn viz_mode_titles_and_its_style_are_checked() {
+        let (doc, _) = normalize(&json!({})).unwrap();
+        let ok = json!({ "viz": { "mode": "titles", "titles_style": "poster" } });
+        assert!(apply_patch(&doc, &ok).is_ok());
+        assert!(
+            apply_patch(
+                &doc,
+                &json!({ "viz": { "mode": "titles", "titles_style": "auto" } })
+            )
+            .is_ok()
+        );
+        assert!(apply_patch(&doc, &json!({ "viz": { "mode": "carousel" } })).is_err());
+        assert!(apply_patch(&doc, &json!({ "viz": { "titles_style": "neon" } })).is_err());
     }
 
     #[test]

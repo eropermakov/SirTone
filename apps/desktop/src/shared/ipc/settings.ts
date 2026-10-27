@@ -76,11 +76,12 @@ export type SettingsPatch = {
     };
   };
   viz?: {
-    mode?: "waves" | "milkdrop" | "video";
+    mode?: "waves" | "milkdrop" | "video" | "titles";
     follow_theme_accent?: boolean;
     minimal?: boolean;
     milkdrop_lock?: string | null;
     milkdrop_favorites_only?: boolean;
+    titles_style?: "auto" | "shock" | "poster";
   };
 };
 

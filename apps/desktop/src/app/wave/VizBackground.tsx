@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { useFocusStatus } from "@/shared/ipc/focus";
 import { useSleepStatus } from "@/shared/ipc/sleep";
 import { WAVES } from "@/shared/viz/palette";
+import { TITLES } from "@/shared/viz/titles/config";
 import { wavesMood } from "@/shared/viz/waves";
 import { FxLayer } from "./FxLayer";
 import { MilkDropBackground } from "./MilkDropBackground";
+import { TitlesBackground } from "./TitlesBackground";
 import { useVizEnv } from "./useVizEnv";
 import { VideoBackground } from "./VideoBackground";
 import { useVideoControl } from "./videoControl";
@@ -60,6 +62,8 @@ export function VizBackground({
   let bg: React.ReactNode;
   const heavy = prefs.level >= HEAVY_LEVEL;
   const milkdrop = mode === "milkdrop" && heavy && !reduced && !failed;
+  // «Титры» (D-122) is a flat 2D scene: from «Слабое» up, and it handles reduced motion itself.
+  const titles = mode === "titles" && prefs.level > 0 && !failed;
   if (milkdrop) {
     bg = (
       <MilkDropBackground
@@ -69,6 +73,8 @@ export function VizBackground({
         onFail={() => setFailed(true)}
       />
     );
+  } else if (titles) {
+    bg = <TitlesBackground trackId={trackId} cover={cover} onFail={() => setFailed(true)} />;
   } else if (mode === "video" && heavy && !noClips) {
     bg = (
       <VideoBackground
@@ -88,15 +94,23 @@ export function VizBackground({
       {bg}
       {/* Not over MilkDrop: its presets are scenes of their own, particles only clutter them
           (owner, 2026-10-20, D-105). */}
-      {!milkdrop && <FxLayer />}
+      {!milkdrop && !titles && <FxLayer />}
       {/* The sleep timer (FR-SLEEP-005, `06` §7.8): dimmer while it fades. */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-bg-base transition-opacity duration-(--dur-theme)"
         style={{ opacity: dim }}
       />
-      {scrim && (
+      {scrim && !titles && (
         <div aria-hidden className="pointer-events-none absolute inset-0 bg-(--artwork-scrim)" />
+      )}
+      {/* The flat bright fields of «Титры» need a stronger scrim for the UI text (≥ 4.5:1, T7.5). */}
+      {scrim && titles && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{ backgroundColor: `rgba(0, 0, 0, ${TITLES.scrim[prefs.titlesStyle]})` }}
+        />
       )}
     </>
   );
