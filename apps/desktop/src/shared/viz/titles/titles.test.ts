@@ -538,7 +538,8 @@ describe("flash audit (WCAG 2.3.1: ≥ 10 % luminance change over ≥ 25 % of th
             expect(wide, `seed ${seed} @${i}`).toBeLessThanOrEqual(3);
           }
         }
-      });
+        // 2 × 24 s of frames, pixel by pixel: ~7 s for «Афиша» with the Japanese layer.
+      }, 30_000);
     }
 
     it(`${style} under reduced motion: only card changes change the picture`, () => {

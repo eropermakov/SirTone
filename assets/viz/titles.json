@@ -9,7 +9,13 @@
     "3": { "grain": true, "halftone": true, "glitch": true, "flicker": true },
     "4": { "grain": true, "halftone": true, "glitch": true, "flicker": true }
   },
-  "card": { "min_s": 3, "max_s": 5, "beats_per_bar": 4, "enter_frames": [2, 4], "fallback_bpm": 120 },
+  "card": {
+    "min_s": 3,
+    "max_s": 5,
+    "beats_per_bar": 4,
+    "enter_frames": [2, 4],
+    "fallback_bpm": 120
+  },
   "acts": {
     "prologue_until": 0.12,
     "climax_from": 0.8,
@@ -32,9 +38,39 @@
   "text": { "xscale_wide": 1.25, "xscale_narrow": 0.6, "role_size": 0.026, "max_lines": 3 },
   "scrim": { "shock": 0.62, "poster": 0.56, "auto": 0.62 },
   "japan": {
-    "roles": { "title": "曲", "artist": "歌手", "tempo": "拍子", "mood": "気分", "album": "盤", "year": "年", "genre": "種類" },
-    "words": ["音楽", "夜明け", "夢", "光", "風", "都市", "未来", "心", "電脳", "静寂", "鼓動", "夜の街"],
-    "tags": ["オープニング", "ミュージック", "ネオン", "リズム", "ナイト", "サウンド", "シティ", "ドリーム"],
+    "roles": {
+      "title": "曲",
+      "artist": "歌手",
+      "tempo": "拍子",
+      "mood": "気分",
+      "album": "盤",
+      "year": "年",
+      "genre": "種類"
+    },
+    "words": [
+      "音楽",
+      "夜明け",
+      "夢",
+      "光",
+      "風",
+      "都市",
+      "未来",
+      "心",
+      "電脳",
+      "静寂",
+      "鼓動",
+      "夜の街"
+    ],
+    "tags": [
+      "オープニング",
+      "ミュージック",
+      "ネオン",
+      "リズム",
+      "ナイト",
+      "サウンド",
+      "シティ",
+      "ドリーム"
+    ],
     "seals": ["音", "夜", "夢", "楽", "響", "光"],
     "numerals": ["〇", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"],
     "episode": ["第", "幕"],
@@ -49,11 +85,7 @@
       "mass": "#0B3540",
       "texture": "#19C3C8",
       "accents": ["#FF2D8A", "#6A2BD9", "#FF4A1C"],
-      "gradients": [
-        ["#2D5BFF", "#FF8A1C"],
-        ["#2D5BFF", "#FF2D8A"],
-        ["#6A2BD9", "#FF4A1C"]
-      ],
+      "gradients": [["#2D5BFF", "#FF8A1C"], ["#2D5BFF", "#FF2D8A"], ["#6A2BD9", "#FF4A1C"]],
       "marker": "#E0145A",
       "text_on_field": "#0B0B0B",
       "slits": { "angle_deg": 35, "max_area": 0.2 },
