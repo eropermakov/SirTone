@@ -13,12 +13,12 @@ import { WavesBackground } from "./WavesBackground";
 /**
  * The visualisation behind «Моя волна» (FR-VIZ-001): the mode from the settings, switched on the
  * fly. Only one engine and one GL context live at a time. «MilkDrop» and «Видео» are heavy: only
- * from «Мощное» up (`06` §6, the level table; D-118). «MilkDrop» needs motion and WebGL2: under
- * `prefers-reduced-motion`, below «Мощное» or when it fails, «Волны» stand in (their still frame
+ * from «Среднее» up (D-118, the owner's call). «MilkDrop» needs motion and WebGL2: under
+ * `prefers-reduced-motion`, below «Среднее» or when it fails, «Волны» stand in (their still frame
  * or gradient); so do they for «Видео» until the person has dropped a clip in.
  */
-/** «Мощное»: MilkDrop and the video background start here (`06` §6). */
-const HEAVY_LEVEL = 3;
+/** «Среднее»: MilkDrop and the video background start here (D-118). */
+const HEAVY_LEVEL = 2;
 
 export function VizBackground({
   trackId,

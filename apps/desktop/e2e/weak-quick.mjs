@@ -219,8 +219,8 @@ try {
   const lowered = settled.level < 4 && settled.degraded_from === 4;
   const how = `4 → ${steps.join(" → ") || "no change"}; p95 now ${(await p95()).toFixed(1)} ms`;
   check(
-    "slow frames lower the level until MilkDrop is off («Среднее» or lower)",
-    settled.level <= 2 && lowered,
+    "slow frames lower the level until MilkDrop is off («Слабое» or lower)",
+    settled.level <= 1 && lowered,
     how,
   );
   await page.reload();
