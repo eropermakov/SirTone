@@ -6,7 +6,7 @@ import {
   actOf,
   type Card,
   cardOf,
-  densityOf,
+  DensityHold,
   framesSince,
   locate,
   type Mood,
@@ -14,6 +14,7 @@ import {
   type Role,
   resolveStyle,
   rolesOf,
+  StylePick,
   type Vibe,
   wrapWords,
 } from "./plan";
@@ -65,6 +66,8 @@ export class TitlesEngine {
   private quietSince = 0;
   private fill = { startedAt: -1 };
   private lastCardK = -1;
+  private hold = new DensityHold();
+  private pick = new StylePick();
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -102,6 +105,8 @@ export class TitlesEngine {
       this.lines = null;
       this.fill.startedAt = -1;
       this.lastCardK = -1;
+      this.hold.reset();
+      this.pick.reset();
     }
   }
 
@@ -111,6 +116,7 @@ export class TitlesEngine {
 
   setStyle(pref: TitlesStylePref): void {
     this.pref = pref;
+    this.pick.reset();
   }
 
   setQuality(level: number): void {
@@ -202,7 +208,8 @@ export class TitlesEngine {
       if (this.opts.reducedMotion) this.fade();
     }
 
-    const style = resolveStyle(this.pref, meta.seed, bpm, meta.vibe);
+    const want = resolveStyle(this.pref, meta.seed, bpm, meta.vibe);
+    const style = this.pick.update(card.k, want, this.pref !== "auto", () => tryFlash(now));
     const progress =
       this.progress.durMs > 0
         ? Math.min(
@@ -244,7 +251,9 @@ export class TitlesEngine {
       sinceCard: this.opts.reducedMotion ? 99 : framesSince(cardBeat, beatMs, fps),
       lines: lines.lines,
       roleLabel: lines.label,
-      density: densityOf(act, level),
+      // Structure once per card; the live loudness only drives continuous amplitudes.
+      density: this.hold.update(card.k, act, level),
+      energy: level,
       act,
       quiet,
       kickAge: now - this.onsets.kickAt,

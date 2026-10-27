@@ -171,3 +171,67 @@ export function wrapWords(
 export function framesSince(cardBeat: number, beatMs: number, fps: number): number {
   return Math.floor((Math.max(0, cardBeat) * beatMs) / (1000 / fps));
 }
+
+/**
+ * The structure of a card (how many cut-outs, whether the accent shape and scanlines show) is
+ * decided **once per card** from the previous card's mean loudness, never frame by frame: loudness
+ * hovering near a threshold must not toggle whole layers at beat rate (a flash path, WCAG 2.3.1).
+ * The live level stays for continuous amplitudes only (D-122).
+ */
+export class DensityHold {
+  private k = -1;
+  private density = 0;
+  private sum = 0;
+  private n = 0;
+
+  reset(): void {
+    this.k = -1;
+    this.density = 0;
+    this.sum = 0;
+    this.n = 0;
+  }
+
+  /** Call every frame with the live `level`; the result only changes when the card does. */
+  update(k: number, act: Act, level: number): number {
+    if (k !== this.k) {
+      const prev = this.n > 0 ? this.sum / this.n : level;
+      this.k = k;
+      this.density = densityOf(act, prev);
+      this.sum = 0;
+      this.n = 0;
+    }
+    this.sum += level;
+    this.n += 1;
+    return this.density;
+  }
+}
+
+/**
+ * The style as shown: «Авто» may change its mind while the track's data arrives (the tempo, then
+ * the vibe), but the whole field swapping yellow ↔ grey is a flash. So an automatic pick changes
+ * at most once per track, only at a card change and only when `allow()` (the shared flash budget)
+ * says yes; a manual choice applies at once (the person's own action).
+ */
+export class StylePick {
+  private cur: StyleId | null = null;
+  private lastK = -1;
+  private swaps = 0;
+
+  reset(): void {
+    this.cur = null;
+    this.lastK = -1;
+    this.swaps = 0;
+  }
+
+  update(k: number, want: StyleId, manual: boolean, allow: () => boolean): StyleId {
+    const cardChanged = k !== this.lastK;
+    this.lastK = k;
+    if (this.cur === null || manual) {
+      this.cur = want;
+    } else if (cardChanged && want !== this.cur && this.swaps < 1 && allow()) {
+      this.cur = want;
+      this.swaps += 1;
+    }
+    return this.cur;
+  }
+}

@@ -7,12 +7,14 @@ import {
   actOf,
   beatsFor,
   cardOf,
+  DensityHold,
   densityOf,
   framesSince,
   locate,
   moodOf,
   resolveStyle,
   rolesOf,
+  StylePick,
   wrapWords,
 } from "./plan";
 import { hash32, rand } from "./rng";
@@ -116,6 +118,39 @@ describe("the cut list (D-122)", () => {
     expect(framesSince(0, 500, 24)).toBe(0);
     expect(framesSince(1, 500, 24)).toBe(12);
     expect(framesSince(-1, 500, 24)).toBe(0);
+  });
+});
+
+describe("structure is decided once per card (no flash path through loudness)", () => {
+  it("DensityHold: the density only changes when the card does, whatever the loudness does", () => {
+    const h = new DensityHold();
+    const seen = new Set<number>();
+    for (let f = 0; f < 200; f++) seen.add(h.update(3, "ramp", f % 2 === 0 ? 0.02 : 0.98));
+    expect(seen.size).toBe(1);
+    // The next card takes the mean loudness of the previous one (about 0.5), not the instant value.
+    const b = h.update(4, "ramp", 0.99);
+    expect(b).toBeCloseTo(densityOf("ramp", 0.5), 1);
+    expect(h.update(4, "ramp", 0.01)).toBe(b);
+  });
+
+  it("StylePick: «Авто» changes at most once per track, only at a card change, only if allowed", () => {
+    const p = new StylePick();
+    expect(p.update(0, "poster", false, () => true)).toBe("poster");
+    // The tempo and the vibe arrive mid-card: nothing moves inside the card.
+    expect(p.update(0, "shock", false, () => true)).toBe("poster");
+    // A denied flash budget keeps it for another card.
+    expect(p.update(1, "shock", false, () => false)).toBe("poster");
+    expect(p.update(2, "shock", false, () => true)).toBe("shock");
+    // One swap per track, no more.
+    expect(p.update(3, "poster", false, () => true)).toBe("shock");
+    p.reset();
+    expect(p.update(0, "poster", false, () => true)).toBe("poster");
+  });
+
+  it("StylePick: a manual choice applies at once", () => {
+    const p = new StylePick();
+    p.update(0, "poster", true, () => false);
+    expect(p.update(0, "shock", true, () => false)).toBe("shock");
   });
 });
 
@@ -418,6 +453,7 @@ function simulate(opts: {
   const { style, seed, bpm, seconds, fps, reduced } = opts;
   const roles = rolesOf({ tempo: true, mood: true });
   const out: { mean: number; changed: number }[] = [];
+  const hold = new DensityHold();
   let prev: Float32Array | null = null;
   let prevMean = 0;
   for (let f = 0; f < seconds * fps; f++) {
@@ -429,6 +465,8 @@ function simulate(opts: {
     const sinceBar = (pos % 4) * (60000 / bpm);
     const progress = t / seconds;
     const act = actOf(progress, card.k);
+    // Adversarial loudness: swings between 0.1 and 0.9 on every beat (thresholds sit in between).
+    const level = Math.floor(pos) % 2 === 0 ? 0.1 : 0.9;
     const state: SceneState = {
       style,
       seed,
@@ -439,7 +477,8 @@ function simulate(opts: {
       sinceCard: reduced ? 99 : framesSince(cardBeat, 60000 / bpm, fps),
       lines: ["KEEP IT MELLO", "OMAR LINX"],
       roleLabel: "ТРЕК",
-      density: densityOf(act, 0.6),
+      density: hold.update(card.k, act, level),
+      energy: level,
       act,
       quiet: false,
       kickAge: sinceBeat,

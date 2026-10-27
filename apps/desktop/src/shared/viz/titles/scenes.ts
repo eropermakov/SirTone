@@ -22,7 +22,10 @@ export type SceneState = {
   /** Title lines (upper case) and the small role caption above them. */
   lines: string[];
   roleLabel: string;
+  /** Structure 0…1, fixed for a whole card. */
   density: number;
+  /** The live loudness 0…1, for continuous amplitudes only. */
+  energy: number;
   act: Act;
   quiet: boolean;
   /** Milliseconds since the last hit of each band. */
@@ -149,8 +152,9 @@ export function renderPoster(p: Painter, s: SceneState): void {
   const pts: number[] = [];
   for (let i = 0; i < n; i++) {
     let v = 0;
-    if (s.wave) v = ((s.wave[Math.floor((i * s.wave.length) / n)] ?? 128) - 128) / 127;
-    else if (!s.reduced) v = Math.sin(i * 0.5 + s.frame * 0.3) * 0.4 * s.density;
+    if (s.wave && !s.reduced)
+      v = ((s.wave[Math.floor((i * s.wave.length) / n)] ?? 128) - 128) / 127;
+    else if (!s.reduced) v = Math.sin(i * 0.5 + s.frame * 0.3) * 0.4 * s.energy;
     pts.push((i / (n - 1)) * w, baseY + v * amp);
   }
   p.line(pts, c.pulse, 0.005 * h);
