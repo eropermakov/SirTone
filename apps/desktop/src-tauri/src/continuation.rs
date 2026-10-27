@@ -208,11 +208,20 @@ impl Continuation {
         let sim = self.similar(&lib)?;
         let mut blocked = lib.with_read(|c| store::blocked(c, playlist, now_ms() - RECENT_MS))?;
         blocked.extend(minus);
-        let picks = if origin == Origin::Radio {
+        let mut picks = if origin == Origin::Radio {
             sim.radio(&seeds, &blocked, &picked, MORE)
         } else {
             sim.continuation(&seeds, &blocked, &picked, MORE)
         };
+        // «Волна по…» never stops (D-119): with everything heard within a day or already queued,
+        // the repeat rule bends — the older half of this session's picks comes back, «никогда»
+        // and «−» stay out.
+        if picks.is_empty() && origin == Origin::Radio && !picked.is_empty() {
+            let mut never = lib.with_read(|c| store::blocked(c, playlist, i64::MAX))?;
+            never.extend(lock(&self.session).minus.iter().copied());
+            let recent = &picked[picked.len() / 2..];
+            picks = sim.radio(&seeds, &never, recent, MORE);
+        }
         let ids: Vec<u32> = picks.iter().map(|p| p.id as u32).collect();
         let items = if ids.is_empty() {
             Vec::new()

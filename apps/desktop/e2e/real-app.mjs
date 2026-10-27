@@ -1396,7 +1396,12 @@ if (existsSync(corpus)) {
   await invoke("playback_toggle", {});
   // T2.4: auto-detect — hardware + WebGL benchmark → a level, saved like a manual choice.
   await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
-  await page.getByRole("button", { name: "Определить автоматически" }).click();
+  // The one under «Производительность» (the weather has a button of the same name).
+  await page
+    .locator("div", { has: page.getByRole("heading", { name: "Производительность", exact: true }) })
+    .last()
+    .getByRole("button", { name: "Определить автоматически" })
+    .click();
   const detected = await page
     .getByText(/^Определено: /)
     .first()
