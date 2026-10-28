@@ -187,7 +187,8 @@ pub fn catalog(conn: &Connection) -> Result<Vec<WaveTrack>, LibraryError> {
                 coalesce((SELECT max(CASE tg.tag WHEN 'for_all_hit' THEN 1
                           WHEN 'not_for_company' THEN 2 ELSE 0 END)
                           FROM track_tag tg WHERE tg.track_id = t.id), 0),
-                coalesce(t.explicit, 0)
+                coalesce(t.explicit, 0),
+                CASE t.lang WHEN 'ru' THEN 1 WHEN 'foreign' THEN 2 ELSE 0 END
          FROM track t LEFT JOIN album al ON al.id = t.album_id
          LEFT JOIN track_features tf ON tf.track_id = t.id
          WHERE t.state = 'ok'",
@@ -242,6 +243,7 @@ pub fn catalog(conn: &Connection) -> Result<Vec<WaveTrack>, LibraryError> {
                     _ => 0,
                 },
                 explicit: r.get::<_, i64>(27)? != 0,
+                lang: r.get::<_, i64>(28)?.clamp(0, 2) as u8,
                 bpm: r.get::<_, Option<f64>>(23)?.map(|v| v as f32),
                 key_camelot: r.get(24)?,
                 plays_weeks: {

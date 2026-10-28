@@ -832,6 +832,13 @@ fn place(
             ],
         )?;
     }
+    // The language tag (D-79): the wave's «Язык» filter trusts it over the title's script.
+    if let Some(lang) = tags.lang {
+        tx.execute(
+            "UPDATE track SET lang = ?2, lang_conf = 1.0 WHERE id = ?1",
+            params![id, lang],
+        )?;
+    }
     // Picard's release ids: covers from the Cover Art Archive (T3.3), the album keeps the first.
     if let Some(album) = album_id
         && (tags.mbid_release.is_some() || tags.mbid_group.is_some())
@@ -1006,4 +1013,48 @@ pub fn batch_details(conn: &Connection, batch: i64) -> Result<BatchDetails, Libr
         }
     }
     Ok(d)
+}
+
+/// Tracks imported before the language tag was read (D-79) get it from their files in the
+/// library, once: a cursor in `meta` (`lang_tags`) keeps the place between starts, `done` ends it.
+/// At most `limit` tracks per call; returns how many got a language.
+pub fn lang_backfill(
+    conn: &Connection,
+    root: &Path,
+    reader: &dyn TagReader,
+    limit: usize,
+) -> Result<usize, LibraryError> {
+    let cursor = crate::db::meta(conn, "lang_tags")?;
+    if cursor.as_deref() == Some("done") {
+        return Ok(0);
+    }
+    let from: i64 = cursor.and_then(|c| c.parse().ok()).unwrap_or(0);
+    let todo: Vec<(i64, String)> = conn
+        .prepare(
+            "SELECT id, rel_path FROM track WHERE id > ?1 AND state = 'ok' AND lang IS NULL
+             ORDER BY id LIMIT ?2",
+        )?
+        .query_map(params![from, limit as i64], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    let mut found = 0;
+    for (id, rel) in &todo {
+        let file = rel.split('/').fold(root.to_path_buf(), |p, c| p.join(c));
+        if let Some(lang) = reader.read(&file).lang {
+            conn.execute(
+                "UPDATE track SET lang = ?2, lang_conf = 1.0 WHERE id = ?1 AND lang IS NULL",
+                params![id, lang],
+            )?;
+            found += 1;
+        }
+    }
+    let next = match todo.last() {
+        Some((id, _)) if todo.len() == limit => id.to_string(),
+        _ => "done".to_owned(),
+    };
+    conn.execute(
+        "INSERT INTO meta(key, value) VALUES ('lang_tags', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [next],
+    )?;
+    Ok(found)
 }

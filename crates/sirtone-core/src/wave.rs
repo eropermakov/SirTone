@@ -217,6 +217,9 @@ pub struct WaveTrack {
     pub company: i8,
     /// Explicit by the metadata.
     pub explicit: bool,
+    /// `track.lang` (the language tag, D-79): 0 unknown or none, 1 Russian, 2 foreign — the
+    /// engine falls back to the title's script on 0.
+    pub lang: u8,
     /// B1 (T3.7): tempo (70–180 BPM) and key in Camelot («8B»).
     pub bpm: Option<f32>,
     pub key_camelot: Option<String>,

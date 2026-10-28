@@ -737,8 +737,12 @@ impl Catalog {
             c.beta.push(1.0);
             c.plays.push(t.play_count);
             c.conf.push(conf);
-            c.lang
-                .push(script_lang(t.title.as_deref(), t.artist_name.as_deref()));
+            // The language tag first (D-79), the script of title and artist otherwise.
+            c.lang.push(if t.lang != 0 {
+                t.lang
+            } else {
+                script_lang(t.title.as_deref(), t.artist_name.as_deref())
+            });
             c.weeks.push(t.plays_weeks);
             c.has_bpm.push(t.bpm.is_some());
             let heard = (t.play_count + t.skip_count).max(1) as f32;

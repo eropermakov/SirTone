@@ -45,6 +45,59 @@ pub struct Tags {
     pub mbid_group: Option<String>,
     /// ReplayGain 2.0 / R128 loudness, converted to LUFS (T4.11); peaks dBFS (sample peak).
     pub loudness: TagLoudness,
+    /// The language tag (ID3 TLAN, Vorbis LANGUAGE, MP4 ©lan) as `track.lang`: `ru`, `foreign`
+    /// or `none` (`zxx`, no lyrics); `None` — absent or says nothing (`und`, `mul`) (D-79).
+    pub lang: Option<&'static str>,
+}
+
+/// A language tag value → `track.lang` (D-79). ISO 639-2/639-1 codes as taggers write them
+/// (Picard: ISO 639-3 `rus`; MusicBee/Mp3tag also English names); several values — the first.
+pub fn lang_from_tag(value: &str) -> Option<&'static str> {
+    let v = value
+        .split([';', '/', ',', '\0'])
+        .next()?
+        .trim()
+        .to_lowercase();
+    match v.as_str() {
+        "rus" | "ru" | "russian" | "русский" => Some("ru"),
+        "zxx" => Some("none"),
+        "" | "und" | "mul" | "mis" | "xxx" => None,
+        _ if (2..=3).contains(&v.len()) && v.chars().all(|c| c.is_ascii_lowercase()) => {
+            Some("foreign")
+        }
+        "english"
+        | "german"
+        | "french"
+        | "spanish"
+        | "italian"
+        | "portuguese"
+        | "japanese"
+        | "korean"
+        | "chinese"
+        | "ukrainian"
+        | "polish"
+        | "turkish"
+        | "swedish"
+        | "finnish"
+        | "dutch"
+        | "czech"
+        | "hebrew"
+        | "arabic"
+        | "hindi"
+        | "kazakh"
+        | "belarusian"
+        | "английский"
+        | "немецкий"
+        | "французский"
+        | "испанский"
+        | "итальянский"
+        | "японский"
+        | "корейский"
+        | "китайский"
+        | "украинский"
+        | "польский" => Some("foreign"),
+        _ => None,
+    }
 }
 
 /// Loudness written by a tagger (foobar2000, MusicBee, opusenc…), already in LUFS.
@@ -199,4 +252,24 @@ pub trait PcmDecoder: Send + Sync {
 pub trait HttpCache: Send + Sync {
     fn get(&self, key: &str, now_ms: i64) -> Option<Vec<u8>>;
     fn put(&self, key: &str, body: &[u8], now_ms: i64, ttl_s: i64);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::lang_from_tag;
+
+    #[test]
+    fn language_tags_map_to_track_lang() {
+        assert_eq!(lang_from_tag("rus"), Some("ru"));
+        assert_eq!(lang_from_tag(" RU "), Some("ru"));
+        assert_eq!(lang_from_tag("Русский"), Some("ru"));
+        assert_eq!(lang_from_tag("eng"), Some("foreign"));
+        assert_eq!(lang_from_tag("English"), Some("foreign"));
+        assert_eq!(lang_from_tag("ukr;rus"), Some("foreign"));
+        assert_eq!(lang_from_tag("zxx"), Some("none"));
+        assert_eq!(lang_from_tag("und"), None);
+        assert_eq!(lang_from_tag("mul"), None);
+        assert_eq!(lang_from_tag(""), None);
+        assert_eq!(lang_from_tag("klingon-ish"), None);
+    }
 }
