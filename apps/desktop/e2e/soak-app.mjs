@@ -11,6 +11,7 @@
 // that is logged and played on only when the default output is the same one the run started on,
 // so the soak never plays into someone's headphones. Nothing else may build or run heavy work meanwhile.
 // SOAK_HOURS=24 SMOKE_PORT=9373 node apps/desktop/e2e/soak-app.mjs   (log: target/soak-app/)
+// On another machine without a build: SOAK_EXE=<the portable zip's SirTone.exe> (docs/reports/stage-7.md).
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import {
@@ -23,13 +24,13 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { closeMainScript } from "./close-main.mjs";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("@playwright/test");
 const root = join(import.meta.dirname, "..", "..", "..");
-const exe = join(root, "target", "release", "sirtone-app.exe");
+const exe = process.env.SOAK_EXE || join(root, "target", "release", "sirtone-app.exe");
 const dataDir = mkdtempSync(join(tmpdir(), "sirtone-soak-"));
 const outDir = join(root, "target", "soak-app");
 mkdirSync(outDir, { recursive: true });
@@ -207,7 +208,7 @@ try {
         const again = spawn(exe, [], { env, stdio: "ignore" });
         await sleep(10_000);
         const copies = ps(
-          `@(Get-CimInstance Win32_Process -Filter "Name='sirtone-app.exe'" | Where-Object { $_.ExecutablePath -eq '${exe}' }).Count`,
+          `@(Get-CimInstance Win32_Process -Filter "Name='${basename(exe)}'" | Where-Object { $_.ExecutablePath -eq '${exe}' }).Count`,
         ).trim();
         if (again.exitCode === null || copies !== "1") {
           if (again.exitCode === null) again.kill();
