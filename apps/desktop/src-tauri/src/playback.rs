@@ -342,6 +342,7 @@ fn plan_for(
         out_ms: p.out_ms,
         rate: p.rate,
         ramp_ms: p.ramp_ms,
+        eq_swap: p.eq_swap.map(|s| (s.hz, s.at_ms)),
     })
 }
 

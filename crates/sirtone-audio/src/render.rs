@@ -169,6 +169,9 @@ pub fn render_mix(
     };
     let mut mix = Mixing::new(da, overlap, m.a_fade, m.b_fade);
     mix.st = st;
+    mix.swap = m.eq_swap.map(|(hz, at_ms)| {
+        crate::swap::EqSwap::new(fmt.rate, fmt.channels.max(1), hz, at_ms * rate / 1000)
+    });
     while !mix_fill(&mut mix, &mut db, fmt, &mut prod, &shared, true, None)? {
         drain(&mut cons, &mut out);
     }
@@ -436,6 +439,7 @@ mod tests {
                 out_ms: out.round() as u64,
                 rate: r,
                 ramp_ms: ramp.round() as u64,
+                eq_swap: None,
             };
             let y = render_mix(&a, &b, spec, fmt).unwrap();
             let start = spec.a_out_ms as f64 / 1000.0;

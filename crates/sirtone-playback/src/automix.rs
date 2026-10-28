@@ -108,6 +108,16 @@ pub struct BeatmatchParams {
     pub beats_min: u32,
     pub beats_max: u32,
     pub blend_energy: f32,
+    /// Genre words that pick «Blend» like the energy does (`04` §4.3: electronic / dance).
+    #[serde(default)]
+    pub blend_genres: Vec<String>,
+    /// The bass the swap moves: below this, Hz.
+    #[serde(default = "default_swap_hz")]
+    pub swap_hz: f32,
+}
+
+fn default_swap_hz() -> f32 {
+    200.0
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -178,6 +188,14 @@ pub enum Curve {
     EqualPower,
 }
 
+/// «Blend» (djay EQ-swap): below `hz` A sounds until `at_ms` of the overlap (output time), B
+/// from then on; above it both follow their curves.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EqSwap {
+    pub hz: f32,
+    pub at_ms: u64,
+}
+
 /// The handover from A to B.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Plan {
@@ -196,6 +214,9 @@ pub struct Plan {
     pub rate: f64,
     /// … reached from 1 over this long at the start of the overlap.
     pub ramp_ms: u64,
+    /// L3 style «Blend» (EQ-swap, `04` §4.3): A's bass goes and B's comes in at a bar line near
+    /// the overlap's middle; `None` — «Fade».
+    pub eq_swap: Option<EqSwap>,
     /// Why this level (diagnostics, `explain`).
     pub reason: &'static str,
 }
@@ -216,6 +237,7 @@ impl Plan {
             out_ms: 0,
             rate: 1.0,
             ramp_ms: 0,
+            eq_swap: None,
             reason,
         }
     }
@@ -321,6 +343,18 @@ fn keys_blend(a: &MixTrack, b: &MixTrack, p: &MixParams) -> bool {
     }
 }
 
+/// Dance music for «Blend»: energetic (B3) or a dance genre by the tag.
+fn blends(t: &MixTrack, p: &MixParams) -> bool {
+    t.energy.is_some_and(|e| e >= p.beatmatch.blend_energy)
+        || t.genre.as_deref().is_some_and(|g| {
+            let g = g.to_lowercase();
+            p.beatmatch
+                .blend_genres
+                .iter()
+                .any(|w| g.contains(w.as_str()))
+        })
+}
+
 /// The plan for A → B.
 pub fn plan(a: &MixTrack, b: &MixTrack, ctx: MixCtx, cfg: &MixCfg, p: &MixParams) -> Plan {
     // L0: no mixing at all.
@@ -359,6 +393,7 @@ pub fn plan(a: &MixTrack, b: &MixTrack, ctx: MixCtx, cfg: &MixCfg, p: &MixParams
             out_ms: ov,
             rate: 1.0,
             ramp_ms: 0,
+            eq_swap: None,
             reason: "mode: crossfade",
         };
     }
@@ -395,6 +430,7 @@ pub fn plan(a: &MixTrack, b: &MixTrack, ctx: MixCtx, cfg: &MixCfg, p: &MixParams
             out_ms: 0,
             rate: 1.0,
             ramp_ms: 0,
+            eq_swap: None,
             reason: "silence trimmed",
         };
     }
@@ -418,6 +454,7 @@ pub fn plan(a: &MixTrack, b: &MixTrack, ctx: MixCtx, cfg: &MixCfg, p: &MixParams
         out_ms: ov,
         rate: 1.0,
         ramp_ms: 0,
+        eq_swap: None,
         reason: "envelope overlap",
     };
     if !ctx.sleep
@@ -488,6 +525,12 @@ fn beatmatch(a: &MixTrack, b: &MixTrack, l2: &Plan, p: &MixParams) -> Option<Pla
         out_ms: out.round() as u64,
         rate: r,
         ramp_ms: ramp.round() as u64,
+        // «Blend» when the keys blend and both are dance music (`04` §4.3 auto-choice, by the
+        // rules, not at random as in djay); otherwise «Fade».
+        eq_swap: (keys_blend(a, b, p) && blends(a, p) && blends(b, p)).then(|| EqSwap {
+            hz: p.beatmatch.swap_hz,
+            at_ms: (f64::from(((beats / 2 + 2) / 4).max(1) * 4) * pb).round() as u64,
+        }),
         reason: "beatmatch",
     })
 }
@@ -681,6 +724,48 @@ mod tests {
         // B starts loud at once → fade-in; a 3 s quiet intro → no fade needed.
         assert_eq!(abrupt.b_curve, Curve::EqualPower);
         assert_eq!(fading.b_curve, Curve::Keep);
+    }
+
+    /// `04` §4.3 auto-choice: «Blend» for dance music with blending keys, «Fade» otherwise; the
+    /// swap is on a bar line inside the overlap.
+    #[test]
+    fn blend_for_dance_music_with_blending_keys() {
+        let p = params();
+        let g = BeatGrid {
+            bpm: 126.0,
+            beat_ms: 0.0,
+            stability: 0.9,
+        };
+        let mut a = track(0, 0, 0);
+        let mut b = track(0, 0, 0);
+        for t in [&mut a, &mut b] {
+            t.head_grid = Some(g);
+            t.tail_grid = Some(g);
+            t.camelot = Some("8A".into());
+        }
+        let dj = cfg(Mode::Automix(Intensity::Dj));
+        // Neither energetic nor a dance genre → «Fade».
+        let fade = plan(&a, &b, MixCtx::default(), &dj, &p);
+        assert_eq!(fade.level, Level::L3);
+        assert_eq!(fade.eq_swap, None);
+        // A by its energy, B by its genre tag → «Blend».
+        a.energy = Some(0.8);
+        b.genre = Some("Deep House".into());
+        let blend = plan(&a, &b, MixCtx::default(), &dj, &p);
+        let s = blend.eq_swap.expect("blend");
+        assert_eq!(s.hz, 200.0);
+        let beat = 60_000.0 / 126.0;
+        let bars = s.at_ms as f64 / (4.0 * beat);
+        assert!((bars - bars.round()).abs() < 0.01 && bars >= 1.0, "{bars}");
+        assert!(
+            s.at_ms > 0 && s.at_ms < blend.out_ms,
+            "{} of {}",
+            s.at_ms,
+            blend.out_ms
+        );
+        // Clashing keys → short «Fade», never a swap.
+        b.camelot = Some("3B".into());
+        assert_eq!(plan(&a, &b, MixCtx::default(), &dj, &p).eq_swap, None);
     }
 
     #[test]
