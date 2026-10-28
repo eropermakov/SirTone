@@ -687,6 +687,32 @@ if (existsSync(corpus)) {
       reordered[1]?.track.id === afterDrop[0]?.track.id,
     reordered.map((e) => e.track.title).join(", "),
   );
+  // `06` «Импорт»: files from Explorer hovering over the window — «Отпустите, чтобы добавить»;
+  // it goes when they leave (Tauri's own drag events, as the webview gets them).
+  const dragEvent = (event) =>
+    page.evaluate(
+      (e) =>
+        window.__TAURI_INTERNALS__.invoke("plugin:event|emit", {
+          event: e,
+          payload: { paths: [], position: { x: 10, y: 10 } },
+        }),
+      event,
+    );
+  const dropShown = () =>
+    page
+      .getByText("Отпустите, чтобы добавить")
+      .evaluate((el) => getComputedStyle(el.closest("[aria-hidden]")).opacity);
+  await dragEvent("tauri://drag-enter");
+  await sleep(400);
+  const dropOn = await dropShown();
+  await dragEvent("tauri://drag-leave");
+  await sleep(400);
+  const dropOff = await dropShown();
+  check(
+    "files over the window: «Отпустите, чтобы добавить», gone when they leave",
+    dropOn === "1" && dropOff === "0",
+    `opacity ${dropOn} → ${dropOff}`,
+  );
   // DESIGN.md Sidebar: hover > 500 ms — the details popover; «…» and the pencil on hover; the
   // playing playlist — bars on its row.
   await sideRoad.hover();

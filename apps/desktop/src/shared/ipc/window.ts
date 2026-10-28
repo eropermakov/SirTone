@@ -27,3 +27,16 @@ export async function hotkeysStatus(): Promise<HotkeyStatus[]> {
   const list = await commands.hotkeysStatus();
   return Array.isArray(list) ? list : [];
 }
+
+/**
+ * Files dragged from Explorer over the window (Tauri webview drag-drop): `true` while they hover,
+ * `false` when they leave or drop. The drop itself is handled in Rust (import / «Видео»).
+ */
+export async function onFileDrag(cb: (over: boolean) => void): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+  return getCurrentWebview().onDragDropEvent((e) => {
+    const k = e.payload.type;
+    cb(k === "enter" || k === "over");
+  });
+}

@@ -58,6 +58,7 @@ import { PlaybackPaused } from "@/shared/ui/PlayingBars";
 import { Toast } from "@/shared/ui/Toast";
 import { DndRoot } from "./dnd/dnd";
 import type { Open } from "./library/CollectionScreen";
+import { DropOverlay } from "./library/DropOverlay";
 import { DuplicatesDialog } from "./library/DuplicatesDialog";
 import { ImportReportDialog } from "./library/ImportReportDialog";
 import type { GoTo } from "./library/TrackList";
@@ -588,6 +589,7 @@ export function App() {
           </div>
           <ExportHost />
           <HelpHost />
+          <DropOverlay />
           <PlayerBar
             snap={snap}
             receivedAt={receivedAt}
