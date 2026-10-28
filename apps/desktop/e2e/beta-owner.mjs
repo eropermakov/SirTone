@@ -18,7 +18,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
 import { extname, join, relative } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { closeMainScript } from "./close-main.mjs";
@@ -32,7 +31,8 @@ if (/\\Music\\SirTone$|\\AppData\\Local\\SirTone/i.test(SRC)) throw new Error("l
 const PORT = Number(process.env.SMOKE_PORT ?? 9374);
 const outDir = join(root, "target", "beta");
 mkdirSync(join(outDir, "shots"), { recursive: true });
-const dataDir = mkdtempSync(join(tmpdir(), "sirtone-beta-"));
+// On D: next to the report: a run copies the music in twice (≈ 1 GB), and C: is nearly full.
+const dataDir = mkdtempSync(join(outDir, "data-"));
 const libDir = join(dataDir, "Music", "SirTone");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const lines = [];

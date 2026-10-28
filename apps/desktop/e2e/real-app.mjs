@@ -2252,6 +2252,60 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
     await invoke("playback_toggle", {});
   }
 
+  // D-79 / D-126 with real files and the real tag reader: a language tag (ID3 TLAN «rus») sets
+  // `track.lang`; «Король и Шут» stays one artist.
+  if (spawnSync("ffmpeg", ["-version"]).status === 0) {
+    const langDir = join(dataDir, "lang-src");
+    mkdirSync(langDir, { recursive: true });
+    spawnSync("ffmpeg", [
+      "-y",
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=330:duration=20,volume=-30dB",
+      "-c:a",
+      "libmp3lame",
+      "-b:a",
+      "64k",
+      "-metadata",
+      "title=Лесник",
+      "-metadata",
+      "artist=Король и Шут",
+      "-metadata",
+      "language=rus",
+      join(langDir, "lesnik.mp3"),
+    ]);
+    await invoke("import_paths", { paths: [langDir] });
+    const langRow = () => {
+      const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+      try {
+        return db
+          .prepare(
+            `SELECT t.lang, (SELECT group_concat(a.name, '|') FROM track_artist ta
+              JOIN artist a ON a.id = ta.artist_id WHERE ta.track_id = t.id) AS artists
+             FROM track t WHERE t.title = 'Лесник'`,
+          )
+          .get();
+      } finally {
+        db.close();
+      }
+    };
+    let lr = langRow();
+    for (let i = 0; i < 40 && !lr; i++) {
+      await sleep(250);
+      lr = langRow();
+    }
+    check(
+      "language tag and a band named «… и …»: lang ru, one artist «Король и Шут»",
+      lr?.lang === "ru" && lr?.artists === "Король и Шут",
+      JSON.stringify(lr),
+    );
+  } else {
+    check("language tag: skipped — no ffmpeg to make the file", true);
+  }
+
   // AT-12 (T3.11, FR-IMP-007): a 3-hour mix lands in «Неизвестные» as «возможно, не трек»;
   // «нормальный» + an artist for it (the bulk action) moves it, and it goes into a playlist.
   await invoke("import_paths", { paths: [join(fixtures, "long", "mix-3h.mp3")] });

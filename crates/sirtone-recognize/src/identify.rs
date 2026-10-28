@@ -458,6 +458,15 @@ mod tests {
             &info(200_000),
         );
         assert_eq!(d.artists, ["Ночь и День"]);
+        // The trade-off (D-126): «A & B» with the same album artist stays one artist; with
+        // another album artist it splits.
+        let mut duo = tags("Анна & Борис", "Сингл");
+        duo.album_artist = Some("Анна & Борис".into());
+        let d = TagIdentify.identify(&duo, "Сингл.mp3", &none, &info(200_000));
+        assert_eq!(d.artists, ["Анна & Борис"]);
+        duo.album_artist = Some("Анна".into());
+        let d = TagIdentify.identify(&duo, "Сингл.mp3", &none, &info(200_000));
+        assert_eq!(d.artists, ["Анна", "Борис"]);
         // Row 3: name alone → unknown; name + folder artist → placed.
         let bare = Tags::default();
         let d = TagIdentify.identify(
