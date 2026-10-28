@@ -89,6 +89,15 @@ async function mockTauri(page: Page) {
             return 1;
           case "viz_stop":
             return null;
+          case "queue_get":
+            return {
+              items: [],
+              position: 0,
+              repeat: "off",
+              shuffle: false,
+              autoplay: null,
+              playlist: null,
+            };
           case "track_tags":
             return [];
           // Screens with a collection ask; without data the UI shows its fallbacks.
