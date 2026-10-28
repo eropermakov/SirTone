@@ -54,6 +54,7 @@ import {
   type ThemePref,
 } from "@/shared/theme/theme";
 import { type Notice, notify, onNotify } from "@/shared/ui/notify";
+import { PlaybackPaused } from "@/shared/ui/PlayingBars";
 import { Toast } from "@/shared/ui/Toast";
 import { DndRoot } from "./dnd/dnd";
 import type { Open } from "./library/CollectionScreen";
@@ -76,6 +77,7 @@ import { SleepBanner } from "./shell/SleepBanner";
 import { useAutoDegrade } from "./shell/useAutoDegrade";
 import { usePerformance } from "./shell/usePerformance";
 import { usePlayback } from "./shell/usePlayback";
+import { usePlayingPlaylist } from "./shell/usePlayingPlaylist";
 import { useVideoDrops } from "./wave/useVideoDrops";
 import { WaveScreen } from "./wave/WaveScreen";
 
@@ -247,6 +249,12 @@ export function App() {
     });
   }, []);
   const playlists = usePlaylists();
+  const playingPlaylist = usePlayingPlaylist(`${snap.trackId}-${snap.title}`);
+  const leavePlaylist = (id: number | undefined) =>
+    setStack((st) => {
+      const left = st.filter((e) => e.playlist !== id);
+      return left.length > 0 ? left : [{ screen: "wave", open: null }];
+    });
   const openPlaylist = (id: number, fresh = false) =>
     push({ screen: "playlists", open: null, playlist: id, fresh });
   const newPlaylist = () => {
@@ -479,294 +487,292 @@ export function App() {
   }, [error]);
 
   return (
-    <DndRoot onNavigate={setScreen}>
-      <div className="flex h-full flex-col">
-        <div className="flex min-h-0 flex-1">
-          <Sidebar
-            current={screen}
-            collapsed={narrow || manualCollapsed}
-            onNavigate={setScreen}
-            badges={{ unknown: lib.status.unknown }}
-            onToggle={() => setManualCollapsed((c) => !c)}
-            progress={lib.progress}
-            onCancelImport={cancelImport}
-            offline={lib.status.offline}
-            playlists={playlists}
-            currentPlaylist={screen === "playlists" ? (here.playlist ?? null) : null}
-            playingPlaylist={null}
-            onOpenPlaylist={(id) => openPlaylist(id)}
-            onNewPlaylist={lib.status.tracks > 0 ? newPlaylist : undefined}
-            onNewSmart={lib.status.tracks > 0 ? newSmart : undefined}
-          />
-          <main className="flex min-w-0 flex-1 flex-col overflow-auto rounded-tl-(--radius-xl) bg-bg-layer p-6">
-            {lib.rootNeeded && <RootPanel status={lib.status} onDone={rootChosen} />}
-            {screen === "settings" ? (
-              <SettingsScreen
-                theme={appearance.theme}
-                accent={pickedAccent}
-                seasonSeed={seasonSeed}
-                onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
-                onAccent={pickAccent}
-                library={lib.status}
-                onChooseLibrary={() => lib.setRootNeeded(true)}
-                onReplaySetup={() => setOnboard("setup")}
-                onReplayTips={() => setOnboard("tips")}
-                onShowDuplicates={() => setDupsOpen(true)}
-              />
-            ) : screen === "wave" && hasMusic ? (
-              <WaveScreen snap={snap} onGo={goTo} />
-            ) : screen === "search" && hasMusic ? (
-              <SearchScreen
-                playingId={snap.trackId}
-                version={lib.version}
-                onGo={goTo}
-                onOpenPlaylist={(id) => openPlaylist(id)}
-              />
-            ) : screen === "genres" && hasMusic ? (
-              <GenresScreen
-                version={lib.version}
-                playingId={snap.trackId}
-                open={here.genre ?? null}
-                onOpen={(g) => push({ screen: "genres", open: null, genre: g })}
-                onBack={back}
-                onGo={goTo}
-              />
-            ) : screen === "playlists" && here.playlist != null ? (
-              <PlaylistScreen
-                key={here.playlist}
-                id={here.playlist}
-                version={lib.version}
-                playingId={snap.trackId}
-                editName={here.fresh ?? false}
-                onGo={goTo}
-                onOpen={(id) => openPlaylist(id)}
-                onDeleted={() =>
-                  setStack((st) => {
-                    const left = st.filter((e) => e.playlist !== here.playlist);
-                    return left.length > 0 ? left : [{ screen: "wave", open: null }];
-                  })
-                }
-              />
-            ) : hasMusic && screen === "unknown" && lib.status.unknown > 0 ? (
-              <UnknownScreen version={lib.version} playingId={snap.trackId} onGo={goTo} />
-            ) : hasMusic && (screen === "albums" || screen === "artists") ? (
-              <CollectionScreen
-                key={screen}
-                kind={screen}
-                status={lib.status}
-                version={lib.version}
-                playingId={snap.trackId}
-                open={here.open}
-                onOpen={(o) => push({ screen, open: o })}
-                onBack={back}
-              />
-            ) : (
-              <EmptyScreen
-                screen={screen}
-                onAdd={["wave", "albums", "artists"].includes(screen) ? addMusic : undefined}
-              />
+    <PlaybackPaused value={snap.state !== "playing"}>
+      <DndRoot onNavigate={setScreen}>
+        <div className="flex h-full flex-col">
+          <div className="flex min-h-0 flex-1">
+            <Sidebar
+              current={screen}
+              collapsed={narrow || manualCollapsed}
+              onNavigate={setScreen}
+              badges={{ unknown: lib.status.unknown }}
+              onToggle={() => setManualCollapsed((c) => !c)}
+              progress={lib.progress}
+              onCancelImport={cancelImport}
+              offline={lib.status.offline}
+              playlists={playlists}
+              currentPlaylist={screen === "playlists" ? (here.playlist ?? null) : null}
+              playingPlaylist={playingPlaylist}
+              onPlaylistDeleted={leavePlaylist}
+              onOpenPlaylist={(id) => openPlaylist(id)}
+              onNewPlaylist={lib.status.tracks > 0 ? newPlaylist : undefined}
+              onNewSmart={lib.status.tracks > 0 ? newSmart : undefined}
+            />
+            <main className="flex min-w-0 flex-1 flex-col overflow-auto rounded-tl-(--radius-xl) bg-bg-layer p-6">
+              {lib.rootNeeded && <RootPanel status={lib.status} onDone={rootChosen} />}
+              {screen === "settings" ? (
+                <SettingsScreen
+                  theme={appearance.theme}
+                  accent={pickedAccent}
+                  seasonSeed={seasonSeed}
+                  onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
+                  onAccent={pickAccent}
+                  library={lib.status}
+                  onChooseLibrary={() => lib.setRootNeeded(true)}
+                  onReplaySetup={() => setOnboard("setup")}
+                  onReplayTips={() => setOnboard("tips")}
+                  onShowDuplicates={() => setDupsOpen(true)}
+                />
+              ) : screen === "wave" && hasMusic ? (
+                <WaveScreen snap={snap} onGo={goTo} />
+              ) : screen === "search" && hasMusic ? (
+                <SearchScreen
+                  playingId={snap.trackId}
+                  version={lib.version}
+                  onGo={goTo}
+                  onOpenPlaylist={(id) => openPlaylist(id)}
+                />
+              ) : screen === "genres" && hasMusic ? (
+                <GenresScreen
+                  version={lib.version}
+                  playingId={snap.trackId}
+                  open={here.genre ?? null}
+                  onOpen={(g) => push({ screen: "genres", open: null, genre: g })}
+                  onBack={back}
+                  onGo={goTo}
+                />
+              ) : screen === "playlists" && here.playlist != null ? (
+                <PlaylistScreen
+                  key={here.playlist}
+                  id={here.playlist}
+                  version={lib.version}
+                  playingId={snap.trackId}
+                  editName={here.fresh ?? false}
+                  onGo={goTo}
+                  onOpen={(id) => openPlaylist(id)}
+                  onDeleted={() => leavePlaylist(here.playlist)}
+                />
+              ) : hasMusic && screen === "unknown" && lib.status.unknown > 0 ? (
+                <UnknownScreen version={lib.version} playingId={snap.trackId} onGo={goTo} />
+              ) : hasMusic && (screen === "albums" || screen === "artists") ? (
+                <CollectionScreen
+                  key={screen}
+                  kind={screen}
+                  status={lib.status}
+                  version={lib.version}
+                  playingId={snap.trackId}
+                  open={here.open}
+                  onOpen={(o) => push({ screen, open: o })}
+                  onBack={back}
+                />
+              ) : (
+                <EmptyScreen
+                  screen={screen}
+                  onAdd={["wave", "albums", "artists"].includes(screen) ? addMusic : undefined}
+                />
+              )}
+            </main>
+            {queueOpen && (
+              <div className="flex shrink-0 bg-bg-layer p-3 pl-0">
+                <QueuePanel
+                  onClose={() => setQueueOpen(false)}
+                  trackKey={`${snap.trackId}-${snap.title}`}
+                />
+              </div>
             )}
-          </main>
-          {queueOpen && (
-            <div className="flex shrink-0 bg-bg-layer p-3 pl-0">
-              <QueuePanel
-                onClose={() => setQueueOpen(false)}
-                trackKey={`${snap.trackId}-${snap.title}`}
-              />
-            </div>
+          </div>
+          <SleepBanner />
+          <FocusBanner />
+          <div className="t-caption bg-bg-base px-4 pt-1 text-center text-text-tertiary">
+            {t("proto")}
+          </div>
+          <ExportHost />
+          <HelpHost />
+          <PlayerBar
+            snap={snap}
+            receivedAt={receivedAt}
+            queueOpen={queueOpen}
+            onQueue={() => setQueueOpen((o) => !o)}
+          />
+          {lib.status.goneQuestion != null && !error && !report && (
+            <Toast
+              tone="info"
+              heading={t("library.goneTitle")}
+              message={t("library.gone", { count: lib.status.goneQuestion })}
+              closeLabel={tc("errors.close")}
+              action={{ label: t("library.goneConfirm"), onClick: confirmGone }}
+              onClose={dismissGone}
+            />
+          )}
+          {updated?.justUpdated && !error && !report && (
+            <Toast
+              tone="info"
+              heading={t("updates.updatedTitle", { version: updated.justUpdated })}
+              message={firstLine(updated.notes) ?? t("updates.updatedText")}
+              closeLabel={tc("errors.close")}
+              timeoutMs={8000}
+              onClose={() => setUpdated(null)}
+            />
+          )}
+          {dupsFound !== null && !dupsOpen && !error && !report && (
+            <Toast
+              tone="info"
+              heading={t("dups.foundTitle")}
+              message={t("dups.found", { count: dupsFound })}
+              closeLabel={tc("errors.close")}
+              timeoutMs={12000}
+              action={{
+                label: t("dups.show"),
+                onClick: () => {
+                  setDupsFound(null);
+                  setDupsOpen(true);
+                },
+              }}
+              onClose={() => setDupsFound(null)}
+            />
+          )}
+          {organize !== null && !error && !report && (
+            <Toast
+              tone="info"
+              heading={t("organize.title")}
+              message={t("organize.found", { count: organize })}
+              closeLabel={tc("errors.close")}
+              timeoutMs={15000}
+              action={{
+                label: t("organize.do"),
+                onClick: () => {
+                  setOrganize(null);
+                  organizeLibrary(false)
+                    .then((n) => notify(t("organize.done", { count: n })))
+                    .catch(() => notify(t("organize.failed")));
+                },
+              }}
+              onClose={() => setOrganize(null)}
+            />
+          )}
+          {toast && !error && !report && (
+            <Toast
+              tone="info"
+              heading={toast.text}
+              message=""
+              closeLabel={tc("errors.close")}
+              timeoutMs={toast.action ? 8000 : 3000}
+              action={
+                toast.action
+                  ? {
+                      label: toast.action.label,
+                      onClick: () => {
+                        toast.action?.onClick();
+                        setToast(null);
+                      },
+                    }
+                  : undefined
+              }
+              onClose={() => setToast(null)}
+            />
+          )}
+          {report && !error && (
+            <Toast
+              tone="info"
+              heading={t("import.doneTitle")}
+              message={[
+                t("import.report", {
+                  added: report.added,
+                  unknown: report.unknown,
+                  duplicates: report.duplicates,
+                  rejected: report.rejected,
+                }),
+                report.rejectedReasons.length > 0
+                  ? t("import.reasons", {
+                      list: report.rejectedReasons.map((r) => t(`import.reason.${r}`)).join(", "),
+                    })
+                  : "",
+                report.canEject ? t("import.eject") : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              closeLabel={tc("errors.close")}
+              timeoutMs={10000}
+              action={{
+                label: t("importReport.more"),
+                onClick: () => {
+                  setReportBatch(report.batch);
+                  lib.clearReport();
+                },
+              }}
+              onClose={lib.clearReport}
+            />
+          )}
+          {error && (
+            <Toast
+              heading={tc("errors.title")}
+              message={[
+                tc(`errors.${error.error.code}`, { defaultValue: tc("errors.generic") }),
+                error.file,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              closeLabel={tc("errors.close")}
+              action={
+                error.error.retryable
+                  ? {
+                      label: tc("errors.retry"),
+                      onClick: () => {
+                        clearError();
+                        togglePlay();
+                      },
+                    }
+                  : undefined
+              }
+              onClose={clearError}
+            />
+          )}
+          {onboard === "setup" && (
+            <Onboarding
+              theme={appearance.theme}
+              accent={pickedAccent}
+              seasonSeed={seasonSeed}
+              onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
+              onAccent={pickAccent}
+              status={lib.status}
+              onRoot={rootChosen}
+              onFinish={() => setOnboard("tips")}
+            />
+          )}
+          {onboard === "tips" && <Tips onClose={() => setOnboard(null)} />}
+          {dupsOpen && <DuplicatesDialog onClose={() => setDupsOpen(false)} />}
+          {reportBatch !== null && (
+            <ImportReportDialog
+              batch={reportBatch}
+              onClose={() => setReportBatch(null)}
+              onUnknown={() => {
+                setReportBatch(null);
+                setScreen("unknown");
+              }}
+              onDuplicates={() => {
+                setReportBatch(null);
+                setDupsOpen(true);
+              }}
+            />
+          )}
+          {smartName !== null && (
+            <SmartEditor
+              initial={blankDraft()}
+              name={smartName}
+              onName={setSmartName}
+              onClose={() => setSmartName(null)}
+              onSave={(json) => {
+                const name = smartName.trim() || t("smart.defaultName", { n: 1 });
+                setSmartName(null);
+                smartCreate(name, json)
+                  .then((id) => openPlaylist(id))
+                  .catch(() => notify(t("smart.invalid")));
+              }}
+            />
           )}
         </div>
-        <SleepBanner />
-        <FocusBanner />
-        <div className="t-caption bg-bg-base px-4 pt-1 text-center text-text-tertiary">
-          {t("proto")}
-        </div>
-        <ExportHost />
-        <HelpHost />
-        <PlayerBar
-          snap={snap}
-          receivedAt={receivedAt}
-          queueOpen={queueOpen}
-          onQueue={() => setQueueOpen((o) => !o)}
-        />
-        {lib.status.goneQuestion != null && !error && !report && (
-          <Toast
-            tone="info"
-            heading={t("library.goneTitle")}
-            message={t("library.gone", { count: lib.status.goneQuestion })}
-            closeLabel={tc("errors.close")}
-            action={{ label: t("library.goneConfirm"), onClick: confirmGone }}
-            onClose={dismissGone}
-          />
-        )}
-        {updated?.justUpdated && !error && !report && (
-          <Toast
-            tone="info"
-            heading={t("updates.updatedTitle", { version: updated.justUpdated })}
-            message={firstLine(updated.notes) ?? t("updates.updatedText")}
-            closeLabel={tc("errors.close")}
-            timeoutMs={8000}
-            onClose={() => setUpdated(null)}
-          />
-        )}
-        {dupsFound !== null && !dupsOpen && !error && !report && (
-          <Toast
-            tone="info"
-            heading={t("dups.foundTitle")}
-            message={t("dups.found", { count: dupsFound })}
-            closeLabel={tc("errors.close")}
-            timeoutMs={12000}
-            action={{
-              label: t("dups.show"),
-              onClick: () => {
-                setDupsFound(null);
-                setDupsOpen(true);
-              },
-            }}
-            onClose={() => setDupsFound(null)}
-          />
-        )}
-        {organize !== null && !error && !report && (
-          <Toast
-            tone="info"
-            heading={t("organize.title")}
-            message={t("organize.found", { count: organize })}
-            closeLabel={tc("errors.close")}
-            timeoutMs={15000}
-            action={{
-              label: t("organize.do"),
-              onClick: () => {
-                setOrganize(null);
-                organizeLibrary(false)
-                  .then((n) => notify(t("organize.done", { count: n })))
-                  .catch(() => notify(t("organize.failed")));
-              },
-            }}
-            onClose={() => setOrganize(null)}
-          />
-        )}
-        {toast && !error && !report && (
-          <Toast
-            tone="info"
-            heading={toast.text}
-            message=""
-            closeLabel={tc("errors.close")}
-            timeoutMs={toast.action ? 8000 : 3000}
-            action={
-              toast.action
-                ? {
-                    label: toast.action.label,
-                    onClick: () => {
-                      toast.action?.onClick();
-                      setToast(null);
-                    },
-                  }
-                : undefined
-            }
-            onClose={() => setToast(null)}
-          />
-        )}
-        {report && !error && (
-          <Toast
-            tone="info"
-            heading={t("import.doneTitle")}
-            message={[
-              t("import.report", {
-                added: report.added,
-                unknown: report.unknown,
-                duplicates: report.duplicates,
-                rejected: report.rejected,
-              }),
-              report.rejectedReasons.length > 0
-                ? t("import.reasons", {
-                    list: report.rejectedReasons.map((r) => t(`import.reason.${r}`)).join(", "),
-                  })
-                : "",
-              report.canEject ? t("import.eject") : "",
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-            closeLabel={tc("errors.close")}
-            timeoutMs={10000}
-            action={{
-              label: t("importReport.more"),
-              onClick: () => {
-                setReportBatch(report.batch);
-                lib.clearReport();
-              },
-            }}
-            onClose={lib.clearReport}
-          />
-        )}
-        {error && (
-          <Toast
-            heading={tc("errors.title")}
-            message={[
-              tc(`errors.${error.error.code}`, { defaultValue: tc("errors.generic") }),
-              error.file,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-            closeLabel={tc("errors.close")}
-            action={
-              error.error.retryable
-                ? {
-                    label: tc("errors.retry"),
-                    onClick: () => {
-                      clearError();
-                      togglePlay();
-                    },
-                  }
-                : undefined
-            }
-            onClose={clearError}
-          />
-        )}
-        {onboard === "setup" && (
-          <Onboarding
-            theme={appearance.theme}
-            accent={pickedAccent}
-            seasonSeed={seasonSeed}
-            onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
-            onAccent={pickAccent}
-            status={lib.status}
-            onRoot={rootChosen}
-            onFinish={() => setOnboard("tips")}
-          />
-        )}
-        {onboard === "tips" && <Tips onClose={() => setOnboard(null)} />}
-        {dupsOpen && <DuplicatesDialog onClose={() => setDupsOpen(false)} />}
-        {reportBatch !== null && (
-          <ImportReportDialog
-            batch={reportBatch}
-            onClose={() => setReportBatch(null)}
-            onUnknown={() => {
-              setReportBatch(null);
-              setScreen("unknown");
-            }}
-            onDuplicates={() => {
-              setReportBatch(null);
-              setDupsOpen(true);
-            }}
-          />
-        )}
-        {smartName !== null && (
-          <SmartEditor
-            initial={blankDraft()}
-            name={smartName}
-            onName={setSmartName}
-            onClose={() => setSmartName(null)}
-            onSave={(json) => {
-              const name = smartName.trim() || t("smart.defaultName", { n: 1 });
-              setSmartName(null);
-              smartCreate(name, json)
-                .then((id) => openPlaylist(id))
-                .catch(() => notify(t("smart.invalid")));
-            }}
-          />
-        )}
-      </div>
-    </DndRoot>
+      </DndRoot>
+    </PlaybackPaused>
   );
 }
 

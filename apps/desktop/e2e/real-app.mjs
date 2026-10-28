@@ -687,6 +687,37 @@ if (existsSync(corpus)) {
       reordered[1]?.track.id === afterDrop[0]?.track.id,
     reordered.map((e) => e.track.title).join(", "),
   );
+  // DESIGN.md Sidebar: hover > 500 ms — the details popover; «…» and the pencil on hover; the
+  // playing playlist — bars on its row.
+  await sideRoad.hover();
+  const tip = page.getByRole("tooltip").filter({ hasText: "Дорога" });
+  const tipShown = await tip
+    .waitFor({ timeout: 2000 })
+    .then(() => true)
+    .catch(() => false);
+  const tipText = tipShown ? await tip.innerText() : "";
+  const sideActions = await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Переименовать" })
+    .isVisible();
+  await page.getByRole("main").getByRole("button", { name: "Слушать", exact: true }).click();
+  await sleep(1500);
+  await page.mouse.move(600, 400);
+  const roadBars = await page
+    .getByRole("navigation")
+    .locator(".playing-bars")
+    .isVisible()
+    .catch(() => false);
+  const rowBars = await pRows
+    .first()
+    .locator(".playing-bars")
+    .isVisible()
+    .catch(() => false);
+  check(
+    "playing: bars on the sidebar playlist and in place of the row number; popover, «…»/pencil",
+    tipShown && tipText.includes("2 трека") && sideActions && roadBars && rowBars,
+    `popover ${tipShown} «${tipText.replace(/\s+/g, " ")}», actions ${sideActions}, bars ${roadBars}/${rowBars}`,
+  );
   const unknownBefore = (await invoke("library_status", {})).unknown;
   await page.getByRole("button", { name: "Неизвестные" }).click();
   await uRows.first().waitFor({ timeout: 5000 });
@@ -1119,6 +1150,49 @@ if (existsSync(corpus)) {
   } else {
     check("Видео: skipped — no ffmpeg to make a test clip", true);
   }
+  // T7.10: «Титры» — picked from the menu, the 2D scene draws over the playing track (pixels
+  // change between two looks a second apart) at the display's pace.
+  await page.getByRole("button", { name: "Режим визуализации" }).click();
+  await page.getByRole("menuitem", { name: "Титры" }).click();
+  const titles = page.locator('canvas[data-testid="titles"]');
+  await titles.waitFor({ timeout: 10000 });
+  await sleep(2000);
+  const look = () =>
+    titles.evaluate((c) => {
+      const g = c.getContext("2d");
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      let lit = 0;
+      let sum = 0;
+      for (let i = 0; i < d.length; i += 64) {
+        const y = d[i] + d[i + 1] + d[i + 2];
+        if (y > 60) lit++;
+        sum = (sum + y * (i + 1)) % 1e9;
+      }
+      return { lit, sum, w: c.width };
+    });
+  const ti0 = await look();
+  const tiFps = await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        let n = 0;
+        const t0 = performance.now();
+        const tick = () => {
+          n++;
+          if (performance.now() - t0 < 2000) requestAnimationFrame(tick);
+          else resolve(n / 2);
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+  const ti1 = await look();
+  if (process.env.SMOKE_SHOTS) {
+    await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "t710-titles.png") });
+  }
+  check(
+    "Титры: the scene draws and moves over the playing track",
+    ti0.w > 0 && ti0.lit > 0 && ti1.lit > 0 && ti0.sum !== ti1.sum && tiFps >= 45,
+    `lit ${ti0.lit} → ${ti1.lit}, ${tiFps} rAF/s`,
+  );
   await invoke("settings_patch", { patch: { viz: { mode: "waves" } } });
   await page.locator('canvas[data-testid="waves"]').waitFor({ timeout: 10000 });
   await axeScreen("«Моя волна»");

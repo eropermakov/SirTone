@@ -25,6 +25,7 @@ import { queueAppend, queuePlayNext } from "@/shared/ipc/playback";
 import { cn } from "@/shared/lib/utils";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
+import { PlayingBars } from "@/shared/ui/PlayingBars";
 import { TrackCard } from "./TrackCard";
 
 /** Fixed row height from DESIGN.md §13 `--row-height` (virtualisation needs the number). */
@@ -268,7 +269,11 @@ export function TrackList({
                     playing ? "text-accent-text" : "text-text-tertiary",
                   )}
                 >
-                  <span className="group-hover:hidden">{row.index + 1}</span>
+                  {playing ? (
+                    <PlayingBars className="self-center group-hover:hidden" />
+                  ) : (
+                    <span className="group-hover:hidden">{row.index + 1}</span>
+                  )}
                   <Play
                     size={16}
                     fill="currentColor"
