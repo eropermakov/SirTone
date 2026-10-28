@@ -126,6 +126,8 @@
 ### 4.1. Темы
 Тёмная и светлая ✅ (`data-theme`), по умолчанию — **как в системе** (`DESIGN.md` §13, D-62), переключение без перезагрузки. Нейтральные поверхности — токены `DESIGN.md` §3 (`bg-base/layer/raised/flyout/hover/selected`, `inactive`, `border`, `separator`, `text-primary/secondary/tertiary`, `icon`, `focus-ring`, `artwork-placeholder`, `artwork-scrim`, `danger`). Правило **60–30–10** (`DESIGN.md` §2): 60 % нейтраль, 30 % плашки `primary` и обложки, 10 % акцент только на CTA.
 
+> **2.6 (2026-10-28, предложено):** к темам добавляются «Рубин»/«Тёмный рубин» (D-130), материал — отдельная настройка (D-128), выбор — раздел «Оформление» (D-131), контраст — AAA (D-127), значения — `DESIGN.md` §16; требования — `02` §27.
+
 ### 4.2. Цвет пользователя: 6 токенов (`DESIGN.md` §4)
 Компоненты знают только `accent-fill`, `accent-text`, `accent-on`, `primary`, `primary-text`, `on-primary`. **Правило толщины:** тонкое (≤ 4 px, текст, ссылки, прогресс) — `accent-text`; крупное (кнопки, кружки ≥ 22 px) — `accent-fill`. Источники набора (взаимоисключающие, AccentPicker):
 
