@@ -1239,7 +1239,7 @@ function SfxSection() {
               valueText={t("settingsDuck.pct", { v: Math.round(s.volume * 100) })}
               onCommit={(v) => {
                 save({ ...s, volume: Math.round(v * 20) / 20 });
-                sfx("click");
+                sfx("import_done");
               }}
               className="flex-1"
             />
