@@ -127,6 +127,32 @@ async function mockTauri(page: Page) {
             return null;
           case "collection_genres":
             return [{ key: "rock", name: "Rock", tracks: 3 }];
+          case "collection_tracks": {
+            // «Все треки» (D-127): two keyset pages by title, as Rust sends them.
+            const row = (
+              id: number,
+              title: string,
+              artists: string,
+              album: string | null,
+              s: number,
+            ) => ({
+              id,
+              title,
+              artists,
+              album,
+              durationMs: s * 1000,
+              albumId: album ? id : null,
+              artistId: id,
+            });
+            return args.after == null
+              ? {
+                  rows: [row(3, "Арфа", "Яблоко", "Сад", 240), row(1, "Берег", "Бриз", null, 95)],
+                  next: { key: "берег", id: 1 },
+                }
+              : { rows: [row(2, "Вьюга", "Аврора", "Зима", 180)], next: null };
+          }
+          case "play_tracks":
+            return null;
           case "bt_devices":
             return [
               { name: "WH-1000XM4", connected: false, endpoints: ["{bt-1}"] },
@@ -877,4 +903,57 @@ test("«Справка»: F1 and Settings → «Справка», one section at
   await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
   await page.getByRole("button", { name: "Справка", exact: true }).click();
   await expect(help).toContainText("Перетащите папку");
+});
+
+test("«Все треки»: the sidebar opens every track; sort and play the sorted list (D-127)", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 3,
+      artists: 3,
+      albums: 2,
+      unknown: 0,
+      durationSec: 515,
+      bytes: 300,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Все треки", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Все треки" })).toBeVisible();
+  const list = page.getByRole("list", { name: "Все треки" });
+  const titles = () => list.locator("li .t-body").allTextContents();
+  // Both pages arrived, in the server's title order.
+  await expect.poll(titles).toEqual(["Арфа", "Берег", "Вьюга"]);
+  expect((await calls(page, "collection_tracks")).map((c) => c.args)).toEqual([
+    { after: null, limit: 500 },
+    { after: { key: "берег", id: 1 }, limit: 500 },
+  ]);
+
+  await page.getByRole("button", { name: "По названию" }).click();
+  await page.getByRole("menuitem", { name: "По длительности" }).click();
+  await expect.poll(titles).toEqual(["Берег", "Вьюга", "Арфа"]);
+  // The same option again reverses (Apple Music, F-34).
+  await page.getByRole("button", { name: "По длительности" }).click();
+  await page.getByRole("menuitem", { name: "По длительности" }).click();
+  await expect.poll(titles).toEqual(["Арфа", "Вьюга", "Берег"]);
+  await page.getByRole("button", { name: "По длительности" }).click();
+  await page.getByRole("menuitem", { name: "По исполнителю" }).click();
+  await expect.poll(titles).toEqual(["Вьюга", "Берег", "Арфа"]);
+
+  // Double click plays the sorted list from that row.
+  await list.getByRole("button", { name: /Берег/ }).dblclick();
+  await expect
+    .poll(async () => (await calls(page, "play_tracks")).at(-1)?.args)
+    .toEqual({ ids: [2, 1, 3], start: 1, context: "collection", playlist: null });
+  await page.locator("main").getByRole("button", { name: "Слушать", exact: true }).click();
+  await expect
+    .poll(async () => (await calls(page, "play_tracks")).at(-1)?.args)
+    .toEqual({ ids: [2, 1, 3], start: 0, context: "collection", playlist: null });
 });

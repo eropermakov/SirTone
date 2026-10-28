@@ -5,6 +5,7 @@ import { ExportHost } from "@/app/export/ExportDialog";
 import { CollectionScreen } from "@/app/library/CollectionScreen";
 import { GenresScreen } from "@/app/library/GenresScreen";
 import { RootPanel } from "@/app/library/RootPanel";
+import { TracksScreen } from "@/app/library/TracksScreen";
 import { UnknownScreen } from "@/app/library/UnknownScreen";
 import { useLibrary } from "@/app/library/useLibrary";
 import { events } from "@/shared/ipc/bindings";
@@ -555,6 +556,13 @@ export function App() {
                 />
               ) : hasMusic && screen === "unknown" && lib.status.unknown > 0 ? (
                 <UnknownScreen version={lib.version} playingId={snap.trackId} onGo={goTo} />
+              ) : screen === "tracks" && hasMusic ? (
+                <TracksScreen
+                  status={lib.status}
+                  version={lib.version}
+                  playingId={snap.trackId}
+                  onGo={goTo}
+                />
               ) : hasMusic && (screen === "albums" || screen === "artists") ? (
                 <CollectionScreen
                   key={screen}
@@ -569,7 +577,9 @@ export function App() {
               ) : (
                 <EmptyScreen
                   screen={screen}
-                  onAdd={["wave", "albums", "artists"].includes(screen) ? addMusic : undefined}
+                  onAdd={
+                    ["wave", "albums", "artists", "tracks"].includes(screen) ? addMusic : undefined
+                  }
                 />
               )}
             </main>

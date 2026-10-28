@@ -204,18 +204,26 @@ export const collectionGenres = async (): Promise<GenreItem[]> =>
 export const genreTracks = async (key: string): Promise<TrackItem[]> =>
   isTauri() ? unwrap(await commands.genreTracks(key)) : [];
 
-/** Every playable track id (keyset pages of 500) — «Слушать всё вперемешку». */
-export const allTrackIds = async (): Promise<number[]> => {
+/**
+ * Every playable track by title, keyset pages of 500 («Все треки», D-127); `onFirst` gets the
+ * first page when more follow, so rows show before the rest arrive (once: re-sorting a growing
+ * list per page would be quadratic on 100 000 tracks).
+ */
+export const allTracks = async (onFirst?: (rows: TrackItem[]) => void): Promise<TrackItem[]> => {
   if (!isTauri()) return [];
-  const ids: number[] = [];
+  const rows: TrackItem[] = [];
   let after: PageCursor | null = null;
   for (;;) {
     const page: TrackPage = unwrap(await commands.collectionTracks(after, 500));
-    ids.push(...page.rows.map((r) => r.id));
-    if (!page.next) return ids;
+    rows.push(...page.rows);
+    if (!page.next) return rows;
+    if (after === null) onFirst?.([...rows]);
     after = page.next;
   }
 };
+
+/** Every playable track id — «Слушать всё вперемешку». */
+export const allTrackIds = async (): Promise<number[]> => (await allTracks()).map((r) => r.id);
 
 /** «Моя волна» (Stage 3): the engine picks and plays; returns how many tracks were queued. */
 export const waveStart = async (

@@ -1,4 +1,4 @@
-import type { AlbumItem, ArtistItem } from "@/shared/ipc/library";
+import type { AlbumItem, ArtistItem, TrackItem } from "@/shared/ipc/library";
 
 /**
  * Collection sort (FR-LIB-008; `01b` F-34): Spotify's «Недавно добавленные / По алфавиту / По
@@ -7,8 +7,11 @@ import type { AlbumItem, ArtistItem } from "@/shared/ipc/library";
  */
 export const ALBUM_SORTS = ["title", "artist", "year", "added"] as const;
 export const ARTIST_SORTS = ["name", "tracks", "added"] as const;
+/** «Все треки» (D-127): Apple Music «Песни» sorts by any column; ours by the chip. */
+export const TRACK_SORTS = ["title", "artist", "album", "duration", "added"] as const;
 export type AlbumSort = (typeof ALBUM_SORTS)[number];
 export type ArtistSort = (typeof ARTIST_SORTS)[number];
+export type TrackSort = (typeof TRACK_SORTS)[number];
 export type Sort<K> = { by: K; reverse: boolean };
 
 const KEY = (kind: string) => `sirtone.sort.${kind}`;
@@ -58,5 +61,25 @@ export function sortArtists(list: ArtistItem[], s: Sort<ArtistSort>): ArtistItem
     added: (a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0),
   };
   out.sort(cmp[s.by]);
+  return s.reverse ? out.reverse() : out;
+}
+
+/**
+ * `list` comes by title from Rust (`collection_tracks`), so «По названию» keeps it as is.
+ * «Недавно добавленные» is by id: `added_at` is written only when the row is inserted (D-127).
+ */
+export function sortTracks(list: TrackItem[], s: Sort<TrackSort>): TrackItem[] {
+  const out = [...list];
+  const cmp: Record<Exclude<TrackSort, "title">, (a: TrackItem, b: TrackItem) => number> = {
+    artist: (a, b) =>
+      coll.compare(a.artists, b.artists) || coll.compare(a.album ?? "", b.album ?? ""),
+    // No album last, like unknown years above.
+    album: (a, b) =>
+      (a.album == null ? 1 : 0) - (b.album == null ? 1 : 0) ||
+      coll.compare(a.album ?? "", b.album ?? ""),
+    duration: (a, b) => a.durationMs - b.durationMs,
+    added: (a, b) => b.id - a.id,
+  };
+  if (s.by !== "title") out.sort(cmp[s.by]);
   return s.reverse ? out.reverse() : out;
 }

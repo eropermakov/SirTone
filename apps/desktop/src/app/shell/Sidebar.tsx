@@ -4,6 +4,7 @@ import {
   CircleHelp,
   Disc3,
   ListFilter,
+  ListMusic,
   Mic2,
   PanelLeftClose,
   PanelLeftOpen,
@@ -26,6 +27,7 @@ export type Screen =
   | "wave"
   | "artists"
   | "albums"
+  | "tracks"
   | "genres"
   | "playlists"
   | "unknown"
@@ -38,6 +40,8 @@ const TOP: Item[] = [{ id: "wave", icon: Waves }];
 const COLLECTION: Item[] = [
   { id: "artists", icon: Mic2 },
   { id: "albums", icon: Disc3 },
+  // «Все треки» (D-127): Apple Music «Песни» sits right after «Альбомы».
+  { id: "tracks", icon: ListMusic },
   { id: "genres", icon: Tags },
 ];
 const SETTINGS: Item = { id: "settings", icon: Settings };
