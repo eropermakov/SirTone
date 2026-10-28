@@ -9,27 +9,50 @@ use sirtone_core::text::norm;
 
 use crate::name::{loose_track, parse_file_name, parse_folder};
 
-/// Separators between artists (docs/05 §4.2), tried case-insensitively.
-const SEPARATORS: &[&str] = &[
+/// Separators between artists (docs/05 §4.2), tried case-insensitively. «feat.»-like ones always
+/// split; the rest (`&`, `и`, `,`, `x`, `/`) do not split a name that is one artist (D-126).
+const FEAT: &[&str] = &[
     " feat. ",
     " feat ",
     " ft. ",
     " ft ",
     " featuring ",
-    " & ",
-    ", ",
-    " x ",
     " vs. ",
     " vs ",
-    " / ",
-    " и ",
     " with ",
 ];
+const JOINS: &[&str] = &[" & ", ", ", " x ", " / ", " и "];
 
-/// «Би-2 feat. Земфира» → ["Би-2", "Земфира"]; the first one is the primary artist.
-pub fn split_artists(s: &str) -> Vec<String> {
-    let mut parts = vec![s.to_string()];
-    for sep in SEPARATORS {
+/// Names that are one artist though they hold a joining word (Jellyfin's «delimiter whitelist»,
+/// D-126): bands and duos named so, lower case after `norm`. The tags' album artist and the
+/// artist folder protect a name the same way (`split_artists_keeping`).
+const WHOLE_NAMES: &[&str] = &[
+    "король и шут",
+    "чай вдвоем",
+    "иванушки international",
+    "simon & garfunkel",
+    "simon and garfunkel",
+    "hall & oates",
+    "daryl hall & john oates",
+    "earth, wind & fire",
+    "crosby, stills, nash & young",
+    "crosby, stills & nash",
+    "emerson, lake & palmer",
+    "mumford & sons",
+    "florence + the machine",
+    "belle & sebastian",
+    "nick cave & the bad seeds",
+    "tom petty & the heartbreakers",
+    "bob marley & the wailers",
+    "sly & the family stone",
+    "kool & the gang",
+    "ac/dc",
+    "zhu & tame impala",
+];
+
+fn split_on(parts: Vec<String>, seps: &[&str]) -> Vec<String> {
+    let mut parts = parts;
+    for sep in seps {
         parts = parts
             .into_iter()
             .flat_map(|p| {
@@ -56,6 +79,34 @@ pub fn split_artists(s: &str) -> Vec<String> {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
+    }
+    parts
+}
+
+/// «Би-2 feat. Земфира» → ["Би-2", "Земфира"]; the first one is the primary artist.
+pub fn split_artists(s: &str) -> Vec<String> {
+    split_artists_keeping(s, &[])
+}
+
+/// `split_artists`, but a part that is a known whole name — `WHOLE_NAMES`, or one of `keep` (the
+/// album artist tag, the artist folder) — is not split on `&`, `и`, `,`, `x`, `/` (D-126).
+pub fn split_artists_keeping(s: &str, keep: &[&str]) -> Vec<String> {
+    let known = |p: &str| norm(p).is_some_and(|n| WHOLE_NAMES.contains(&n.as_str()));
+    // Our own folders name several artists «A, B» (layout): a folder protects only the joining
+    // words, never a comma or a slash.
+    let kept = |p: &str| {
+        let n = norm(p);
+        n.is_some() && keep.iter().any(|k| norm(k) == n)
+    };
+    let mut parts = Vec::new();
+    for p in split_on(vec![s.to_string()], FEAT) {
+        if known(&p) {
+            parts.push(p);
+        } else if kept(&p) {
+            parts.extend(split_on(vec![p], &[", ", " / "]));
+        } else {
+            parts.extend(split_on(vec![p], JOINS));
+        }
     }
     let mut seen = Vec::<String>::new();
     for p in parts {
@@ -174,7 +225,21 @@ impl Identify for TagIdentify {
         let folder_artist = parent.artist.clone().or_else(|| grand.clone());
         let folder_album = parent_ok.as_ref().and(parent.album.clone());
 
-        let tag_artists = t.artist.as_deref().map(split_artists).unwrap_or_default();
+        // An album artist or artist folder spelled like the whole tag keeps it whole (D-126).
+        let keep: Vec<&str> = [
+            t.album_artist.as_deref(),
+            folders.consensus_album_artist.as_deref(),
+            folder_artist.as_deref(),
+            parent_ok.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let tag_artists = t
+            .artist
+            .as_deref()
+            .map(|a| split_artists_keeping(a, &keep))
+            .unwrap_or_default();
         let base = |title: String,
                     artists: Vec<String>,
                     confidence: f64,
@@ -192,7 +257,15 @@ impl Identify for TagIdentify {
             unknown,
         };
 
-        let mut d = if let (Some(title), false) = (t.title.clone(), tag_artists.is_empty()) {
+        // A title tag that only repeats the file name («8. ATL - 1000») says nothing the name
+        // does not: the parsed name's title wins (with its track number).
+        let tag_title = match (&t.title, &f.title) {
+            (Some(x), Some(ft)) if f.artist.is_some() && norm(x) == norm(&stem(file_name)) => {
+                Some(ft.clone())
+            }
+            _ => t.title.clone(),
+        };
+        let mut d = if let (Some(title), false) = (tag_title.clone(), tag_artists.is_empty()) {
             // Tags name the track. Row 4: a file name that names a different track → conflict.
             let conflict = match (&f.artist, &f.title) {
                 (Some(fa), Some(ft)) => {
@@ -232,7 +305,7 @@ impl Identify for TagIdentify {
             };
             match (&f.artist, &f.title, &folder_artist) {
                 (Some(fa), Some(ft), _) if named_by_folder(fa) => {
-                    let mut d = base(ft.clone(), split_artists(fa), 0.85, None);
+                    let mut d = base(ft.clone(), split_artists_keeping(fa, &keep), 0.85, None);
                     d.album = folder_album.clone().filter(|a| similarity(a, fa) < AGREE);
                     d
                 }
@@ -240,13 +313,14 @@ impl Identify for TagIdentify {
                 // nothing agrees with the folders (row 3) — CD1/genre/year folders would put it in
                 // a wrong place. It goes to «Неизвестные»; the folder guess is only a hint.
                 _ => {
-                    let title = t
-                        .title
-                        .clone()
+                    let title = tag_title
                         .or(f.title.clone())
                         .unwrap_or_else(|| stem(file_name));
                     let artists = if tag_artists.is_empty() {
-                        f.artist.as_deref().map(split_artists).unwrap_or_default()
+                        f.artist
+                            .as_deref()
+                            .map(|a| split_artists_keeping(a, &keep))
+                            .unwrap_or_default()
                     } else {
                         tag_artists
                     };
@@ -274,7 +348,22 @@ mod tests {
     #[test]
     fn splits_like_navidrome() {
         assert_eq!(split_artists("Би-2 feat. Земфира"), ["Би-2", "Земфира"]);
-        assert_eq!(split_artists("Simon & Garfunkel"), ["Simon", "Garfunkel"]);
+        assert_eq!(split_artists("Simon & Garfunkel"), ["Simon & Garfunkel"]);
+        assert_eq!(split_artists("Король и Шут"), ["Король и Шут"]);
+        assert_eq!(
+            split_artists("Король и Шут feat. Тарас"),
+            ["Король и Шут", "Тарас"]
+        );
+        assert_eq!(split_artists("Земфира и Би-2"), ["Земфира", "Би-2"]);
+        assert_eq!(
+            split_artists_keeping("Ночь и День", &["Ночь и день"]),
+            ["Ночь и День"]
+        );
+        assert_eq!(split_artists("ATL, Зараза"), ["ATL", "Зараза"]);
+        assert_eq!(
+            split_artists_keeping("ATL, Зараза", &["ATL, Зараза"]),
+            ["ATL", "Зараза"]
+        );
         assert_eq!(split_artists("A, B & C"), ["A", "B", "C"]);
         assert_eq!(split_artists("Земфира"), ["Земфира"]);
         assert_eq!(split_artists("Би-2 FEAT. Земфира"), ["Би-2", "Земфира"]);
@@ -328,6 +417,47 @@ mod tests {
             &info(200_000),
         );
         assert_eq!(d.unknown, None);
+        // Owner beta (T7.6): a title tag repeating the file name, no artist tag → still unknown
+        // (the folder says nothing), but named as the file name means: «1000» by ATL, track 8.
+        let echo = Tags {
+            title: Some("8. ATL - 1000".into()),
+            ..Tags::default()
+        };
+        let d = TagIdentify.identify(
+            &echo,
+            "8. ATL - 1000.mp3",
+            &hints("_Unknown", "Музыка"),
+            &info(200_000),
+        );
+        assert_eq!(
+            (
+                d.unknown,
+                d.title.as_str(),
+                d.artists.as_slice(),
+                d.track_no
+            ),
+            (
+                Some(UnknownReason::NoMetadata),
+                "1000",
+                &["ATL".to_string()][..],
+                Some(8)
+            )
+        );
+        // D-126: a band named «… и …» stays one artist, the folder protects a name too.
+        let d = TagIdentify.identify(
+            &tags("Король и Шут", "Лесник"),
+            "Лесник.mp3",
+            &none,
+            &info(200_000),
+        );
+        assert_eq!(d.artists, ["Король и Шут"]);
+        let d = TagIdentify.identify(
+            &tags("Ночь и День", "Песня"),
+            "Песня.mp3",
+            &hints("Альбом", "Ночь и День"),
+            &info(200_000),
+        );
+        assert_eq!(d.artists, ["Ночь и День"]);
         // Row 3: name alone → unknown; name + folder artist → placed.
         let bare = Tags::default();
         let d = TagIdentify.identify(

@@ -190,7 +190,7 @@ try {
   out("## «Моя волна» — первые треки");
   for (const it of queue.items.slice(0, 12)) out(`- ${it.title} — ${it.artists ?? "?"}`);
   for (const [i, name] of ["Моя волна", "Исполнители", "Альбомы", "Неизвестные"].entries()) {
-    await page.getByRole("button", { name, exact: true }).first().click();
+    await page.getByRole("navigation").getByRole("button", { name }).first().click();
     await sleep(1500);
     await page.screenshot({ path: join(outDir, "shots", `0${i + 2}-${name}.png`) });
   }
