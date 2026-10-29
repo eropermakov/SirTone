@@ -197,7 +197,7 @@ pub fn parse_file_name(file_name: &str, known_artist: impl Fn(&str) -> bool) -> 
             NameGuess {
                 track,
                 artist: clean(&artist),
-                // After an artist a number is a title («ATL - 1000»), not a track number — from
+                // After an artist a number is a title («Дельта - 1000»), not a track number — from
                 // three digits on (owner beta, T7.6).
                 title: clean(&title).or_else(|| {
                     let t = title.trim();

@@ -257,7 +257,7 @@ impl Identify for TagIdentify {
             unknown,
         };
 
-        // A title tag that only repeats the file name («8. ATL - 1000») says nothing the name
+        // A title tag that only repeats the file name («8. Дельта - 1000») says nothing the name
         // does not: the parsed name's title wins (with its track number).
         let tag_title = match (&t.title, &f.title) {
             (Some(x), Some(ft)) if f.artist.is_some() && norm(x) == norm(&stem(file_name)) => {
@@ -359,10 +359,10 @@ mod tests {
             split_artists_keeping("Ночь и День", &["Ночь и день"]),
             ["Ночь и День"]
         );
-        assert_eq!(split_artists("ATL, Зараза"), ["ATL", "Зараза"]);
+        assert_eq!(split_artists("Дельта, Сигма"), ["Дельта", "Сигма"]);
         assert_eq!(
-            split_artists_keeping("ATL, Зараза", &["ATL, Зараза"]),
-            ["ATL", "Зараза"]
+            split_artists_keeping("Дельта, Сигма", &["Дельта, Сигма"]),
+            ["Дельта", "Сигма"]
         );
         assert_eq!(split_artists("A, B & C"), ["A", "B", "C"]);
         assert_eq!(split_artists("Земфира"), ["Земфира"]);
@@ -418,14 +418,14 @@ mod tests {
         );
         assert_eq!(d.unknown, None);
         // Owner beta (T7.6): a title tag repeating the file name, no artist tag → still unknown
-        // (the folder says nothing), but named as the file name means: «1000» by ATL, track 8.
+        // (the folder says nothing), but named as the file name means: «1000» by Дельта, track 8.
         let echo = Tags {
-            title: Some("8. ATL - 1000".into()),
+            title: Some("8. Дельта - 1000".into()),
             ..Tags::default()
         };
         let d = TagIdentify.identify(
             &echo,
-            "8. ATL - 1000.mp3",
+            "8. Дельта - 1000.mp3",
             &hints("_Unknown", "Музыка"),
             &info(200_000),
         );
@@ -439,7 +439,7 @@ mod tests {
             (
                 Some(UnknownReason::NoMetadata),
                 "1000",
-                &["ATL".to_string()][..],
+                &["Дельта".to_string()][..],
                 Some(8)
             )
         );
