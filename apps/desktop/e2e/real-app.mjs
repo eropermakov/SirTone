@@ -898,6 +898,42 @@ if (existsSync(corpus)) {
   );
   await page.getByRole("button", { name: "По году" }).click();
   await page.getByRole("menuitem", { name: "По названию" }).click();
+  // D-127 / T7.12: «Все треки» — every playable track in one list; the sort chip reorders it
+  // («По длительности» puts the shortest first) and a double click plays that row.
+  await page.getByRole("navigation").getByRole("button", { name: "Все треки" }).click();
+  const everyRow = page.getByRole("list", { name: "Все треки" }).locator("button[aria-pressed]");
+  await everyRow.first().waitFor({ timeout: 5000 });
+  const every = [];
+  for (let after = null; ; ) {
+    const p = await invoke("collection_tracks", { after, limit: 500 });
+    every.push(...p.rows);
+    if (!p.next) break;
+    after = p.next;
+  }
+  const shownRows = await everyRow.count();
+  await page.getByRole("button", { name: "По названию" }).click();
+  await page.getByRole("menuitem", { name: "По длительности" }).click();
+  const shortest = every.reduce((a, b) => (b.durationMs < a.durationMs ? b : a));
+  const everyFirst = await everyRow.first().locator(".t-body").first().textContent();
+  await everyRow.first().dblclick();
+  await sleep(800);
+  const allPlay = await invoke("playback_snapshot", {});
+  const allQueue = await invoke("queue_get", {});
+  check(
+    "«Все треки» (D-127): every track listed, «По длительности» first, double click plays the list",
+    every.length > 0 &&
+      shownRows >= Math.min(every.length, 8) &&
+      every
+        .filter((t) => t.durationMs === shortest.durationMs)
+        .some((t) => t.title === everyFirst) &&
+      allQueue.items.length === every.length &&
+      every.some((t) => t.id === allPlay.trackId && t.title === everyFirst),
+    `${every.length} tracks, ${shownRows} rows shown, first «${everyFirst}» (shortest «${shortest.title}»), queue ${allQueue.items.length}, playing ${allPlay.trackId}`,
+  );
+  await axeScreen("all tracks");
+  await page.getByRole("button", { name: "По длительности" }).click();
+  await page.getByRole("menuitem", { name: "По названию" }).click();
+  await invoke("playback_toggle", {});
   // T2.7: «Жанры» from tags — «Rock» and «rock» are one genre; its page lists its tracks.
   await page.getByRole("navigation").getByRole("button", { name: "Жанры" }).click();
   const genreList = page.getByRole("list", { name: "Жанры" });
