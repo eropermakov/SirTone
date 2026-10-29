@@ -36,6 +36,9 @@ impl TagReader for LoftyTags {
             mbid_release: mbid(tag.get_string(ItemKey::MusicBrainzReleaseId)),
             mbid_group: mbid(tag.get_string(ItemKey::MusicBrainzReleaseGroupId)),
             loudness: loudness(tag),
+            lang: tag
+                .get_string(ItemKey::Language)
+                .and_then(sirtone_core::ports::lang_from_tag),
         }
     }
 }

@@ -180,6 +180,10 @@ fn main() {
         })
         .setup(move |app| {
             specta.mount_events(app);
+            // A stray WM_CLOSE must not undo the single-instance lock (D-124).
+            if !sirtone_platform::instance::guard_lock_window(&app.config().identifier) {
+                tracing::warn!(target: "sirtone::startup", "single-instance window not guarded");
+            }
             if let Err(e) = tray::build(app.handle()) {
                 tracing::error!(target: "sirtone::startup", error = %e, "tray failed");
             }

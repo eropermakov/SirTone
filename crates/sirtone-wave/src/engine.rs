@@ -258,6 +258,10 @@ pub struct Universal {
     pub few: usize,
 }
 
+fn default_repeat_relax_share() -> f32 {
+    0.5
+}
+
 fn default_relax() -> Vec<String> {
     [
         "filters.atmosphere",
@@ -332,6 +336,11 @@ pub struct EngineParams {
     pub cold_conf_floor: f32,
     pub familiarity: Familiarity,
     pub repeat_soft_days: u32,
+    /// The repeat rule is breakable (D-119, MusicMaster's rule hierarchy): when the window and
+    /// the session leave nothing, this share of the eligible tracks — the least recently heard
+    /// or queued — comes back.
+    #[serde(default = "default_repeat_relax_share")]
+    pub repeat_relax_share: f32,
     pub signals: Signals,
     pub beta_half_life_days: f32,
     /// λ = n/(n + this) for the context levels (§8.2).
@@ -728,8 +737,12 @@ impl Catalog {
             c.beta.push(1.0);
             c.plays.push(t.play_count);
             c.conf.push(conf);
-            c.lang
-                .push(script_lang(t.title.as_deref(), t.artist_name.as_deref()));
+            // The language tag first (D-79), the script of title and artist otherwise.
+            c.lang.push(if t.lang != 0 {
+                t.lang
+            } else {
+                script_lang(t.title.as_deref(), t.artist_name.as_deref())
+            });
             c.weeks.push(t.plays_weeks);
             c.has_bpm.push(t.bpm.is_some());
             let heard = (t.play_count + t.skip_count).max(1) as f32;
@@ -1068,6 +1081,16 @@ pub struct Engine {
     /// The mode's hard filters (sleep, focus) apply; off for one rebuild when they leave nothing
     /// (a library without fitting tracks must still play, `05` §10.1 relaxation).
     mode_strict: bool,
+    /// The repeat window and «once per session» apply; off for one rebuild when they leave
+    /// nothing — a library shorter than the window must still play (D-119).
+    repeat_strict: bool,
+    /// The last batch needed the repeat rule broken (for `explain` and the log).
+    repeat_relaxed: bool,
+    /// Recency keys of the eligible tracks while the repeat rule is relaxed (reused).
+    recency: Vec<i64>,
+    /// «Never twice in a session» counts from this index of `session.queued`: 0, or — while
+    /// the repeat rule is relaxed — where the relaxed batch began.
+    queued_from: usize,
     /// Packing into a segment (§7.1): its time left when the next pick would start, and the
     /// allowed overrun; each pick takes its length off.
     segment: Option<SegmentPack>,
@@ -1142,6 +1165,10 @@ impl Engine {
             distance: None,
             vocals: Vocals::default(),
             mode_strict: true,
+            repeat_strict: true,
+            repeat_relaxed: false,
+            recency: Vec::with_capacity(n),
+            queued_from: 0,
             segment: None,
         }
     }
@@ -1166,6 +1193,11 @@ impl Engine {
         self.query = q;
         self.qs = Self::evaluate(&self.cfg, &self.cat, &self.query, now_ms);
         self.qs.relaxed.clone()
+    }
+
+    /// The last batch broke the repeat rule: the library is shorter than the window (D-119).
+    pub fn repeat_relaxed(&self) -> bool {
+        self.repeat_relaxed
     }
 
     /// The relaxation steps of the current query.
@@ -1329,10 +1361,27 @@ impl Engine {
             self.rebuild(ctx, not_now, novelty, now_ms);
             self.mode_strict = true;
         }
+        // The rule hierarchy when nothing passes (D-119, MusicMaster): first the sequencing
+        // (artist spacing, the energy jump) bends while unheard tracks remain; then the repeat
+        // rule — the least recently heard or queued come back. «никогда», disliked, «не сейчас»
+        // and «Для всех» never bend.
+        self.repeat_relaxed = false;
+        self.queued_from = 0;
         let mut out = Vec::with_capacity(n);
-        for _ in 0..n {
-            match self.pick(novelty) {
+        while out.len() < n {
+            let t = match self.pick(novelty, false) {
+                Some(t) => Some(t),
+                None => self.pick(novelty, true),
+            };
+            match t {
                 Some(t) => out.push(self.cat.id[t as usize]),
+                None if !self.repeat_relaxed => {
+                    self.repeat_relaxed = true;
+                    self.repeat_strict = false;
+                    self.rebuild(ctx, not_now, novelty, now_ms);
+                    self.repeat_strict = true;
+                    self.queued_from = self.session.queued.len();
+                }
                 None => break,
             }
         }
@@ -1460,16 +1509,52 @@ impl Engine {
         let sigma = e.taste_sigma * (0.5 + distance);
         let wt = self.taste.sample(&mut self.rng, sigma);
         let bias = self.taste.b;
-        let repeat_ms = i64::from(cfg.profile.sequencing.repeat_window_h) * 3600 * 1000;
         let soft_ms = i64::from(e.repeat_soft_days) * DAY_MS;
+        let strict_repeat = self.repeat_strict;
         // «Не сейчас» in this context bucket blocks for its shelf time (D-77).
         self.blocked.fill(false);
-        // Already queued in this session — never twice (the top K must not fill with them).
-        for &q in &self.session.queued {
+        // Already queued in this session — never twice (the top K must not fill with them),
+        // unless the repeat rule is relaxed: then queued counts as heard just now, in order.
+        // (The buffer is the engine's own: no allocation on the hot path.)
+        let mut recent = std::mem::take(&mut self.recency);
+        if !strict_repeat {
+            recent.clear();
+            recent.extend_from_slice(&self.cat.last_played);
+        }
+        let nq = self.session.queued.len() as i64;
+        for (k, &q) in self.session.queued.iter().enumerate() {
             if let Some(i) = self.cat.idx(q) {
-                self.blocked[i] = true;
+                if strict_repeat {
+                    self.blocked[i] = true;
+                } else {
+                    recent[i] = recent[i].max(now_ms - (nq - k as i64));
+                }
             }
         }
+        // The hard window; relaxed — the least recent share of what the other rules allow.
+        let repeat_cut = if strict_repeat {
+            now_ms - i64::from(cfg.profile.sequencing.repeat_window_h) * 3600 * 1000
+        } else {
+            let cat = &self.cat;
+            let mut keys: Vec<i64> = (0..cat.len())
+                .filter(|&t| {
+                    self.qs.pass[t]
+                        && !cat.never[t]
+                        && !self.blocked[t]
+                        && cat.mean(t) >= e.familiarity.never_return_mean
+                        && !(!self.query.exclude_genres.is_empty()
+                            && self.query.exclude_genres.contains(&cat.genre[t]))
+                })
+                .map(|t| recent[t])
+                .collect();
+            if keys.is_empty() {
+                i64::MIN
+            } else {
+                let share = e.repeat_relax_share.clamp(0.0, 1.0);
+                let k = ((keys.len() as f32 * share).ceil() as usize).clamp(1, keys.len()) - 1;
+                *keys.select_nth_unstable(k).1
+            }
+        };
         for row in not_now {
             if row.expires_ms > now_ms
                 && bucket_matches(&row.ctx_key, ctx)
@@ -1495,7 +1580,8 @@ impl Engine {
                     && self.query.exclude_genres.contains(&cat.genre[t]))
                 || self.blocked[t]
                 || cat.mean(t) < fam.never_return_mean
-                || now_ms - cat.last_played[t] < repeat_ms
+                || (strict_repeat && cat.last_played[t] > repeat_cut)
+                || (!strict_repeat && recent.get(t).is_some_and(|&r| r > repeat_cut))
             {
                 continue;
             }
@@ -1618,6 +1704,7 @@ impl Engine {
         for g in &mut self.buf {
             keep_top(g, e.top_k);
         }
+        self.recency = recent;
         let k = counted.max(1) as f32;
         self.last = Explained {
             wt,
@@ -1702,7 +1789,8 @@ impl Engine {
     }
 
     /// Stage 2: the group furthest behind its quota → Thompson + constraints → softmax.
-    fn pick(&mut self, novelty: f32) -> Option<u32> {
+    /// `loose` — the sequencing constraints (artist spacing, energy jump) bend (D-119).
+    fn pick(&mut self, novelty: f32, loose: bool) -> Option<u32> {
         let e = &self.cfg.engine;
         let seq = &self.cfg.profile.sequencing;
         let q = self.cfg.quotas(novelty);
@@ -1752,14 +1840,15 @@ impl Engine {
                                         .as_ref()
                                         .map_or(5, |r| r.spread)
                         });
-                        if ss.queued.contains(&cat.id[t])
-                            || ss.recent_artists.contains(&cat.artist[t])
+                        if ss.queued[self.queued_from.min(ss.queued.len())..].contains(&cat.id[t])
+                            || (!loose && ss.recent_artists.contains(&cat.artist[t]))
                             || spaced_out
                         {
                             continue;
                         }
                         let x = &cat.feat[t];
-                        if let Some(pe) = ss.prev_energy
+                        if !loose
+                            && let Some(pe) = ss.prev_energy
                             && (x[f::ENERGY] - pe).abs() > seq.max_energy_jump
                         {
                             continue;

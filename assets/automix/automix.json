@@ -1,5 +1,5 @@
 {
-  "_doc": "Automix ladder (T4.8, FR-PLAY-010, docs/04 §4.3 — copy of Mixxx Skip Silence, Plexamp/MPD/RadioBOSS envelope overlap, VirtualDJ/djay beatmatch). Times in ms. threshold_db: the overlap is where the envelope falls under LUFS − threshold (MPD −17 dB). natural_fade: a tail that drops ≥ drop_db over the last window_ms is mixed under, not faded. sharp_start_ms: B reaching the threshold that fast gets a fade-in. intensity: overlap bounds and the tempo tolerance for beatmatch (0 = no beatmatch). genre_blacklist_words: the words each blacklist key matches in a genre tag (normalised, Russian aliases included).",
+  "_doc": "Automix ladder (T4.8, FR-PLAY-010, docs/04 §4.3 — copy of Mixxx Skip Silence, Plexamp/MPD/RadioBOSS envelope overlap, VirtualDJ/djay beatmatch). Times in ms. threshold_db: the overlap is where the envelope falls under LUFS − threshold (MPD −17 dB). natural_fade: a tail that drops ≥ drop_db over the last window_ms is mixed under, not faded. sharp_start_ms: B reaching the threshold that fast gets a fade-in. intensity: overlap bounds and the tempo tolerance for beatmatch (0 = no beatmatch). genre_blacklist_words: the words each blacklist key matches in a genre tag (normalised, Russian aliases included). beatmatch.blend_energy / blend_genres: L3 with blending keys takes the «Blend» style (EQ-swap: the bass below swap_hz hands over at a bar line near the middle) when both tracks are that energetic or of such a genre; otherwise «Fade».",
   "threshold_db": 17.0,
   "natural_fade": { "drop_db": 6.0, "window_ms": 4000 },
   "sharp_start_ms": 500,
@@ -13,7 +13,29 @@
     "camelot_max": 1,
     "beats_min": 8,
     "beats_max": 32,
-    "blend_energy": 0.7
+    "blend_energy": 0.7,
+    "blend_genres": [
+      "electronic",
+      "electro",
+      "dance",
+      "house",
+      "techno",
+      "trance",
+      "edm",
+      "drum and bass",
+      "drum & bass",
+      "dnb",
+      "dubstep",
+      "breakbeat",
+      "disco",
+      "электрон",
+      "танц",
+      "хаус",
+      "техно",
+      "транс",
+      "диско"
+    ],
+    "swap_hz": 200
   },
   "manual": { "fade_out_ms": 300, "fade_in_ms": 100 },
   "mix_now": { "min_lead_ms": 1500 },

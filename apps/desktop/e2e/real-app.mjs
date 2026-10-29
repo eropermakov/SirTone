@@ -687,6 +687,63 @@ if (existsSync(corpus)) {
       reordered[1]?.track.id === afterDrop[0]?.track.id,
     reordered.map((e) => e.track.title).join(", "),
   );
+  // `06` «Импорт»: files from Explorer hovering over the window — «Отпустите, чтобы добавить»;
+  // it goes when they leave (Tauri's own drag events, as the webview gets them).
+  const dragEvent = (event) =>
+    page.evaluate(
+      (e) =>
+        window.__TAURI_INTERNALS__.invoke("plugin:event|emit", {
+          event: e,
+          payload: { paths: [], position: { x: 10, y: 10 } },
+        }),
+      event,
+    );
+  const dropShown = () =>
+    page
+      .getByText("Отпустите, чтобы добавить")
+      .evaluate((el) => getComputedStyle(el.closest("[aria-hidden]")).opacity);
+  await dragEvent("tauri://drag-enter");
+  await sleep(400);
+  const dropOn = await dropShown();
+  await dragEvent("tauri://drag-leave");
+  await sleep(400);
+  const dropOff = await dropShown();
+  check(
+    "files over the window: «Отпустите, чтобы добавить», gone when they leave",
+    dropOn === "1" && dropOff === "0",
+    `opacity ${dropOn} → ${dropOff}`,
+  );
+  // DESIGN.md Sidebar: hover > 500 ms — the details popover; «…» and the pencil on hover; the
+  // playing playlist — bars on its row.
+  await sideRoad.hover();
+  const tip = page.getByRole("tooltip").filter({ hasText: "Дорога" });
+  const tipShown = await tip
+    .waitFor({ timeout: 2000 })
+    .then(() => true)
+    .catch(() => false);
+  const tipText = tipShown ? await tip.innerText() : "";
+  const sideActions = await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Переименовать" })
+    .isVisible();
+  await page.getByRole("main").getByRole("button", { name: "Слушать", exact: true }).click();
+  await sleep(1500);
+  await page.mouse.move(600, 400);
+  const roadBars = await page
+    .getByRole("navigation")
+    .locator(".playing-bars")
+    .isVisible()
+    .catch(() => false);
+  const rowBars = await pRows
+    .first()
+    .locator(".playing-bars")
+    .isVisible()
+    .catch(() => false);
+  check(
+    "playing: bars on the sidebar playlist and in place of the row number; popover, «…»/pencil",
+    tipShown && tipText.includes("2 трека") && sideActions && roadBars && rowBars,
+    `popover ${tipShown} «${tipText.replace(/\s+/g, " ")}», actions ${sideActions}, bars ${roadBars}/${rowBars}`,
+  );
   const unknownBefore = (await invoke("library_status", {})).unknown;
   await page.getByRole("button", { name: "Неизвестные" }).click();
   await uRows.first().waitFor({ timeout: 5000 });
@@ -841,6 +898,42 @@ if (existsSync(corpus)) {
   );
   await page.getByRole("button", { name: "По году" }).click();
   await page.getByRole("menuitem", { name: "По названию" }).click();
+  // D-127 / T7.12: «Все треки» — every playable track in one list; the sort chip reorders it
+  // («По длительности» puts the shortest first) and a double click plays that row.
+  await page.getByRole("navigation").getByRole("button", { name: "Все треки" }).click();
+  const everyRow = page.getByRole("list", { name: "Все треки" }).locator("button[aria-pressed]");
+  await everyRow.first().waitFor({ timeout: 5000 });
+  const every = [];
+  for (let after = null; ; ) {
+    const p = await invoke("collection_tracks", { after, limit: 500 });
+    every.push(...p.rows);
+    if (!p.next) break;
+    after = p.next;
+  }
+  const shownRows = await everyRow.count();
+  await page.getByRole("button", { name: "По названию" }).click();
+  await page.getByRole("menuitem", { name: "По длительности" }).click();
+  const shortest = every.reduce((a, b) => (b.durationMs < a.durationMs ? b : a));
+  const everyFirst = await everyRow.first().locator(".t-body").first().textContent();
+  await everyRow.first().dblclick();
+  await sleep(800);
+  const allPlay = await invoke("playback_snapshot", {});
+  const allQueue = await invoke("queue_get", {});
+  check(
+    "«Все треки» (D-127): every track listed, «По длительности» first, double click plays the list",
+    every.length > 0 &&
+      shownRows >= Math.min(every.length, 8) &&
+      every
+        .filter((t) => t.durationMs === shortest.durationMs)
+        .some((t) => t.title === everyFirst) &&
+      allQueue.items.length === every.length &&
+      every.some((t) => t.id === allPlay.trackId && t.title === everyFirst),
+    `${every.length} tracks, ${shownRows} rows shown, first «${everyFirst}» (shortest «${shortest.title}»), queue ${allQueue.items.length}, playing ${allPlay.trackId}`,
+  );
+  await axeScreen("all tracks");
+  await page.getByRole("button", { name: "По длительности" }).click();
+  await page.getByRole("menuitem", { name: "По названию" }).click();
+  await invoke("playback_toggle", {});
   // T2.7: «Жанры» from tags — «Rock» and «rock» are one genre; its page lists its tracks.
   await page.getByRole("navigation").getByRole("button", { name: "Жанры" }).click();
   const genreList = page.getByRole("list", { name: "Жанры" });
@@ -1119,6 +1212,49 @@ if (existsSync(corpus)) {
   } else {
     check("Видео: skipped — no ffmpeg to make a test clip", true);
   }
+  // T7.10: «Титры» — picked from the menu, the 2D scene draws over the playing track (pixels
+  // change between two looks a second apart) at the display's pace.
+  await page.getByRole("button", { name: "Режим визуализации" }).click();
+  await page.getByRole("menuitem", { name: "Титры" }).click();
+  const titles = page.locator('canvas[data-testid="titles"]');
+  await titles.waitFor({ timeout: 10000 });
+  await sleep(2000);
+  const look = () =>
+    titles.evaluate((c) => {
+      const g = c.getContext("2d");
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      let lit = 0;
+      let sum = 0;
+      for (let i = 0; i < d.length; i += 64) {
+        const y = d[i] + d[i + 1] + d[i + 2];
+        if (y > 60) lit++;
+        sum = (sum + y * (i + 1)) % 1e9;
+      }
+      return { lit, sum, w: c.width };
+    });
+  const ti0 = await look();
+  const tiFps = await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        let n = 0;
+        const t0 = performance.now();
+        const tick = () => {
+          n++;
+          if (performance.now() - t0 < 2000) requestAnimationFrame(tick);
+          else resolve(n / 2);
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+  const ti1 = await look();
+  if (process.env.SMOKE_SHOTS) {
+    await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "t710-titles.png") });
+  }
+  check(
+    "Титры: the scene draws and moves over the playing track",
+    ti0.w > 0 && ti0.lit > 0 && ti1.lit > 0 && ti0.sum !== ti1.sum && tiFps >= 45,
+    `lit ${ti0.lit} → ${ti1.lit}, ${tiFps} rAF/s`,
+  );
   await invoke("settings_patch", { patch: { viz: { mode: "waves" } } });
   await page.locator('canvas[data-testid="waves"]').waitFor({ timeout: 10000 });
   await axeScreen("«Моя волна»");
@@ -1396,7 +1532,12 @@ if (existsSync(corpus)) {
   await invoke("playback_toggle", {});
   // T2.4: auto-detect — hardware + WebGL benchmark → a level, saved like a manual choice.
   await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
-  await page.getByRole("button", { name: "Определить автоматически" }).click();
+  // The one under «Производительность» (the weather has a button of the same name).
+  await page
+    .locator("div", { has: page.getByRole("heading", { name: "Производительность", exact: true }) })
+    .last()
+    .getByRole("button", { name: "Определить автоматически" })
+    .click();
   const detected = await page
     .getByText(/^Определено: /)
     .first()
@@ -2145,6 +2286,60 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
   );
   if ((await invoke("playback_snapshot", {})).state === "playing") {
     await invoke("playback_toggle", {});
+  }
+
+  // D-79 / D-126 with real files and the real tag reader: a language tag (ID3 TLAN «rus») sets
+  // `track.lang`; «Король и Шут» stays one artist.
+  if (spawnSync("ffmpeg", ["-version"]).status === 0) {
+    const langDir = join(dataDir, "lang-src");
+    mkdirSync(langDir, { recursive: true });
+    spawnSync("ffmpeg", [
+      "-y",
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=330:duration=20,volume=-30dB",
+      "-c:a",
+      "libmp3lame",
+      "-b:a",
+      "64k",
+      "-metadata",
+      "title=Лесник",
+      "-metadata",
+      "artist=Король и Шут",
+      "-metadata",
+      "language=rus",
+      join(langDir, "lesnik.mp3"),
+    ]);
+    await invoke("import_paths", { paths: [langDir] });
+    const langRow = () => {
+      const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
+      try {
+        return db
+          .prepare(
+            `SELECT t.lang, (SELECT group_concat(a.name, '|') FROM track_artist ta
+              JOIN artist a ON a.id = ta.artist_id WHERE ta.track_id = t.id) AS artists
+             FROM track t WHERE t.title = 'Лесник'`,
+          )
+          .get();
+      } finally {
+        db.close();
+      }
+    };
+    let lr = langRow();
+    for (let i = 0; i < 40 && !lr; i++) {
+      await sleep(250);
+      lr = langRow();
+    }
+    check(
+      "language tag and a band named «… и …»: lang ru, one artist «Король и Шут»",
+      lr?.lang === "ru" && lr?.artists === "Король и Шут",
+      JSON.stringify(lr),
+    );
+  } else {
+    check("language tag: skipped — no ffmpeg to make the file", true);
   }
 
   // AT-12 (T3.11, FR-IMP-007): a 3-hour mix lands in «Неизвестные» as «возможно, не трек»;

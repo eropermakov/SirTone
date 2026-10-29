@@ -108,6 +108,9 @@ pub struct MixSpec {
     /// L3: A's rate held after the ramp (input per output; 1 — no stretch) and the ramp length.
     pub rate: f64,
     pub ramp_ms: u64,
+    /// «Blend» (EQ-swap, `04` §4.3): below `.0` Hz A sounds until `.1` ms of the overlap (output
+    /// time), B after; `None` — «Fade».
+    pub eq_swap: Option<(f32, u64)>,
 }
 
 impl MixSpec {
@@ -128,6 +131,7 @@ impl MixSpec {
             out_ms: a_stop_ms.saturating_sub(a_out_ms),
             rate: 1.0,
             ramp_ms: 0,
+            eq_swap: None,
         }
     }
 }
@@ -359,6 +363,8 @@ pub(crate) struct Mixing {
     buf: Vec<f32>,
     /// L3: A goes through the stretcher (T4.9c).
     pub(crate) st: Option<StretchRun>,
+    /// L3 «Blend»: the bass hands over at a bar line (`04` §4.3).
+    pub(crate) swap: Option<crate::swap::EqSwap>,
 }
 
 /// A stretched through the overlap (T4.9c, D-100): primed with A's history, warmed up at rate 1
@@ -452,6 +458,7 @@ impl Mixing {
             b_in: 0,
             buf: Vec::new(),
             st: None,
+            swap: None,
         }
     }
 }
@@ -528,11 +535,19 @@ impl Engine {
             } else {
                 Duration::from_millis(50)
             };
-            match rx.recv_timeout(wait) {
+            let got = rx.recv_timeout(wait);
+            // A step slower than this lets the 200 ms ring run dry: logged with what it was.
+            let t0 = Instant::now();
+            let what = match got {
                 Ok(EngineCmd::Shutdown) | Err(RecvTimeoutError::Disconnected) => break,
-                Ok(cmd) => self.handle(cmd),
-                Err(RecvTimeoutError::Timeout) => {}
-            }
+                Ok(cmd) => {
+                    let name = cmd_name(&cmd);
+                    self.handle(cmd);
+                    name
+                }
+                Err(RecvTimeoutError::Timeout) => "",
+            };
+            slow(t0, "command", what);
             if self.shared.failed.load(Ordering::Acquire) {
                 self.on_device_lost();
             }
@@ -557,18 +572,23 @@ impl Engine {
                 self.default_changed_at = None;
                 self.on_default_changed();
             }
+            let t1 = Instant::now();
             if let Err(e) = self.pump() {
                 self.fail(e);
             }
+            slow(t1, "pump", "");
+            let t2 = Instant::now();
             self.check_end();
             if self.state == PlayState::Playing && self.last_snapshot.elapsed() >= SNAPSHOT_EVERY {
                 self.emit_snapshot();
             }
+            slow(t2, "snapshot", "");
         }
         self.output = None;
     }
 
     fn handle(&mut self, cmd: EngineCmd) {
+        // (`cmd_name` and `slow` below: diagnostics of a stalled engine thread, T7.2.)
         match cmd {
             EngineCmd::Load {
                 path,
@@ -1015,6 +1035,9 @@ impl Engine {
                     let overlap = if st.is_some() { out } else { stop - at };
                     let mut mix = Mixing::new(a, overlap, m.a_fade, m.b_fade);
                     mix.st = st;
+                    mix.swap = m.eq_swap.map(|(hz, at_ms)| {
+                        crate::swap::EqSwap::new(fmt.rate, ch, hz, at_ms * rate / 1000)
+                    });
                     self.mixing = Some(mix);
                     self.deck = Some(b);
                     self.next_mix = None;
@@ -1022,7 +1045,7 @@ impl Engine {
                     self.next_attached = false;
                     self.next_source = None;
                     self.next_failed = false;
-                    tracing::info!(target: "sirtone::audio", out_ms = m.out_ms, stretch = m.rate, "mix");
+                    tracing::info!(target: "sirtone::audio", out_ms = m.out_ms, stretch = m.rate, blend = m.eq_swap.is_some(), "mix");
                     self.emit_snapshot();
                 }
                 Err(error) => {
@@ -1153,6 +1176,9 @@ impl Engine {
         }
         let pos = self.position_ms();
         self.output = None;
+        // The new stream starts empty until the seek refills it: a planned gap, not an
+        // underrun (as for a seek).
+        self.shared.starving_ok.store(true, Ordering::Relaxed);
         match self.ensure_output().and_then(|_| self.seek(pos)) {
             Ok(()) => {
                 tracing::info!(target: "sirtone::audio", "output reopened at the same position");
@@ -1370,7 +1396,11 @@ pub(crate) fn mix_fill(
                     None if a_done => 0.0,
                     None => m.a.ready[i],
                 };
-                m.buf[i] = a * ga + m.buf[i] * gb;
+                let (a, b) = match m.swap.as_mut() {
+                    Some(s) => s.apply(c, m.mixed + f as u64, a, m.buf[i]),
+                    None => (a, m.buf[i]),
+                };
+                m.buf[i] = a * ga + b * gb;
             }
         }
         if let Some(e) = eq.as_deref_mut() {
@@ -1625,6 +1655,42 @@ fn map_channels(input: &[f32], in_ch: usize, mask: u64, out_ch: usize, out: &mut
                 _ => 0.0,
             });
         }
+    }
+}
+
+/// A step of the engine loop that took long enough to starve the output ring (T7.2 soak: the
+/// underruns come in bursts — this names the step).
+fn slow(t: Instant, phase: &str, cmd: &str) {
+    let ms = t.elapsed().as_millis();
+    if ms >= SLOW_STEP_MS {
+        tracing::warn!(target: "sirtone::audio", phase, cmd, ms = ms as u64, "slow engine step");
+    }
+}
+
+const SLOW_STEP_MS: u128 = 80;
+
+fn cmd_name(c: &EngineCmd) -> &'static str {
+    match c {
+        EngineCmd::Load { .. } => "Load",
+        EngineCmd::Play => "Play",
+        EngineCmd::Pause => "Pause",
+        EngineCmd::Toggle => "Toggle",
+        EngineCmd::Seek { .. } => "Seek",
+        EngineCmd::SetVolume { .. } => "SetVolume",
+        EngineCmd::SetDuck { .. } => "SetDuck",
+        EngineCmd::Sfx { .. } => "Sfx",
+        EngineCmd::SetSfxVolume { .. } => "SetSfxVolume",
+        EngineCmd::SetSleepGain { .. } => "SetSleepGain",
+        EngineCmd::SetWarm { .. } => "SetWarm",
+        EngineCmd::SetNext { .. } => "SetNext",
+        EngineCmd::SetGain { .. } => "SetGain",
+        EngineCmd::SetEq { .. } => "SetEq",
+        EngineCmd::SetLimiter { .. } => "SetLimiter",
+        EngineCmd::SetPauseOnDeviceLoss { .. } => "SetPauseOnDeviceLoss",
+        EngineCmd::SetOutput { .. } => "SetOutput",
+        EngineCmd::DefaultDeviceChanged => "DefaultDeviceChanged",
+        EngineCmd::DeviceLost { .. } => "DeviceLost",
+        EngineCmd::Shutdown => "Shutdown",
     }
 }
 

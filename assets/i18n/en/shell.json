@@ -1,5 +1,6 @@
 {
   "proto": "",
+  "drop": { "title": "", "text": "" },
   "empty": {
     "wave": {
       "title": "",
@@ -16,6 +17,10 @@
     "albums": {
       "title": "",
       "text": ""
+    },
+    "tracks": {
+      "title": "All tracks",
+      "text": "All your music in one list will appear here — add a music folder."
     },
     "playlists": {
       "title": "",

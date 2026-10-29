@@ -11,7 +11,8 @@ import { PresetsDialog } from "./PresetsDialog";
 import { useVizEnv, type VizMode } from "./useVizEnv";
 import { useVideoControl, videoControl } from "./videoControl";
 
-const MODES: VizMode[] = ["waves", "milkdrop", "video"];
+const MODES: VizMode[] = ["waves", "milkdrop", "video", "titles"];
+const TITLES_STYLES = ["auto", "shock", "poster"] as const;
 const MOODS = ["any", "happy", "energetic", "calm", "sad"] as const;
 const btn =
   "flex size-10 items-center justify-center rounded-full text-icon hover:bg-bg-hover aria-pressed:text-accent-text";
@@ -46,6 +47,21 @@ export function VizToolbar() {
         label: t("viz.presets.open"),
         icon: ListMusic,
         onSelect: () => setPresets(true),
+      },
+    );
+  }
+  if (mode === "titles") {
+    items.push(
+      { separator: true },
+      {
+        id: "titles-style",
+        label: t("viz.titles.style"),
+        submenu: TITLES_STYLES.map((st) => ({
+          id: `titles-${st}`,
+          label: t(`viz.titles.styles.${st}`),
+          icon: (prefs?.titlesStyle ?? "auto") === st ? Check : undefined,
+          onSelect: () => void patchSettings({ viz: { titles_style: st } }).catch(() => {}),
+        })),
       },
     );
   }

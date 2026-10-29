@@ -18,6 +18,17 @@ export type Sfx =
   | "focus_work_end"
   | "focus_break_end";
 
+/** Press feedback is silent by the owner's request (it got in the way); event sounds stay. */
+const SILENT: ReadonlySet<Sfx> = new Set([
+  "click",
+  "toggle_on",
+  "toggle_off",
+  "queue_add",
+  "drop",
+  "mode",
+]);
+
 export function sfx(name: Sfx): void {
+  if (SILENT.has(name)) return;
   if (isTauri()) void commands.uiSound(name);
 }

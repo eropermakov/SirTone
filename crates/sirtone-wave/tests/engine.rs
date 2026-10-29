@@ -962,3 +962,63 @@ fn event_waves_keep_the_tone_and_spread_the_few_direct_matches() {
     assert_eq!(pos.len(), 2, "both New Year tracks play: {pos:?}");
     assert!(pos[1] - pos[0] >= 5, "spread: {pos:?}");
 }
+
+/// D-119: a library shorter than the 24 h repeat window keeps playing — the repeat rule is the
+/// one that breaks (least recently heard first), «никогда» never does.
+#[test]
+fn a_short_library_never_runs_dry() {
+    let tracks = synth::library(14, NOW, 0.5, 21);
+    let never: std::collections::HashSet<i64> =
+        tracks.iter().filter(|t| t.never).map(|t| t.id).collect();
+    let mut e = Engine::new(
+        Config::builtin().expect("assets"),
+        &tracks,
+        &synth::history(&tracks, NOW),
+        NOW,
+        5,
+    );
+    let mut history: Vec<i64> = Vec::new();
+    let mut now = NOW;
+    let mut relaxed = 0;
+    // 2 hours of 3-minute tracks, two at a time like the app's refill.
+    for _ in 0..20 {
+        let ids = e.next(&ctx(Daypart::Evening), &[], 0.5, 2, now);
+        assert!(
+            !ids.is_empty(),
+            "the wave ran dry after {} tracks",
+            history.len()
+        );
+        relaxed += usize::from(e.repeat_relaxed());
+        for id in ids {
+            assert!(!never.contains(&id), "«никогда» {id} in the queue");
+            history.push(id);
+            e.played(id, now);
+            now += 180_000;
+        }
+    }
+    let heard: std::collections::HashSet<i64> = history.iter().copied().collect();
+    let first = heard.len();
+    // Every track that can play is heard once before any comes back.
+    let opening: std::collections::HashSet<i64> = history.iter().take(first).copied().collect();
+    assert_eq!(
+        opening.len(),
+        first,
+        "a repeat before the rest was heard: {history:?}"
+    );
+    // A repeat is from the least recently heard half.
+    for (i, id) in history.iter().enumerate() {
+        if let Some(prev) = history[..i].iter().rposition(|h| h == id) {
+            let between: std::collections::HashSet<i64> =
+                history[prev + 1..i].iter().copied().collect();
+            assert!(
+                between.len() + 1 >= first.div_ceil(2),
+                "{id} came back after only {} others",
+                between.len()
+            );
+        }
+    }
+    assert!(
+        relaxed > 0,
+        "the library was never exhausted — the test proves nothing"
+    );
+}

@@ -1,0 +1,105 @@
+{
+  "schema": "sirtone.titles/1",
+  "_note": "Mode «Титры» (FR-VIZ-012, D-122, docs/01a §B.5, docs/06 §7.8). Colours, timings and thresholds are the reference's hand-sampled ORIENTATION values — TEMPORARY until the owner's tuning. fps/quality by performance level 1…4. Unit sizes are fractions of the frame height.",
+  "fps": { "1": 12, "2": 24, "3": 24, "4": 24 },
+  "pixel_scale": { "1": 0.5, "2": 0.75, "3": 1, "4": 1 },
+  "quality": {
+    "1": { "grain": false, "halftone": false, "glitch": false, "flicker": false },
+    "2": { "grain": true, "halftone": false, "glitch": false, "flicker": false },
+    "3": { "grain": true, "halftone": true, "glitch": true, "flicker": true },
+    "4": { "grain": true, "halftone": true, "glitch": true, "flicker": true }
+  },
+  "card": {
+    "min_s": 3,
+    "max_s": 5,
+    "beats_per_bar": 4,
+    "enter_frames": [2, 4],
+    "fallback_bpm": 120
+  },
+  "acts": {
+    "prologue_until": 0.12,
+    "climax_from": 0.8,
+    "density": { "prologue": 0.15, "ramp": 0.45, "climax": 0.8 },
+    "energy_gain": 0.5
+  },
+  "rest": { "energy_below": 0.06, "hold_ms": 600 },
+  "onset": {
+    "ema": 0.94,
+    "ratio": 1.35,
+    "floor": 0.05,
+    "rise": 0.04,
+    "min_gap_ms": 130,
+    "kick_ms": 160,
+    "snare_ms": 120
+  },
+  "step": { "max_hz": 2.5 },
+  "flash": { "min_delta": 0.1, "min_area": 0.25 },
+  "auto": { "bpm_split": 108, "arousal_split": 0.5 },
+  "text": { "xscale_wide": 1.25, "xscale_narrow": 0.6, "role_size": 0.026, "max_lines": 3 },
+  "scrim": { "shock": 0.62, "poster": 0.56, "auto": 0.62 },
+  "japan": {
+    "roles": {
+      "title": "曲",
+      "artist": "歌手",
+      "tempo": "拍子",
+      "mood": "気分",
+      "album": "盤",
+      "year": "年",
+      "genre": "種類"
+    },
+    "words": [
+      "音楽",
+      "夜明け",
+      "夢",
+      "光",
+      "風",
+      "都市",
+      "未来",
+      "心",
+      "電脳",
+      "静寂",
+      "鼓動",
+      "夜の街"
+    ],
+    "tags": [
+      "オープニング",
+      "ミュージック",
+      "ネオン",
+      "リズム",
+      "ナイト",
+      "サウンド",
+      "シティ",
+      "ドリーム"
+    ],
+    "seals": ["音", "夜", "夢", "楽", "響", "光"],
+    "numerals": ["〇", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"],
+    "episode": ["第", "幕"],
+    "column_size": 0.075,
+    "tag_size": 0.038,
+    "seal_size": 0.11
+  },
+  "styles": {
+    "shock": {
+      "field": "#FCEE0A",
+      "ink": "#0B0B0B",
+      "mass": "#0B3540",
+      "texture": "#19C3C8",
+      "accents": ["#FF2D8A", "#6A2BD9", "#FF4A1C"],
+      "gradients": [["#2D5BFF", "#FF8A1C"], ["#2D5BFF", "#FF2D8A"], ["#6A2BD9", "#FF4A1C"]],
+      "marker": "#E0145A",
+      "text_on_field": "#0B0B0B",
+      "slits": { "angle_deg": 35, "max_area": 0.2 },
+      "ink_coverage": 0.4
+    },
+    "poster": {
+      "field": "#3A3A3A",
+      "grays": ["#8C8C8C", "#C9C9C9", "#161616"],
+      "frame_steps": ["#F5E10F", "#F28C00", "#E3241C"],
+      "text": "#5EF0C2",
+      "pulse": "#FF2E6E",
+      "white": "#FFFFFF",
+      "frame_width": 0.022,
+      "grain": 0.07
+    }
+  }
+}

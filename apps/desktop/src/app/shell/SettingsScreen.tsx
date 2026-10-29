@@ -45,6 +45,7 @@ import { Slider } from "@/shared/ui/Slider";
 import { Switch } from "@/shared/ui/Switch";
 import { FX_TYPES, type FxType, isFxType } from "@/shared/viz/fxPlan";
 import EQ_PRESETS_JSON from "../../../../../assets/eq/presets.json";
+import { openHelp } from "./HelpDialog";
 import { LicensesDialog } from "./LicensesDialog";
 
 type Props = {
@@ -220,6 +221,9 @@ export function SettingsScreen({
               {t("onboarding.again")}
             </Button>
           )}
+          <Button variant="ghost" onClick={openHelp}>
+            {t("help.button")}
+          </Button>
           <Button variant="ghost" onClick={() => setLicenses(true)}>
             {t("licenses.button")}
           </Button>
@@ -480,6 +484,12 @@ export function PerformanceSection() {
     Promise.all([perfHardware(), benchmark()])
       .then(([hw, median]) => {
         const l = score(hw, median);
+        // Diagnostics for the weak-hardware smoke test (T7.1).
+        (window as unknown as { __sirtoneBench?: unknown }).__sirtoneBench = {
+          hw,
+          median,
+          level: l,
+        };
         choose(l);
         notify(t("settingsPerf.detected", { level: levels[l] ?? "" }));
       })
@@ -1229,7 +1239,7 @@ function SfxSection() {
               valueText={t("settingsDuck.pct", { v: Math.round(s.volume * 100) })}
               onCommit={(v) => {
                 save({ ...s, volume: Math.round(v * 20) / 20 });
-                sfx("click");
+                sfx("import_done");
               }}
               className="flex-1"
             />

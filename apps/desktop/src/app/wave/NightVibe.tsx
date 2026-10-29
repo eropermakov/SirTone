@@ -7,6 +7,7 @@ import { nightSet } from "@/shared/ipc/viz";
 import { cn } from "@/shared/lib/utils";
 import { ForwardIcon, PlayPauseIcon, RewindIcon } from "@/shared/ui/TransportIcons";
 import { WAVES } from "@/shared/viz/palette";
+import { useVizEnv } from "./useVizEnv";
 import { VizBackground } from "./VizBackground";
 
 /**
@@ -75,6 +76,8 @@ export function NightVibe({
   }, [onExit]);
 
   const sleepEnded = useSleepStatus().s.phase === "ended";
+  // «Титры» have bright flat fields (D-122): the title and the buttons get a dark foot under them.
+  const titles = useVizEnv().prefs?.mode === "titles";
 
   return createPortal(
     <div
@@ -96,6 +99,12 @@ export function NightVibe({
           transitionDuration: `${WAVES.sleep.black_ms}ms`,
         }}
       />
+      {titles && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-linear-to-t from-black/80 to-transparent"
+        />
+      )}
       {player ? (
         <div className="absolute inset-x-0 bottom-12 flex flex-col items-center gap-6 px-8 text-center">
           <div className="flex max-w-3xl flex-col gap-1">

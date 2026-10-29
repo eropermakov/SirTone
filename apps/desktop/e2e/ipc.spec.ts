@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 
 /**
@@ -88,6 +89,15 @@ async function mockTauri(page: Page) {
             return 1;
           case "viz_stop":
             return null;
+          case "queue_get":
+            return {
+              items: [],
+              position: 0,
+              repeat: "off",
+              shuffle: false,
+              autoplay: null,
+              playlist: null,
+            };
           case "track_tags":
             return [];
           // Screens with a collection ask; without data the UI shows its fallbacks.
@@ -114,6 +124,34 @@ async function mockTauri(page: Page) {
               off: { season: false, context: false, event: false, taste: false },
             };
           case "wave_set_off":
+            return null;
+          case "collection_genres":
+            return [{ key: "rock", name: "Rock", tracks: 3 }];
+          case "collection_tracks": {
+            // «Все треки» (D-127): two keyset pages by title, as Rust sends them.
+            const row = (
+              id: number,
+              title: string,
+              artists: string,
+              album: string | null,
+              s: number,
+            ) => ({
+              id,
+              title,
+              artists,
+              album,
+              durationMs: s * 1000,
+              albumId: album ? id : null,
+              artistId: id,
+            });
+            return args.after == null
+              ? {
+                  rows: [row(3, "Арфа", "Яблоко", "Сад", 240), row(1, "Берег", "Бриз", null, 95)],
+                  next: { key: "берег", id: 1 },
+                }
+              : { rows: [row(2, "Вьюга", "Аврора", "Зима", 180)], next: null };
+          }
+          case "play_tracks":
             return null;
           case "bt_devices":
             return [
@@ -781,4 +819,141 @@ test("«Лицензии»: the font, models and every package with its text (T6
   await list.getByRole("button", { name: /Шрифт Geologica/ }).click();
   await expect(list).toContainText("SIL OPEN FONT LICENSE");
   await expect(list.getByRole("button", { name: /serde 1\.0/ })).toBeVisible();
+});
+
+test("WCAG AA on the new UI: wave screen, dialogs, menus (T7.5)", async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 12,
+      artists: 3,
+      albums: 2,
+      unknown: 0,
+      durationSec: 3000,
+      bytes: 1,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+    w.__mockEvent = { id: "halloween", daysToPeak: 5, strong: true, atmospheric: false };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await expect(page.locator("footer").getByText("Mock track")).toBeVisible();
+  await emit(page, "playback-snapshot", {
+    state: "playing",
+    trackId: 7,
+    title: "Mock track",
+    positionMs: 1000,
+    durationMs: 200000,
+    volume: 0.5,
+    waveProfile: "my_wave",
+  });
+  const settled = () =>
+    page.evaluate(() =>
+      Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))),
+    );
+  const check = async (where: string) => {
+    await settled();
+    const r = await new AxeBuilder({ page }).analyze();
+    const bad = r.violations.filter((v) => v.impact === "critical" || v.impact === "serious");
+    expect(bad.map((v) => `${where}: ${v.id} — ${v.help} (${v.nodes[0]?.target})`)).toEqual([]);
+  };
+  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await expect(page.getByTestId("wave-chips")).toBeVisible();
+  await check("wave");
+  await page.getByRole("button", { name: /^Настроить/ }).click();
+  await page.getByRole("button", { name: "Для знатоков" }).click();
+  await check("setup");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Bluetooth", exact: true }).click();
+  await check("bluetooth menu");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
+  await check("settings");
+  await page.getByRole("button", { name: "Лицензии", exact: true }).click();
+  await check("licenses");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Экспортировать всю медиатеку" }).click();
+  await check("export");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("export-dialog")).toHaveCount(0);
+  await page.keyboard.press("F1");
+  await expect(page.getByTestId("help")).toBeVisible();
+  await check("help");
+});
+
+test("«Справка»: F1 and Settings → «Справка», one section at a time (T7.8)", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("/");
+  await expect(page.locator("footer")).toBeVisible();
+  await page.keyboard.press("F1");
+  const help = page.getByTestId("help");
+  await expect(help).toContainText("Перетащите папку");
+  await help.getByRole("button", { name: "Клавиши" }).click();
+  await expect(help.getByRole("button", { name: "Клавиши" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(help).toContainText("Ctrl+Alt+Пробел");
+  await page.keyboard.press("Escape");
+  await expect(help).toHaveCount(0);
+  await page.getByRole("button", { name: "Настройки", exact: true }).first().click();
+  await page.getByRole("button", { name: "Справка", exact: true }).click();
+  await expect(help).toContainText("Перетащите папку");
+});
+
+test("«Все треки»: the sidebar opens every track; sort and play the sorted list (D-127)", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 3,
+      artists: 3,
+      albums: 2,
+      unknown: 0,
+      durationSec: 515,
+      bytes: 300,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Все треки", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Все треки" })).toBeVisible();
+  const list = page.getByRole("list", { name: "Все треки" });
+  const titles = () => list.locator("li .t-body").allTextContents();
+  // Both pages arrived, in the server's title order.
+  await expect.poll(titles).toEqual(["Арфа", "Берег", "Вьюга"]);
+  expect((await calls(page, "collection_tracks")).map((c) => c.args)).toEqual([
+    { after: null, limit: 500 },
+    { after: { key: "берег", id: 1 }, limit: 500 },
+  ]);
+
+  await page.getByRole("button", { name: "По названию" }).click();
+  await page.getByRole("menuitem", { name: "По длительности" }).click();
+  await expect.poll(titles).toEqual(["Берег", "Вьюга", "Арфа"]);
+  // The same option again reverses (Apple Music, F-34).
+  await page.getByRole("button", { name: "По длительности" }).click();
+  await page.getByRole("menuitem", { name: "По длительности" }).click();
+  await expect.poll(titles).toEqual(["Арфа", "Вьюга", "Берег"]);
+  await page.getByRole("button", { name: "По длительности" }).click();
+  await page.getByRole("menuitem", { name: "По исполнителю" }).click();
+  await expect.poll(titles).toEqual(["Вьюга", "Берег", "Арфа"]);
+
+  // Double click plays the sorted list from that row.
+  await list.getByRole("button", { name: /Берег/ }).dblclick();
+  await expect
+    .poll(async () => (await calls(page, "play_tracks")).at(-1)?.args)
+    .toEqual({ ids: [2, 1, 3], start: 1, context: "collection", playlist: null });
+  await page.locator("main").getByRole("button", { name: "Слушать", exact: true }).click();
+  await expect
+    .poll(async () => (await calls(page, "play_tracks")).at(-1)?.args)
+    .toEqual({ ids: [2, 1, 3], start: 0, context: "collection", playlist: null });
 });

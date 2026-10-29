@@ -169,6 +169,9 @@ pub fn render_mix(
     };
     let mut mix = Mixing::new(da, overlap, m.a_fade, m.b_fade);
     mix.st = st;
+    mix.swap = m.eq_swap.map(|(hz, at_ms)| {
+        crate::swap::EqSwap::new(fmt.rate, fmt.channels.max(1), hz, at_ms * rate / 1000)
+    });
     while !mix_fill(&mut mix, &mut db, fmt, &mut prod, &shared, true, None)? {
         drain(&mut cons, &mut out);
     }
@@ -436,6 +439,7 @@ mod tests {
                 out_ms: out.round() as u64,
                 rate: r,
                 ramp_ms: ramp.round() as u64,
+                eq_swap: None,
             };
             let y = render_mix(&a, &b, spec, fmt).unwrap();
             let start = spec.a_out_ms as f64 / 1000.0;
@@ -478,6 +482,100 @@ mod tests {
             assert!(
                 entry <= before * 1.05 + 1e-3,
                 "{ta}→{tb}: entry step {entry} vs {before}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// D-125 «Blend» through the engine's own overlap (`mix_fill`), plain and stretched: A's bass
+    /// (55 Hz) sounds before the swap and is gone after it, B's (80 Hz) the other way round; the
+    /// swap itself steps no more than the tones do.
+    #[test]
+    fn blend_hands_the_bass_over_in_the_mixer() {
+        let dir = std::env::temp_dir().join(format!("sirtone-blend-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let fmt = DeviceFormat {
+            rate: 48_000,
+            channels: 2,
+        };
+        let sine = |name: &str, hz: f64| {
+            let n = 30 * 48_000;
+            let mut x = vec![0f32; n * 2];
+            for i in 0..n {
+                let v = (0.4 * (std::f64::consts::TAU * hz * i as f64 / 48_000.0).sin()) as f32;
+                x[i * 2] = v;
+                x[i * 2 + 1] = v;
+            }
+            let p = dir.join(name);
+            std::fs::write(&p, wav_bytes(&x, fmt)).unwrap();
+            p
+        };
+        let (a, b) = (sine("a.wav", 55.0), sine("b.wav", 80.0));
+        // Amplitude of `hz` over output seconds [from, to) (Goertzel, left channel).
+        let level = |y: &[f32], hz: f64, from: f64, to: f64| {
+            let k = 2.0 * (std::f64::consts::TAU * hz / 48_000.0).cos();
+            let (mut s1, mut s2) = (0.0f64, 0.0f64);
+            let (i0, i1) = ((from * 48_000.0) as usize, (to * 48_000.0) as usize);
+            for i in i0..i1 {
+                let s0 = f64::from(y[i * 2]) + k * s1 - s2;
+                s2 = s1;
+                s1 = s0;
+            }
+            (s1 * s1 + s2 * s2 - k * s1 * s2).sqrt() * 2.0 / (i1 - i0) as f64
+        };
+        for rate in [1.0, 1.03] {
+            let spec = crate::engine::MixSpec {
+                a_out_ms: 20_000,
+                a_stop_ms: 28_000,
+                b_start_ms: 0,
+                a_fade: false,
+                b_fade: false,
+                out_ms: 7_000,
+                rate,
+                ramp_ms: if rate == 1.0 { 0 } else { 1_000 },
+                eq_swap: Some((200.0, 3_500)),
+            };
+            let spec = if rate == 1.0 {
+                crate::engine::MixSpec {
+                    out_ms: 8_000,
+                    eq_swap: Some((200.0, 4_000)),
+                    ..spec
+                }
+            } else {
+                spec
+            };
+            let y = render_mix(&a, &b, spec, fmt).unwrap();
+            let swap = 20.0 + spec.eq_swap.unwrap().1 as f64 / 1000.0;
+            let (a_pre, b_pre) = (
+                level(&y, 55.0, swap - 3.0, swap - 0.5),
+                level(&y, 80.0, swap - 3.0, swap - 0.5),
+            );
+            let (a_post, b_post) = (
+                level(&y, 55.0, swap + 0.5, swap + 3.0),
+                level(&y, 80.0, swap + 0.5, swap + 3.0),
+            );
+            eprintln!("blend rate {rate}: A {a_pre:.3} → {a_post:.3}, B {b_pre:.3} → {b_post:.3}");
+            assert!(
+                a_pre > 0.3 && b_pre < 0.03,
+                "rate {rate}: before A {a_pre} B {b_pre}"
+            );
+            assert!(
+                a_post < 0.03 && b_post > 0.3,
+                "rate {rate}: after A {a_post} B {b_post}"
+            );
+            let at = |t: f64| (t * 48_000.0) as usize * 2;
+            let step = |x: &[f32]| {
+                x.as_chunks::<2>()
+                    .0
+                    .windows(2)
+                    .map(|w| (w[1][0] - w[0][0]).abs())
+                    .fold(0f32, f32::max)
+            };
+            let calm = step(&y[at(swap - 2.0)..at(swap - 1.0)]);
+            let jump = step(&y[at(swap - 0.05)..at(swap + 0.05)]);
+            assert!(
+                jump <= calm * 2.0 + 1e-3,
+                "rate {rate}: swap step {jump} vs {calm}"
             );
         }
         let _ = std::fs::remove_dir_all(&dir);

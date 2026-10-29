@@ -206,6 +206,8 @@
 - **S131** Spotify, сортировка медиатеки: https://support.spotify.com/ug-sw/article/sort-and-filter · https://community.spotify.com/t5/Your-Library/New-Your-Library-view-iOS-amp-Android/td-p/5196161 ✔/○
 - **S132** Apple Music, «Sort By» (iOS 16): https://macrumors.com/how-to/sort-playlists-apple-music · https://nerdschalk.com/how-to-sort-playlists-in-apple-music-on-ios-16/ ○
 - **S133** Apple Music (Mac), колонка «Жанры»: https://support.apple.com/en-gb/guide/music/muscde0b85e0/mac ✔
+- **S146** Apple Music (Mac), раздел «Песни» медиатеки и сортировка по колонкам: https://support.apple.com/guide/music/mus53d258611/mac ✔
+- **S147** Windows Media Player, библиотека «по альбомам, исполнителям, жанрам или просто списком всей музыки»: https://learn.microsoft.com/windows/win32/wmp/about-the-library ✔
 - **S134** Spotify, трек на плейлист в левой панели: https://businessinsider.nl/how-to-add-songs-to-spotify-playlist · https://community.spotify.com/t5/Your-Library/adding-to-playlist/m-p/4891911 ○
 - **S135** macOS spring-loading: https://kb.iu.edu/d/aehp · https://eshop.macsales.com/blog/52831-how-to-use-spring-loaded-folders-on-a-mac/ ○
 - **S136** Mixxx 2.3 — KeyFinder: https://mixxx.org/news/2021-04-08-new-in-2-3-keyfinder · https://manual.mixxx.org/2.5/ru/chapters/preferences/key_detection ✔

@@ -657,7 +657,12 @@ fn worker(app: &AppHandle, rx: &Receiver<Cmd>, pending: &AtomicBool) {
                             e.set_query(eff, SystemClock.now_utc_ms());
                         }
                     }
-                    match next_ids(app, &mut slot, &mut engine, &profile, &query, MORE)
+                    let ids = next_ids(app, &mut slot, &mut engine, &profile, &query, MORE);
+                    if engine.as_ref().is_some_and(Engine::repeat_relaxed) {
+                        // D-119: the library is shorter than the repeat window.
+                        tracing::info!(target: "sirtone::wave", "repeat rule relaxed: the least recent come back");
+                    }
+                    match ids
                         .and_then(|ids| items_for(&app.state::<Library>(), &ids, PlayContext::Wave))
                     {
                         Ok(items) if !items.is_empty() => app.state::<Playback>().append(items),

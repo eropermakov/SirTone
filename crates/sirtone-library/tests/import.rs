@@ -47,6 +47,9 @@ impl TagReader for TagsFromText {
             artist: get("artist"),
             album: get("album"),
             track_no: get("track").and_then(|t| t.parse().ok()),
+            lang: get("lang")
+                .as_deref()
+                .and_then(sirtone_core::ports::lang_from_tag),
             ..Tags::default()
         }
     }
@@ -151,7 +154,7 @@ impl Sandbox {
         );
         w(
             "Би-2/Иномарки/02.flac",
-            "audio;title=Полковнику;artist=Би-2;album=Иномарки;track=2",
+            "audio;title=Полковнику;artist=Би-2;album=Иномарки;track=2;lang=eng",
         );
         w("Би-2/single.mp3", "audio;title=Мой рок-н-ролл;artist=Би-2");
         w("Track 01.mp3", "audio");
@@ -245,6 +248,36 @@ fn imports_places_reports_and_never_touches_sources() {
     let n = collection::counts(&db).unwrap();
     assert_eq!((n.tracks, n.artists, n.albums, n.unknown), (4, 1, 1, 1));
     assert!(import::unfinished_batches(&db).unwrap().is_empty());
+    // The language tag lands in `track.lang` (D-79); no tag — left for the script to decide.
+    let lang = |title: &str| -> Option<String> {
+        db.query_row("SELECT lang FROM track WHERE title = ?1", [title], |r| {
+            r.get(0)
+        })
+        .unwrap()
+    };
+    assert_eq!(lang("Полковнику").as_deref(), Some("foreign"));
+    assert_eq!(lang("Варвара"), None);
+    // A library from before the tag was read: the backfill finds it once, then stops.
+    db.execute("UPDATE track SET lang = NULL", []).unwrap();
+    assert_eq!(
+        import::lang_backfill(&db, &sb.lib(), &TagsFromText, 1).unwrap(),
+        0
+    );
+    assert_eq!(
+        import::lang_backfill(&db, &sb.lib(), &TagsFromText, 10).unwrap(),
+        1
+    );
+    assert_eq!(lang("Полковнику").as_deref(), Some("foreign"));
+    assert_eq!(
+        import::lang_backfill(&db, &sb.lib(), &TagsFromText, 10).unwrap(),
+        0
+    );
+    assert_eq!(
+        sirtone_library::db::meta(&db, "lang_tags")
+            .unwrap()
+            .as_deref(),
+        Some("done")
+    );
 
     // Same files again → all exact duplicates, nothing new on disk.
     let again = import::start_batch(&mut db, &[sb.src()], "drop").unwrap();

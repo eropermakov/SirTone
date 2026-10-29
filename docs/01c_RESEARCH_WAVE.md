@@ -206,6 +206,21 @@
 
 ---
 
+## W-12. Медиатека короче окна неповтора (2026-10-27, находка soak T7.2)
+
+**Референсы (3):** MusicMaster (планировщик эфира) · Amarok (динамические плейлисты) · Plexamp (радио).
+
+| Приложение | Как работает | Ур. | Ист. |
+|---|---|---|---|
+| MusicMaster | правила упорядочены; сначала ищется песня без нарушений, если такой нет — **нарушаемые правила нарушаются по иерархии**, ненарушаемые — никогда (тогда слот пуст) | ○ | S143 |
+| Amarok | динамический плейлист, исчерпав подходящие треки, **добавляет не подходящие под условия** (описано в отчёте об ошибке) | ○ | S144 |
+| Plexamp | давность прослушивания в радио — **весовой фактор**, приглушающий недавнее, а не запрет | ○ | S126, S145 |
+
+**Копируем:** иерархию правил MusicMaster. Ненарушаемые: «никогда», дизлайк, «не сейчас», исключения «Для всех». Нарушаемые по порядку: сначала секвенсор (разнос исполнителей, скачок энергии), пока есть непрослушанное; затем окно неповтора — возвращаются самые давние (как вес давности у Plexamp).
+**Адаптация:** не останавливаться никогда, пока есть хоть один допустимый трек («Моя волна» и «Волна по…» бесконечны); доля возвращаемых — в `assets/wave/engine.json` (`repeat_relax_share`); D-119.
+
+---
+
 ## 12. Технические проверки (API, платформа)
 
 | Тема | Факт | Ур. | Ист. |
@@ -265,3 +280,6 @@
 - **S124** AudioSet/YAMNet классы: https://raw.githubusercontent.com/tensorflow/models/master/research/audioset/yamnet/yamnet_class_map.csv
 - **S125** Даты: https://en.wikipedia.org/wiki/List_of_dates_for_Easter · USNO через weather.gov: https://weather.gov/media/ind/seasons.pdf · Meeus, «Astronomical Algorithms», гл. 8 и 27 ◌
 - **S126** Plexamp: https://forums.plex.tv/t/how-to-plexamp-4-6-1/577024 · https://www.soundandvision.com/content/plexamp-s-sonic-sage-uses-chatgpt-improved-discovery
+- **S143** MusicMaster — порядок проверки правил и нарушаемые/ненарушаемые правила: https://musicmaster.com/?p=7667 · https://musicmaster.com/?p=1316
+- **S144** Amarok, динамические плейлисты добавляют треки вне условий, когда подходящие кончились: https://bugs.kde.org/show_bug.cgi?id=304374
+- **S145** Plexamp, повторы в радио трека: https://forums.plex.tv/t/bug-plexamp-track-radio-repeats-songs/885903

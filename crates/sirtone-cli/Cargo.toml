@@ -20,3 +20,4 @@ sirtone-recognize.workspace = true
 sirtone-platform.workspace = true
 sirtone-wave.workspace = true
 rusqlite.workspace = true
+serde_json.workspace = true

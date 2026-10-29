@@ -193,10 +193,16 @@ pub fn parse_file_name(file_name: &str, known_artist: impl Fn(&str) -> bool) -> 
             } else {
                 parts[..split].join(" - ")
             };
+            let title = parts[split..].join(" - ");
             NameGuess {
                 track,
                 artist: clean(&artist),
-                title: clean(&parts[split..].join(" - ")),
+                // After an artist a number is a title («Дельта - 1000»), not a track number — from
+                // three digits on (owner beta, T7.6).
+                title: clean(&title).or_else(|| {
+                    let t = title.trim();
+                    (t.len() >= 3 && t.chars().all(|c| c.is_ascii_digit())).then(|| t.to_string())
+                }),
                 confidence: if track.is_some() { 0.9 } else { 0.8 },
             }
         }

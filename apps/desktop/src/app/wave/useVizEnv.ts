@@ -3,7 +3,8 @@ import type { VizPower } from "@/shared/ipc/bindings";
 import { getSettings, onSettingsChanged, type SettingsDoc } from "@/shared/ipc/settings";
 import { onVizPower } from "@/shared/ipc/viz";
 
-export type VizMode = "waves" | "milkdrop" | "video";
+export type VizMode = "waves" | "milkdrop" | "video" | "titles";
+export type TitlesStyle = "auto" | "shock" | "poster";
 
 export type VizPrefs = {
   level: number;
@@ -14,6 +15,8 @@ export type VizPrefs = {
   milkdropLock: string | null;
   /** MilkDrop «Только мои пресеты». */
   favoritesOnly: boolean;
+  /** «Титры»: the style of the edit (D-122). */
+  titlesStyle: TitlesStyle;
 };
 
 const prefsOf = (doc: SettingsDoc): VizPrefs => {
@@ -24,6 +27,7 @@ const prefsOf = (doc: SettingsDoc): VizPrefs => {
     minimal?: boolean;
     milkdrop_lock?: string | null;
     milkdrop_favorites_only?: boolean;
+    titles_style?: TitlesStyle;
   };
   return {
     level: perf.level ?? 3,
@@ -32,6 +36,7 @@ const prefsOf = (doc: SettingsDoc): VizPrefs => {
     minimal: viz.minimal ?? false,
     milkdropLock: viz.milkdrop_lock ?? null,
     favoritesOnly: viz.milkdrop_favorites_only ?? false,
+    titlesStyle: viz.titles_style ?? "auto",
   };
 };
 

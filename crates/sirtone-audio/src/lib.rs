@@ -17,6 +17,7 @@ pub mod probe;
 pub mod render;
 pub mod sfx;
 pub mod stretch;
+mod swap;
 pub mod viz;
 pub mod warm;
 

@@ -75,6 +75,7 @@ pub fn library(n: usize, now_ms: i64, analysed: f32, seed: u64) -> Vec<WaveTrack
                 listeners: None,
                 company: 0,
                 explicit: false,
+                lang: 0,
                 bpm: None,
                 key_camelot: None,
                 plays_weeks: {

@@ -11,6 +11,7 @@
 //! ```
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
+mod fuzz;
 mod library;
 mod soak;
 mod wave;
@@ -26,7 +27,7 @@ use sirtone_audio::{EngineCmd, EngineEvent, PlayState};
 
 fn usage() -> ExitCode {
     eprintln!(
-        "sirtone-cli {}\nusage: sirtone-cli probe <file>... | play <file> [--volume 0..1] | render <file>... --out <wav> [--rate N] [--volume V] | soak --minutes N [--volume V] <file>... | latency [--runs N] <file> | drift --minutes N <file> | import <root> [src]... | verify <root> | wave calendar <year> | smtc [toggle <title>]",
+        "sirtone-cli {}\nusage: sirtone-cli probe <file>... | play <file> [--volume 0..1] | render <file>... --out <wav> [--rate N] [--volume V] | soak --minutes N [--volume V] <file>... | latency [--runs N] <file> | drift --minutes N <file> | import <root> [src]... | verify <root> | wave calendar <year> | smtc [toggle <title>] | fuzz --minutes N [--out DIR]",
         env!("CARGO_PKG_VERSION")
     );
     ExitCode::from(2)
@@ -348,6 +349,8 @@ fn main() -> ExitCode {
         Some("similar") if args.len() > 1 => similar(&args[1..]),
         Some("render") if args.len() > 1 => soak::render(&args[1..]),
         Some("soak") if args.len() > 1 => soak::soak(&args[1..]),
+        Some("fuzz") => fuzz::fuzz(&args[1..]),
+        Some("fuzz-one") => fuzz::fuzz_one(&args[1..]),
         Some("latency") if args.len() > 1 => soak::latency(&args[1..]),
         Some("drift") if args.len() > 1 => soak::drift(&args[1..]),
         _ => usage(),

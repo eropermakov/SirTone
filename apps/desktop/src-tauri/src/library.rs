@@ -901,6 +901,15 @@ fn import_worker(
                 tracing::info!(target: "sirtone::import", albums = n, "covers backfilled");
                 emit_changed(&app, &shared);
             }
+            // The language tag of tracks imported before it was read (D-79).
+            match import::lang_backfill(db, &root, deps.tags.as_ref(), 2000) {
+                Ok(n) if n > 0 => {
+                    tracing::info!(target: "sirtone::import", tracks = n, "language tags read");
+                    emit_changed(&app, &shared);
+                }
+                Ok(_) => {}
+                Err(e) => tracing::warn!(target: "sirtone::import", error = %e, "language tags"),
+            }
         }
         let mut batches = import::unfinished_batches(db).unwrap_or_default();
         importing.store(!batches.is_empty() || !paths.is_empty(), Ordering::Relaxed);

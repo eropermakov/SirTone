@@ -4,6 +4,7 @@ import {
   CircleHelp,
   Disc3,
   ListFilter,
+  ListMusic,
   Mic2,
   PanelLeftClose,
   PanelLeftOpen,
@@ -19,12 +20,14 @@ import { useTranslation } from "react-i18next";
 import { dropId } from "@/app/dnd/dnd";
 import type { PlaylistItem } from "@/shared/ipc/playlists";
 import { cn } from "@/shared/lib/utils";
+import { SidebarPlaylist } from "./SidebarPlaylist";
 
 export type Screen =
   | "search"
   | "wave"
   | "artists"
   | "albums"
+  | "tracks"
   | "genres"
   | "playlists"
   | "unknown"
@@ -37,6 +40,8 @@ const TOP: Item[] = [{ id: "wave", icon: Waves }];
 const COLLECTION: Item[] = [
   { id: "artists", icon: Mic2 },
   { id: "albums", icon: Disc3 },
+  // «Все треки» (D-127): Apple Music «Песни» sits right after «Альбомы».
+  { id: "tracks", icon: ListMusic },
   { id: "genres", icon: Tags },
 ];
 const SETTINGS: Item = { id: "settings", icon: Settings };
@@ -57,9 +62,11 @@ type Props = {
   /** Manual playlists: group «Плейлисты» with nested rows (DESIGN.md §9 Sidebar). */
   playlists?: PlaylistItem[];
   currentPlaylist?: number | null;
-  /** Reserved for the «playing» bars (needs the playlist id in the play context, Stage 3). */
+  /** The playlist that is playing — `accent-text` bars on its row (DESIGN.md Sidebar). */
   playingPlaylist?: number | null;
   onOpenPlaylist?: (id: number) => void;
+  /** A playlist was deleted from its «…» menu (the screen showing it has to leave). */
+  onPlaylistDeleted?: (id: number) => void;
   /** «Новый плейлист»; absent while the library is empty. */
   onNewPlaylist?: (() => void) | undefined;
   /** «Новый умный плейлист» (T3.13) — next to the group label. */
@@ -77,7 +84,9 @@ export function Sidebar({
   badges,
   playlists = [],
   currentPlaylist = null,
+  playingPlaylist = null,
   onOpenPlaylist,
+  onPlaylistDeleted,
   onNewPlaylist,
   onNewSmart,
 }: Props) {
@@ -212,25 +221,16 @@ export function Sidebar({
       )}
       {!collapsed && listsOpen && (
         <div className="flex min-h-0 flex-col gap-1 overflow-y-auto">
-          {playlists.map((p) => {
-            const active = currentPlaylist === p.id;
-            return (
-              <PlaylistDrop
-                key={p.id}
-                playlistId={p.id}
-                smart={p.smart}
-                onClick={() => onOpenPlaylist?.(p.id)}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex h-(--item-height) w-full shrink-0 items-center rounded-(--radius-md) pr-3 pl-11 text-left",
-                  "transition-colors duration-(--dur-fast)",
-                  active ? "bg-primary text-on-primary" : "text-text-primary hover:bg-bg-hover",
-                )}
-              >
-                <span className="t-body min-w-0 flex-1 truncate">{p.name}</span>
-              </PlaylistDrop>
-            );
-          })}
+          {playlists.map((p) => (
+            <SidebarPlaylist
+              key={p.id}
+              item={p}
+              active={currentPlaylist === p.id}
+              playing={playingPlaylist === p.id}
+              onOpen={() => onOpenPlaylist?.(p.id)}
+              onDeleted={() => onPlaylistDeleted?.(p.id)}
+            />
+          ))}
         </div>
       )}
       <div className="flex-1" />
@@ -295,28 +295,6 @@ function SpringButton({ screen, className, ...rest }: ButtonProps & { screen: Sc
       type="button"
       {...rest}
       className={cn(className, isOver && active && "ring-2 ring-accent-text")}
-    />
-  );
-}
-
-/** A sidebar playlist: dropping a track adds it (Spotify, `01b` F-35). */
-/** A playlist row that takes dropped tracks — not a smart one (read-only, Apple). */
-function PlaylistDrop({
-  playlistId,
-  smart,
-  className,
-  ...rest
-}: ButtonProps & { playlistId: number; smart: boolean }) {
-  const { setNodeRef, isOver, active } = useDroppable({
-    id: dropId.playlist(playlistId),
-    disabled: smart,
-  });
-  return (
-    <button
-      ref={setNodeRef}
-      type="button"
-      {...rest}
-      className={cn(className, isOver && active && "bg-bg-hover ring-2 ring-accent-text")}
     />
   );
 }

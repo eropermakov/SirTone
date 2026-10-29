@@ -8,6 +8,7 @@
   /* A menu the user opened sits above toasts: its items stay clickable (T3.29). */
   --z-menu: 40;
   --skeleton-pulse: 1.6s;
+  --playing-bars: 0.9s;
 }
 
 /* Dark neutrals on #333333 (owner, 2026-10-17, D-75): one neutral-gray ladder for every dark theme
@@ -236,6 +237,36 @@
   50% {
     transform: translate3d(4%, 3%, 0) scale(1.16);
   }
+}
+
+/* «Играет» (DESIGN.md Sidebar, TrackRow): three `accent-text` bars, scaleY only; still while paused
+   and under reduced motion (the rule below stops every animation). */
+@keyframes playing-bar {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.playing-bars > span {
+  transform-origin: bottom;
+  transform: scaleY(0.5);
+  animation: playing-bar var(--playing-bars) ease-in-out infinite;
+}
+
+.playing-bars > span:nth-child(2) {
+  animation-delay: calc(var(--playing-bars) * -0.4);
+}
+
+.playing-bars > span:nth-child(3) {
+  animation-delay: calc(var(--playing-bars) * -0.7);
+}
+
+.playing-bars[data-paused] > span {
+  animation-play-state: paused;
 }
 
 /* D-61: reduced motion = short fades only, no movement. */

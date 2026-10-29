@@ -7,6 +7,7 @@ pub mod files;
 pub mod geo;
 pub mod hardware;
 pub mod idle;
+pub mod instance;
 pub mod occlusion;
 pub mod power;
 pub mod sessions;

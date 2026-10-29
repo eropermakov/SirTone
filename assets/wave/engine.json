@@ -41,6 +41,7 @@
     "never_return_mean": 0.2
   },
   "repeat_soft_days": 7,
+  "repeat_relax_share": 0.5,
   "signals": {
     "like": 1.0,
     "never": 0.5,

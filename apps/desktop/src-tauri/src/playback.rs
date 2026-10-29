@@ -342,6 +342,7 @@ fn plan_for(
         out_ms: p.out_ms,
         rate: p.rate,
         ramp_ms: p.ramp_ms,
+        eq_swap: p.eq_swap.map(|s| (s.hz, s.at_ms)),
     })
 }
 
@@ -485,6 +486,37 @@ pub struct Playback {
 
 /// Mirrors a snapshot into the Windows media controls: the track (with a cover built off the
 /// engine thread) when it changes, the state and position always (throttled inside).
+/// Publishes a snapshot: the media flyout (SMTC), the tray, the taskbar button and the page.
+fn publish_snapshot(
+    app: &AppHandle,
+    smtc: Option<&Arc<Smtc>>,
+    smtc_last: &Mutex<Option<(Option<String>, Option<String>)>>,
+    smtc_gen: &Arc<std::sync::atomic::AtomicU64>,
+    snap: &PlaybackSnapshot,
+) {
+    if let Some(smtc) = smtc {
+        update_smtc(app, smtc, smtc_last, smtc_gen, snap);
+    }
+    crate::tray::update(
+        app,
+        &crate::tray::TrayState {
+            title: snap.title.clone(),
+            artists: snap.artists.clone(),
+            playing: snap.state == PlaybackState::Playing,
+            has_prev: snap.has_prev,
+            has_next: snap.has_next,
+        },
+    );
+    crate::taskbar::update(
+        app,
+        snap.state == PlaybackState::Playing,
+        matches!(snap.state, PlaybackState::Playing | PlaybackState::Paused),
+        snap.position_ms,
+        snap.duration_ms.unwrap_or(0),
+    );
+    let _ = snap.clone().emit(app);
+}
+
 fn update_smtc(
     app: &AppHandle,
     smtc: &Arc<Smtc>,
@@ -590,6 +622,8 @@ impl Playback {
             let Some(pb) = smtc_app.try_state::<Playback>() else {
                 return;
             };
+            // A pause from a media key or the Windows flyout leaves no other trace (T7.2).
+            tracing::info!(target: "sirtone::smtc", button = ?b, "button");
             match b {
                 // Explicit Play/Pause (headsets, lock screen, the play key after Windows maps it):
                 // a stale status must never turn «Pause» into «play».
@@ -603,9 +637,25 @@ impl Playback {
             }
         })
         .map(Arc::new);
-        let sink_smtc = smtc.clone();
-        let smtc_last: Mutex<Option<(Option<String>, Option<String>)>> = Mutex::new(None);
-        let smtc_gen = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        // What the snapshot shows — SMTC, tray, taskbar, the page — is published from its own
+        // thread: those calls wait on the UI thread and Windows, and on the engine thread a
+        // 270 ms wait emptied the 200 ms ring (T7.2 soak, D-121). Only the newest matters, so
+        // a full channel drops the snapshot.
+        let (publish, published) = std::sync::mpsc::sync_channel::<PlaybackSnapshot>(8);
+        {
+            let app = app.clone();
+            let sink_smtc = smtc.clone();
+            let _ = std::thread::Builder::new()
+                .name("sirtone-publish".into())
+                .spawn(move || {
+                    let smtc_last: Mutex<Option<(Option<String>, Option<String>)>> =
+                        Mutex::new(None);
+                    let smtc_gen = Arc::new(std::sync::atomic::AtomicU64::new(0));
+                    while let Ok(snap) = published.recv() {
+                        publish_snapshot(&app, sink_smtc.as_ref(), &smtc_last, &smtc_gen, &snap);
+                    }
+                });
+        }
         let engine = sirtone_audio::start(Box::new(move |ev| match ev {
             EngineEvent::Snapshot(s) => {
                 let mut q = sink_queue.lock().unwrap_or_else(|p| p.into_inner());
@@ -720,27 +770,7 @@ impl Playback {
                     }
                     *l = snap.clone();
                 }
-                if let Some(smtc) = sink_smtc.as_ref() {
-                    update_smtc(&app, smtc, &smtc_last, &smtc_gen, &snap);
-                }
-                crate::tray::update(
-                    &app,
-                    &crate::tray::TrayState {
-                        title: snap.title.clone(),
-                        artists: snap.artists.clone(),
-                        playing: snap.state == PlaybackState::Playing,
-                        has_prev: snap.has_prev,
-                        has_next: snap.has_next,
-                    },
-                );
-                crate::taskbar::update(
-                    &app,
-                    snap.state == PlaybackState::Playing,
-                    matches!(snap.state, PlaybackState::Playing | PlaybackState::Paused),
-                    snap.position_ms,
-                    snap.duration_ms.unwrap_or(0),
-                );
-                let _ = snap.emit(&app);
+                let _ = publish.try_send(snap);
             }
             EngineEvent::Error { error, path } => {
                 sink_journal.on_error(path.as_deref());
