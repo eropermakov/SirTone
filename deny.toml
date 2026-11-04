@@ -23,6 +23,9 @@ ignore = [
     { id = "RUSTSEC-2026-0367", reason = "unix SUID/SGID on zip extract; windows NSIS path never extracts zips (updater)" },
     { id = "RUSTSEC-2026-0368", reason = "zip extract symlinks; not used on windows, artifacts are signature-checked (updater)" },
     { id = "RUSTSEC-2026-0369", reason = "zip unix permissions via symlinks; not used on windows (updater)" },
+    # Same path: a symlink entry's declared size aborts `extract()` (denial of service, no memory
+    # unsafety). Fixed in zip 9.0; the updater still pins 4.x and never extracts on Windows.
+    { id = "RUSTSEC-2026-0429", reason = "zip extract symlink size abort; windows NSIS path never extracts zips (updater)" },
 ]
 
 [sources]
