@@ -27,7 +27,7 @@ use sirtone_audio::{EngineCmd, EngineEvent, PlayState};
 
 fn usage() -> ExitCode {
     eprintln!(
-        "sirtone-cli {}\nusage: sirtone-cli probe <file>... | play <file> [--volume 0..1] | render <file>... --out <wav> [--rate N] [--volume V] | soak --minutes N [--volume V] <file>... | latency [--runs N] <file> | drift --minutes N <file> | import <root> [src]... | verify <root> | wave calendar <year> | smtc [toggle <title>] | fuzz --minutes N [--out DIR]",
+        "sirtone-cli {}\nusage: sirtone-cli probe <file>... | play <file> [--volume 0..1] | render <file>... --out <wav> [--rate N] [--volume V] | soak --minutes N [--volume V] <file>... | latency [--runs N] <file> | drift --minutes N <file> | import <root> [src]... | verify <root> | wave calendar <year> | wave coverage <library.db copy> [days] | smtc [toggle <title>] | fuzz --minutes N [--out DIR]",
         env!("CARGO_PKG_VERSION")
     );
     ExitCode::from(2)
@@ -314,6 +314,9 @@ fn main() -> ExitCode {
         Some("verify") if args.len() > 1 => library::verify(&args[1]),
         Some("wave") if args.get(1).map(String::as_str) == Some("calendar") && args.len() > 2 => {
             wave::calendar(&args[2])
+        }
+        Some("wave") if args.get(1).map(String::as_str) == Some("coverage") && args.len() > 2 => {
+            wave::coverage(&args[2], args.get(3).map_or("3", String::as_str))
         }
         Some("hw") => {
             println!("{:?}", sirtone_platform::hardware::hardware());

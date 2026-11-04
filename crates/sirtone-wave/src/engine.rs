@@ -591,6 +591,9 @@ pub struct Catalog {
     /// Tracks with known popularity («подборка без данных о популярности» when 0).
     pop_known: usize,
     center: [f32; D],
+    /// The analysed tracks: an unanalysed one is scored on the sound of one of them, drawn
+    /// afresh each rebuild (D-128).
+    analysed: Vec<u32>,
     index: std::collections::HashMap<i64, u32>,
 }
 
@@ -682,6 +685,7 @@ impl Catalog {
             guest_beta: vec![1.0; n],
             pop_known: 0,
             center: [0.0; D],
+            analysed: Vec::with_capacity(n),
             index: std::collections::HashMap::with_capacity(n),
         };
         for (t, g) in tracks.iter().zip(&groups) {
@@ -724,6 +728,9 @@ impl Catalog {
                     x[f::GENRE..f::GENRE + f::GENRES].copy_from_slice(&shares);
                 }
                 None => {}
+            }
+            if conf > 0.0 {
+                c.analysed.push(c.id.len() as u32);
             }
             c.index.insert(t.id, c.id.len() as u32);
             c.id.push(t.id);
@@ -916,11 +923,11 @@ impl Catalog {
         self.center
     }
 
-    pub(crate) fn idx(&self, id: i64) -> Option<usize> {
+    pub fn idx(&self, id: i64) -> Option<usize> {
         self.index.get(&id).map(|&i| i as usize)
     }
 
-    pub(crate) fn mean(&self, t: usize) -> f32 {
+    pub fn mean(&self, t: usize) -> f32 {
         self.alpha[t] / (self.alpha[t] + self.beta[t])
     }
 
@@ -1571,6 +1578,7 @@ impl Engine {
         let cat = &self.cat;
         let fam = &e.familiarity;
         let qs = &self.qs;
+        let mut cold_x: [f32; D];
         for t in 0..cat.len() {
             // Layer 1: «никогда», disliked, «не сейчас», the hard repeat window; layer 3:
             // «Настроить волну».
@@ -1596,7 +1604,27 @@ impl Engine {
             if company && !cat.company_ok[t] {
                 continue;
             }
-            let x = &cat.feat[t];
+            // An unanalysed track carries the library's means, so it would rank in the middle of
+            // every top-K and come after all the analysed ones (D-128). Until its analysis it is
+            // scored on the sound of an analysed track drawn at random (Thompson: a draw from the
+            // prior, Chapelle & Li — `01c` W-03), with its own tags (length, year, genre); the
+            // cold multiplier still applies, «почему» and the transitions keep the means.
+            let x = if cat.conf[t] > 0.0 || cat.analysed.is_empty() {
+                &cat.feat[t]
+            } else {
+                // A draw of its own (track × rebuild), off the engine's RNG: the Thompson draws
+                // of the analysed tracks stay as they were.
+                let h = (t as u64 ^ (now_ms as u64).rotate_left(17))
+                    .wrapping_mul(0x9E37_79B9_7F4A_7C15);
+                let d = cat.analysed[((h >> 33) % cat.analysed.len() as u64) as usize] as usize;
+                cold_x = cat.feat[d];
+                let own = &cat.feat[t];
+                cold_x[f::DURATION] = own[f::DURATION];
+                cold_x[f::YEAR] = own[f::YEAR];
+                cold_x[f::GENRE..f::GENRE + f::GENRES]
+                    .copy_from_slice(&own[f::GENRE..f::GENRE + f::GENRES]);
+                &cold_x
+            };
             // The event wave (§11.2): with enough fitting tracks the rest stay out.
             if let (Some(ev), Some(r)) = (&self.event, &cfg.profile.event_rules)
                 && ev.fitting >= r.fit_enough
@@ -1717,6 +1745,23 @@ impl Engine {
             daypart: sctx.daypart as u8,
             now_ms,
         };
+    }
+
+    /// The weighted parts of a track's score in the last rebuild — taste, context, session,
+    /// season — its beta mean and the cold multiplier (`sirtone-cli wave coverage`, T7.9).
+    pub fn parts(&self, id: i64) -> Option<[f32; 6]> {
+        let t = self.cat.idx(id)?;
+        let l = &self.last;
+        let x = &self.cat.feat[t];
+        let a = &self.cat.season[t];
+        Some([
+            l.w[0] * (0.6 * sigmoid(dot(&l.wt, x) + l.bias) + 0.4 * self.cat.mean(t)),
+            l.w[1] * sigmoid(dot(&l.w_ctx, x)),
+            l.w[2] * (0.5 + 0.5 * dot(&l.w_sess, x).tanh()),
+            l.w[3] * (0..4).map(|s| l.season_w[s] * a[s]).sum::<f32>(),
+            self.cat.mean(t),
+            self.cat.cold[t],
+        ])
     }
 
     /// «Почему этот трек» (§17, FR-LEARN-009): the 1–2 largest contributions over the mean of

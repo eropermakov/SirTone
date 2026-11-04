@@ -30,7 +30,7 @@
   "explore_slope": 0.3,
   "taste_sigma": 0.3,
   "novelty_pull": 0.15,
-  "cold_conf_floor": 0.8,
+  "cold_conf_floor": 0.95,
   "familiarity": {
     "loved_plays": 8,
     "loved_mean": 0.7,

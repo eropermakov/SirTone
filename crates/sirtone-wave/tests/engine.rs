@@ -1022,3 +1022,48 @@ fn a_short_library_never_runs_dry() {
         "the library was never exhausted — the test proves nothing"
     );
 }
+
+#[test]
+fn unanalysed_tracks_are_not_left_for_last() {
+    // A quarter of the library still waits for its analysis (new files, a laptop on battery).
+    // Carrying the library's means, those tracks used to sit in the middle of every top-K and
+    // come after all the analysed ones (D-128); they must be met about as soon as the rest.
+    let tracks = synth::library(300, NOW, 0.75, 31);
+    let mut e = Engine::new(
+        Config::builtin().expect("assets"),
+        &tracks,
+        &synth::history(&tracks, NOW),
+        NOW,
+        9,
+    );
+    let cold: std::collections::HashSet<i64> = tracks
+        .iter()
+        .filter(|t| t.features.is_none())
+        .map(|t| t.id)
+        .collect();
+    assert!(cold.len() > 40, "{}", cold.len());
+    let mut first = std::collections::HashMap::<i64, usize>::new();
+    let mut now = NOW;
+    for n in 0..300 {
+        let Some(&id) = e.next(&ctx(Daypart::Evening), &[], 0.5, 1, now).first() else {
+            break;
+        };
+        first.entry(id).or_insert(n);
+        e.played(id, now);
+        now += 180_000;
+    }
+    let median = |want_cold: bool| {
+        let mut v: Vec<usize> = first
+            .iter()
+            .filter(|(id, _)| cold.contains(id) == want_cold)
+            .map(|(_, n)| *n)
+            .collect();
+        v.sort_unstable();
+        v[v.len() / 2]
+    };
+    let (warm, cool) = (median(false), median(true));
+    assert!(
+        cool as f32 <= warm as f32 * 1.25,
+        "unanalysed met at a median pick {cool}, analysed at {warm}"
+    );
+}
