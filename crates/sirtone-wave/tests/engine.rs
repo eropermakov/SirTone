@@ -1025,17 +1025,24 @@ fn a_short_library_never_runs_dry() {
 
 #[test]
 fn unanalysed_tracks_are_not_left_for_last() {
+    // Median first pick of the unanalysed over that of the analysed, over eight libraries: about
+    // 1 when fair (≈ 1.85 with the old means and 0.8 multiplier).
+    let ratios: Vec<f32> = (0..8)
+        .map(|s| unanalysed_ratio(Config::builtin().expect("assets"), 31 + s, 9 + s))
+        .collect();
+    let mean = ratios.iter().sum::<f32>() / ratios.len() as f32;
+    assert!(
+        mean <= 1.15 && ratios.iter().all(|r| *r <= 1.4),
+        "unanalysed / analysed median first pick: {ratios:?}"
+    );
+}
+
+fn unanalysed_ratio(cfg: Config, lib_seed: u64, seed: u64) -> f32 {
     // A quarter of the library still waits for its analysis (new files, a laptop on battery).
     // Carrying the library's means, those tracks used to sit in the middle of every top-K and
     // come after all the analysed ones (D-128); they must be met about as soon as the rest.
-    let tracks = synth::library(300, NOW, 0.75, 31);
-    let mut e = Engine::new(
-        Config::builtin().expect("assets"),
-        &tracks,
-        &synth::history(&tracks, NOW),
-        NOW,
-        9,
-    );
+    let tracks = synth::library(300, NOW, 0.75, lib_seed);
+    let mut e = Engine::new(cfg, &tracks, &synth::history(&tracks, NOW), NOW, seed);
     let cold: std::collections::HashSet<i64> = tracks
         .iter()
         .filter(|t| t.features.is_none())
@@ -1061,9 +1068,5 @@ fn unanalysed_tracks_are_not_left_for_last() {
         v.sort_unstable();
         v[v.len() / 2]
     };
-    let (warm, cool) = (median(false), median(true));
-    assert!(
-        cool as f32 <= warm as f32 * 1.25,
-        "unanalysed met at a median pick {cool}, analysed at {warm}"
-    );
+    median(true) as f32 / median(false) as f32
 }

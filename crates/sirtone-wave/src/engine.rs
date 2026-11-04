@@ -1579,6 +1579,12 @@ impl Engine {
         let fam = &e.familiarity;
         let qs = &self.qs;
         let mut cold_x: [f32; D];
+        // Only the ordinary waves draw a sound for the unanalysed: the sleep, focus and event
+        // waves keep them on the means (an unknown, maybe loud track must not win there).
+        let draw_cold = !cat.analysed.is_empty()
+            && sleep.is_none()
+            && cfg.profile.focus.is_none()
+            && self.event.is_none();
         for t in 0..cat.len() {
             // Layer 1: «никогда», disliked, «не сейчас», the hard repeat window; layer 3:
             // «Настроить волну».
@@ -1608,8 +1614,9 @@ impl Engine {
             // every top-K and come after all the analysed ones (D-128). Until its analysis it is
             // scored on the sound of an analysed track drawn at random (Thompson: a draw from the
             // prior, Chapelle & Li — `01c` W-03), with its own tags (length, year, genre); the
-            // cold multiplier still applies, «почему» and the transitions keep the means.
-            let x = if cat.conf[t] > 0.0 || cat.analysed.is_empty() {
+            // cold multiplier still applies, «почему» and the transitions keep the means. Not in the
+            // sleep, focus and event waves (`draw_cold`).
+            let x = if cat.conf[t] > 0.0 || !draw_cold {
                 &cat.feat[t]
             } else {
                 // A draw of its own (track × rebuild), off the engine's RNG: the Thompson draws
