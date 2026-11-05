@@ -3,6 +3,7 @@ import {
   Ban,
   Briefcase,
   Car,
+  ChevronDown,
   Cloud,
   CloudDrizzle,
   CloudFog,
@@ -40,6 +41,7 @@ import { useTranslation } from "react-i18next";
 import { commands, type WaveCount, type WaveQueryIpc } from "@/shared/ipc/bindings";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/Button";
+import { Badge, Chip } from "@/shared/ui/Chip";
 import { Dialog } from "@/shared/ui/Dialog";
 import { Slider } from "@/shared/ui/Slider";
 import { NoveltySlider } from "./NoveltySlider";
@@ -53,6 +55,7 @@ import { WaveExpert } from "./WaveExpert";
  */
 type Multi = "activity" | "character" | "mood" | "language" | "frequency";
 
+/** Every multi-choice block (the badge counts them). */
 const MULTI: { block: Multi; tiles: [string, LucideIcon][] }[] = [
   {
     block: "activity",
@@ -101,6 +104,41 @@ const MULTI: { block: Multi; tiles: [string, LucideIcon][] }[] = [
     ],
   },
 ];
+
+/** The four moods as circles (owner 2026-11-05, like Яндекс «Настроить Мою волну», `01c`
+ * W-02): colours from the accent presets (DESIGN.md §13) — temporary until the owner's (D-130). */
+const MOOD_CIRCLES: [string, string, string][] = [
+  ["upbeat", "orange", "red"],
+  ["happy", "yellow", "sirkov"],
+  ["calm", "blue", "lilac"],
+  ["sad", "violet", "burgundy"],
+];
+/** Moods without a circle: under «Ещё». */
+const MOOD_MORE = ["positive", "negative"];
+
+/** The settings under «Ещё» that narrow the wave (its badge; open at start when any is on). */
+export function moreCount(q: WaveQueryIpc | null): number {
+  if (!q) return 0;
+  return (
+    ((q.character?.length ?? 0) > 0 ? 1 : 0) +
+    (q.mood?.some((m) => MOOD_MORE.includes(m)) ? 1 : 0) +
+    (q.daypart != null ? 1 : 0) +
+    (q.weather != null ? 1 : 0) +
+    (q.season && q.season !== "auto" ? 1 : 0) +
+    (q.influence?.some((v) => v != null && v !== 1) ? 1 : 0) +
+    (q.energy ? 1 : 0) +
+    (q.tempo ? 1 : 0) +
+    ((q.taste ?? 1) !== 1 || (q.excludeGenres?.length ?? 0) > 0 || q.artistSpacing != null ? 1 : 0)
+  );
+}
+
+const tilesOf = (block: Multi) => MULTI.find((m) => m.block === block)?.tiles ?? [];
+const ACTIVITY = tilesOf("activity");
+const FREQUENCY = tilesOf("frequency");
+const LANGUAGE = tilesOf("language");
+const CHARACTER = tilesOf("character");
+/** Headings of the always-visible blocks: quiet, like group labels. */
+const HEAD = "t-body-strong text-left text-text-secondary";
 
 const WORKOUT_TEMPOS = ["light", "medium", "intense"] as const;
 const WORKOUT = "workout";
@@ -241,6 +279,72 @@ function Tile({
   );
 }
 
+/** A frequency tile (loved / often / forgotten): a big pressable plate with its icon. */
+function Plate({
+  icon: Icon,
+  label,
+  on,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  on: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onClick}
+      className={cn(
+        "flex h-14 items-center justify-center gap-2 rounded-(--radius-lg) px-3 transition-colors duration-(--dur-fast)",
+        on ? "bg-primary text-on-primary" : "bg-bg-layer text-text-primary hover:bg-bg-hover",
+      )}
+    >
+      <Icon size={20} strokeWidth={1.5} className={on ? "text-on-primary" : "text-icon"} />
+      <span className="t-body-strong">{label}</span>
+    </button>
+  );
+}
+
+/** A mood circle: an accent-preset gradient, the label under it; chosen — a ring. */
+function MoodCircle({
+  from,
+  to,
+  label,
+  on,
+  onClick,
+}: {
+  from: string;
+  to: string;
+  label: string;
+  on: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onClick}
+      className="group flex flex-col items-center gap-2 rounded-(--radius-lg) py-1"
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "size-12 rounded-full ring-offset-2 ring-offset-bg-raised transition-transform duration-(--dur-fast) group-hover:scale-105",
+          on ? "ring-2 ring-text-primary" : "",
+        )}
+        style={{
+          background: `linear-gradient(135deg, var(--accent-${from}-fill), var(--accent-${to}-fill))`,
+        }}
+      />
+      <span className={cn("t-menu", on ? "text-text-primary" : "text-text-secondary")}>
+        {label}
+      </span>
+    </button>
+  );
+}
+
 export function WaveSetup({
   initial,
   onClose,
@@ -265,6 +369,8 @@ export function WaveSetup({
   const [q, setQ] = useState<WaveQueryIpc>(initial ?? {});
   // «Режим» (FR-LEARN-011): which wave «Слушать» starts.
   const [mode, setMode] = useState<Mode>("normal");
+  // «Ещё» (owner 2026-11-05, D-130): open from the start when a setting in it is on.
+  const [more, setMore] = useState(() => moreCount(initial) > 0);
   // «Подходит N треков» (T5.7, `06` §3): asked again 200 ms after the last press.
   const [count, setCount] = useState<WaveCount | null>(null);
   useEffect(() => {
@@ -303,176 +409,265 @@ export function WaveSetup({
   const workout = activity.includes(WORKOUT);
   const sleeping = activity.includes(SLEEP);
   const hint = sleeping || activity.includes(WORK);
+  const has = (block: Multi, key: string) => (q[block] ?? []).includes(key);
+  const extra = moreCount(q);
   return (
     <Dialog title={t("wave.setup.title")} closeLabel={tc("errors.close")} onClose={onClose} wide>
-      <div className="flex max-h-[65vh] flex-col gap-6 overflow-auto pr-1">
-        {MULTI.map(({ block, tiles }) => (
-          <section key={block} className="flex flex-col gap-3">
-            <h3 className="t-card-title text-text-primary">{t(`wave.setup.block.${block}`)}</h3>
+      <div className="flex max-h-[70vh] flex-col gap-5 overflow-auto pr-1">
+        <section className="flex flex-col gap-2">
+          <h3 className={HEAD}>{t("wave.setup.block.activity")}</h3>
+          <div className="flex flex-wrap gap-2">
+            {ACTIVITY.map(([key]) => (
+              <Chip key={key} active={has("activity", key)} onClick={() => toggle("activity", key)}>
+                {t(`wave.setup.activity.${key}`)}
+              </Chip>
+            ))}
+          </div>
+          {workout && (
             <div className="flex flex-wrap gap-2">
-              {tiles.map(([key, icon]) => (
-                <Tile
-                  key={key}
-                  icon={icon}
-                  label={t(`wave.setup.${block}.${key}`)}
-                  on={(q[block] ?? []).includes(key)}
-                  onClick={() => toggle(block, key)}
-                />
+              {WORKOUT_TEMPOS.map((k) => (
+                <Chip
+                  key={k}
+                  active={q.workoutTempo === k}
+                  onClick={() =>
+                    setQ((c) => ({ ...c, workoutTempo: c.workoutTempo === k ? null : k }))
+                  }
+                >
+                  {t(`wave.setup.workoutTempo.${k}`)}
+                </Chip>
               ))}
             </div>
-            {block === "activity" && workout && (
+          )}
+          {hint && (
+            <div className="flex flex-wrap items-center gap-3 rounded-(--radius-lg) bg-bg-layer px-4 py-2">
+              <Sparkles size={16} strokeWidth={1.5} className="text-icon" />
+              <span className="t-caption flex-1 text-text-secondary">
+                {sleeping ? t("wave.setup.hintSleep") : t("wave.setup.hintFocus")}
+              </span>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  if (sleeping) onSleepWave();
+                  else onFocus();
+                  onClose();
+                }}
+              >
+                {sleeping ? t("wave.setup.sleepWave") : t("wave.setup.focus")}
+              </Button>
+            </div>
+          )}
+        </section>
+        <section className="flex flex-col gap-2">
+          <h3 className={HEAD}>{t("wave.setup.block.frequency")}</h3>
+          <div className="grid grid-cols-3 gap-2">
+            {FREQUENCY.map(([key, icon]) => (
+              <Plate
+                key={key}
+                icon={icon}
+                label={t(`wave.setup.frequency.${key}`)}
+                on={has("frequency", key)}
+                onClick={() => toggle("frequency", key)}
+              />
+            ))}
+          </div>
+        </section>
+        <section className="flex flex-col gap-2">
+          <h3 className={HEAD}>{t("wave.setup.block.mood")}</h3>
+          <div className="grid grid-cols-4 gap-2">
+            {MOOD_CIRCLES.map(([key, from, to]) => (
+              <MoodCircle
+                key={key}
+                from={from}
+                to={to}
+                label={t(`wave.setup.mood.${key}`)}
+                on={has("mood", key)}
+                onClick={() => toggle("mood", key)}
+              />
+            ))}
+          </div>
+        </section>
+        <section className="flex flex-col gap-2">
+          <h3 className={HEAD}>{t("wave.setup.block.language")}</h3>
+          <div className="flex flex-wrap gap-2">
+            {LANGUAGE.map(([key]) => (
+              <Chip key={key} active={has("language", key)} onClick={() => toggle("language", key)}>
+                {t(`wave.setup.language.${key}`)}
+              </Chip>
+            ))}
+          </div>
+        </section>
+        <button
+          type="button"
+          aria-expanded={more}
+          onClick={() => setMore((m) => !m)}
+          className="t-body-strong -ml-3 flex h-(--item-height) items-center gap-2 self-start rounded-full px-3 text-text-secondary hover:bg-bg-hover"
+        >
+          {t("wave.setup.more")}
+          {extra > 0 && <Badge>{extra}</Badge>}
+          <ChevronDown
+            size={16}
+            strokeWidth={1.5}
+            className={cn("transition-transform duration-(--dur-fast)", more && "rotate-180")}
+          />
+        </button>
+        {more && (
+          <>
+            <section className="flex flex-col gap-3">
+              <h3 className="t-card-title text-left text-text-primary">
+                {t("wave.setup.block.character")}
+              </h3>
               <div className="flex flex-wrap gap-2">
-                {WORKOUT_TEMPOS.map((k) => (
+                {CHARACTER.map(([key]) => (
+                  <Chip
+                    key={key}
+                    active={has("character", key)}
+                    onClick={() => toggle("character", key)}
+                  >
+                    {t(`wave.setup.character.${key}`)}
+                  </Chip>
+                ))}
+                {MOOD_MORE.map((key) => (
+                  <Chip key={key} active={has("mood", key)} onClick={() => toggle("mood", key)}>
+                    {t(`wave.setup.mood.${key}`)}
+                  </Chip>
+                ))}
+              </div>
+            </section>
+            <section className="flex flex-col gap-3">
+              <h3 className="t-card-title text-left text-text-primary">
+                {t("wave.setup.block.daypart")}
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {DAYPARTS.map((icon, i) => (
                   <Tile
-                    key={k}
-                    icon={Zap}
-                    label={t(`wave.setup.workoutTempo.${k}`)}
-                    on={q.workoutTempo === k}
-                    onClick={() =>
-                      setQ((c) => ({ ...c, workoutTempo: c.workoutTempo === k ? null : k }))
-                    }
+                    // biome-ignore lint/suspicious/noArrayIndexKey: dayparts are fixed codes 0…5
+                    key={i}
+                    icon={icon}
+                    label={t(`wave.setup.daypart.${i}`)}
+                    on={q.daypart === i}
+                    onClick={() => setQ((c) => ({ ...c, daypart: c.daypart === i ? null : i }))}
                   />
                 ))}
               </div>
-            )}
-            {block === "activity" && hint && (
-              <div className="flex flex-wrap items-center gap-3 rounded-(--radius-lg) bg-bg-layer px-4 py-3">
-                <Sparkles size={16} strokeWidth={1.5} className="text-icon" />
-                <span className="t-caption flex-1 text-text-secondary">
-                  {sleeping ? t("wave.setup.hintSleep") : t("wave.setup.hintFocus")}
-                </span>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    if (sleeping) onSleepWave();
-                    else onFocus();
-                    onClose();
-                  }}
-                >
-                  {sleeping ? t("wave.setup.sleepWave") : t("wave.setup.focus")}
-                </Button>
+            </section>
+            <section className="flex flex-col gap-3">
+              <h3 className="t-card-title text-left text-text-primary">
+                {t("wave.setup.block.weather")}
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {WEATHER.map((icon, i) => (
+                  <Tile
+                    // biome-ignore lint/suspicious/noArrayIndexKey: weather classes are fixed codes 0…5
+                    key={i}
+                    icon={icon}
+                    label={t(`wave.setup.weather.${i}`)}
+                    on={q.weather === i}
+                    onClick={() => setQ((c) => ({ ...c, weather: c.weather === i ? null : i }))}
+                  />
+                ))}
               </div>
-            )}
-          </section>
-        ))}
-        <section className="flex flex-col gap-3">
-          <h3 className="t-card-title text-text-primary">{t("wave.setup.block.daypart")}</h3>
-          <div className="flex flex-wrap gap-2">
-            {DAYPARTS.map((icon, i) => (
-              <Tile
-                // biome-ignore lint/suspicious/noArrayIndexKey: dayparts are fixed codes 0…5
-                key={i}
-                icon={icon}
-                label={t(`wave.setup.daypart.${i}`)}
-                on={q.daypart === i}
-                onClick={() => setQ((c) => ({ ...c, daypart: c.daypart === i ? null : i }))}
+            </section>
+            <section className="flex flex-col gap-3">
+              <h3 className="t-card-title text-left text-text-primary">
+                {t("wave.setup.block.mode")}
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {MODES.filter(([k]) => k !== "for_all" || onForAll).map(([key, icon]) => (
+                  <Tile
+                    key={key}
+                    icon={icon}
+                    label={t(`wave.setup.mode.${key}`)}
+                    on={mode === key}
+                    onClick={() => setMode(key)}
+                  />
+                ))}
+              </div>
+            </section>
+            <section className="flex flex-col gap-3">
+              <h3 className="t-card-title text-left text-text-primary">
+                {t("wave.setup.block.novelty")}
+              </h3>
+              <NoveltySlider disabled={byFrequency} />
+              {byFrequency && (
+                <span className="t-caption text-text-secondary">
+                  {t("wave.setup.noveltyByFrequency")}
+                </span>
+              )}
+            </section>
+            <section className="flex flex-col gap-3">
+              <h3 className="t-card-title text-left text-text-primary">
+                {t("wave.setup.block.influence")}
+              </h3>
+              {INFLUENCES.map((key, i) => (
+                <Range
+                  key={key}
+                  label={t(`wave.setup.influence.${key}`)}
+                  value={(q.influence?.[i] ?? 1) / 2}
+                  text={t("wave.setup.times", { value: (q.influence?.[i] ?? 1).toFixed(1) })}
+                  onCommit={(v) =>
+                    setQ((c) => {
+                      const inf: [number, number, number] = [
+                        c.influence?.[0] ?? 1,
+                        c.influence?.[1] ?? 1,
+                        c.influence?.[2] ?? 1,
+                      ];
+                      inf[i] = Math.round(v * 20) / 10;
+                      return { ...c, influence: inf };
+                    })
+                  }
+                />
+              ))}
+            </section>
+            <section className="flex flex-col gap-3">
+              <h3 className="t-card-title text-left text-text-primary">
+                {t("wave.setup.block.ranges")}
+              </h3>
+              <Span
+                label={t("wave.setup.energy")}
+                lo={q.energy?.[0] ?? 0}
+                hi={q.energy?.[1] ?? 1}
+                min={0}
+                max={1}
+                text={(v) => String(Math.round(v * 100))}
+                onChange={(lo, hi) =>
+                  setQ((c) => ({ ...c, energy: lo <= 0 && hi >= 1 ? null : [lo, hi] }))
+                }
               />
-            ))}
-          </div>
-        </section>
-        <section className="flex flex-col gap-3">
-          <h3 className="t-card-title text-text-primary">{t("wave.setup.block.weather")}</h3>
-          <div className="flex flex-wrap gap-2">
-            {WEATHER.map((icon, i) => (
-              <Tile
-                // biome-ignore lint/suspicious/noArrayIndexKey: weather classes are fixed codes 0…5
-                key={i}
-                icon={icon}
-                label={t(`wave.setup.weather.${i}`)}
-                on={q.weather === i}
-                onClick={() => setQ((c) => ({ ...c, weather: c.weather === i ? null : i }))}
+              <Span
+                label={t("wave.setup.tempo")}
+                lo={q.tempo?.[0] ?? TEMPO[0]}
+                hi={q.tempo?.[1] ?? TEMPO[1]}
+                min={TEMPO[0]}
+                max={TEMPO[1]}
+                text={(v) => t("wave.setup.bpm", { value: Math.round(v) })}
+                onChange={(lo, hi) =>
+                  setQ((c) => ({
+                    ...c,
+                    tempo:
+                      lo <= TEMPO[0] && hi >= TEMPO[1] ? null : [Math.round(lo), Math.round(hi)],
+                  }))
+                }
               />
-            ))}
-          </div>
-        </section>
-        <section className="flex flex-col gap-3">
-          <h3 className="t-card-title text-text-primary">{t("wave.setup.block.mode")}</h3>
-          <div className="flex flex-wrap gap-2">
-            {MODES.filter(([k]) => k !== "for_all" || onForAll).map(([key, icon]) => (
-              <Tile
-                key={key}
-                icon={icon}
-                label={t(`wave.setup.mode.${key}`)}
-                on={mode === key}
-                onClick={() => setMode(key)}
-              />
-            ))}
-          </div>
-        </section>
-        <section className="flex flex-col gap-3">
-          <h3 className="t-card-title text-text-primary">{t("wave.setup.block.novelty")}</h3>
-          <NoveltySlider disabled={byFrequency} />
-          {byFrequency && (
-            <span className="t-caption text-text-secondary">
-              {t("wave.setup.noveltyByFrequency")}
-            </span>
-          )}
-        </section>
-        <section className="flex flex-col gap-3">
-          <h3 className="t-card-title text-text-primary">{t("wave.setup.block.influence")}</h3>
-          {INFLUENCES.map((key, i) => (
-            <Range
-              key={key}
-              label={t(`wave.setup.influence.${key}`)}
-              value={(q.influence?.[i] ?? 1) / 2}
-              text={t("wave.setup.times", { value: (q.influence?.[i] ?? 1).toFixed(1) })}
-              onCommit={(v) =>
-                setQ((c) => {
-                  const inf: [number, number, number] = [
-                    c.influence?.[0] ?? 1,
-                    c.influence?.[1] ?? 1,
-                    c.influence?.[2] ?? 1,
-                  ];
-                  inf[i] = Math.round(v * 20) / 10;
-                  return { ...c, influence: inf };
-                })
-              }
-            />
-          ))}
-        </section>
-        <section className="flex flex-col gap-3">
-          <h3 className="t-card-title text-text-primary">{t("wave.setup.block.ranges")}</h3>
-          <Span
-            label={t("wave.setup.energy")}
-            lo={q.energy?.[0] ?? 0}
-            hi={q.energy?.[1] ?? 1}
-            min={0}
-            max={1}
-            text={(v) => String(Math.round(v * 100))}
-            onChange={(lo, hi) =>
-              setQ((c) => ({ ...c, energy: lo <= 0 && hi >= 1 ? null : [lo, hi] }))
-            }
-          />
-          <Span
-            label={t("wave.setup.tempo")}
-            lo={q.tempo?.[0] ?? TEMPO[0]}
-            hi={q.tempo?.[1] ?? TEMPO[1]}
-            min={TEMPO[0]}
-            max={TEMPO[1]}
-            text={(v) => t("wave.setup.bpm", { value: Math.round(v) })}
-            onChange={(lo, hi) =>
-              setQ((c) => ({
-                ...c,
-                tempo: lo <= TEMPO[0] && hi >= TEMPO[1] ? null : [Math.round(lo), Math.round(hi)],
-              }))
-            }
-          />
-        </section>
-        <section className="flex flex-col gap-3">
-          <h3 className="t-card-title text-text-primary">{t("wave.setup.block.season")}</h3>
-          <div className="flex flex-wrap gap-2">
-            {SEASONS.map(([key, icon]) => (
-              <Tile
-                key={key}
-                icon={icon}
-                label={t(`wave.setup.season.${key}`)}
-                on={(q.season ?? "auto") === key}
-                onClick={() => setQ((c) => ({ ...c, season: key }))}
-              />
-            ))}
-          </div>
-        </section>
-        <WaveExpert q={q} setQ={setQ} />
+            </section>
+            <section className="flex flex-col gap-3">
+              <h3 className="t-card-title text-left text-text-primary">
+                {t("wave.setup.block.season")}
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {SEASONS.map(([key, icon]) => (
+                  <Tile
+                    key={key}
+                    icon={icon}
+                    label={t(`wave.setup.season.${key}`)}
+                    on={(q.season ?? "auto") === key}
+                    onClick={() => setQ((c) => ({ ...c, season: key }))}
+                  />
+                ))}
+              </div>
+            </section>
+            <WaveExpert q={q} setQ={setQ} />
+          </>
+        )}
       </div>
       <div className="flex flex-wrap items-center justify-end gap-3">
         {count && (

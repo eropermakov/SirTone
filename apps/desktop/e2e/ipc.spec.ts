@@ -482,16 +482,18 @@ test("«Настроить волну»: tiles combine, «Слушать» start
   await page.getByRole("button", { name: "Настроить", exact: true }).click();
   const dlg = page.getByRole("dialog");
   await dlg.getByRole("button", { name: "Работа", exact: true }).click();
-  await dlg.getByRole("button", { name: "Спокойное", exact: true }).first().click();
+  // Compact (owner 2026-11-05, D-130): four blocks in view, the rest under «Ещё настройки».
+  await expect(dlg.getByRole("heading", { name: "Режим", exact: true })).toHaveCount(0);
+  await dlg.getByRole("button", { name: "Спокойное", exact: true }).click();
   await dlg.getByRole("button", { name: "Без слов", exact: true }).click();
   await expect(dlg.getByText("Работаете?")).toBeVisible();
   await expect(dlg.getByTestId("wave-count")).toHaveText("Подходит 12 треков");
   await dlg.getByRole("button", { name: "Слушать", exact: true }).click();
   const call = (await calls(page, "wave_start")).at(-1)?.args as {
-    query: { activity: string[]; character: string[]; language: string[] };
+    query: { activity: string[]; mood: string[]; language: string[] };
   };
   expect(call.query.activity).toEqual(["work"]);
-  expect(call.query.character).toEqual(["calm"]);
+  expect(call.query.mood).toEqual(["calm"]);
   expect(call.query.language).toEqual(["none"]);
   const saved = (await calls(page, "settings_patch")).at(-1)?.args as {
     patch: { wave: { setup: { activity: string[] } } };
@@ -620,6 +622,7 @@ test("«Состав волны»: chips under the player switch an influence of
   // «Настроить волну» 2.0: mode, novelty, influence, ranges.
   await page.getByRole("button", { name: /^Настроить/ }).click();
   const dlg = page.getByRole("dialog");
+  await dlg.getByRole("button", { name: /^Ещё настройки/ }).click();
   for (const h of ["Режим", "Знакомое ↔ Неожиданное", "Сила влияния", "Энергия и темп"]) {
     await expect(dlg.getByRole("heading", { name: h, exact: true })).toBeVisible();
   }
@@ -865,6 +868,8 @@ test("WCAG AA on the new UI: wave screen, dialogs, menus (T7.5)", async ({ page 
   await expect(page.getByTestId("wave-chips")).toBeVisible();
   await check("wave");
   await page.getByRole("button", { name: /^Настроить/ }).click();
+  await check("setup compact");
+  await page.getByRole("button", { name: /^Ещё настройки/ }).click();
   await page.getByRole("button", { name: "Для знатоков" }).click();
   await check("setup");
   await page.keyboard.press("Escape");

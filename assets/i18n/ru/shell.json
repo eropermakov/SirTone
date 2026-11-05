@@ -482,6 +482,7 @@
     "setup": {
       "button": "Настроить",
       "title": "Настроить волну",
+      "more": "Ещё настройки",
       "play": "Слушать",
       "reset": "Сбросить",
       "count": "{count, plural, one {Подходит # трек} few {Подходят # трека} many {Подходит # треков} other {Подходят # трека}}",
@@ -497,11 +498,11 @@
       "mode": { "normal": "Обычная", "sleep": "Сон", "focus": "Фокус", "for_all": "Для всех" },
       "influence": { "season": "Сезон", "context": "Время и погода", "events": "События" },
       "block": {
-        "activity": "Занятие",
+        "activity": "Под занятие",
         "character": "Характер",
-        "mood": "Настроение",
-        "language": "Язык",
-        "frequency": "Частота",
+        "mood": "Под настроение",
+        "language": "По языку",
+        "frequency": "По частоте",
         "daypart": "Время суток",
         "weather": "Погода",
         "season": "Сезон",
