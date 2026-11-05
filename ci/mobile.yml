@@ -110,6 +110,11 @@ jobs:
         run: cargo install cargo-ndk --locked
       - name: Core for Android arm64 (NDK on the runner)
         run: cargo ndk -t arm64-v8a build --release --locked -p sirtone-mobile-ffi --lib
+      - name: The rest of the core compiles for Android (audio decoders, analysis, recognition)
+        run: |
+          for c in sirtone-search sirtone-wave sirtone-playback sirtone-recognize sirtone-analysis sirtone-audio sirtone-transfer; do
+            cargo ndk -t arm64-v8a check --release --locked -p "$c"
+          done
       - name: Kotlin bindings
         run: |
           cargo build --release --locked -p sirtone-mobile-ffi --lib

@@ -63,3 +63,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check-all.ps1
 - `D:\DevTools\smoke` (пробный проект) удалён после проверки.
 - MCP-серверы проекта описаны в `.mcp.json` (версии зафиксированы); Figma-сервер (`https://mcp.figma.com/mcp`, подтверждено документацией Figma) потребует вашей авторизации через `/mcp`, когда дойдёт до макетов. Альтернатива от Figma — плагин `claude plugin install figma@claude-plugins-official` (MCP + навыки). По сторонним данным, Dev Mode MCP может требовать платный план Figma — проверить.
 - Скилла `ui-ux-pro-max` из ТЗ в среде нет; для визуала используются `design-taste-frontend`, `shadcn`, `minimalist-ui`, `high-end-visual-design` (+ `impeccable`, `refero-design`).
+
+## 5. Телефоны (этап 8, 2026-11-05)
+
+| Что | Где | Зачем |
+|---|---|---|
+| Android NDK r30 (SHA-1 сверен с developer.android.com) | `D:\DevTools\android\android-ndk-r30` | сборка ядра под Android arm64 |
+| `cargo-ndk` 4.1.2 | `D:\DevTools\cargo\bin` | `cargo ndk -t arm64-v8a …` |
+| Ninja 1.13.2 (Apache-2.0) | `D:\DevTools\ninja` | CMake-генератор для libopus под Android на Windows |
+| Rust-цель `aarch64-linux-android` | rustup 1.99.0 | — |
+| Служба Apple Mobile Device | уже была (iCloud) | iPhone по кабелю: `sirtone-cli phone list` |
+
+Сборка ядра телефона под Android (локально):
+
+```powershell
+$env:ANDROID_NDK_HOME='D:\DevTools\android\android-ndk-r30'; $env:CMAKE_GENERATOR='Ninja'; $env:PATH="D:\DevTools\ninja;$env:PATH"
+cargo ndk -t arm64-v8a build --release -p sirtone-mobile-ffi --lib
+```
+
+Важно: `CMAKE_GENERATOR=Ninja` и `ANDROID_NDK_HOME` выставлять только в этой оболочке — в общей сборке под Windows libopus собирается генератором Visual Studio, смешение ломает кэш CMake.
+
+Ждут владельца: WSL2 + Ubuntu и `usbipd-win` (права администратора), xtool, `Xcode.xip` (Apple ID владельца) — для сборки и установки на iPhone (П1).
