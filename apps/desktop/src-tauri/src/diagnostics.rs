@@ -54,7 +54,20 @@ pub fn init_logging(dir: &Path, debug: bool) -> Option<WorkerGuard> {
         .ok()?;
     let (writer, guard) = tracing_appender::non_blocking(appender);
     let default = if debug { "debug" } else { "info" };
-    let filter = EnvFilter::try_from_env("SIRTONE_LOG").unwrap_or_else(|_| EnvFilter::new(default));
+    let mut filter =
+        EnvFilter::try_from_env("SIRTONE_LOG").unwrap_or_else(|_| EnvFilter::new(default));
+    // D-132: the Apple login libraries stay quiet whatever SIRTONE_LOG says — their info lines
+    // carry account details (certificate names hold the Apple ID).
+    for cap in [
+        "isideload=warn",
+        "apple_codesign=error",
+        "reqwest=warn",
+        "hyper=warn",
+    ] {
+        if let Ok(d) = cap.parse() {
+            filter = filter.add_directive(d);
+        }
+    }
     let installed = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_writer(writer)

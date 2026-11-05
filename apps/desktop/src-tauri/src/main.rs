@@ -79,6 +79,8 @@ fn main() {
     }
     let debug = cfg!(debug_assertions) || std::env::args().any(|a| a == "--debug");
     let _log_guard = diagnostics::init_logging(&data_dir, debug);
+    // TLS for the hub's Apple login (anisette websocket): one process-wide provider.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     diagnostics::install_panic_hook(data_dir.clone());
     tracing::info!(target: "sirtone::startup", version = env!("CARGO_PKG_VERSION"), "starting");
     let settings = settings_store::SettingsStore::open(&data_dir);
@@ -121,6 +123,7 @@ fn main() {
         .manage(beatgrid::Grids::default())
         .manage(presets::Presets::open(&data_dir))
         .manage(hotkeys::Hotkeys::default())
+        .manage(phones::PhoneHub::open(&data_dir))
         // «Видео» clips with HTTP ranges (T4.4); off the main thread.
         .register_asynchronous_uri_scheme_protocol("sirtone-bg", |ctx, request, responder| {
             let app = ctx.app_handle().clone();

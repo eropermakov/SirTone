@@ -250,6 +250,11 @@
     },
     "trust": "",
     "install": "",
+    "installing": {
+      "busy": "",
+      "signing": "",
+      "sending": ""
+    },
     "androidSoon": "",
     "unnamedIphone": "",
     "unnamedAndroid": "",
@@ -272,9 +277,56 @@
         "title": "",
         "text": ""
       },
-      "soon": "",
       "next": "",
-      "cancel": ""
+      "cancel": "",
+      "later": ""
+    },
+    "wizard": {
+      "retry": "",
+      "done": "",
+      "close": ""
+    },
+    "login": {
+      "title": "",
+      "text": "",
+      "appleId": "",
+      "password": "",
+      "privacy": "",
+      "submit": "",
+      "busy": ""
+    },
+    "code": {
+      "title": "",
+      "devices": "",
+      "sms": "",
+      "retry": "",
+      "label": "",
+      "submit": "",
+      "resend": ""
+    },
+    "devMode": {
+      "title": "",
+      "steps": ["", "", ""]
+    },
+    "allow": {
+      "title": "",
+      "steps": ["", ""]
+    },
+    "done": {
+      "title": "",
+      "text": ""
+    },
+    "errors": {
+      "NetworkOffline": "",
+      "AppleLogin": "",
+      "AppleSignedOut": "",
+      "RemoteError": "",
+      "PhoneInstall": "",
+      "PhonePackageMissing": "",
+      "DeviceUnavailable": "",
+      "DeviceBusy": "",
+      "InvalidArgument": "",
+      "Internal": ""
     }
   }
 }

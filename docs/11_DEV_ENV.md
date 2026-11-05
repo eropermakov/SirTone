@@ -94,4 +94,6 @@ wsl -d Ubuntu-24.04 -- bash -lc 'export USBMUXD_SOCKET_ADDRESS=172.19.160.1:2701
 
 Сопряжение («Доверять») остаётся у Windows; хаб ПК и xtool видят телефон одновременно. Проверено: `idevice_id`, `ideviceinfo`, `xtool devices`.
 
-Ждут владельца: `Xcode.xip` (Apple ID владельца) и `xtool setup` (пароль и 2FA вводит владелец) — для сборки и установки на iPhone (П1).
+Мастер установки в ПК-Сиртоне («Телефоны», M2.1) берёт пакет приложения из переменной `SIRTONE_IOS_APP` — путь к неподписанному `SirTone.app` (или `.ipa`), собранному `xtool dev build` в WSL и скопированному на D:. Только для разработки: релизный путь — IPA из GitHub Releases (`ci/mobile.yml`, нужен scope `workflow`). Хаб сам делает временную копию (isideload удаляет подписанный пакет).
+
+Вход хаба в Apple ID — один раз (`sirtone-cli phone login <apple-id>` в консоли владельца или форма мастера); токен, ключ и состояние anisette — в Windows Credential Manager, служба `studio.serkov.sirtone.apple` (ключи с префиксом аккаунта). `sirtone-cli phone adopt <apple-id>` переносит личность спайка П4 (служба `sirtone-p4`), чтобы не создавать у Apple новый сертификат.

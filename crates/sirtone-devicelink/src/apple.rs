@@ -292,10 +292,13 @@ fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
 /// Signs and installs the app (`.app` folder or `.ipa`) on the phone over the cable, with the
 /// stored login. Installing over the same app keeps its files — this is also how the hub renews
 /// until profile-only renewal (П3) is proven.
+/// `progress` gets 0…1: signing reaches 0.5, then 0.6 while the phone receives and installs it,
+/// 1.0 when done (isideload reports no finer steps for the transfer).
 pub async fn install(
     apple_id: &str,
     udid: &str,
     app: &Path,
+    progress: &(dyn Fn(f32) + Send + Sync),
 ) -> Result<std::time::Duration, LinkError> {
     if !app.exists() {
         return Err(LinkError::Apple("phone.app_missing", String::new()));
@@ -348,12 +351,17 @@ pub async fn install(
             &provider,
             input,
             false,
-            None::<fn(f32) -> std::future::Ready<()>>,
+            Some(|p: f32| {
+                // Signing ends at 0.5; the transfer and install follow without callbacks.
+                progress(if p >= 0.5 { 0.6 } else { p });
+                std::future::ready(())
+            }),
             None,
         )
         .await;
     let _ = std::fs::remove_dir_all(&work);
     r.map_err(|e| LinkError::Apple("phone.install", short(&e)))?;
+    progress(1.0);
     Ok(started.elapsed())
 }
 

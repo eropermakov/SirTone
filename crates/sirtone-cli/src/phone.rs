@@ -117,7 +117,7 @@ pub fn install(apple_id: &str, phone: &str, app: &str) -> ExitCode {
     } else {
         phone.to_string()
     };
-    match rt.block_on(apple::install(apple_id, &udid, Path::new(app))) {
+    match rt.block_on(apple::install(apple_id, &udid, Path::new(app), &|_| {})) {
         Ok(took) => {
             println!("installed on {udid} in {:.1} s", took.as_secs_f32());
             ExitCode::SUCCESS

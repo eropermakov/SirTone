@@ -24,6 +24,14 @@ pub enum ErrorCode {
     LibraryRootNotSet,
     NotSupported,
     InvalidConfig,
+    /// Stage 8 hub (D-132, D-139): the Apple ID login is missing or ended — the wizard asks again.
+    AppleSignedOut,
+    /// The Apple ID login failed (password, code, account).
+    AppleLogin,
+    /// Signing or installing on the phone failed.
+    PhoneInstall,
+    /// No app package to install (dev: `SIRTONE_IOS_APP`; later GitHub Releases).
+    PhonePackageMissing,
     Internal,
 }
 

@@ -86,6 +86,21 @@ export const commands = {
 	updateStatus: () => __TAURI_INVOKE<UpdateStatus>("update_status"),
 	/**  Phones connected now. Never fails: a missing Apple service is a state, not an error. */
 	phonesList: () => __TAURI_INVOKE<PhonesStatus>("phones_list"),
+	phoneAccount: (udid: string) => __TAURI_INVOKE<PhoneAccount>("phone_account", { udid }),
+	/**
+	 *  Logs in with the Apple ID of this phone's owner (wizard step 6). Each 2FA request goes to
+	 *  `asks`; the form answers with [`phone_apple_2fa`]. The password is dropped when this returns.
+	 */
+	phoneAppleLogin: (udid: string, appleId: string, password: string, asks: Channel<TwoFactorRequest>) => typedError<null, AppError>(__TAURI_INVOKE("phone_apple_login", { udid, appleId, password, asks })),
+	/**  The person's answer to the waiting 2FA request. */
+	phoneApple2fa: (reply: TwoFactorReply) => __TAURI_INVOKE<void>("phone_apple_2fa", { reply }),
+	/**
+	 *  Signs and installs Сиртон on the phone over the cable (wizard step 7); over an existing
+	 *  install it keeps the app's files (that is also how the hub renews until П3).
+	 */
+	phoneInstall: (udid: string, progress: Channel<InstallProgress>) => typedError<null, AppError>(__TAURI_INVOKE("phone_install", { udid, progress })),
+	/**  «Отключить телефон»: forgets the phone and, if no other phone uses it, its Apple ID (D-132). */
+	phoneForget: (udid: string) => typedError<null, AppError>(__TAURI_INVOKE("phone_forget", { udid })),
 	/**  Turns «Запускать вместе с Windows» on/off and saves the setting; returns the real state. */
 	autostartSet: (on: boolean) => typedError<boolean, AppError>(__TAURI_INVOKE("autostart_set", { on })),
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
@@ -472,7 +487,15 @@ export type DuplicatesView = {
 
 export type ErrorCode = "FileNotFound" | "UnsupportedFormat" | "DecodeFailed" | "PathTooLong" | "DiskFull" | "PermissionDenied" | "DeviceUnavailable" | "DeviceBusy" | "NetworkOffline" | "RateLimited" | "RemoteError" | "DbBusy" | "DbCorrupt" | "Cancelled" | "InvalidArgument" | "LibraryOffline" | 
 /**  No library folder chosen yet (docs/03 §8.2): the UI asks for one. */
-"LibraryRootNotSet" | "NotSupported" | "InvalidConfig" | "Internal";
+"LibraryRootNotSet" | "NotSupported" | "InvalidConfig" | 
+/**  Stage 8 hub (D-132, D-139): the Apple ID login is missing or ended — the wizard asks again. */
+"AppleSignedOut" | 
+/**  The Apple ID login failed (password, code, account). */
+"AppleLogin" | 
+/**  Signing or installing on the phone failed. */
+"PhoneInstall" | 
+/**  No app package to install (dev: `SIRTONE_IOS_APP`; later GitHub Releases). */
+"PhonePackageMissing" | "Internal";
 
 /**  One event for the settings list. */
 export type EventInfo = {
@@ -627,6 +650,11 @@ export type ImportReport = {
 
 export type ImportStart = "started" | "rootNeeded";
 
+export type InstallProgress = {
+	/**  0…1. */
+	fraction: number | null,
+};
+
 /**  The collection changed (tracks added/removed): lists and counters refresh. Throttled. */
 export type LibraryChanged = {
 	tracks: number,
@@ -708,6 +736,17 @@ export type OrganizeSuggested = {
 export type PageCursor = {
 	key: string,
 	id: number,
+};
+
+/**  The phone's Apple ID as the wizard needs it: skip the login step when it is still valid. */
+export type PhoneAccount = {
+	appleId: string | null,
+	signedIn: boolean,
+	/**  Unix ms when the Apple login ends (then the person signs in again). */
+	loginUntilMs: number | null,
+	installedAtMs: number | null,
+	/**  The app package is available to install. */
+	package: boolean,
 };
 
 export type PhoneInfo = {
@@ -982,6 +1021,15 @@ export type TrackItem = {
 export type TrackPage = {
 	rows: TrackItem[],
 	next: PageCursor | null,
+};
+
+export type TwoFactorReply = { kind: "code"; code: string } | { kind: "sendToDevices" } | { kind: "resend" } | { kind: "abort" };
+
+export type TwoFactorRequest = {
+	/**  The code went by SMS (else to the person's Apple devices). */
+	sms: boolean,
+	/**  The previous code did not work. */
+	retry: boolean,
 };
 
 /**  A hint for an unknown track (from the online lookup, D-87). */

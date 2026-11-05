@@ -261,6 +261,53 @@ async function mockTauri(page: Page) {
           case "phones_list":
             // A test that needs phones sets `__mockPhones` before the page loads.
             return w.__mockPhones ?? { phones: [], appleService: true };
+          case "phone_account":
+            return (
+              w.__mockPhoneAccount ?? {
+                appleId: null,
+                signedIn: false,
+                loginUntilMs: null,
+                installedAtMs: null,
+                package: true,
+              }
+            );
+          case "phone_apple_login": {
+            // Asks for a code through the channel; «111111» is wrong once, anything else passes.
+            const ch = callbacks.get((args.asks as { id: number }).id);
+            let index = 0;
+            let retry = false;
+            for (;;) {
+              ch?.({ message: { sms: false, retry }, index: index++ });
+              const seen = calls.filter((c) => c.cmd === "phone_apple_2fa").length;
+              const reply = await new Promise<{ kind: string; code?: string }>((resolve) => {
+                const id = window.setInterval(() => {
+                  const answers = calls.filter((c) => c.cmd === "phone_apple_2fa");
+                  if (answers.length > seen) {
+                    window.clearInterval(id);
+                    const last = (answers[answers.length - 1] as { args: unknown }).args as {
+                      reply: { kind: string; code?: string };
+                    };
+                    resolve(last.reply);
+                  }
+                }, 20);
+              });
+              if (reply.kind === "abort")
+                throw { code: "AppleLogin", retryable: false, details: null };
+              if (reply.kind === "code" && reply.code !== "111111") return null;
+              retry = true;
+            }
+          }
+          case "phone_apple_2fa":
+            return null;
+          case "phone_install": {
+            if (w.__mockInstallError) throw w.__mockInstallError;
+            const ch = callbacks.get((args.progress as { id: number }).id);
+            for (const [index, fraction] of [0, 0.3, 0.6, 1].entries()) {
+              ch?.({ message: { fraction }, index });
+              await new Promise((r) => setTimeout(r, 30));
+            }
+            return null;
+          }
           case "playback_toggle":
           case "playback_seek":
           case "playback_set_volume":
@@ -1007,13 +1054,12 @@ test("«Телефоны»: phones the hub sees, trust hint, «Что устан
   await expect(page.getByRole("article", { name: "iPhone", exact: true })).toContainText(
     "«Доверять»",
   );
-  // One Primary per card; it opens step 4 with three choices, «Перенести всё» first.
+  // One Primary per card; it opens step 4 with three choices — transfer comes later (M6).
   await mine.getByRole("button", { name: "Установить Сиртон" }).click();
   const choices = mine.getByRole("group", { name: "Что установить?" });
   await expect(choices.getByRole("radio")).toHaveCount(3);
-  await expect(choices.getByRole("radio", { name: /Перенести всё/ })).toBeChecked();
-  await choices.getByText("Только приложение").click();
   await expect(choices.getByRole("radio", { name: /Только приложение/ })).toBeChecked();
+  await expect(choices.getByRole("radio", { name: /Перенести всё/ })).toBeDisabled();
   await mine.getByRole("button", { name: "Отмена" }).click();
   await expect(mine.getByRole("button", { name: "Установить Сиртон" })).toBeVisible();
   expect((await calls(page, "phones_list")).length).toBeGreaterThan(0);
@@ -1031,4 +1077,110 @@ test("«Телефоны»: without Apple's component the hub says what to insta
   await page.getByRole("button", { name: "Телефоны", exact: true }).click();
   await expect(page.getByText("Нужна программа Apple")).toBeVisible();
   await expect(page.getByText(/Подключите iPhone кабелем/)).toBeVisible();
+});
+
+const ownerPhone = {
+  appleService: true,
+  phones: [
+    {
+      id: "00008130-AAA",
+      platform: "ios",
+      usb: true,
+      name: "iPhone владельца",
+      model: "iPhone16,1",
+      osVersion: "26.1",
+      state: "ready",
+    },
+  ],
+};
+
+test("«Телефоны»: Apple ID with a 2FA code, then install and the phone's steps (MR §6.1)", async ({
+  page,
+}) => {
+  await page.addInitScript((phones) => {
+    (window as unknown as Record<string, unknown>).__mockPhones = phones;
+  }, ownerPhone);
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Телефоны", exact: true }).click();
+  const card = page.getByRole("article", { name: "iPhone владельца" });
+  await card.getByRole("button", { name: "Установить Сиртон" }).click();
+  await card.getByRole("button", { name: "Дальше" }).click();
+
+  await card.getByLabel("Apple ID").fill("owner@example.com");
+  await card.getByLabel("Пароль").fill("not-a-real-password");
+  await card.getByRole("button", { name: "Войти" }).click();
+
+  // A wrong code first: the hub asks again and says so.
+  const code = card.getByLabel("Код");
+  await code.fill("111111");
+  await card.getByRole("button", { name: "Подтвердить" }).click();
+  await expect(card.getByText("Код не подошёл", { exact: false })).toBeVisible();
+  await code.fill("123456");
+  await card.getByRole("button", { name: "Подтвердить" }).click();
+
+  await expect(card.getByText("Включите режим разработчика")).toBeVisible();
+  await card.getByRole("button", { name: "Готово" }).click();
+  await expect(card.getByText("Разрешите приложение")).toBeVisible();
+  await card.getByRole("button", { name: "Готово" }).click();
+  await expect(card.getByText("Сиртон установлен")).toBeVisible();
+
+  const login = (await calls(page, "phone_apple_login")).at(-1)?.args as Record<string, unknown>;
+  expect(login.appleId).toBe("owner@example.com");
+  expect((await calls(page, "phone_install")).length).toBe(1);
+  // D-132: the password went once, to the login call, and nowhere else.
+  const all = await page.evaluate(
+    () => (window as unknown as { __mock: { calls: unknown[] } }).__mock.calls,
+  );
+  expect(JSON.stringify(all).split("not-a-real-password").length - 1).toBe(1);
+});
+
+test("«Телефоны»: a stored Apple login goes straight to install; offline is said plainly", async ({
+  page,
+}) => {
+  await page.addInitScript((phones) => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__mockPhones = phones;
+    w.__mockPhoneAccount = {
+      appleId: "owner@example.com",
+      signedIn: true,
+      loginUntilMs: 1.9e12,
+      installedAtMs: null,
+      package: true,
+    };
+    w.__mockInstallError = { code: "NetworkOffline", retryable: false, details: null };
+  }, ownerPhone);
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Телефоны", exact: true }).click();
+  const card = page.getByRole("article", { name: "iPhone владельца" });
+  await card.getByRole("button", { name: "Установить Сиртон" }).click();
+  await card.getByRole("button", { name: "Дальше" }).click();
+  await expect(card.getByText("Сиртон в офлайн-режиме", { exact: false })).toBeVisible();
+  expect(await calls(page, "phone_apple_login")).toHaveLength(0);
+  expect(await calls(page, "phone_install")).toHaveLength(1);
+});
+
+test("«Телефоны»: without the app package the wizard says it is not ready", async ({ page }) => {
+  await page.addInitScript((phones) => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__mockPhones = phones;
+    w.__mockPhoneAccount = {
+      appleId: null,
+      signedIn: false,
+      loginUntilMs: null,
+      installedAtMs: null,
+      package: false,
+    };
+  }, ownerPhone);
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Телефоны", exact: true }).click();
+  const card = page.getByRole("article", { name: "iPhone владельца" });
+  await card.getByRole("button", { name: "Установить Сиртон" }).click();
+  await card.getByRole("button", { name: "Дальше" }).click();
+  await expect(
+    card.getByText("пакет Сиртона для iPhone ещё не готов", { exact: false }),
+  ).toBeVisible();
+  expect(await calls(page, "phone_install")).toHaveLength(0);
 });

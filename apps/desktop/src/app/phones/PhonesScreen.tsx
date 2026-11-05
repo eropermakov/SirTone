@@ -1,30 +1,30 @@
 import { Cable, Smartphone, Wifi } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type PhoneInfo, type PhonesStatus, phonesList } from "@/shared/ipc/phones";
-import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/Button";
 import { Skeleton } from "@/shared/ui/Skeleton";
+import { PhoneWizard } from "./PhoneWizard";
 
 /** How often the hub looks for phones while the screen is open (cheap local query). */
 const POLL_MS = 3000;
 
-type Choice = "all" | "pick" | "app";
-const CHOICES: Choice[] = ["all", "pick", "app"];
-
 /**
- * Hub «Телефоны» (stage 8, `docs/mobile/README.md` §6, FR-HUB-001/002/007): one card per phone
- * with one Primary action; the wizard's first steps (Apple component, trust, «Что установить?»).
- * Signing and install come with M2 after check П4 — the choice is shown, the install says so.
+ * Hub «Телефоны» (stage 8, `docs/mobile/README.md` §6, FR-HUB-001…004/007): one card per phone
+ * with one Primary action; it opens the iPhone wizard (`PhoneWizard`: what to install, Apple ID,
+ * install, Developer Mode, trust). Polling pauses while a phone is being installed.
  */
 export function PhonesScreen() {
   const { t } = useTranslation("shell");
   const [status, setStatus] = useState<PhonesStatus | null>(null);
   const [picking, setPicking] = useState<string | null>(null);
+  // Lockdown queries must not race the transfer to the phone (MR §6.4).
+  const busy = useRef(false);
 
   useEffect(() => {
     let alive = true;
     const look = () =>
+      !busy.current &&
       phonesList()
         .then((s) => alive && setStatus(s))
         .catch(() => alive && setStatus({ phones: [], appleService: true }));
@@ -58,6 +58,9 @@ export function PhonesScreen() {
                 picking={picking === p.id}
                 onInstall={() => setPicking(p.id)}
                 onCancel={() => setPicking(null)}
+                onBusy={(b) => {
+                  busy.current = b;
+                }}
               />
             ))
           )}
@@ -91,11 +94,13 @@ function PhoneCard({
   picking,
   onInstall,
   onCancel,
+  onBusy,
 }: {
   phone: PhoneInfo;
   picking: boolean;
   onInstall: () => void;
   onCancel: () => void;
+  onBusy: (busy: boolean) => void;
 }) {
   const { t } = useTranslation("shell");
   const ios = phone.platform === "ios";
@@ -132,7 +137,7 @@ function PhoneCard({
           {t("phones.trust")}
         </p>
       ) : picking ? (
-        <Choose onCancel={onCancel} />
+        <PhoneWizard phone={phone} onClose={onCancel} onBusy={onBusy} />
       ) : (
         <div>
           <Button variant="primary" onClick={onInstall}>
@@ -141,51 +146,5 @@ function PhoneCard({
         </div>
       )}
     </article>
-  );
-}
-
-/** Wizard step 4 «Что установить?» (MR §6.1). Install itself arrives with M2. */
-function Choose({ onCancel }: { onCancel: () => void }) {
-  const { t } = useTranslation("shell");
-  const [choice, setChoice] = useState<Choice>("all");
-  return (
-    <div className="flex flex-col gap-3">
-      <span className="t-body-strong text-text-primary">{t("phones.choose.title")}</span>
-      <fieldset aria-label={t("phones.choose.title")} className="flex flex-col gap-2">
-        {CHOICES.map((c) => (
-          <label
-            key={c}
-            className={cn(
-              "flex cursor-pointer flex-col gap-0.5 rounded-(--radius-md) border px-4 py-3 has-focus-visible:outline-2 has-focus-visible:outline-focus-ring",
-              choice === c
-                ? "border-accent-fill bg-bg-selected"
-                : "border-border hover:bg-bg-hover",
-            )}
-          >
-            <input
-              type="radio"
-              name="phone-choice"
-              value={c}
-              checked={choice === c}
-              onChange={() => setChoice(c)}
-              className="sr-only"
-            />
-            <span className="t-body-strong text-text-primary">{t(`phones.choose.${c}.title`)}</span>
-            <span className="t-caption text-text-secondary">{t(`phones.choose.${c}.text`)}</span>
-          </label>
-        ))}
-      </fieldset>
-      <p role="status" className="t-caption text-text-secondary">
-        {t("phones.choose.soon")}
-      </p>
-      <div className="flex gap-2">
-        <Button variant="primary" disabled>
-          {t("phones.choose.next")}
-        </Button>
-        <Button variant="ghost" onClick={onCancel}>
-          {t("phones.choose.cancel")}
-        </Button>
-      </div>
-    </div>
   );
 }
