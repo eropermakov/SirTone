@@ -5061,6 +5061,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sirtone-transfer"
+version = "0.1.38"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sirtone-core",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "sirtone-wave"
 version = "0.1.38"
 dependencies = [
