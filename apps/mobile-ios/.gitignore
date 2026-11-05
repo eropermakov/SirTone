@@ -4,3 +4,4 @@
 /.build/
 /xtool/
 *.xcodeproj
+/.bsp/
