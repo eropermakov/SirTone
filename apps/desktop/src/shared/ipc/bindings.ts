@@ -84,6 +84,8 @@ export const commands = {
 	hotkeysStatus: () => __TAURI_INVOKE<HotkeyStatus[]>("hotkeys_status"),
 	/**  Version and, the first time after an update, «Сиртон обновлён до X» (taken once). */
 	updateStatus: () => __TAURI_INVOKE<UpdateStatus>("update_status"),
+	/**  Phones connected now. Never fails: a missing Apple service is a state, not an error. */
+	phonesList: () => __TAURI_INVOKE<PhonesStatus>("phones_list"),
 	/**  Turns «Запускать вместе с Windows» on/off and saves the setting; returns the real state. */
 	autostartSet: (on: boolean) => typedError<boolean, AppError>(__TAURI_INVOKE("autostart_set", { on })),
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
@@ -706,6 +708,26 @@ export type OrganizeSuggested = {
 export type PageCursor = {
 	key: string,
 	id: number,
+};
+
+export type PhoneInfo = {
+	id: string,
+	platform: PhonePlatform,
+	usb: boolean,
+	name: string | null,
+	model: string | null,
+	osVersion: string | null,
+	state: PhoneState,
+};
+
+export type PhonePlatform = "ios" | "android";
+
+export type PhoneState = "ready" | "needsTrust" | "notSupportedYet";
+
+export type PhonesStatus = {
+	phones: PhoneInfo[],
+	/**  Windows sees iPhones only with Apple's component (wizard step 2). */
+	appleService: boolean,
 };
 
 /**  The screen a list was played from (`play_event.source`). */

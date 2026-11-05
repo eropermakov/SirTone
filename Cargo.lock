@@ -4959,6 +4959,7 @@ dependencies = [
  "sirtone-analysis",
  "sirtone-audio",
  "sirtone-core",
+ "sirtone-devicelink",
  "sirtone-library",
  "sirtone-net",
  "sirtone-platform",

@@ -1,6 +1,9 @@
 {
   "proto": "",
-  "drop": { "title": "", "text": "" },
+  "drop": {
+    "title": "",
+    "text": ""
+  },
   "empty": {
     "wave": {
       "title": "",
@@ -201,7 +204,13 @@
   "settingsPerf": {
     "title": "Performance",
     "hint": "The weaker the computer, the fewer animations and effects",
-    "level": ["Very weak", "Weak", "Medium", "Powerful", "Very powerful"],
+    "level": [
+      "Very weak",
+      "Weak",
+      "Medium",
+      "Powerful",
+      "Very powerful"
+    ],
     "uiAnimations": "Interface animations",
     "listAnimations": "List animations",
     "blur": "Blur and transparency"
@@ -237,5 +246,41 @@
       "en": "English"
     },
     "partial": "The English translation is not complete yet — what is missing shows in Russian."
+  },
+  "phones": {
+    "title": "",
+    "empty": "",
+    "apple": {
+      "title": "",
+      "text": ""
+    },
+    "trust": "",
+    "install": "",
+    "androidSoon": "",
+    "unnamedIphone": "",
+    "unnamedAndroid": "",
+    "ios": "",
+    "link": {
+      "usb": "",
+      "wifi": ""
+    },
+    "choose": {
+      "title": "",
+      "all": {
+        "title": "",
+        "text": ""
+      },
+      "pick": {
+        "title": "",
+        "text": ""
+      },
+      "app": {
+        "title": "",
+        "text": ""
+      },
+      "soon": "",
+      "next": "",
+      "cancel": ""
+    }
   }
 }

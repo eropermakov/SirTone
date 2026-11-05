@@ -6,7 +6,7 @@ use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::{
     analysis, artists, autostart, backgrounds, bluetooth, bootstrap, context, continuation,
-    duplicates, events, export, feedback, focus, hotkeys, legal, library, net, night, perf,
+    duplicates, events, export, feedback, focus, hotkeys, legal, library, net, night, perf, phones,
     playback, playlists, presets, search, settings_store, sleep, storage, unknowns, updates, viz,
     wave, widget, window_chrome,
 };
@@ -67,6 +67,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             autostart::autostart_available,
             hotkeys::hotkeys_status,
             updates::update_status,
+            phones::phones_list,
             autostart::autostart_set,
             library::library_status,
             library::library_pick_folder,

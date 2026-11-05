@@ -258,6 +258,9 @@ async function mockTauri(page: Page) {
             return { done: 0, total: 0, paused: false };
           case "update_status":
             return { current: "0.1.2", justUpdated: null, notes: null };
+          case "phones_list":
+            // A test that needs phones sets `__mockPhones` before the page loads.
+            return w.__mockPhones ?? { phones: [], appleService: true };
           case "playback_toggle":
           case "playback_seek":
           case "playback_set_volume":
@@ -961,4 +964,75 @@ test("«Все треки»: the sidebar opens every track; sort and play the so
   await expect
     .poll(async () => (await calls(page, "play_tracks")).at(-1)?.args)
     .toEqual({ ids: [2, 1, 3], start: 0, context: "collection", playlist: null });
+});
+
+test("«Телефоны»: phones the hub sees, trust hint, «Что установить?» (stage 8, FR-HUB-001)", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__mockPhones = {
+      appleService: true,
+      phones: [
+        {
+          id: "00008130-AAA",
+          platform: "ios",
+          usb: true,
+          name: "iPhone владельца",
+          model: "iPhone16,1",
+          osVersion: "26.1",
+          state: "ready",
+        },
+        {
+          id: "00008130-BBB",
+          platform: "ios",
+          usb: true,
+          name: null,
+          model: "iPhone15,2",
+          osVersion: "18.6",
+          state: "needsTrust",
+        },
+      ],
+    };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Телефоны", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Телефоны" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Телефоны", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  const mine = page.getByRole("article", { name: "iPhone владельца" });
+  await expect(mine).toContainText("iPhone16,1 · iOS 26.1");
+  await expect(page.getByRole("article", { name: "iPhone", exact: true })).toContainText("«Доверять»");
+  // One Primary per card; it opens step 4 with three choices, «Перенести всё» first.
+  await mine.getByRole("button", { name: "Установить Сиртон" }).click();
+  const choices = mine.getByRole("radiogroup", { name: "Что установить?" });
+  await expect(choices.getByRole("radio")).toHaveCount(3);
+  await expect(choices.getByRole("radio", { name: /Перенести всё/ })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await choices.getByRole("radio", { name: /Только приложение/ }).click();
+  await expect(choices.getByRole("radio", { name: /Только приложение/ })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await mine.getByRole("button", { name: "Отмена" }).click();
+  await expect(mine.getByRole("button", { name: "Установить Сиртон" })).toBeVisible();
+  expect((await calls(page, "phones_list")).length).toBeGreaterThan(0);
+});
+
+test("«Телефоны»: without Apple's component the hub says what to install", async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__mockPhones = {
+      appleService: false,
+      phones: [],
+    };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Телефоны", exact: true }).click();
+  await expect(page.getByText("Нужна программа Apple")).toBeVisible();
+  await expect(page.getByText(/Подключите iPhone кабелем/)).toBeVisible();
 });

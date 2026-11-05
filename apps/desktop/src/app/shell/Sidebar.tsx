@@ -11,6 +11,7 @@ import {
   Plus,
   Search,
   Settings,
+  Smartphone,
   Tags,
   Waves,
   X,
@@ -31,6 +32,7 @@ export type Screen =
   | "genres"
   | "playlists"
   | "unknown"
+  | "phones"
   | "settings";
 
 type Item = { id: Screen; icon: ComponentType<{ size?: number; strokeWidth?: number }> };
@@ -45,7 +47,11 @@ const COLLECTION: Item[] = [
   { id: "genres", icon: Tags },
 ];
 const SETTINGS: Item = { id: "settings", icon: Settings };
-const REST: Item[] = [{ id: "unknown", icon: CircleHelp }];
+// «Телефоны» (stage 8, FR-HUB-001): the hub for the phone apps.
+const REST: Item[] = [
+  { id: "unknown", icon: CircleHelp },
+  { id: "phones", icon: Smartphone },
+];
 
 type Props = {
   current: Screen;

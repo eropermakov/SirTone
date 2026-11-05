@@ -1,5 +1,5 @@
 Сиртон — сторонние компоненты (THIRD_PARTY_NOTICES)
-Rust: 414 · JS: 25
+Rust: 418 · JS: 25
 
 ==============================================================================
 Шрифт Geologica — SIL Open Font License 1.1
@@ -10022,6 +10022,34 @@ SOFTWARE.
 
 ==============================================================================
 MIT — MIT
+Пакеты: idevice 0.1.68
+------------------------------------------------------------------------------
+(Текст лицензии MIT; в пакете idevice отдельного файла нет.)
+
+MIT License
+
+Copyright (c) 2022 zzzgydi
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+==============================================================================
+MIT — MIT
 Пакеты: infer 0.22.0
 ------------------------------------------------------------------------------
 MIT License
@@ -10689,6 +10717,34 @@ MIT — MIT
 Пакеты: plist 1.10.1
 ------------------------------------------------------------------------------
 Copyright (c) 2015 Edward Barnard
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+==============================================================================
+MIT — MIT
+Пакеты: plist-macro 0.1.6
+------------------------------------------------------------------------------
+(Текст лицензии MIT; в пакете plist-macro отдельного файла нет.)
+
+MIT License
+
+Copyright (c) 2022 zzzgydi
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -18860,7 +18916,7 @@ DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
 MIT OR Apache-2.0 — MIT OR Apache-2.0
-Пакеты: futures-channel 0.3.34, futures-core 0.3.34, futures-io 0.3.34, futures-sink 0.3.34, futures-task 0.3.34, futures-util 0.3.34
+Пакеты: futures 0.3.34, futures-channel 0.3.34, futures-core 0.3.34, futures-executor 0.3.34, futures-io 0.3.34, futures-sink 0.3.34, futures-task 0.3.34, futures-util 0.3.34
 ------------------------------------------------------------------------------
 Apache License
                         Version 2.0, January 2004

@@ -29,6 +29,7 @@ mod memory;
 mod net;
 mod night;
 mod perf;
+mod phones;
 mod playback;
 mod playlists;
 mod popularity;

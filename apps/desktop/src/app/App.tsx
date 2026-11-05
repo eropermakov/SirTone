@@ -8,6 +8,7 @@ import { RootPanel } from "@/app/library/RootPanel";
 import { TracksScreen } from "@/app/library/TracksScreen";
 import { UnknownScreen } from "@/app/library/UnknownScreen";
 import { useLibrary } from "@/app/library/useLibrary";
+import { PhonesScreen } from "@/app/phones/PhonesScreen";
 import { events } from "@/shared/ipc/bindings";
 import { bootstrap } from "@/shared/ipc/bootstrap";
 import { onDuplicatesFound } from "@/shared/ipc/duplicates";
@@ -556,6 +557,8 @@ export function App() {
                 />
               ) : hasMusic && screen === "unknown" && lib.status.unknown > 0 ? (
                 <UnknownScreen version={lib.version} playingId={snap.trackId} onGo={goTo} />
+              ) : screen === "phones" ? (
+                <PhonesScreen />
               ) : screen === "tracks" && hasMusic ? (
                 <TracksScreen
                   status={lib.status}
