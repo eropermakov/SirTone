@@ -27,6 +27,7 @@ pub mod search_text;
 pub mod semantic;
 pub mod smart;
 pub mod stats;
+pub mod transfer;
 pub mod unknowns;
 pub mod watch;
 pub mod wave;

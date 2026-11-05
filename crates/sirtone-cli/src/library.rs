@@ -40,7 +40,7 @@ fn open(root: &Path) -> Result<rusqlite::Connection, String> {
 }
 
 /// `verify` only reads an existing library: it never creates one in an arbitrary folder.
-fn open_existing(root: &Path) -> Result<rusqlite::Connection, String> {
+pub(crate) fn open_existing(root: &Path) -> Result<rusqlite::Connection, String> {
     sirtone_library::open_existing(&root.join(SERVICE_DIR).join("library.db"), medium(root))
         .map_err(|e| e.to_string())
 }

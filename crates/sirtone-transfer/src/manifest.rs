@@ -47,9 +47,58 @@ pub struct TrackEntry {
     pub title: Option<String>,
     #[serde(default)]
     pub album: Option<String>,
-    /// Chromaprint items (raw u32), when the source analysed the track.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Chromaprint items (raw u32), when the source analysed the track. On disk: Chromaprint's
+    /// compressed form in URL-safe base64, as `fpcalc` prints it (~1 KB instead of ~17 KB).
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "fp_codec")]
     pub fingerprint: Option<Vec<u32>>,
+}
+
+mod fp_codec {
+    use serde::{Deserialize, Deserializer, Serializer, de::Error};
+    use sirtone_core::fingerprint::{base64url, compress, decompress};
+
+    /// Chromaprint's own algorithm id (`fpcalc` default).
+    const ALGORITHM: u8 = 1;
+
+    pub fn serialize<S: Serializer>(fp: &Option<Vec<u32>>, s: S) -> Result<S::Ok, S::Error> {
+        match fp {
+            Some(fp) => s.serialize_str(&base64url(&compress(fp, ALGORITHM))),
+            None => s.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Vec<u32>>, D::Error> {
+        let Some(text) = Option::<String>::deserialize(d)? else {
+            return Ok(None);
+        };
+        let bytes = unbase64url(&text).ok_or_else(|| D::Error::custom("fingerprint: base64"))?;
+        decompress(&bytes)
+            .map(Some)
+            .ok_or_else(|| D::Error::custom("fingerprint: data"))
+    }
+
+    fn unbase64url(s: &str) -> Option<Vec<u8>> {
+        let val = |c: u8| match c {
+            b'A'..=b'Z' => Some(c - b'A'),
+            b'a'..=b'z' => Some(c - b'a' + 26),
+            b'0'..=b'9' => Some(c - b'0' + 52),
+            b'-' => Some(62),
+            b'_' => Some(63),
+            _ => None,
+        };
+        let mut out = Vec::with_capacity(s.len() * 3 / 4);
+        let (mut acc, mut bits) = (0u32, 0u32);
+        for c in s.bytes() {
+            acc = (acc << 6) | u32::from(val(c)?);
+            bits += 6;
+            if bits >= 8 {
+                bits -= 8;
+                out.push((acc >> bits) as u8);
+                acc &= (1 << bits) - 1;
+            }
+        }
+        Some(out)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -175,10 +224,18 @@ mod tests {
     #[test]
     fn round_trip_and_resume() {
         let dir = std::env::temp_dir().join(format!("sirtone-transfer-{}", std::process::id()));
-        let m = sample();
+        let mut m = sample();
+        m.tracks[0].fingerprint =
+            Some((0..900u32).map(|i| i.wrapping_mul(2_654_435_761)).collect());
         m.write(&dir).unwrap();
         let back = Manifest::read(&dir).unwrap();
         assert_eq!(back, m);
+        let text = std::fs::read_to_string(dir.join(crate::MANIFEST_FILE)).unwrap();
+        assert!(
+            text.len() < 10_000,
+            "compact fingerprints: {} bytes",
+            text.len()
+        );
         assert_eq!(back.total_bytes(), 30);
         // The first file arrived whole, the second was cut at 7 bytes.
         let pending = back.pending(|p| match p {

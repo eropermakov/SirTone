@@ -9,12 +9,14 @@
 //! sirtone-cli import <library_root> [sources...]  import (recover + resume first), P-10 numbers
 //! sirtone-cli verify <library_root>      database and disk agree
 //! sirtone-cli phone list                 phones the hub sees (stage 8, check П4)
+//! sirtone-cli transfer export <library_root> <out_dir> [--no-music]  transfer package (П7)
 //! ```
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 mod fuzz;
 mod library;
 mod soak;
+mod transfer;
 mod wave;
 
 use sirtone_audio::engine::NextTrack as EngineNext;
@@ -318,6 +320,9 @@ fn main() -> ExitCode {
         }
         Some("wave") if args.get(1).map(String::as_str) == Some("coverage") && args.len() > 2 => {
             wave::coverage(&args[2], args.get(3).map_or("3", String::as_str))
+        }
+        Some("transfer") if args.get(1).map(String::as_str) == Some("export") && args.len() > 3 => {
+            transfer::export(&args[2], &args[3], !args.iter().any(|a| a == "--no-music"))
         }
         Some("phone") if args.get(1).map(String::as_str) == Some("list") => phone_list(),
         Some("hw") => {

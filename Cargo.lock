@@ -5014,6 +5014,7 @@ dependencies = [
  "sirtone-library",
  "sirtone-platform",
  "sirtone-recognize",
+ "sirtone-transfer",
  "sirtone-wave",
  "tokio",
 ]
