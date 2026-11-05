@@ -1,6 +1,7 @@
 //! Background analysis (T3.6 B0 + T3.10 scheduler, FR-PERF-005, docs/04 §10): one track at a
-//! time on a below-normal, EcoQoS thread with its own connection; newest tracks first; paused
-//! on battery and while a full-screen game runs; on «Очень слабое» only while nobody is at the
+//! time on a below-normal, EcoQoS thread with its own connection; newest tracks first; on
+//! battery slower and paused at a low charge or with battery saver (D-129), paused while a
+//! full-screen game runs; on «Очень слабое» only while nobody is at the
 //! computer. Files are only read. The wave picks the results up on its next refill.
 //! B2/B3 (T3.8/T3.9): the built-in tagger runs in the same pass; it is loaded when there is work
 //! and dropped when the queue is empty (≈ 20 MB of weights).
@@ -19,6 +20,8 @@ use crate::settings_store::SettingsStore;
 const VERSION: i64 = sirtone_analysis::b0::VERSION;
 /// Idle time before analysis runs on the weakest preset (the same rule as updates, D-76).
 const IDLE_MS: u64 = 2 * 60 * 1000;
+/// Pause between tracks on battery (D-129): a track takes ≈ 1–1.5 s of work, so the thread rests ≥ 70 % of the time.
+const BATTERY_BREATH_S: u64 = 4;
 
 fn level(app: &AppHandle) -> u64 {
     app.try_state::<std::sync::Arc<SettingsStore>>()
@@ -32,9 +35,10 @@ pub(crate) fn battery_ignored() -> bool {
     std::env::var_os("SIRTONE_SMOKE_AC").is_some() && std::env::var_os("SIRTONE_DATA_DIR").is_some()
 }
 
-/// Why analysis waits now, if it does.
+/// Why analysis waits now, if it does. On battery it goes on (D-129: new tracks are analysed
+/// without waiting for the charger), gently, and stops at a low charge or with battery saver.
 fn blocked(app: &AppHandle) -> bool {
-    (sirtone_platform::power::on_battery() && !battery_ignored())
+    (sirtone_platform::power::battery_saving() && !battery_ignored())
         || sirtone_platform::power::fullscreen_busy()
         || (level(app) == 0 && sirtone_platform::idle::idle_ms() < IDLE_MS)
 }
@@ -192,8 +196,12 @@ fn step(
         *slot = None;
     }
     tracing::debug!(target: "sirtone::analysis", track, ms = t0.elapsed().as_millis() as u64, "B0");
-    // A breath between tracks keeps the machine responsive.
-    Duration::from_millis(300)
+    // A breath between tracks keeps the machine responsive; a longer one on battery (D-129).
+    if sirtone_platform::power::on_battery() && !battery_ignored() {
+        Duration::from_secs(BATTERY_BREATH_S)
+    } else {
+        Duration::from_millis(300)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]

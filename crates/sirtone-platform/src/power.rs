@@ -21,6 +21,22 @@ pub fn on_battery() -> bool {
     unsafe { GetSystemPowerStatus(&mut s) }.is_ok() && s.ACLineStatus == 0
 }
 
+/// Battery charge below which background analysis stops on battery (D-129).
+pub const LOW_BATTERY_PERCENT: u8 = 30;
+
+/// On battery and the charge must be saved: Windows battery saver is on, or the charge is known
+/// and below [`LOW_BATTERY_PERCENT`] (D-129). False on AC.
+pub fn battery_saving() -> bool {
+    let mut s = SYSTEM_POWER_STATUS::default();
+    // SAFETY: `s` is a valid out-structure.
+    if unsafe { GetSystemPowerStatus(&mut s) }.is_err() || s.ACLineStatus != 0 {
+        return false;
+    }
+    // 255 — the charge is unknown.
+    s.SystemStatusFlag == 1
+        || (s.BatteryLifePercent != 255 && s.BatteryLifePercent < LOW_BATTERY_PERCENT)
+}
+
 /// Keeps the display (and the system) awake while `on`, for the calling thread (`07` §8.1): the
 /// request lives as long as the thread or until it is called with `false`. Hold it from one
 /// long-lived thread.
@@ -74,6 +90,10 @@ mod tests {
     #[test]
     fn queries_answer() {
         let _ = super::on_battery();
+        // On AC never «saving»; on battery it depends on the charge.
+        if !super::on_battery() {
+            assert!(!super::battery_saving());
+        }
         let _ = super::fullscreen_busy();
         super::background_thread();
     }
