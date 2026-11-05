@@ -8,6 +8,7 @@
 //! sirtone-cli soak --minutes N <file>...  soak on the real device (P-13)
 //! sirtone-cli import <library_root> [sources...]  import (recover + resume first), P-10 numbers
 //! sirtone-cli verify <library_root>      database and disk agree
+//! sirtone-cli phone list                 phones the hub sees (stage 8, check П4)
 //! ```
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
@@ -318,6 +319,7 @@ fn main() -> ExitCode {
         Some("wave") if args.get(1).map(String::as_str) == Some("coverage") && args.len() > 2 => {
             wave::coverage(&args[2], args.get(3).map_or("3", String::as_str))
         }
+        Some("phone") if args.get(1).map(String::as_str) == Some("list") => phone_list(),
         Some("hw") => {
             println!("{:?}", sirtone_platform::hardware::hardware());
             ExitCode::SUCCESS
@@ -358,4 +360,34 @@ fn main() -> ExitCode {
         Some("drift") if args.len() > 1 => soak::drift(&args[1..]),
         _ => usage(),
     }
+}
+
+/// `phone list`: what the hub sees (D-139, П4). Prints codes, not prose (developer harness).
+fn phone_list() -> ExitCode {
+    let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    else {
+        return ExitCode::FAILURE;
+    };
+    let (phones, errors) = rt.block_on(sirtone_devicelink::all_phones());
+    for p in &phones {
+        println!(
+            "{:?}	{:?}	{:?}	{}	{}	{}	{}",
+            p.platform,
+            p.link,
+            p.state,
+            p.id,
+            p.name.as_deref().unwrap_or("—"),
+            p.model.as_deref().unwrap_or("—"),
+            p.os_version.as_deref().unwrap_or("—"),
+        );
+    }
+    for e in &errors {
+        eprintln!("{}: {e}", e.code());
+    }
+    if phones.is_empty() {
+        println!("no phones");
+    }
+    ExitCode::SUCCESS
 }

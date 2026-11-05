@@ -1,0 +1,21 @@
+[package]
+name = "sirtone-devicelink"
+description = "PC hub link to phones: find, install, renew, transfer (PC only) — D-139, M2.1."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+# Exact pin: idevice breaks its API at every point release until 0.2 (README). `ring` instead of
+# the default aws-lc (no CMake/NASM needed on Windows).
+idevice = { version = "=0.1.68", default-features = false, features = ["ring", "usbmuxd"] }

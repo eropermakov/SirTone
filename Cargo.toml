@@ -24,6 +24,7 @@ sirtone-wave = { path = "crates/sirtone-wave" }
 sirtone-net = { path = "crates/sirtone-net" }
 sirtone-mobile-ffi = { path = "crates/sirtone-mobile-ffi" }
 sirtone-transfer = { path = "crates/sirtone-transfer" }
+sirtone-devicelink = { path = "crates/sirtone-devicelink" }
 tauri = { version = "2.12", features = [] }
 tauri-build = "2.7"
 tauri-plugin-single-instance = "2.5"
