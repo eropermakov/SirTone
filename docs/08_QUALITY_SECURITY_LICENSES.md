@@ -168,7 +168,7 @@
 | Sidecar | `ffmpeg-sidecar` 2.6.0 | MIT | опция | сам FFmpeg — только LGPL-сборка |
 | **3.0, этап 8** Мост к Swift/Kotlin | `uniffi` =0.32.2 | MPL-2.0 | ✅ D-137 (`cargo deny` ok) | только `sirtone-mobile-ffi` |
 | Аудио на телефоне: кольцо для `AVAudioSourceNode` | `rtrb` 0.4.1 | MIT OR Apache-2.0 | 🧪 D-137 | |
-| Связь с iPhone (только ПК, `sirtone-devicelink`) | `idevice` =0.1.68 (в `Cargo.toml`, `default-features = false`, `ring` + `usbmuxd`) · `isideload` 0.5.2 (план, M2) | MIT | ✅ D-139 (`cargo deny` ok) | версии закреплены `=`: ломающие изменения в каждом выпуске (README idevice) |
+| Связь с iPhone (только ПК, `sirtone-devicelink`) | `idevice` =0.1.68 (в `Cargo.toml`, `default-features = false`, `ring` + `usbmuxd`) · `isideload` =0.5.2 (проверен в П4) · `apple-codesign` =0.29.0 без функций по умолчанию — подпись вместо LGPL-модуля isideload через `[patch.crates-io]` (D-143) | MIT · MPL-2.0 | ✅ D-139, D-143 (исключения `cargo deny` — в D-143) | версии закреплены `=`: ломающие изменения в каждом выпуске (README idevice) |
 | Связь с Android (только ПК) | `adb_client` 3.2.3 | MIT | 🧪 Android-этап | драйвер WinUSB — Q-25, Q-27 |
 
 ### 5.2. JavaScript

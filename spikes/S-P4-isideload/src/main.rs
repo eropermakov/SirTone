@@ -354,7 +354,7 @@ async fn main() -> ExitCode {
     let _ = isideload::init();
     // isideload at WARN: its INFO/DEBUG lines are progress, but errors may carry plists.
     tracing_subscriber::fmt()
-        .with_env_filter("warn,sp4_isideload=info")
+        .with_env_filter("warn,apple_codesign=error,sp4_isideload=info")
         .init();
 
     let args: Vec<String> = std::env::args().collect();

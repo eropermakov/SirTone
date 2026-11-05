@@ -19,3 +19,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rootcause = "0.12"
 plist = "1"
+
+# D-143: isideload's LGPL signer is replaced by our shim over apple-codesign (MPL-2.0).
+[patch.crates-io]
+apple-codesign-quick = { path = "shim-codesign-quick" }
