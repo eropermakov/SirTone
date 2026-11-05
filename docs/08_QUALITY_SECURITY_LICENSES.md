@@ -166,9 +166,9 @@
 | Общее | `serde` 1.0.229 · `serde_json` 1.0.154 · `thiserror` 2.0.21 · `anyhow` 1.0.104 · `uuid` 1.28.0 · `tracing` 0.1.44 · `tracing-subscriber` 0.3.23 · `tracing-appender` 0.2.5 · `mimalloc` 0.1.52 · `clap` 4.6.7 | MIT / Apache-2.0 | ✅ | |
 | Тесты | `proptest` 1.12.0 · `criterion` 0.8.2 · `insta` 1.49.0 | MIT OR Apache / Apache-2.0 | ✅ | |
 | Sidecar | `ffmpeg-sidecar` 2.6.0 | MIT | опция | сам FFmpeg — только LGPL-сборка |
-| **3.0, план (этап 8, ещё не в `Cargo.toml`)** Мост к Swift/Kotlin | `uniffi` 0.32.2 | MPL-2.0 | 🧪 D-137 | через `cargo deny` при добавлении |
+| **3.0, этап 8** Мост к Swift/Kotlin | `uniffi` =0.32.2 | MPL-2.0 | ✅ D-137 (`cargo deny` ok) | только `sirtone-mobile-ffi` |
 | Аудио на телефоне: кольцо для `AVAudioSourceNode` | `rtrb` 0.4.1 | MIT OR Apache-2.0 | 🧪 D-137 | |
-| Связь с iPhone (только ПК, `sirtone-devicelink`) | `idevice` 0.1.68 · `isideload` 0.5.2 | MIT | 🧪 D-139 | версии закрепить `=`: ломающие изменения в каждом выпуске (README idevice) |
+| Связь с iPhone (только ПК, `sirtone-devicelink`) | `idevice` =0.1.68 (в `Cargo.toml`, `default-features = false`, `ring` + `usbmuxd`) · `isideload` 0.5.2 (план, M2) | MIT | ✅ D-139 (`cargo deny` ok) | версии закреплены `=`: ломающие изменения в каждом выпуске (README idevice) |
 | Связь с Android (только ПК) | `adb_client` 3.2.3 | MIT | 🧪 Android-этап | драйвер WinUSB — Q-25, Q-27 |
 
 ### 5.2. JavaScript
