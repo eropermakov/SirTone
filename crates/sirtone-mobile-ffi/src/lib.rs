@@ -8,6 +8,7 @@
 uniffi::setup_scaffolding!();
 
 pub mod library;
+pub mod wave;
 
 /// Errors crossing the bridge: a stable code, the app builds the text (project rule).
 #[derive(Debug, thiserror::Error, uniffi::Error)]

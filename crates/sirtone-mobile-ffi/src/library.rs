@@ -96,7 +96,6 @@ impl Library {
     }
 
     /// The connection for other modules of this crate (transfer, wave — next steps of M4–M6).
-    #[allow(dead_code)]
     pub(crate) fn with<T>(&self, f: impl FnOnce(&mut Connection) -> T) -> T {
         f(&mut self.db())
     }

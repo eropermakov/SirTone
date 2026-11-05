@@ -5071,6 +5071,7 @@ dependencies = [
  "rusqlite",
  "sirtone-core",
  "sirtone-library",
+ "sirtone-wave",
  "thiserror 2.0.21",
  "uniffi",
 ]

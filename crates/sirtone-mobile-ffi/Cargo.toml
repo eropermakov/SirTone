@@ -27,6 +27,7 @@ bindgen = ["uniffi/cli"]
 [dependencies]
 sirtone-core = { workspace = true }
 sirtone-library = { workspace = true }
+sirtone-wave = { workspace = true }
 rusqlite = { workspace = true }
 uniffi = { workspace = true }
 thiserror = { workspace = true }
