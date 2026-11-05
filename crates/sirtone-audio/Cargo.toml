@@ -15,10 +15,18 @@ workspace = true
 sirtone-core.workspace = true
 symphonia.workspace = true
 symphonia-adapter-libopus.workspace = true
-wasapi.workspace = true
 rubato.workspace = true
 rtrb.workspace = true
 rustfft.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+# Output (WASAPI), Media Foundation (WMA) and the engine thread are Windows-only; decoders and
+# DSP build everywhere — the phones reuse them (stage 8, D-137; the phone output is the
+# platform's own: AVAudioSourceNode / AAudio).
+[target.'cfg(windows)'.dependencies]
+wasapi.workspace = true
 windows = { workspace = true, features = [
     "Win32_System_Threading",
     "Win32_Foundation",
@@ -28,9 +36,6 @@ windows = { workspace = true, features = [
     "Win32_System_Variant",
     "Win32_System_Performance",
 ] }
-tracing.workspace = true
-serde.workspace = true
-serde_json.workspace = true
 
 [build-dependencies]
 cc = "1"

@@ -74,10 +74,12 @@ enum Backend {
         decoder: Box<dyn AudioDecoder>,
         track_id: u32,
     },
+    #[cfg(windows)]
     Mf(crate::mf::MfReader),
 }
 
 /// Containers only Media Foundation reads (docs/04 §2).
+#[cfg(windows)]
 fn mf_only(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
@@ -87,6 +89,7 @@ fn mf_only(path: &Path) -> bool {
 impl Source {
     pub fn open(path: &Path) -> Result<Self, AppError> {
         match Self::open_symphonia(path) {
+            #[cfg(windows)]
             Err(e) if e.code == ErrorCode::UnsupportedFormat && mf_only(path) => {
                 Self::open_mf(path)
             }
@@ -94,6 +97,7 @@ impl Source {
         }
     }
 
+    #[cfg(windows)]
     fn open_mf(path: &Path) -> Result<Self, AppError> {
         let path = path.to_path_buf();
         guarded(move || {
@@ -256,6 +260,7 @@ impl Source {
     /// as nothing decoded), only unrecoverable errors are returned.
     pub fn next_into(&mut self, out: &mut Vec<f32>) -> Result<bool, AppError> {
         let (format, decoder, track_id) = match &mut self.backend {
+            #[cfg(windows)]
             Backend::Mf(r) => return guarded(|| r.next_into(out)),
             Backend::Symphonia {
                 format,
@@ -324,6 +329,7 @@ impl Source {
     /// Sample-accurate seek (`SeekMode::Accurate`); the next `next_into` starts at `ms`.
     pub fn seek(&mut self, ms: u64) -> Result<(), AppError> {
         let (format, decoder, track_id) = match &mut self.backend {
+            #[cfg(windows)]
             Backend::Mf(r) => return guarded(|| r.seek(ms)),
             Backend::Symphonia {
                 format,
