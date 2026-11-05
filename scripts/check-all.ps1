@@ -13,6 +13,7 @@ function Step($name, [scriptblock]$body) {
 }
 
 if (Test-Path 'Cargo.toml') {
+    Step 'tokens'         { node scripts/tokens.mjs --check-gen }
     Step 'cargo fmt'      { cargo fmt --all -- --check }
     Step 'cargo clippy'   { cargo clippy --workspace --all-targets -- -D warnings }
     Step 'cargo deny'     { cargo deny check }
