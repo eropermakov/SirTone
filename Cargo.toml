@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-# 11 crates sirtone-* + apps/desktop/src-tauri (sirtone-app, the only crate that knows Tauri).
+# 12 crates sirtone-* (+ sirtone-mobile-ffi, stage 8) + apps/desktop/src-tauri (sirtone-app, the only crate that knows Tauri).
 members = ["crates/*", "apps/desktop/src-tauri"]
 exclude = ["spikes/*"]
 
@@ -22,6 +22,7 @@ sirtone-recognize = { path = "crates/sirtone-recognize" }
 sirtone-playback = { path = "crates/sirtone-playback" }
 sirtone-wave = { path = "crates/sirtone-wave" }
 sirtone-net = { path = "crates/sirtone-net" }
+sirtone-mobile-ffi = { path = "crates/sirtone-mobile-ffi" }
 tauri = { version = "2.12", features = [] }
 tauri-build = "2.7"
 tauri-plugin-single-instance = "2.5"
@@ -37,6 +38,8 @@ symphonia-adapter-libopus = "0.3"
 wasapi = "0.26"
 rubato = "5.0"
 rtrb = "0.4"
+# Phones (D-137): Swift/Kotlin bridge.
+uniffi = "=0.32.2"
 ebur128 = "0.1.10"
 rusty-chromaprint = "=0.3.0"
 lofty = "0.25"

@@ -1,0 +1,8 @@
+version: 1
+# The hub re-signs with `studio.serkov.sirtone.mobile.<TEAMID>` for each Apple ID (D-136).
+bundleID: studio.serkov.sirtone.mobile
+product: SirTone
+infoPath: Support/SirTone-Info.plist
+extensions:
+- product: SirToneWidget
+  infoPath: Support/SirToneWidget-Info.plist

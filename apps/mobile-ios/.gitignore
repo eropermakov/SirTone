@@ -1,0 +1,6 @@
+# Built by scripts/build-ios-core.sh — never committed.
+/Frameworks/
+/Sources/SirToneCore/
+/.build/
+/xtool/
+*.xcodeproj
