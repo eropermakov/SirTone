@@ -5068,7 +5068,9 @@ dependencies = [
 name = "sirtone-mobile-ffi"
 version = "0.1.38"
 dependencies = [
+ "rtrb",
  "rusqlite",
+ "sirtone-audio",
  "sirtone-core",
  "sirtone-library",
  "sirtone-wave",
