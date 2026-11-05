@@ -3,11 +3,12 @@
 //! [`PhoneInstaller`] is one trait for both platforms: [`ios::IosInstaller`] talks to iPhones
 //! through the Apple Mobile Device service (installed with iTunes) using `idevice`;
 //! [`android::AndroidInstaller`] is a stub for now («Версия для Android готовится», MAT-18).
-//! Signing and installing (`isideload`, profiles via `misagent`) arrive with M2 after check П4
-//! on a real phone. Errors carry stable codes; the UI writes the words (MR §6.3). Secrets
+//! Apple ID login, signing and installing — [`apple`] (`isideload` + our `apple-codesign` shim,
+//! D-143; check П4). Profile-only renewal (`misagent`) waits for check П3. Errors carry stable codes; the UI writes the words (MR §6.3). Secrets
 //! (Apple ID tokens) never reach logs.
 
 pub mod android;
+pub mod apple;
 pub mod ios;
 
 use async_trait::async_trait;
@@ -56,6 +57,9 @@ pub enum LinkError {
     AppleServiceMissing(String),
     #[error("device: {0}")]
     Device(String),
+    /// Apple ID, signing or install (code, first line of the cause — never secrets, D-132).
+    #[error("{0}: {1}")]
+    Apple(&'static str, String),
     /// Not built yet (M2): signing and install.
     #[error("not implemented yet")]
     NotYet,
@@ -66,6 +70,7 @@ impl LinkError {
         match self {
             Self::AppleServiceMissing(_) => "phone.apple_service_missing",
             Self::Device(_) => "phone.device",
+            Self::Apple(code, _) => code,
             Self::NotYet => "phone.not_yet",
         }
     }

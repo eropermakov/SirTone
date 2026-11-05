@@ -9,6 +9,7 @@
 //! sirtone-cli import <library_root> [sources...]  import (recover + resume first), P-10 numbers
 //! sirtone-cli verify <library_root>      database and disk agree
 //! sirtone-cli phone list                 phones the hub sees (stage 8, check П4)
+//! sirtone-cli phone login|adopt|forget <apple-id>, phone install <apple-id> <udid|usb> <app>  (П4)
 //! sirtone-cli transfer export <library_root> <out_dir> [--no-music]  transfer package (П7)
 //! sirtone-cli transfer import <library_root> <package_dir>  apply a phone package (D-140)
 //! ```
@@ -16,6 +17,7 @@
 
 mod fuzz;
 mod library;
+mod phone;
 mod soak;
 mod transfer;
 mod wave;
@@ -329,6 +331,13 @@ fn main() -> ExitCode {
             transfer::import(&args[2], &args[3])
         }
         Some("phone") if args.get(1).map(String::as_str) == Some("list") => phone_list(),
+        Some("phone") if args.len() > 2 => match (args[1].as_str(), args.get(3), args.get(4)) {
+            ("login", _, _) => phone::login(&args[2]),
+            ("adopt", _, _) => phone::adopt(&args[2]),
+            ("forget", _, _) => phone::forget(&args[2]),
+            ("install", Some(p), Some(app)) => phone::install(&args[2], p, app),
+            _ => usage(),
+        },
         Some("hw") => {
             println!("{:?}", sirtone_platform::hardware::hardware());
             ExitCode::SUCCESS

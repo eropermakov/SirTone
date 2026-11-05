@@ -25,3 +25,6 @@ sirtone-sync.workspace = true
 tokio.workspace = true
 rusqlite.workspace = true
 serde_json.workspace = true
+# `phone login`: the Apple ID password is typed hidden in the owner's own console (D-132).
+rpassword = "7"
+rustls = { version = "0.23", default-features = false, features = ["ring"] }

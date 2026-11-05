@@ -1,6 +1,8 @@
 [licenses]
 allow = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause",
-         "ISC", "Zlib", "Unlicense", "CC0-1.0", "BSL-1.0", "MPL-2.0", "Unicode-3.0", "Unicode-DFS-2016"]
+         "ISC", "Zlib", "Unlicense", "CC0-1.0", "BSL-1.0", "MPL-2.0", "Unicode-3.0", "Unicode-DFS-2016",
+         # D-143 (hub signing): BlueOak — minicbor/apple-codesign; CDLA-Permissive — webpki-roots data.
+         "BlueOak-1.0.0", "CDLA-Permissive-2.0"]
 confidence-threshold = 0.9
 unused-allowed-license = "allow"     # the allow-list is policy, not every licence is present yet
 private = { ignore = true }           # our crates: publish = false, license UNLICENSED until OWN-01
@@ -26,6 +28,15 @@ ignore = [
     # Same path: a symlink entry's declared size aborts `extract()` (denial of service, no memory
     # unsafety). Fixed in zip 9.0; the updater still pins 4.x and never extracts on Windows.
     { id = "RUSTSEC-2026-0429", reason = "zip extract symlink size abort; windows NSIS path never extracts zips (updater)" },
+    # D-143 — the hub's iPhone signing (sirtone-devicelink: isideload + apple-codesign). The key
+    # signs locally; nothing decrypts or signs for a network peer, so timing leaks have no oracle.
+    { id = "RUSTSEC-2023-0071", reason = "rsa Marvin timing: local code signing only, no network oracle (D-143)" },
+    { id = "RUSTSEC-2026-0387", reason = "elliptic-curve timing: local code signing only, no network oracle (D-143)" },
+    # `object` parses only the Mach-O we built ourselves; zstd sections never come from strangers.
+    { id = "RUSTSEC-2026-0344", reason = "ruzstd OOM via object: parses only our own app binary (D-143)" },
+    { id = "RUSTSEC-2020-0095", reason = "difference unmaintained: apple-codesign internal diffing (D-143)" },
+    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile unmaintained: via apple-codesign tungstenite (D-143)" },
+    { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml unmaintained: apple-codesign config parsing, unused path (D-143)" },
 ]
 
 [sources]

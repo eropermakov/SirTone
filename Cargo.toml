@@ -105,3 +105,8 @@ codegen-units = 1
 opt-level = 3
 panic = "unwind"             # needed for catch_unwind around decoders (Tauri template uses abort)
 strip = "symbols"
+
+# D-143: isideload signs through `apple-codesign-quick` (LGPL-2.1); our shim with the same
+# interface over apple-codesign (MPL-2.0) takes its place. Check: `cargo tree -i apple-codesign-quick`.
+[patch.crates-io]
+apple-codesign-quick = { path = "crates/apple-codesign-quick" }
