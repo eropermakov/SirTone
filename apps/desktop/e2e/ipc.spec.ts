@@ -1004,20 +1004,16 @@ test("«Телефоны»: phones the hub sees, trust hint, «Что устан
   );
   const mine = page.getByRole("article", { name: "iPhone владельца" });
   await expect(mine).toContainText("iPhone16,1 · iOS 26.1");
-  await expect(page.getByRole("article", { name: "iPhone", exact: true })).toContainText("«Доверять»");
+  await expect(page.getByRole("article", { name: "iPhone", exact: true })).toContainText(
+    "«Доверять»",
+  );
   // One Primary per card; it opens step 4 with three choices, «Перенести всё» first.
   await mine.getByRole("button", { name: "Установить Сиртон" }).click();
-  const choices = mine.getByRole("radiogroup", { name: "Что установить?" });
+  const choices = mine.getByRole("group", { name: "Что установить?" });
   await expect(choices.getByRole("radio")).toHaveCount(3);
-  await expect(choices.getByRole("radio", { name: /Перенести всё/ })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
-  await choices.getByRole("radio", { name: /Только приложение/ }).click();
-  await expect(choices.getByRole("radio", { name: /Только приложение/ })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  await expect(choices.getByRole("radio", { name: /Перенести всё/ })).toBeChecked();
+  await choices.getByText("Только приложение").click();
+  await expect(choices.getByRole("radio", { name: /Только приложение/ })).toBeChecked();
   await mine.getByRole("button", { name: "Отмена" }).click();
   await expect(mine.getByRole("button", { name: "Установить Сиртон" })).toBeVisible();
   expect((await calls(page, "phones_list")).length).toBeGreaterThan(0);

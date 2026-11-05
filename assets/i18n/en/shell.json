@@ -204,13 +204,7 @@
   "settingsPerf": {
     "title": "Performance",
     "hint": "The weaker the computer, the fewer animations and effects",
-    "level": [
-      "Very weak",
-      "Weak",
-      "Medium",
-      "Powerful",
-      "Very powerful"
-    ],
+    "level": ["Very weak", "Weak", "Medium", "Powerful", "Very powerful"],
     "uiAnimations": "Interface animations",
     "listAnimations": "List animations",
     "blur": "Blur and transparency"

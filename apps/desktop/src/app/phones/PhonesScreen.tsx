@@ -151,26 +151,30 @@ function Choose({ onCancel }: { onCancel: () => void }) {
   return (
     <div className="flex flex-col gap-3">
       <span className="t-body-strong text-text-primary">{t("phones.choose.title")}</span>
-      <div role="radiogroup" aria-label={t("phones.choose.title")} className="flex flex-col gap-2">
+      <fieldset aria-label={t("phones.choose.title")} className="flex flex-col gap-2">
         {CHOICES.map((c) => (
-          <button
+          <label
             key={c}
-            type="button"
-            role="radio"
-            aria-checked={choice === c}
-            onClick={() => setChoice(c)}
             className={cn(
-              "flex flex-col gap-0.5 rounded-(--radius-md) border px-4 py-3 text-left",
+              "flex cursor-pointer flex-col gap-0.5 rounded-(--radius-md) border px-4 py-3 has-focus-visible:outline-2 has-focus-visible:outline-focus-ring",
               choice === c
                 ? "border-accent-fill bg-bg-selected"
                 : "border-border hover:bg-bg-hover",
             )}
           >
+            <input
+              type="radio"
+              name="phone-choice"
+              value={c}
+              checked={choice === c}
+              onChange={() => setChoice(c)}
+              className="sr-only"
+            />
             <span className="t-body-strong text-text-primary">{t(`phones.choose.${c}.title`)}</span>
             <span className="t-caption text-text-secondary">{t(`phones.choose.${c}.text`)}</span>
-          </button>
+          </label>
         ))}
-      </div>
+      </fieldset>
       <p role="status" className="t-caption text-text-secondary">
         {t("phones.choose.soon")}
       </p>
