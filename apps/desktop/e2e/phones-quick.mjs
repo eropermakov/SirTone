@@ -14,7 +14,7 @@ import { join } from "node:path";
 const require = createRequire(import.meta.url);
 const { chromium } = require("@playwright/test");
 const root = join(import.meta.dirname, "..", "..", "..");
-const exe = join(root, "target", "release", "sirtone-app.exe");
+const exe = process.env.SMOKE_EXE ?? join(root, "target", "release", "sirtone-app.exe");
 const dataDir = mkdtempSync(join(tmpdir(), "sirtone-phonesq-"));
 const PORT = Number(process.env.SMOKE_PORT ?? 9361);
 const appleId = process.env.PHONE_APPLE_ID;
@@ -31,6 +31,11 @@ if (!appleId || !udid || !process.env.SIRTONE_IOS_APP) {
   process.exit(2);
 }
 writeFileSync(join(dataDir, "phones.json"), JSON.stringify({ [udid]: { appleId } }));
+// Past the first-run setup, straight to the app.
+writeFileSync(
+  join(dataDir, "settings.json"),
+  JSON.stringify({ onboarding: { done: true, tips_seen: true } }),
+);
 
 const app = spawn(exe, [], {
   env: {
