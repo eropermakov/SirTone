@@ -11,7 +11,7 @@ description = "П4: вход в Apple ID, подпись и установка �
 [dependencies]
 # Exact pins: both break their API between point releases (docs/mobile/README.md §10).
 isideload = { version = "=0.5.2", default-features = false, features = ["install", "keyring-storage", "tokio-mt"] }
-idevice = { version = "=0.1.68", default-features = false, features = ["ring", "usbmuxd"] }
+idevice = { version = "=0.1.68", default-features = false, features = ["ring", "usbmuxd", "tcp", "afc"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 rpassword = "7"

@@ -263,6 +263,80 @@ async fn wifi(enable: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// A direct network link to the phone (lockdown on TCP 62078), with the pairing record the Apple
+/// service keeps: Wi-Fi without the service's own network support.
+async fn net_provider(ip: &str, udid: &str) -> Result<idevice::provider::TcpProvider, String> {
+    let mut mux = UsbmuxdConnection::default()
+        .await
+        .map_err(|e| format!("usbmuxd: {e:?}"))?;
+    let pairing_file = mux
+        .get_pair_record(udid)
+        .await
+        .map_err(|e| format!("pair record: {e:?}"))?;
+    Ok(idevice::provider::TcpProvider {
+        addr: ip.parse().map_err(|_| "ip")?,
+        scope_id: None,
+        pairing_file,
+        label: "sirtone-p4".into(),
+    })
+}
+
+async fn net_info(ip: &str, udid: &str) -> Result<(), String> {
+    use idevice::IdeviceService;
+    use idevice::lockdown::LockdownClient;
+    use idevice::provider::IdeviceProvider;
+    let provider = net_provider(ip, udid).await?;
+    let mut lockdown = LockdownClient::connect(&provider)
+        .await
+        .map_err(|e| format!("lockdown: {e:?}"))?;
+    let pairing = provider.get_pairing_file().await.map_err(|e| format!("{e:?}"))?;
+    lockdown
+        .start_session(&pairing)
+        .await
+        .map_err(|e| format!("session: {e:?}"))?;
+    for k in ["DeviceName", "ProductType", "ProductVersion"] {
+        let v = lockdown.get_value(Some(k), None).await.map_err(|e| format!("{e:?}"))?;
+        println!("{k}: {v:?}");
+    }
+    Ok(())
+}
+
+async fn net_afc(ip: &str, udid: &str) -> Result<(), String> {
+    use idevice::IdeviceService;
+    use idevice::afc::AfcClient;
+    let provider = net_provider(ip, udid).await?;
+    let mut afc = AfcClient::connect(&provider)
+        .await
+        .map_err(|e| format!("afc connect: {e:?}"))?;
+    let list = afc.list_dir("/").await.map_err(|e| format!("afc list: {e:?}"))?;
+    println!("AFC по сети: {} записей в корне", list.len());
+    Ok(())
+}
+
+async fn net_install(apple_id: &str, ip: &str, udid: &str, app: PathBuf) -> Result<(), String> {
+    let dev = session(apple_id).await?;
+    let provider = net_provider(ip, udid).await?;
+    let mut sideloader =
+        SideloaderBuilder::<MaxCertsCallbackBox, ExtensionsBehaviorCallbackBox>::new(dev, apple_id.to_string())
+            .team_selection(TeamSelection::First)
+            .max_certs_behavior(MaxCertsBehavior::Error)
+            .storage(Box::new(storage()))
+            .machine_name(MACHINE.to_string())
+            .build();
+    let started = std::time::Instant::now();
+    sideloader
+        .install_app(&provider, app, false, None::<fn(f32) -> std::future::Ready<()>>, None)
+        .await
+        .map_err(|e| {
+            if std::env::var_os("SP4_FULL_ERR").is_some() {
+                eprintln!("{e}");
+            }
+            format!("install: {}", short(&e))
+        })?;
+    println!("Установлено по сети за {:.1} с.", started.elapsed().as_secs_f32());
+    Ok(())
+}
+
 /// Phones the Apple service sees now (cable and Wi-Fi).
 async fn list() -> Result<(), String> {
     let mut mux = UsbmuxdConnection::default()
@@ -290,6 +364,12 @@ async fn main() -> ExitCode {
         (Some("install"), Some(id), Some(app)) => install(id, PathBuf::from(app)).await,
         (Some("wifi"), Some(v), _) => wifi(v == "on").await,
         (Some("list"), _, _) => list().await,
+        (Some("net-info"), Some(ip), Some(udid)) => net_info(ip, udid).await,
+        (Some("net-afc"), Some(ip), Some(udid)) => net_afc(ip, udid).await,
+        (Some("net-install"), Some(id), Some(ip)) => match (args.get(4), args.get(5)) {
+            (Some(udid), Some(app)) => net_install(id, ip, udid, PathBuf::from(app)).await,
+            _ => Err("usage: sp4 net-install <apple-id> <ip> <udid> <App.app>".into()),
+        },
         _ => Err("usage: sp4 login|info <apple-id> | sp4 install <apple-id> <App.app>".into()),
     };
     match r {
