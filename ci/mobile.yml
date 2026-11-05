@@ -1,0 +1,118 @@
+# Inactive until copied to .github/workflows/ (the push token lacks the `workflow` scope; the owner
+# enables it: `gh auth refresh -s workflow`, then move this file). Same pattern as ci/release.yml.
+# Phones (stage 8, D-138, M1.3): the iPhone core and app on a macOS runner (free for a public
+# repository), the Android core compile on Linux. A `mobile-v*` tag also publishes the unsigned
+# IPA as a prerelease; the PC hub signs it with the phone owner's Apple ID (D-139).
+name: mobile
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [stage/8-mobile]
+    tags: ["mobile-v*"]
+    paths:
+      - "crates/**"
+      - "apps/mobile-ios/**"
+      - "apps/mobile-android/**"
+      - "design/**"
+      - "scripts/build-ios-core.sh"
+      - "scripts/tokens.mjs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/mobile.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tokens:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node scripts/tokens.mjs --check-gen
+
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ios-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+      - name: Core xcframework + Swift bindings
+        run: bash scripts/build-ios-core.sh
+      - name: Which core crates already build for iOS (information for M4/M5)
+        continue-on-error: true
+        run: |
+          for c in sirtone-search sirtone-wave sirtone-library sirtone-analysis sirtone-recognize sirtone-playback sirtone-audio sirtone-net; do
+            if cargo check --release --locked -q -p "$c" --target aarch64-apple-ios; then echo "OK   $c"; else echo "FAIL $c"; fi
+          done | tee core-ios.txt
+      - name: xtool
+        run: brew install xtool-org/tap/xtool && xtool --version
+      - name: Swift build for the simulator (iOS 17+)
+        working-directory: apps/mobile-ios
+        run: |
+          xcodebuild -scheme SirTone -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ../../target/xcode-sim CODE_SIGNING_ALLOWED=NO build
+      - name: Unsigned IPA
+        working-directory: apps/mobile-ios
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' ../../Cargo.toml | head -1)
+          xtool dev generate-xcode-project
+          PROJ=$(ls -d xtool/*.xcodeproj | head -1)
+          xcodebuild -project "$PROJ" -scheme SirTone -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath ../../target/xcode \
+            CODE_SIGNING_ALLOWED=NO build
+          APP=$(find ../../target/xcode/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)
+          rm -rf Payload && mkdir Payload && cp -R "$APP" Payload/
+          zip -qry "../../sirtone-ios-$VERSION-unsigned.ipa" Payload
+          shasum -a 256 "../../sirtone-ios-$VERSION-unsigned.ipa" | tee "../../sirtone-ios-$VERSION-unsigned.ipa.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sirtone-ios
+          path: |
+            sirtone-ios-*-unsigned.ipa*
+            core-ios.txt
+      - name: Prerelease on a mobile tag
+        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" sirtone-ios-*-unsigned.ipa* --prerelease --title "$GITHUB_REF_NAME" --notes "Неподписанная сборка для iPhone: ставится через хаб ПК-Сиртона."
+
+  android-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain + Android target
+        run: rustup toolchain install && rustup target add aarch64-linux-android
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: android-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+      - name: cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - name: Core for Android arm64 (NDK on the runner)
+        run: cargo ndk -t arm64-v8a build --release --locked -p sirtone-mobile-ffi --lib
+      - name: Kotlin bindings
+        run: |
+          cargo build --release --locked -p sirtone-mobile-ffi --lib
+          cargo run --release --locked -q -p sirtone-mobile-ffi --features bindgen --bin uniffi-bindgen -- \
+            generate --library target/release/libsirtone_mobile_ffi.so --language kotlin --out-dir target/kotlin --no-format
+          ls -R target/kotlin
