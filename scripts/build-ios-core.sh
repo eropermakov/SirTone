@@ -34,6 +34,10 @@ cargo run --release --locked -q -p "$CRATE" --features bindgen --bin uniffi-bind
 mkdir -p "$GEN/headers"
 cp "$GEN"/*.h "$GEN/headers/"
 cp "$GEN"/*.modulemap "$GEN/headers/module.modulemap"
+# The real-time render entry (not UniFFI) joins the same C module.
+cp crates/sirtone-mobile-ffi/include/sirtone_render.h "$GEN/headers/"
+awk '{ print } /^ *header / { print "    header \"sirtone_render.h\"" }' "$GEN/headers/module.modulemap" \
+  > "$GEN/headers/module.modulemap.new" && mv "$GEN/headers/module.modulemap.new" "$GEN/headers/module.modulemap"
 rm -rf "$SWIFT_OUT" && mkdir -p "$SWIFT_OUT"
 cp "$GEN"/*.swift "$SWIFT_OUT/"
 
