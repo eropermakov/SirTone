@@ -7,6 +7,8 @@
 
 uniffi::setup_scaffolding!();
 
+pub mod library;
+
 /// Errors crossing the bridge: a stable code, the app builds the text (project rule).
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum CoreError {

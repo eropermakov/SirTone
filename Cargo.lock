@@ -5068,7 +5068,9 @@ dependencies = [
 name = "sirtone-mobile-ffi"
 version = "0.1.38"
 dependencies = [
+ "rusqlite",
  "sirtone-core",
+ "sirtone-library",
  "thiserror 2.0.21",
  "uniffi",
 ]

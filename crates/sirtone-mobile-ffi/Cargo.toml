@@ -26,5 +26,7 @@ bindgen = ["uniffi/cli"]
 
 [dependencies]
 sirtone-core = { workspace = true }
+sirtone-library = { workspace = true }
+rusqlite = { workspace = true }
 uniffi = { workspace = true }
 thiserror = { workspace = true }
