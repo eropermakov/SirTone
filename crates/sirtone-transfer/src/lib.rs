@@ -14,7 +14,7 @@ pub mod events;
 pub mod manifest;
 pub mod merge;
 
-pub use events::{Event, EventKind};
+pub use events::{Event, EventKind, PlayContext};
 pub use manifest::{Manifest, Parts, Platform, Source, TrackEntry};
 
 /// Package format version written by this build. Readers accept this and older versions.

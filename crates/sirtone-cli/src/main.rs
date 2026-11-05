@@ -10,6 +10,7 @@
 //! sirtone-cli verify <library_root>      database and disk agree
 //! sirtone-cli phone list                 phones the hub sees (stage 8, check П4)
 //! sirtone-cli transfer export <library_root> <out_dir> [--no-music]  transfer package (П7)
+//! sirtone-cli transfer import <library_root> <package_dir>  apply a phone package (D-140)
 //! ```
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
@@ -323,6 +324,9 @@ fn main() -> ExitCode {
         }
         Some("transfer") if args.get(1).map(String::as_str) == Some("export") && args.len() > 3 => {
             transfer::export(&args[2], &args[3], !args.iter().any(|a| a == "--no-music"))
+        }
+        Some("transfer") if args.get(1).map(String::as_str) == Some("import") && args.len() > 3 => {
+            transfer::import(&args[2], &args[3])
         }
         Some("phone") if args.get(1).map(String::as_str) == Some("list") => phone_list(),
         Some("hw") => {

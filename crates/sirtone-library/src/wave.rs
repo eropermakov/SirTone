@@ -24,7 +24,7 @@ pub fn record_play(conn: &Connection, e: &PlayEvent) -> Result<(), LibraryError>
     Ok(())
 }
 
-fn insert_event(conn: &Connection, e: &PlayEvent) -> Result<(), LibraryError> {
+pub(crate) fn insert_event(conn: &Connection, e: &PlayEvent) -> Result<(), LibraryError> {
     let c = &e.context;
     conn.execute(
         "INSERT INTO play_event(ts, track_id, played_ms, duration_ms, end_reason, source, profile,
@@ -52,7 +52,7 @@ fn insert_event(conn: &Connection, e: &PlayEvent) -> Result<(), LibraryError> {
     Ok(())
 }
 
-fn end_reason(s: &str) -> EndReason {
+pub(crate) fn end_reason(s: &str) -> EndReason {
     match s {
         "finished" => EndReason::Finished,
         "mixed_out" => EndReason::MixedOut,
@@ -64,7 +64,7 @@ fn end_reason(s: &str) -> EndReason {
     }
 }
 
-fn source(s: &str) -> PlaySource {
+pub(crate) fn source(s: &str) -> PlaySource {
     match s {
         "wave" => PlaySource::Wave,
         "search" => PlaySource::Search,
@@ -78,7 +78,7 @@ fn source(s: &str) -> PlaySource {
     }
 }
 
-fn daypart(v: u8) -> Daypart {
+pub(crate) fn daypart(v: u8) -> Daypart {
     match v {
         0 => Daypart::Dawn,
         1 => Daypart::Morning,
@@ -89,7 +89,7 @@ fn daypart(v: u8) -> Daypart {
     }
 }
 
-fn weather(v: u8) -> WeatherClass {
+pub(crate) fn weather(v: u8) -> WeatherClass {
     match v {
         0 => WeatherClass::Clear,
         1 => WeatherClass::Cloudy,

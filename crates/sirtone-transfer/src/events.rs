@@ -20,9 +20,26 @@ pub enum EventKind {
         end_reason: String,
         /// `wave | search | …` (as in the library).
         source: String,
+        /// When and where in the day/season it was heard: the wave learns per context.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context: Option<PlayContext>,
     },
     /// A mark (`feedback`): `like | unlike | not_now | never | unnever`.
     Mark { kind: String },
+}
+
+/// The context of a play as the source recorded it (`play_event` columns).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlayContext {
+    /// Minutes since local midnight.
+    pub local_minute: u16,
+    /// 0 = Monday … 6 = Sunday.
+    pub weekday: u8,
+    pub daypart: u8,
+    /// Season weights ×255: winter, spring, summer, autumn.
+    pub season_w: [u8; 4],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weather: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -77,6 +94,13 @@ mod tests {
                 duration_ms: 180_000,
                 end_reason: "finished".into(),
                 source: "wave".into(),
+                context: Some(PlayContext {
+                    local_minute: 600,
+                    weekday: 0,
+                    daypart: 1,
+                    season_w: [0, 0, 255, 0],
+                    weather: None,
+                }),
             },
         }
     }
