@@ -313,11 +313,11 @@ pub unsafe extern "C" fn sirtone_render_release(handle: u64) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// A 0.5 s 440 Hz stereo WAV (16-bit PCM, 44.1 kHz).
-    fn wav(path: &std::path::Path) {
+    pub(crate) fn wav(path: &std::path::Path) {
         let (rate, secs) = (44_100u32, 0.5f32);
         let n = (rate as f32 * secs) as u32;
         let mut data = Vec::with_capacity(n as usize * 4);

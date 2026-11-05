@@ -5073,6 +5073,7 @@ dependencies = [
  "sirtone-audio",
  "sirtone-core",
  "sirtone-library",
+ "sirtone-recognize",
  "sirtone-wave",
  "thiserror 2.0.21",
  "uniffi",
