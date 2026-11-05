@@ -1,0 +1,21 @@
+[package]
+name = "sp4-isideload"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "П4: вход в Apple ID, подпись и установка на iPhone из Windows через isideload + idevice (docs/mobile/checks.md)"
+
+# Самостоятельный проект: вне workspace приложения; в `sirtone-devicelink` — после проверки.
+[workspace]
+
+[dependencies]
+# Exact pins: both break their API between point releases (docs/mobile/README.md §10).
+isideload = { version = "=0.5.2", default-features = false, features = ["install", "keyring-storage", "tokio-mt"] }
+idevice = { version = "=0.1.68", default-features = false, features = ["ring", "usbmuxd"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+rpassword = "7"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rootcause = "0.12"
+plist = "1"
