@@ -83,4 +83,15 @@ cargo ndk -t arm64-v8a build --release -p sirtone-mobile-ffi --lib
 
 Важно: `CMAKE_GENERATOR=Ninja` и `ANDROID_NDK_HOME` выставлять только в этой оболочке — в общей сборке под Windows libopus собирается генератором Visual Studio, смешение ломает кэш CMake.
 
-Ждут владельца: WSL2 + Ubuntu и `usbipd-win` (права администратора), xtool, `Xcode.xip` (Apple ID владельца) — для сборки и установки на iPhone (П1).
+**WSL (2026-11-05):** Ubuntu 24.04 в `D:\WSL\Ubuntu-24.04` (пользователь `sirtone`), Swift 6.4.2 (swiftly), Rust 1.99 (цели `aarch64-apple-ios`, `-sim`), xtool 1.24.0, usbmuxd + libimobiledevice-utils; на Windows — usbipd-win 5.3.0.
+
+iPhone в WSL — без захвата USB: Windows-служба Apple держит телефон (`usbipd attach` без `--force` отвечает «Device busy»), поэтому WSL ходит к ней по сети через ретранслятор, слушающий только адрес хоста в сети WSL:
+
+```powershell
+node scripts\wsl-muxrelay.mjs 172.19.160.1     # адрес хоста — из `usbipd attach` / `ip route` в WSL
+wsl -d Ubuntu-24.04 -- bash -lc 'export USBMUXD_SOCKET_ADDRESS=172.19.160.1:27015; xtool devices'
+```
+
+Сопряжение («Доверять») остаётся у Windows; хаб ПК и xtool видят телефон одновременно. Проверено: `idevice_id`, `ideviceinfo`, `xtool devices`.
+
+Ждут владельца: `Xcode.xip` (Apple ID владельца) и `xtool setup` (пароль и 2FA вводит владелец) — для сборки и установки на iPhone (П1).
