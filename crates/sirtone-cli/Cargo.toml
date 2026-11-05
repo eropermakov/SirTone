@@ -21,6 +21,7 @@ sirtone-platform.workspace = true
 sirtone-wave.workspace = true
 sirtone-devicelink.workspace = true
 sirtone-transfer.workspace = true
+sirtone-sync.workspace = true
 tokio.workspace = true
 rusqlite.workspace = true
 serde_json.workspace = true

@@ -30,6 +30,8 @@ pub struct TransferTrack {
     pub album: Option<String>,
     /// Compressed Chromaprint as stored (`sirtone_core::fingerprint::decompress`).
     pub fingerprint: Option<Vec<u8>>,
+    /// BLAKE3 of the whole file (computed on import): the same file on both sides.
+    pub content_hash: String,
 }
 
 /// Every track of the library, in id order.
@@ -38,7 +40,7 @@ pub fn tracks(conn: &Connection) -> Result<Vec<TransferTrack>, LibraryError> {
         "SELECT t.id, t.rel_path, t.size_bytes, t.duration_ms, t.title, al.title,
                 (SELECT a.name FROM track_artist ta JOIN artist a ON a.id = ta.artist_id
                   WHERE ta.track_id = t.id AND ta.role = 'primary' ORDER BY ta.position LIMIT 1),
-                t.fingerprint
+                t.fingerprint, t.content_hash
            FROM track t LEFT JOIN album al ON al.id = t.album_id
           ORDER BY t.id",
     )?;
@@ -52,6 +54,7 @@ pub fn tracks(conn: &Connection) -> Result<Vec<TransferTrack>, LibraryError> {
             album: r.get(5)?,
             artist: r.get(6)?,
             fingerprint: r.get(7)?,
+            content_hash: r.get(8)?,
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)

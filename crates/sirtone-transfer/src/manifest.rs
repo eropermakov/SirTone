@@ -51,6 +51,9 @@ pub struct TrackEntry {
     /// compressed form in URL-safe base64, as `fpcalc` prints it (~1 KB instead of ~17 KB).
     #[serde(default, skip_serializing_if = "Option::is_none", with = "fp_codec")]
     pub fingerprint: Option<Vec<u32>>,
+    /// BLAKE3 of the whole file: the exact same file is recognised before any sound match.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hash: Option<String>,
 }
 
 mod fp_codec {
@@ -216,6 +219,7 @@ mod tests {
                 title: Some(format!("Трек {i}")),
                 album: None,
                 fingerprint: None,
+                hash: None,
             });
         }
         m

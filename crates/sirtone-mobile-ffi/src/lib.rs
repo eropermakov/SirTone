@@ -10,6 +10,7 @@ uniffi::setup_scaffolding!();
 pub mod import;
 pub mod library;
 pub mod player;
+pub mod transfer;
 pub mod wave;
 
 /// Errors crossing the bridge: a stable code, the app builds the text (project rule).

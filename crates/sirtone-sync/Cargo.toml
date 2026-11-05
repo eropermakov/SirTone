@@ -1,0 +1,19 @@
+[package]
+name = "sirtone-sync"
+description = "Transfer package ⇄ library: export and apply (D-140) — composition of library and transfer."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sirtone-core = { workspace = true }
+sirtone-library = { workspace = true }
+sirtone-transfer = { workspace = true }
+rusqlite = { workspace = true }
+thiserror = { workspace = true }

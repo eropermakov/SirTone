@@ -24,6 +24,8 @@ pub struct LocalTrack {
     pub artist: Option<String>,
     pub title: Option<String>,
     pub fingerprint: Option<Vec<u32>>,
+    /// BLAKE3 of the file, when known.
+    pub hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,8 +40,8 @@ fn tag_key(artist: Option<&str>, title: Option<&str>) -> Option<(String, String)
     Some((norm(artist?)?, norm(title?)?))
 }
 
-/// Matches every package track with the destination library: by sound when both sides have a
-/// fingerprint, else by artist + title + duration. Candidates are narrowed by duration first, so
+/// Matches every package track with the destination library: the same file (content hash) first,
+/// then by sound when both sides have a fingerprint, else by artist + title + duration. Candidates are narrowed by duration first, so
 /// 10 000 × 10 000 stays cheap.
 pub fn match_tracks(incoming: &[TrackEntry], local: &[LocalTrack]) -> Vec<TrackMatch> {
     let mut by_duration: Vec<&LocalTrack> = local.iter().collect();
@@ -53,9 +55,17 @@ pub fn match_tracks(incoming: &[TrackEntry], local: &[LocalTrack]) -> Vec<TrackM
             m
         });
 
+    let hashes: HashMap<&str, i64> = local
+        .iter()
+        .filter_map(|t| Some((t.hash.as_deref()?, t.id)))
+        .collect();
     incoming
         .iter()
         .map(|t| {
+            // The very same file (a package applied after an import, an untagged file).
+            if let Some(&id) = t.hash.as_deref().and_then(|h| hashes.get(h)) {
+                return TrackMatch::Same(id);
+            }
             if let Some(fp) = &t.fingerprint {
                 let lo = durations.partition_point(|&d| d + MAX_DURATION_DELTA_MS < t.duration_ms);
                 let hi = durations
@@ -151,6 +161,7 @@ mod tests {
             title: Some(title.into()),
             album: None,
             fingerprint: f,
+            hash: None,
         }
     }
 
@@ -161,6 +172,7 @@ mod tests {
             artist: Some(artist.into()),
             title: Some(title.into()),
             fingerprint: f,
+            hash: None,
         }
     }
 

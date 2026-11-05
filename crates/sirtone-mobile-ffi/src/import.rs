@@ -86,6 +86,20 @@ impl Library {
     /// (the app refreshes lists on return); analysis comes later in the background.
     pub fn import_files(&self, paths: Vec<String>) -> Result<ImportSummary, CoreError> {
         let root = PathBuf::from(self.root());
+        let sources: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+        self.with(|conn| import_with(conn, &root, &sources))
+            .map_err(Into::into)
+    }
+}
+
+/// The phone import on an open library (also the transfer's «new music» step).
+pub(crate) fn import_with(
+    conn: &mut rusqlite::Connection,
+    root: &Path,
+    sources: &[PathBuf],
+) -> Result<ImportSummary, sirtone_library::LibraryError> {
+    {
+        let root = root.to_path_buf();
         let deps = ImportDeps {
             probe: Arc::new(sirtone_audio::probe::SymphoniaProbe),
             tags: Arc::new(sirtone_recognize::LoftyTags),
@@ -94,13 +108,12 @@ impl Library {
             volume: Arc::new(PhoneVolume),
             covers: Arc::new(sirtone_recognize::LoftyCovers),
         };
-        let sources: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
         let cancel = AtomicBool::new(false);
-        self.with(|conn| {
+        {
             // A batch cut by the system (app killed) finishes first.
             import::recover(conn, &root, deps.fs.as_ref())?;
             let mut batches = import::unfinished_batches(conn)?;
-            batches.push(import::start_batch(conn, &sources, "external")?);
+            batches.push(import::start_batch(conn, sources, "external")?);
             let mut sum = ImportSummary {
                 added: 0,
                 unknown: 0,
@@ -114,9 +127,8 @@ impl Library {
                 sum.duplicates += r.duplicates.len() as u64;
                 sum.skipped += r.rejected.len() as u64;
             }
-            Ok::<_, sirtone_library::LibraryError>(sum)
-        })
-        .map_err(Into::into)
+            Ok(sum)
+        }
     }
 }
 

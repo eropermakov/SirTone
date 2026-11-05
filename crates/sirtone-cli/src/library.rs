@@ -49,7 +49,6 @@ pub(crate) fn open_existing(root: &Path) -> Result<rusqlite::Connection, String>
 /// `sources` as a new batch. With no sources it only recovers and resumes.
 pub fn import(root: &str, sources: &[String]) -> ExitCode {
     let root = PathBuf::from(root);
-    let deps = deps();
     let mut db = match open(&root) {
         Ok(db) => db,
         Err(e) => {
@@ -57,24 +56,32 @@ pub fn import(root: &str, sources: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match import::recover(&mut db, &root, deps.fs.as_ref()) {
-        Ok(n) if n > 0 => println!("recovered {n} journal rows"),
-        Ok(_) => {}
+    let paths: Vec<PathBuf> = sources.iter().map(PathBuf::from).collect();
+    match import_into(&mut db, &root, &paths) {
+        Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("recover: {e}");
-            return ExitCode::FAILURE;
+            eprintln!("{e}");
+            ExitCode::FAILURE
         }
     }
-    let mut batches = import::unfinished_batches(&db).unwrap_or_default();
-    if !sources.is_empty() {
-        let paths: Vec<PathBuf> = sources.iter().map(PathBuf::from).collect();
-        match import::start_batch(&mut db, &paths, "external") {
-            Ok(b) => batches.push(b),
-            Err(e) => {
-                eprintln!("start: {e}");
-                return ExitCode::FAILURE;
-            }
-        }
+}
+
+/// The import on an open library (also the transfer's «new music» step).
+pub(crate) fn import_into(
+    db: &mut rusqlite::Connection,
+    root: &Path,
+    paths: &[PathBuf],
+) -> Result<(), String> {
+    let deps = deps();
+    match import::recover(db, root, deps.fs.as_ref()) {
+        Ok(n) if n > 0 => println!("recovered {n} journal rows"),
+        Ok(_) => {}
+        Err(e) => return Err(format!("recover: {e}")),
+    }
+    let mut batches = import::unfinished_batches(db).unwrap_or_default();
+    if !paths.is_empty() {
+        batches
+            .push(import::start_batch(db, paths, "external").map_err(|e| format!("start: {e}"))?);
     }
     let cancel = AtomicBool::new(false);
     for batch in batches {
@@ -87,7 +94,7 @@ pub fn import(root: &str, sources: &[String]) -> ExitCode {
             ImportEvent::SourcesReleased => released_at = Some(t0.elapsed().as_secs_f64()),
             _ => {}
         };
-        match import::run_batch(&mut db, &root, batch, &deps, &cancel, &mut on_event) {
+        match import::run_batch(db, root, batch, &deps, &cancel, &mut on_event) {
             Ok(r) => {
                 let secs = t0.elapsed().as_secs_f64();
                 let processed = r.added + r.duplicates.len() as u64 + r.rejected.len() as u64;
@@ -110,13 +117,10 @@ pub fn import(root: &str, sources: &[String]) -> ExitCode {
                     println!("  rejected reasons: {}", reasons.join(", "));
                 }
             }
-            Err(e) => {
-                eprintln!("batch {batch}: {e}");
-                return ExitCode::FAILURE;
-            }
+            Err(e) => return Err(format!("batch {batch}: {e}")),
         }
     }
-    ExitCode::SUCCESS
+    Ok(())
 }
 
 /// `verify <library_root>` — database and disk agree: every track file exists with its hash, no
