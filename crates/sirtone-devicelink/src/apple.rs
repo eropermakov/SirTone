@@ -113,6 +113,19 @@ pub(crate) fn apple_fail(code: &'static str, e: &rootcause::Report) -> LinkError
     if full.contains("Developer error 1100") {
         return LinkError::Apple("phone.apple_signed_out", short(e));
     }
+    // The limits of a free Apple ID (MR §6.3), as Apple and the phone word them
+    // (developer forums threads 701805, 49304; AltStore FAQ «error codes»).
+    let lower = full.to_lowercase();
+    if lower.contains("maximum app id limit") {
+        return LinkError::Apple("phone.app_id_limit", short(e));
+    }
+    if lower.contains("0xe8008021") || lower.contains("maximum number of apps for free development")
+    {
+        return LinkError::Apple("phone.app_limit", short(e));
+    }
+    if full.contains("DeviceLocked") || full.contains("PasswordProtected") {
+        return LinkError::Apple("phone.locked", short(e));
+    }
     LinkError::Apple(code, short(e))
 }
 
@@ -604,6 +617,23 @@ mod tests {
         assert_eq!(
             apple_fail("phone.install", &r).code(),
             "phone.apple_signed_out"
+        );
+        let limit: rootcause::Report = rootcause::report!(isideload::SideloadError::DeveloperError(
+            9401,
+            "Your maximum App ID limit has been reached. You may create up to 10 App IDs every 7 days."
+                .into()
+        ))
+        .into_dynamic();
+        assert_eq!(
+            apple_fail("phone.install", &limit).code(),
+            "phone.app_id_limit"
+        );
+        let three: rootcause::Report = rootcause::report!(
+            "ApplicationVerificationFailed: The maximum number of apps for free development profiles has been reached. (0xE8008021)"
+        );
+        assert_eq!(
+            apple_fail("phone.install", &three).code(),
+            "phone.app_limit"
         );
         let other: rootcause::Report = rootcause::report!("boom");
         assert_eq!(apple_fail("phone.install", &other).code(), "phone.install");

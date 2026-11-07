@@ -311,7 +311,16 @@ fn now_ms() -> u64 {
 
 /// `LinkError` code → `AppError` (the UI words it; details are the code only, never secrets).
 fn app_error(e: &sirtone_devicelink::LinkError) -> AppError {
+    // A locked phone answers the cable with «DeviceLocked» / «PasswordProtected».
+    if let sirtone_devicelink::LinkError::Device(m) = e
+        && (m.contains("DeviceLocked") || m.contains("PasswordProtected"))
+    {
+        return AppError::new(ErrorCode::PhoneLocked).retryable();
+    }
     let code = match e.code() {
+        "phone.locked" => ErrorCode::PhoneLocked,
+        "phone.app_limit" => ErrorCode::PhoneAppLimit,
+        "phone.app_id_limit" => ErrorCode::PhoneAppIdLimit,
         "phone.apple_signed_out" => ErrorCode::AppleSignedOut,
         "phone.apple_login" => ErrorCode::AppleLogin,
         "phone.apple_network" | "phone.apple_anisette" => {

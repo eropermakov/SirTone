@@ -36,6 +36,12 @@ pub enum ErrorCode {
     PhoneTransfer,
     /// The phone has no room for the music (MR §6.1 step 4).
     PhoneNoSpace,
+    /// The iPhone is locked: unlock it and go on (MR §6.3).
+    PhoneLocked,
+    /// A free Apple ID runs 3 such apps on a phone at once (device error 0xE8008021).
+    PhoneAppLimit,
+    /// A free Apple ID registers 10 new App IDs in 7 days; a new install waits (renewals do not).
+    PhoneAppIdLimit,
     Internal,
 }
 
