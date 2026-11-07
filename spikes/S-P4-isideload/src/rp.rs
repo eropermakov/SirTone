@@ -178,8 +178,9 @@ pub async fn rsd_usb(apple_id: &str, app: PathBuf) -> Result<(), String> {
     let rsd_port = proxy.tunnel_info().server_rsd_port;
     let mut handle = proxy
         .create_software_tunnel()
-        .map_err(|e| format!("tunnel: {e:?}"))?
-        .to_async_handle();
+        .map_err(|e| format!("tunnel: {e:?}"))?;
+    window(&mut handle);
+    let mut handle = handle.to_async_handle();
     println!("Туннель по кабелю за {:.2} с.", t0.elapsed().as_secs_f32());
     let mut hs = rsd(&mut handle, rsd_port).await?;
     sign_and_install_rsd(apple_id, &device.udid, &name, &app, &mut handle, &mut hs).await
@@ -274,6 +275,7 @@ pub async fn rp_wifi(apple_id: &str, udid: &str, app: Option<PathBuf>, at: Optio
     let server_ip: IpAddr = info.server_address.parse().map_err(|_| "server ip")?;
     let mut adapter = Adapter::new(Box::new(tunnel.into_inner()), client_ip, server_ip);
     adapter.set_mss((info.mtu as usize).saturating_sub(60));
+    window(&mut adapter);
     let mut handle = adapter.to_async_handle();
     println!("Туннель по Wi-Fi за {:.1} с (MTU {}).", t0.elapsed().as_secs_f32(), info.mtu);
     let mut hs = rsd(&mut handle, info.server_rsd_port).await?;
@@ -289,4 +291,16 @@ pub async fn rp_wifi(apple_id: &str, udid: &str, app: Option<PathBuf>, at: Optio
     drop(rpc);
     println!("Всего {:.1} с.", t0.elapsed().as_secs_f32());
     Ok(())
+}
+
+/// Experiment: bytes in flight per connection (`SP4_WINDOW`), jktcp's default is 1 MiB.
+fn window(a: &mut idevice::tcp::adapter::Adapter) {
+    if let Some(w) = std::env::var("SP4_WINDOW").ok().and_then(|v| v.parse().ok()) {
+        a.set_send_window(w);
+        println!("  окно отправки: {w} байт");
+    }
+    if let Some(m) = std::env::var("SP4_MSS").ok().and_then(|v| v.parse().ok()) {
+        a.set_mss(m);
+        println!("  MSS: {m} байт");
+    }
 }

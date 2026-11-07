@@ -290,7 +290,7 @@ pub async fn open(udid: &str, wait: Duration) -> Result<Tunnel, LinkError> {
         .parse()
         .map_err(|_| LinkError::Apple("phone.wifi_tunnel", "address".into()))?;
     let mut adapter = Adapter::new(Box::new(cd.into_inner()), ours, theirs);
-    adapter.set_mss((info.mtu as usize).saturating_sub(60));
+    adapter.set_mss(mss(info.mtu));
     let mut handle = adapter.to_async_handle();
     let s = handle
         .connect(info.server_rsd_port)
@@ -310,10 +310,29 @@ pub async fn open(udid: &str, wait: Duration) -> Result<Tunnel, LinkError> {
     })
 }
 
+/// Largest TCP payload sent into the tunnel. The tunnel's MTU (≈16 000) is not what the phone
+/// accepts: segments that large are dropped without a word and AFC writes stall until jktcp
+/// gives up (check П4б, 2026-11-07). jktcp ignores the peer's MSS option, so cap it ourselves.
+const SAFE_MSS: usize = 1200;
+
+fn mss(mtu: impl TryInto<usize>) -> usize {
+    mtu.try_into()
+        .unwrap_or(0)
+        .saturating_sub(60)
+        .clamp(500, SAFE_MSS)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use isideload::util::storage::InMemoryStorage;
+
+    #[test]
+    fn segments_stay_small() {
+        assert_eq!(mss(16_000u64), SAFE_MSS);
+        assert_eq!(mss(1_000u64), 940);
+        assert_eq!(mss(0u64), 500);
+    }
 
     fn paired(host: &str, irk: [u8; 16]) -> RpPairingFile {
         let mut r = RpPairingFile::generate(host);
