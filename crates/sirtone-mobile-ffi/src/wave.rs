@@ -111,6 +111,91 @@ impl Wave {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .skipped(track_id, now);
     }
+
+    /// The player's journal row (the wave learns from it, `sirtone-transfer` carries it to the
+    /// PC): `played_ms` heard, `skipped` when moved on early, `from_wave` when the wave chose it.
+    /// The engine moves on too (as [`Self::played`] / [`Self::skipped`]).
+    pub fn listened(
+        &self,
+        track_id: i64,
+        played_ms: u64,
+        duration_ms: u64,
+        skipped: bool,
+        from_wave: bool,
+        utc_offset_min: i32,
+    ) -> Result<(), CoreError> {
+        use sirtone_core::wave::{EndReason, PlayEvent, PlaySource};
+        let clock = PhoneClock {
+            offset_min: utc_offset_min,
+        };
+        let now = clock.now_utc_ms();
+        let event = PlayEvent {
+            ts: now - played_ms as i64,
+            track_id,
+            played_ms,
+            duration_ms,
+            end_reason: if skipped {
+                EndReason::Skip
+            } else {
+                EndReason::Finished
+            },
+            source: if from_wave {
+                PlaySource::Wave
+            } else {
+                PlaySource::Collection
+            },
+            profile: from_wave.then(|| "my_wave".to_string()),
+            context: self.context.snapshot_at(&clock, now),
+            event_id: None,
+            novelty: None,
+            category: None,
+        };
+        self.library
+            .with(|c| sirtone_library::wave::record_play(c, &event))?;
+        if skipped {
+            self.skipped(track_id);
+        } else {
+            self.played(track_id);
+        }
+        Ok(())
+    }
+
+    /// «Не сейчас»: a minus in this moment's context bucket only (D-77); the app moves on.
+    pub fn not_now(&self, track_id: i64, utc_offset_min: i32) -> Result<(), CoreError> {
+        let clock = PhoneClock {
+            offset_min: utc_offset_min,
+        };
+        let ctx = self.context.snapshot_at(&clock, clock.now_utc_ms());
+        let key = sirtone_wave::context::bucket_key(&ctx);
+        self.library
+            .with(|c| sirtone_library::feedback::not_now(c, track_id, &key))?;
+        self.skipped(track_id);
+        Ok(())
+    }
+
+    /// «Почему этот трек» (FR-LEARN-009): reason codes for the app to word — `liked`, `taste`,
+    /// `session`, `new`, `forgotten`, `for_all`, `genre:<0..5>`, `context:<daypart>`,
+    /// `season:<0..3>`.
+    pub fn why(&self, track_id: i64) -> Vec<String> {
+        use sirtone_wave::engine::Why;
+        self.engine
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .why(track_id)
+            .into_iter()
+            .map(|w| match w {
+                Why::Liked => "liked".to_string(),
+                Why::Genre(g) => format!("genre:{g}"),
+                Why::Taste => "taste".to_string(),
+                Why::Context(d) => format!("context:{d}"),
+                Why::Session => "session".to_string(),
+                Why::NewForYou => "new".to_string(),
+                Why::Forgotten => "forgotten".to_string(),
+                Why::Season(s) => format!("season:{s}"),
+                Why::ForAll => "for_all".to_string(),
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -137,6 +222,17 @@ mod tests {
         wave.played(ids[0]);
         wave.skipped(ids[0]);
         assert!(!wave.next(1, 0.5, 180).unwrap().is_empty());
+        // The journal grows by the player's rows; «Не сейчас» and «Почему» answer.
+        wave.listened(ids[0], 150_000, 200_000, false, true, 180)
+            .unwrap();
+        wave.listened(ids[0], 5_000, 200_000, true, false, 180)
+            .unwrap();
+        let rows: i64 = lib
+            .with(|c| c.query_row("SELECT count(*) FROM play_event", [], |r| r.get(0)))
+            .unwrap();
+        assert_eq!(rows, 2);
+        wave.not_now(ids[0], 180).unwrap();
+        let _ = wave.why(ids[0]);
         drop(wave);
         drop(lib);
         let _ = std::fs::remove_dir_all(&dir);
