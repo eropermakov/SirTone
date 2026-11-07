@@ -8,6 +8,7 @@
 uniffi::setup_scaffolding!();
 
 pub mod collection;
+pub mod copies;
 pub mod import;
 pub mod library;
 pub mod player;

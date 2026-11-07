@@ -6,6 +6,7 @@ pub mod art;
 pub mod artists;
 pub mod collection;
 pub mod continuation;
+pub mod copies;
 pub mod covers;
 pub mod db;
 pub mod duplicates;
