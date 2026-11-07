@@ -42,6 +42,9 @@ pub struct TrackItem {
     pub artists: String,
     pub album: Option<String>,
     pub duration_ms: u64,
+    /// For «К альбому» / «К исполнителю» in the track menu.
+    pub album_id: Option<i64>,
+    pub artist_id: Option<i64>,
 }
 
 /// Keyset cursor of the «Треки» list (by title); opaque to the app.
@@ -71,13 +74,15 @@ pub struct SearchResults {
     pub albums: Vec<NamedItem>,
 }
 
-fn item(t: repo::TrackRow) -> TrackItem {
+pub(crate) fn item(t: repo::TrackRow) -> TrackItem {
     TrackItem {
         id: t.id,
         title: t.title,
         artists: t.artists,
         album: t.album,
         duration_ms: t.duration_ms,
+        album_id: t.album_id,
+        artist_id: t.artist_id,
     }
 }
 

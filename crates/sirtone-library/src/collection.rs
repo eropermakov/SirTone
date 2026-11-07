@@ -293,6 +293,35 @@ pub fn artist_tracks(conn: &Connection, artist: ArtistId) -> Result<Vec<TrackRow
     Ok(rows)
 }
 
+/// «Любимое» (S02): playable tracks whose latest ♡ mark is «like», newest mark first.
+pub fn liked_tracks(conn: &Connection, limit: u32) -> Result<Vec<TrackRow>, LibraryError> {
+    let mut st = conn.prepare_cached(&format!(
+        "SELECT {TRACK_COLS} FROM track t LEFT JOIN album al ON al.id = t.album_id
+         JOIN (SELECT f.track_id AS tid, max(f.id) AS fid FROM feedback f
+               WHERE f.kind IN ('like','unlike') AND f.track_id IS NOT NULL
+               GROUP BY f.track_id) last ON last.tid = t.id
+         JOIN feedback lf ON lf.id = last.fid AND lf.kind = 'like'
+         WHERE t.state = 'ok'
+         ORDER BY last.fid DESC LIMIT ?1"
+    ))?;
+    let rows = st
+        .query_map([limit], track_row)?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+/// The cover hash of a track's album, if it has one.
+pub fn track_cover(conn: &Connection, track: i64) -> Result<Option<String>, LibraryError> {
+    Ok(conn
+        .query_row(
+            "SELECT c.hash FROM track t JOIN album al ON al.id = t.album_id
+             JOIN cover c ON c.id = al.cover_id WHERE t.id = ?1",
+            [track],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
 /// «Неизвестные» (FR-LIB-004): playable tracks without a confident identity, newest first.
 pub fn unknown_tracks(conn: &Connection, limit: u32) -> Result<Vec<TrackRow>, LibraryError> {
     let mut st = conn.prepare_cached(&format!(
