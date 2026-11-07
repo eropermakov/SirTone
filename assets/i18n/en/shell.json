@@ -250,6 +250,18 @@
     },
     "trust": "",
     "install": "",
+    "send": {
+      "action": "Move to phone",
+      "title": "What to move to the phone?",
+      "done": "Done. Open SirTone on the iPhone — it applies the transfer itself"
+    },
+    "reinstall": "Reinstall",
+    "forget": {
+      "action": "Disconnect phone",
+      "question": "Disconnect the phone? This PC forgets it and the Apple ID login — nothing will renew SirTone there, and in 7 days the app stops opening. Music on the phone stays.",
+      "confirm": "Disconnect",
+      "done": "Phone disconnected"
+    },
     "quality": {
       "title": "",
       "original": "",

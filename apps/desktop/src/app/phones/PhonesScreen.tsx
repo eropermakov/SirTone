@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   errorCode,
+  forgetPhone,
   type PhoneInfo,
   type PhonesStatus,
   phoneAccount,
@@ -25,7 +26,7 @@ const POLL_MS = 3000;
 export function PhonesScreen() {
   const { t } = useTranslation("shell");
   const [status, setStatus] = useState<PhonesStatus | null>(null);
-  const [picking, setPicking] = useState<string | null>(null);
+  const [picking, setPicking] = useState<Picking | null>(null);
   // Lockdown queries must not race the transfer to the phone (MR §6.4).
   const busy = useRef(false);
 
@@ -63,8 +64,8 @@ export function PhonesScreen() {
               <PhoneCard
                 key={p.id}
                 phone={p}
-                picking={picking === p.id}
-                onInstall={() => setPicking(p.id)}
+                picking={picking?.id === p.id ? picking.mode : null}
+                onPick={(mode) => setPicking({ id: p.id, mode })}
                 onCancel={() => setPicking(null)}
                 onBusy={(b) => {
                   busy.current = b;
@@ -77,6 +78,9 @@ export function PhonesScreen() {
     </section>
   );
 }
+
+type Mode = "install" | "send";
+type Picking = { id: string; mode: Mode };
 
 function Note({ title, text }: { title: string; text: string }) {
   return (
@@ -100,13 +104,13 @@ function Empty() {
 function PhoneCard({
   phone,
   picking,
-  onInstall,
+  onPick,
   onCancel,
   onBusy,
 }: {
   phone: PhoneInfo;
-  picking: boolean;
-  onInstall: () => void;
+  picking: Mode | null;
+  onPick: (mode: Mode) => void;
   onCancel: () => void;
   onBusy: (busy: boolean) => void;
 }) {
@@ -120,7 +124,10 @@ function PhoneCard({
     .filter(Boolean)
     .join(" · ");
   const Link = phone.usb ? Cable : Wifi;
-  const until = useWorksUntil(phone, picking);
+  const [confirming, setConfirming] = useState(false);
+  const [until, setUntil] = useWorksUntil(phone, picking !== null);
+  // A phone this PC installed: moving and taking come first, a reinstall is the exception.
+  const known = until !== null;
   const days = until === null ? null : Math.floor((until - Date.now()) / 86_400_000);
   return (
     <article
@@ -151,14 +158,57 @@ function PhoneCard({
         <p role="status" className="t-body text-text-secondary">
           {t("phones.trust")}
         </p>
-      ) : picking ? (
-        <PhoneWizard phone={phone} onClose={onCancel} onBusy={onBusy} />
-      ) : (
+      ) : picking !== null ? (
+        <PhoneWizard phone={phone} mode={picking} onClose={onCancel} onBusy={onBusy} />
+      ) : confirming ? (
+        <div className="flex flex-col gap-3">
+          <p role="alert" className="t-body text-text-secondary">
+            {t("phones.forget.question")}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="primary"
+              onClick={() => {
+                setConfirming(false);
+                forgetPhone(phone.id)
+                  .then(() => {
+                    setUntil(null);
+                    notify(t("phones.forget.done"));
+                  })
+                  .catch((e) =>
+                    notify(
+                      t(`phones.errors.${errorCode(e)}`, {
+                        defaultValue: t("phones.errors.Internal"),
+                      }),
+                    ),
+                  );
+              }}
+            >
+              {t("phones.forget.confirm")}
+            </Button>
+            <Button variant="ghost" onClick={() => setConfirming(false)}>
+              {t("phones.choose.cancel")}
+            </Button>
+          </div>
+        </div>
+      ) : known ? (
         <div className="flex flex-wrap gap-2">
-          <Button variant="primary" onClick={onInstall}>
+          <Button variant="primary" onClick={() => onPick("send")}>
+            {t("phones.send.action")}
+          </Button>
+          <PullAction phone={phone} onBusy={onBusy} />
+          <Button variant="ghost" onClick={() => onPick("install")}>
+            {t("phones.reinstall")}
+          </Button>
+          <Button variant="ghost" onClick={() => setConfirming(true)}>
+            {t("phones.forget.action")}
+          </Button>
+        </div>
+      ) : (
+        <div>
+          <Button variant="primary" onClick={() => onPick("install")}>
             {t("phones.install")}
           </Button>
-          {until !== null && <PullAction phone={phone} onBusy={onBusy} />}
         </div>
       )}
     </article>
@@ -213,7 +263,10 @@ function PullAction({ phone, onBusy }: { phone: PhoneInfo; onBusy: (busy: boolea
 
 /** When the app on a known iPhone stops opening unless renewed (S11); `null` before the hub
  * installed it. Re-read when the wizard closes (an install sets a new end). */
-function useWorksUntil(phone: PhoneInfo, picking: boolean): number | null {
+function useWorksUntil(
+  phone: PhoneInfo,
+  picking: boolean,
+): [number | null, (v: number | null) => void] {
   const [until, setUntil] = useState<number | null>(null);
   useEffect(() => {
     if (phone.platform !== "ios" || picking) return;
@@ -225,5 +278,5 @@ function useWorksUntil(phone: PhoneInfo, picking: boolean): number | null {
       alive = false;
     };
   }, [phone.id, phone.platform, picking]);
-  return until;
+  return [until, setUntil];
 }

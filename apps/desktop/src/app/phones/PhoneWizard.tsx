@@ -43,6 +43,7 @@ type Step =
   | { k: "code"; ask: TwoFactorRequest; sent: boolean }
   | { k: "install"; fraction: number }
   | { k: "transfer"; fraction: number }
+  | { k: "sent" }
   | { k: "failed"; error: ErrorCode }
   | { k: "devMode" }
   | { k: "trust" }
@@ -58,16 +59,21 @@ const FIELD =
  */
 export function PhoneWizard({
   phone,
+  mode = "install",
   onClose,
   onBusy,
 }: {
   phone: PhoneInfo;
+  /** `send`: «Перенести на телефон» on a phone that has the app — no install (it would restart
+   * the app's 7-day count for nothing), only what to move. */
+  mode?: "install" | "send";
   onClose: () => void;
   onBusy: (busy: boolean) => void;
 }) {
   const { t } = useTranslation("shell");
   const [step, setStep] = useState<Step>({ k: "choose" });
-  const [choice, setChoice] = useState<Choice>("app");
+  const [choice, setChoice] = useState<Choice>(mode === "send" ? "all" : "app");
+  const choices = mode === "send" ? CHOICES.filter((c) => c !== "app") : CHOICES;
   const [quality, setQuality] = useState<Quality>("original");
   const [picked, setPicked] = useState<SendParts>(ALL);
   const [library, setLibrary] = useState<LibraryStatus | null>(null);
@@ -111,7 +117,25 @@ export function PhoneWizard({
       .finally(() => onBusy(false));
   };
 
+  const transferOnly = () => {
+    setStep({ k: "transfer", fraction: 0 });
+    onBusy(true);
+    sendToPhone(
+      phone.id,
+      quality,
+      parts,
+      (f) => alive.current && setStep({ k: "transfer", fraction: f }),
+    )
+      .then(() => alive.current && setStep({ k: "sent" }))
+      .catch((e) => alive.current && setStep({ k: "failed", error: errorCode(e) }))
+      .finally(() => onBusy(false));
+  };
+
   const next = () => {
+    if (mode === "send") {
+      transferOnly();
+      return;
+    }
     setStep({ k: "checking" });
     phoneAccount(phone.id)
       .then((a) => {
@@ -146,13 +170,15 @@ export function PhoneWizard({
     void answerTwoFactor({ kind: "code", code });
   };
 
+  const title = mode === "send" ? t("phones.send.title") : t("phones.choose.title");
+
   return (
     <div className="flex flex-col gap-3">
       {step.k === "choose" && (
         <>
-          <span className="t-body-strong text-text-primary">{t("phones.choose.title")}</span>
-          <fieldset aria-label={t("phones.choose.title")} className="flex flex-col gap-2">
-            {CHOICES.map((c) => (
+          <span className="t-body-strong text-text-primary">{title}</span>
+          <fieldset aria-label={title} className="flex flex-col gap-2">
+            {choices.map((c) => (
               <label
                 key={c}
                 className={cn(
@@ -415,6 +441,19 @@ export function PhoneWizard({
               : t("phones.transferring.progress", { percent: Math.round(step.fraction * 100) })}
           </span>
         </div>
+      )}
+
+      {step.k === "sent" && (
+        <>
+          <p role="status" className="t-body text-text-secondary">
+            {t("phones.send.done")}
+          </p>
+          <div>
+            <Button variant="primary" onClick={onClose}>
+              {t("phones.wizard.done")}
+            </Button>
+          </div>
+        </>
       )}
 
       {step.k === "failed" && (

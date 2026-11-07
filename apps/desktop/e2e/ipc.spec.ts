@@ -314,6 +314,7 @@ async function mockTauri(page: Page) {
             }
           }
           case "phone_apple_2fa":
+          case "phone_forget":
             return null;
           case "phone_send": {
             const ch = callbacks.get((args.progress as { id: number }).id);
@@ -1215,7 +1216,7 @@ test("«Телефоны»: «Перенести всё» installs, then moves t
   const card = page.getByRole("article", { name: "iPhone владельца" });
   // S11: the hub says how long the app keeps working.
   await expect(card.getByText("Работает ещё 3 дня")).toBeVisible();
-  await card.getByRole("button", { name: "Установить Сиртон" }).click();
+  await card.getByRole("button", { name: "Установить заново" }).click();
   await card.getByText("Перенести всё", { exact: true }).click();
   // D-146: the PC can send economy copies instead of the originals.
   await card.getByText("Экономно", { exact: false }).click();
@@ -1316,6 +1317,48 @@ test("«Телефоны»: «Забрать с телефона» brings the ph
   await expect(page.getByText("С телефона: 2 новых трека, прослушиваний — 10")).toBeVisible();
   await expect(card.getByRole("button", { name: "Забрать с телефона" })).toBeVisible();
   expect(await calls(page, "phone_pull")).toHaveLength(1);
+});
+
+test("«Телефоны»: a known phone gets the library without a reinstall; «Отключить телефон» asks first", async ({
+  page,
+}) => {
+  await page.addInitScript((phones) => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__mockPhones = phones;
+    w.__mockPhoneAccount = {
+      appleId: "owner@example.com",
+      signedIn: true,
+      loginUntilMs: 1.9e12,
+      installedAtMs: null,
+      worksUntilMs: Date.now() + 5.5 * 86_400_000,
+      package: true,
+    };
+  }, ownerPhone);
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Телефоны", exact: true }).click();
+  const card = page.getByRole("article", { name: "iPhone владельца" });
+  // MR §6.2: a known phone's card leads with «Перенести на телефон».
+  await card.getByRole("button", { name: "Перенести на телефон" }).click();
+  const choices = card.getByRole("group", { name: "Что перенести на телефон?" });
+  await expect(choices.getByRole("radio")).toHaveCount(2);
+  await card.getByRole("button", { name: "Дальше" }).click();
+  await expect(card.getByText("Откройте Сиртон на iPhone", { exact: false })).toBeVisible();
+  // A reinstall would restart the app's 7-day count: moving the library never installs.
+  expect(await calls(page, "phone_install")).toHaveLength(0);
+  expect(await calls(page, "phone_send")).toHaveLength(1);
+  await card.getByRole("button", { name: "Готово" }).click();
+
+  await card.getByRole("button", { name: "Отключить телефон" }).click();
+  await expect(
+    card.getByText("через 7 дней приложение перестанет открываться", { exact: false }),
+  ).toBeVisible();
+  await card.getByRole("button", { name: "Отмена" }).click();
+  expect(await calls(page, "phone_forget")).toHaveLength(0);
+  await card.getByRole("button", { name: "Отключить телефон" }).click();
+  await card.getByRole("button", { name: "Отключить", exact: true }).click();
+  await expect(page.getByText("Телефон отключён")).toBeVisible();
+  expect(await calls(page, "phone_forget")).toHaveLength(1);
 });
 
 test("«Телефоны»: without the app package the wizard says it is not ready", async ({ page }) => {
