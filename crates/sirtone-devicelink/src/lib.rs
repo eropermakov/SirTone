@@ -8,6 +8,7 @@
 //! (Apple ID tokens) never reach logs.
 
 pub mod android;
+pub mod appfiles;
 pub mod apple;
 #[cfg(windows)]
 pub mod dnssd;

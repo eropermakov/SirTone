@@ -338,6 +338,8 @@ fn main() -> ExitCode {
             ("forget", _, _) => phone::forget(&args[2]),
             ("wifi-pair", _, _) => phone::wifi_pair(&args[2]),
             ("bonjour", _, _) => phone::bonjour(&args[2]),
+            ("send", Some(pkg), _) => phone::send(&args[2], pkg),
+            ("pull-library", Some(out), _) => phone::pull_library(&args[2], out),
             ("install", Some(p), Some(app)) => phone::install(&args[2], p, app),
             ("renew", Some(p), _) => phone::renew(&args[2], p),
             _ => usage(),

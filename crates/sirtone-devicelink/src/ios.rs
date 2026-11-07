@@ -75,6 +75,20 @@ impl PhoneInstaller for IosInstaller {
         for d in &devices {
             out.push(describe(d).await);
         }
+        // Phones with Wi-Fi access (П4б) the Apple service does not see over the network.
+        for s in crate::wifi::seen_recently().await {
+            if !out.iter().any(|p| p.id == s.udid) {
+                out.push(Phone {
+                    id: s.udid,
+                    platform: Platform::Ios,
+                    link: Link::Network,
+                    name: None,
+                    model: None,
+                    os_version: None,
+                    state: PhoneState::Ready,
+                });
+            }
+        }
         // The same phone over cable and Wi-Fi: keep the cable.
         out.sort_by_key(|p| (p.id.clone(), p.link != Link::Usb));
         out.dedup_by(|a, b| a.id == b.id);

@@ -84,7 +84,11 @@ export const commands = {
 	hotkeysStatus: () => __TAURI_INVOKE<HotkeyStatus[]>("hotkeys_status"),
 	/**  Version and, the first time after an update, «Сиртон обновлён до X» (taken once). */
 	updateStatus: () => __TAURI_INVOKE<UpdateStatus>("update_status"),
-	/**  Phones connected now. Never fails: a missing Apple service is a state, not an error. */
+	/**
+	 *  Phones connected now. Never fails: a missing Apple service is a state, not an error.
+	 *  A phone seen only over Wi-Fi carries no name or model (they need the tunnel): the ones it
+	 *  had on its last cable connection are shown instead.
+	 */
 	phonesList: () => __TAURI_INVOKE<PhonesStatus>("phones_list"),
 	phoneAccount: (udid: string) => __TAURI_INVOKE<PhoneAccount>("phone_account", { udid }),
 	/**

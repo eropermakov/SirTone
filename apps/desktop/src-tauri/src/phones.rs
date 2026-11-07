@@ -49,11 +49,29 @@ pub struct PhonesStatus {
 }
 
 /// Phones connected now. Never fails: a missing Apple service is a state, not an error.
+/// A phone seen only over Wi-Fi carries no name or model (they need the tunnel): the ones it
+/// had on its last cable connection are shown instead.
 #[tauri::command(async)]
 #[specta::specta]
-pub async fn phones_list() -> PhonesStatus {
+pub async fn phones_list(app: AppHandle) -> PhonesStatus {
     use sirtone_devicelink as dl;
-    let (phones, errors) = dl::all_phones().await;
+    use tauri::Manager as _;
+    let hub = app.state::<PhoneHub>();
+    let (mut phones, errors) = dl::all_phones().await;
+    for p in &mut phones {
+        if p.platform != dl::Platform::Ios {
+            continue;
+        }
+        if p.link == dl::Link::Usb && p.name.is_some() {
+            hub.remember_looks(&p.id, p.name.clone(), p.model.clone(), p.os_version.clone());
+        } else if p.name.is_none()
+            && let Some(r) = hub.record(&p.id)
+        {
+            p.name = r.name;
+            p.model = p.model.take().or(r.model);
+            p.os_version = p.os_version.take().or(r.os_version);
+        }
+    }
     PhonesStatus {
         apple_service: !errors
             .iter()
@@ -95,6 +113,13 @@ const PACKAGE_ENV: &str = "SIRTONE_IOS_APP";
 struct PhoneRecord {
     apple_id: String,
     installed_at_ms: Option<u64>,
+    /// As on the last cable connection (shown when the phone is on Wi-Fi only).
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    os_version: Option<String>,
 }
 
 pub struct PhoneHub {
@@ -140,6 +165,27 @@ impl PhoneHub {
             return;
         };
         all.insert(udid.to_string(), r);
+        self.save(&all);
+    }
+
+    /// Keeps a known phone's name, model and iOS (only for phones the hub installed on).
+    fn remember_looks(
+        &self,
+        udid: &str,
+        name: Option<String>,
+        model: Option<String>,
+        os_version: Option<String>,
+    ) {
+        let Ok(mut all) = self.records.lock() else {
+            return;
+        };
+        let Some(r) = all.get_mut(udid) else {
+            return;
+        };
+        if r.name == name && r.model == model && r.os_version == os_version {
+            return;
+        }
+        (r.name, r.model, r.os_version) = (name, model, os_version);
         self.save(&all);
     }
 
@@ -279,14 +325,8 @@ pub async fn phone_apple_login(
         *a = None;
     }
     r.map_err(|e| app_error(&e))?;
-    let installed_at_ms = hub.record(&udid).and_then(|r| r.installed_at_ms);
-    hub.remember(
-        &udid,
-        PhoneRecord {
-            apple_id,
-            installed_at_ms,
-        },
-    );
+    let before = hub.record(&udid).unwrap_or_default();
+    hub.remember(&udid, PhoneRecord { apple_id, ..before });
     Ok(())
 }
 
@@ -369,8 +409,8 @@ pub async fn phone_install(
     hub.remember(
         &udid,
         PhoneRecord {
-            apple_id: record.apple_id,
             installed_at_ms: Some(now_ms()),
+            ..record
         },
     );
     Ok(())

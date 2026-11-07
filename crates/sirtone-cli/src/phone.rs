@@ -8,6 +8,9 @@
 //! sirtone-cli phone renew <apple-id> <udid|usb>   new profile only, no reinstall (check П3)
 //! sirtone-cli phone wifi-pair <udid|usb>          once, on the cable: Wi-Fi access (RPPairing, П4б)
 //! sirtone-cli phone wifi-find                     paired phones seen on the network now
+//! sirtone-cli phone send <udid|usb> <package_dir>   package (`transfer export`) → the app's inbox
+//! sirtone-cli phone pull-library <udid|usb> <dir>  the phone's library (db + music) → a PC folder,
+//!                                                 then `transfer export` on it + `transfer import`
 //! sirtone-cli phone bonjour <_svc._tcp.local>     any Bonjour service (does discovery work here?)
 //! sirtone-cli phone forget <apple-id>             delete everything kept for this Apple ID
 //! ```
@@ -213,6 +216,80 @@ pub fn renew(apple_id: &str, phone: &str) -> ExitCode {
             println!(
                 "renewed {udid} in {:.1} s, profile until {until}",
                 started.elapsed().as_secs_f32()
+            );
+            ExitCode::SUCCESS
+        }
+        Err(e) => fail(&e),
+    }
+}
+
+fn progress_line(done: u64, total: u64) {
+    // One line, rewritten: MB only.
+    eprint!("\r{} / {} MB   ", done / 1_000_000, total / 1_000_000);
+}
+
+pub fn send(phone: &str, pkg: &str) -> ExitCode {
+    use sirtone_devicelink::appfiles;
+    let Some(rt) = runtime() else {
+        return ExitCode::FAILURE;
+    };
+    let Some(udid) = resolve(&rt, phone) else {
+        return ExitCode::FAILURE;
+    };
+    let id = match sirtone_transfer::Manifest::read(Path::new(pkg)) {
+        Ok(m) => m.package_id,
+        Err(e) => {
+            eprintln!("transfer.manifest: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let started = std::time::Instant::now();
+    let r = rt.block_on(async {
+        let mut files = appfiles::open(&udid).await?;
+        files
+            .send_package(Path::new(pkg), &id, &progress_line)
+            .await
+    });
+    eprintln!();
+    match r {
+        Ok(c) => {
+            println!(
+                "sent {id}: {} files ({} MB) in {:.1} s, {} already there",
+                c.files,
+                c.bytes / 1_000_000,
+                started.elapsed().as_secs_f32(),
+                c.skipped
+            );
+            ExitCode::SUCCESS
+        }
+        Err(e) => fail(&e),
+    }
+}
+
+pub fn pull_library(phone: &str, out: &str) -> ExitCode {
+    use sirtone_devicelink::appfiles;
+    let Some(rt) = runtime() else {
+        return ExitCode::FAILURE;
+    };
+    let Some(udid) = resolve(&rt, phone) else {
+        return ExitCode::FAILURE;
+    };
+    let started = std::time::Instant::now();
+    let r = rt.block_on(async {
+        let mut files = appfiles::open(&udid).await?;
+        files
+            .pull_dir(appfiles::LIBRARY, Path::new(out), &|_| true, &progress_line)
+            .await
+    });
+    eprintln!();
+    match r {
+        Ok(c) => {
+            println!(
+                "pulled {} files ({} MB) in {:.1} s, {} already here",
+                c.files,
+                c.bytes / 1_000_000,
+                started.elapsed().as_secs_f32(),
+                c.skipped
             );
             ExitCode::SUCCESS
         }

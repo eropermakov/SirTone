@@ -150,6 +150,27 @@ pub struct Sighting {
     pub port: u16,
 }
 
+/// Paired phones seen on Wi-Fi, from a browse at most `FRESH` old (the hub lists every 3 s; a
+/// browse costs up to `QUICK`).
+pub async fn seen_recently() -> Vec<Sighting> {
+    use std::sync::Mutex;
+    use std::time::Instant;
+    const FRESH: Duration = Duration::from_secs(15);
+    const QUICK: Duration = Duration::from_millis(1500);
+    static CACHE: Mutex<Option<(Instant, Vec<Sighting>)>> = Mutex::new(None);
+    if let Ok(c) = CACHE.lock()
+        && let Some((at, seen)) = c.as_ref()
+        && at.elapsed() < FRESH
+    {
+        return seen.clone();
+    }
+    let seen = find(QUICK).await.unwrap_or_default();
+    if let Ok(mut c) = CACHE.lock() {
+        *c = Some((Instant::now(), seen.clone()));
+    }
+    seen
+}
+
 /// Browses Bonjour up to `wait` (returns as soon as every paired phone is seen).
 pub async fn find(wait: Duration) -> Result<Vec<Sighting>, LinkError> {
     let s = keyring();
