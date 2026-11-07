@@ -250,6 +250,11 @@
     },
     "trust": "",
     "install": "",
+    "transferring": {
+      "title": "",
+      "progress": "",
+      "preparing": ""
+    },
     "installing": {
       "busy": "",
       "signing": "",
@@ -323,6 +328,7 @@
       "RemoteError": "",
       "PhoneInstall": "",
       "PhonePackageMissing": "",
+      "PhoneTransfer": "",
       "DeviceUnavailable": "",
       "DeviceBusy": "",
       "InvalidArgument": "",

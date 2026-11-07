@@ -217,6 +217,7 @@ fn app_error(e: &sirtone_devicelink::LinkError) -> AppError {
         "phone.install" | "phone.wifi_tunnel" | "phone.wifi_pair" | "phone.wifi_not_paired" => {
             ErrorCode::PhoneInstall
         }
+        "phone.transfer" | "phone.app_not_installed" => ErrorCode::PhoneTransfer,
         // Not on the cable and not seen on Wi-Fi (screen off, another network): «телефон не виден».
         "phone.apple_service_missing"
         | "phone.device"
@@ -414,6 +415,109 @@ pub async fn phone_install(
         },
     );
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferProgress {
+    /// 0…1 of the bytes to send.
+    pub fraction: f32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferDone {
+    pub tracks: u32,
+    /// Library files that could not be read (moved since the last scan); the rest went.
+    pub missing: u32,
+}
+
+/// «Перенести всё» (M6.2, MR §11): the PC library's package — manifest and journal written to
+/// the app's cache folder, the music sent straight from the library — into the app's inbox on
+/// the phone (cable, else Wi-Fi). The app applies it when opened. A repeat resumes.
+#[tauri::command(async)]
+#[specta::specta]
+pub async fn phone_send(
+    app: AppHandle,
+    udid: String,
+    progress: Channel<TransferProgress>,
+) -> Result<TransferDone, AppError> {
+    use tauri::Manager as _;
+    let hub = app.state::<PhoneHub>();
+    if !hub
+        .installing
+        .lock()
+        .is_ok_and(|mut s| s.insert(udid.clone()))
+    {
+        return Err(AppError::new(ErrorCode::DeviceBusy));
+    }
+    let r = send(&app, &udid, &progress).await;
+    if let Ok(mut s) = hub.installing.lock() {
+        s.remove(&udid);
+    }
+    r
+}
+
+async fn send(
+    app: &AppHandle,
+    udid: &str,
+    progress: &Channel<TransferProgress>,
+) -> Result<TransferDone, AppError> {
+    use sirtone_devicelink::appfiles;
+    use tauri::Manager as _;
+    let lib = app.state::<crate::library::Library>();
+    let root = lib
+        .root()
+        .ok_or_else(|| AppError::new(ErrorCode::LibraryRootNotSet))?;
+    let out = app
+        .path()
+        .app_cache_dir()
+        .map_err(|_| AppError::new(ErrorCode::Internal))?
+        .join("phone-out")
+        .join(appfiles::package_folder(udid));
+    let parts = sirtone_transfer::Parts {
+        music: true,
+        playlists: true,
+        taste: true,
+        settings: false,
+    };
+    let _ = progress.send(TransferProgress { fraction: 0.0 });
+    let summary = lib.with_write(|c| {
+        sirtone_sync::export_with(
+            c,
+            &root,
+            &out,
+            sirtone_transfer::Platform::Windows,
+            env!("CARGO_PKG_VERSION"),
+            parts,
+            false,
+        )
+        .map_err(|e| match e {
+            sirtone_sync::SyncError::Library(l) => l,
+            other => sirtone_library::LibraryError::Invalid(other.code().into()),
+        })
+    })?;
+    let music = sirtone_sync::music_sources(&root, &out)
+        .map_err(|e| AppError::new(ErrorCode::PhoneTransfer).with_details(e.code()))?;
+    let mut files = appfiles::open(udid).await.map_err(|e| app_error(&e))?;
+    let report = |done: u64, total: u64| {
+        let f = if total == 0 {
+            1.0
+        } else {
+            done as f32 / total as f32
+        };
+        let _ = progress.send(TransferProgress { fraction: f });
+    };
+    let c = files
+        .send_package(&out, &summary.package_id, &music, &report)
+        .await
+        .map_err(|e| app_error(&e))?;
+    let _ = std::fs::remove_dir_all(&out);
+    tracing::info!(target: "sirtone::phones", files = c.files, skipped = c.skipped, missing = c.missing, "sent");
+    Ok(TransferDone {
+        tracks: summary.tracks,
+        missing: c.missing,
+    })
 }
 
 /// «Отключить телефон»: forgets the phone and, if no other phone uses it, its Apple ID (D-132).

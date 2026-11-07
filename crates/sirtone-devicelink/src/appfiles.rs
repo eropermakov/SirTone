@@ -110,6 +110,8 @@ pub struct Copied {
     /// Already there with the same size (a resumed copy).
     pub skipped: u32,
     pub bytes: u64,
+    /// Sources that could not be read (moved away since the export); the rest went on.
+    pub missing: u32,
 }
 
 /// Every file under `dir`, as (relative path with `/`, size).
@@ -203,13 +205,40 @@ impl AppFiles {
         remote: &str,
         progress: &(dyn Fn(u64, u64) + Send + Sync),
     ) -> Result<Copied, LinkError> {
-        let files =
-            local_files(local).map_err(|e| LinkError::Apple("phone.transfer", e.to_string()))?;
-        let total: u64 = files.iter().map(|(_, n)| n).sum();
+        let files = local_files(local)
+            .map_err(|e| LinkError::Apple("phone.transfer", e.to_string()))?
+            .into_iter()
+            .map(|(rel, _)| {
+                (
+                    rel.split('/').fold(local.to_path_buf(), |p, s| p.join(s)),
+                    rel,
+                )
+            })
+            .collect::<Vec<_>>();
+        self.push_files(&files, remote, progress).await
+    }
+
+    /// Copies `(local file, path under remote)` pairs to the phone, resuming by size; a source
+    /// that cannot be read is skipped (counted in `missing`), the rest goes on.
+    pub async fn push_files(
+        &mut self,
+        files: &[(PathBuf, String)],
+        remote: &str,
+        progress: &(dyn Fn(u64, u64) + Send + Sync),
+    ) -> Result<Copied, LinkError> {
+        let sized: Vec<(&PathBuf, &String, u64)> = files
+            .iter()
+            .filter_map(|(l, r)| std::fs::metadata(l).ok().map(|m| (l, r, m.len())))
+            .collect();
+        let total: u64 = sized.iter().map(|(_, _, n)| n).sum();
         let mut done = 0u64;
-        let mut c = Copied::default();
+        let mut c = Copied {
+            missing: (files.len() - sized.len()) as u32,
+            ..Copied::default()
+        };
         let mut made = std::collections::HashSet::new();
-        for (rel, len) in files {
+        let io = |e: std::io::Error| LinkError::Apple("phone.transfer", e.to_string());
+        for (local, rel, len) in sized {
             let path = format!("{remote}/{rel}");
             if self.size(&path).await == Some(len) {
                 c.skipped += 1;
@@ -222,9 +251,10 @@ impl AppFiles {
             {
                 self.mkdirs(dir).await?;
             }
-            let mut src = tokio::fs::File::open(local.join(&rel))
-                .await
-                .map_err(|e| LinkError::Apple("phone.transfer", e.to_string()))?;
+            let Ok(mut src) = tokio::fs::File::open(local).await else {
+                c.missing += 1;
+                continue;
+            };
             let mut f = self
                 .afc
                 .open(path, AfcFopenMode::WrOnly)
@@ -232,16 +262,11 @@ impl AppFiles {
                 .map_err(afc_err)?;
             let mut buf = vec![0u8; CHUNK];
             loop {
-                let n = src
-                    .read(&mut buf)
-                    .await
-                    .map_err(|e| LinkError::Apple("phone.transfer", e.to_string()))?;
+                let n = src.read(&mut buf).await.map_err(io)?;
                 if n == 0 {
                     break;
                 }
-                f.write_all(&buf[..n])
-                    .await
-                    .map_err(|e| LinkError::Apple("phone.transfer", e.to_string()))?;
+                f.write_all(&buf[..n]).await.map_err(io)?;
                 done += n as u64;
                 c.bytes += n as u64;
                 progress(done, total);
@@ -341,15 +366,29 @@ impl AppFiles {
         Ok(c)
     }
 
-    /// Sends a package folder to the phone's inbox and marks it whole.
+    /// Sends a package folder to the phone's inbox and marks it whole. `extra` — files kept
+    /// elsewhere (the music, straight from the library) with their paths inside the package.
     pub async fn send_package(
         &mut self,
         package_dir: &Path,
         package_id: &str,
+        extra: &[(PathBuf, String)],
         progress: &(dyn Fn(u64, u64) + Send + Sync),
     ) -> Result<Copied, LinkError> {
         let remote = format!("{INBOX}/{}", package_folder(package_id));
-        let c = self.push_dir(package_dir, &remote, progress).await?;
+        let mut files = local_files(package_dir)
+            .map_err(|e| LinkError::Apple("phone.transfer", e.to_string()))?
+            .into_iter()
+            .map(|(rel, _)| {
+                (
+                    rel.split('/')
+                        .fold(package_dir.to_path_buf(), |p, s| p.join(s)),
+                    rel,
+                )
+            })
+            .collect::<Vec<_>>();
+        files.extend_from_slice(extra);
+        let c = self.push_files(&files, &remote, progress).await?;
         self.write(&format!("{remote}/{COMPLETE}"), b"1").await?;
         Ok(c)
     }

@@ -7212,6 +7212,8 @@ dependencies = [
  "sirtone-platform",
  "sirtone-playback",
  "sirtone-recognize",
+ "sirtone-sync",
+ "sirtone-transfer",
  "sirtone-wave",
  "specta",
  "specta-typescript",

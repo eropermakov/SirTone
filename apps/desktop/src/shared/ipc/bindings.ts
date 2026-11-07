@@ -90,6 +90,12 @@ export const commands = {
 	 *  had on its last cable connection are shown instead.
 	 */
 	phonesList: () => __TAURI_INVOKE<PhonesStatus>("phones_list"),
+	/**
+	 *  «Перенести всё» (M6.2, MR §11): the PC library's package — manifest and journal written to
+	 *  the app's cache folder, the music sent straight from the library — into the app's inbox on
+	 *  the phone (cable, else Wi-Fi). The app applies it when opened. A repeat resumes.
+	 */
+	phoneSend: (udid: string, progress: Channel<TransferProgress>) => typedError<TransferDone, AppError>(__TAURI_INVOKE("phone_send", { udid, progress })),
 	phoneAccount: (udid: string) => __TAURI_INVOKE<PhoneAccount>("phone_account", { udid }),
 	/**
 	 *  Logs in with the Apple ID of this phone's owner (wizard step 6). Each 2FA request goes to
@@ -499,7 +505,9 @@ export type ErrorCode = "FileNotFound" | "UnsupportedFormat" | "DecodeFailed" | 
 /**  Signing or installing on the phone failed. */
 "PhoneInstall" | 
 /**  No app package to install (dev: `SIRTONE_IOS_APP`; later GitHub Releases). */
-"PhonePackageMissing" | "Internal";
+"PhonePackageMissing" | 
+/**  Moving the library to or from the phone failed (M6.2); a repeat resumes. */
+"PhoneTransfer" | "Internal";
 
 /**  One event for the settings list. */
 export type EventInfo = {
@@ -1025,6 +1033,17 @@ export type TrackItem = {
 export type TrackPage = {
 	rows: TrackItem[],
 	next: PageCursor | null,
+};
+
+export type TransferDone = {
+	tracks: number,
+	/**  Library files that could not be read (moved since the last scan); the rest went. */
+	missing: number,
+};
+
+export type TransferProgress = {
+	/**  0…1 of the bytes to send. */
+	fraction: number | null,
 };
 
 export type TwoFactorReply = { kind: "code"; code: string } | { kind: "sendToDevices" } | { kind: "resend" } | { kind: "abort" };

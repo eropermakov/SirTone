@@ -247,7 +247,7 @@ pub fn send(phone: &str, pkg: &str) -> ExitCode {
     let r = rt.block_on(async {
         let mut files = appfiles::open(&udid).await?;
         files
-            .send_package(Path::new(pkg), &id, &progress_line)
+            .send_package(Path::new(pkg), &id, &[], &progress_line)
             .await
     });
     eprintln!();

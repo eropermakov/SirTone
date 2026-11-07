@@ -35,6 +35,8 @@ sirtone-recognize = { workspace = true }
 sirtone-playback = { workspace = true }
 sirtone-wave = { workspace = true }
 sirtone-devicelink = { workspace = true }
+sirtone-sync = { workspace = true }
+sirtone-transfer = { workspace = true }
 # Hub wizard (stage 8): the 2FA round trip waits on a channel; TLS provider for the Apple login.
 tokio = { workspace = true }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }

@@ -299,6 +299,14 @@ async function mockTauri(page: Page) {
           }
           case "phone_apple_2fa":
             return null;
+          case "phone_send": {
+            const ch = callbacks.get((args.progress as { id: number }).id);
+            for (const [index, fraction] of [0, 0.5, 1].entries()) {
+              ch?.({ message: { fraction }, index });
+              await new Promise((r) => setTimeout(r, 30));
+            }
+            return { tracks: 118, missing: 0 };
+          }
           case "phone_install": {
             if (w.__mockInstallError) throw w.__mockInstallError;
             const ch = callbacks.get((args.progress as { id: number }).id);
@@ -1059,7 +1067,8 @@ test("«Телефоны»: phones the hub sees, trust hint, «Что устан
   const choices = mine.getByRole("group", { name: "Что установить?" });
   await expect(choices.getByRole("radio")).toHaveCount(3);
   await expect(choices.getByRole("radio", { name: /Только приложение/ })).toBeChecked();
-  await expect(choices.getByRole("radio", { name: /Перенести всё/ })).toBeDisabled();
+  await expect(choices.getByRole("radio", { name: /Перенести всё/ })).toBeEnabled();
+  await expect(choices.getByRole("radio", { name: /Выбрать/ })).toBeDisabled();
   await mine.getByRole("button", { name: "Отмена" }).click();
   await expect(mine.getByRole("button", { name: "Установить Сиртон" })).toBeVisible();
   expect((await calls(page, "phones_list")).length).toBeGreaterThan(0);
@@ -1159,6 +1168,32 @@ test("«Телефоны»: a stored Apple login goes straight to install; offli
   await expect(card.getByText("Сиртон в офлайн-режиме", { exact: false })).toBeVisible();
   expect(await calls(page, "phone_apple_login")).toHaveLength(0);
   expect(await calls(page, "phone_install")).toHaveLength(1);
+});
+
+test("«Телефоны»: «Перенести всё» installs, then moves the library to the phone (M6.2)", async ({
+  page,
+}) => {
+  await page.addInitScript((phones) => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__mockPhones = phones;
+    w.__mockPhoneAccount = {
+      appleId: "owner@example.com",
+      signedIn: true,
+      loginUntilMs: 1.9e12,
+      installedAtMs: null,
+      package: true,
+    };
+  }, ownerPhone);
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Телефоны", exact: true }).click();
+  const card = page.getByRole("article", { name: "iPhone владельца" });
+  await card.getByRole("button", { name: "Установить Сиртон" }).click();
+  await card.getByText("Перенести всё", { exact: true }).click();
+  await card.getByRole("button", { name: "Дальше" }).click();
+  await expect(card.getByText("Включите режим разработчика")).toBeVisible();
+  expect(await calls(page, "phone_install")).toHaveLength(1);
+  expect(await calls(page, "phone_send")).toHaveLength(1);
 });
 
 test("«Телефоны»: without the app package the wizard says it is not ready", async ({ page }) => {

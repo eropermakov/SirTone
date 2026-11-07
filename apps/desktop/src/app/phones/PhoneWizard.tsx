@@ -8,6 +8,7 @@ import {
   installOnPhone,
   type PhoneInfo,
   phoneAccount,
+  sendToPhone,
   type TwoFactorRequest,
 } from "@/shared/ipc/phones";
 import { cn } from "@/shared/lib/utils";
@@ -16,8 +17,8 @@ import { Skeleton } from "@/shared/ui/Skeleton";
 
 type Choice = "all" | "pick" | "app";
 const CHOICES: Choice[] = ["all", "pick", "app"];
-/** Transfer (M6) is not built yet: only the app can be installed for now. */
-const READY: ReadonlySet<Choice> = new Set(["app"]);
+/** «Выбрать» (parts by checkboxes) comes later; «Перенести всё» and «Только приложение» work. */
+const READY: ReadonlySet<Choice> = new Set(["all", "app"]);
 
 type Step =
   | { k: "choose" }
@@ -27,6 +28,7 @@ type Step =
   | { k: "signingIn" }
   | { k: "code"; ask: TwoFactorRequest; sent: boolean }
   | { k: "install"; fraction: number }
+  | { k: "transfer"; fraction: number }
   | { k: "failed"; error: ErrorCode }
   | { k: "devMode" }
   | { k: "trust" }
@@ -67,7 +69,17 @@ export function PhoneWizard({
     setStep({ k: "install", fraction: 0 });
     onBusy(true);
     installOnPhone(phone.id, (f) => alive.current && setStep({ k: "install", fraction: f }))
-      .then(() => alive.current && setStep({ k: "devMode" }))
+      .then(async () => {
+        if (!alive.current) return;
+        if (choice === "all") {
+          setStep({ k: "transfer", fraction: 0 });
+          await sendToPhone(
+            phone.id,
+            (f) => alive.current && setStep({ k: "transfer", fraction: f }),
+          );
+        }
+        if (alive.current) setStep({ k: "devMode" });
+      })
       .catch((e) => {
         if (!alive.current) return;
         const c = errorCode(e);
@@ -293,6 +305,32 @@ export function PhoneWizard({
           </div>
           <span className="t-caption text-text-secondary">
             {step.fraction < 0.5 ? t("phones.installing.signing") : t("phones.installing.sending")}
+          </span>
+        </div>
+      )}
+
+      {step.k === "transfer" && (
+        <div className="flex flex-col gap-2">
+          <span role="status" className="t-body-strong text-text-primary">
+            {t("phones.transferring.title")}
+          </span>
+          <div
+            role="progressbar"
+            aria-label={t("phones.transferring.title")}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(step.fraction * 100)}
+            className="h-1 w-full overflow-hidden rounded-full bg-bg-layer"
+          >
+            <div
+              className="h-full origin-left bg-accent-fill transition-transform motion-reduce:transition-none"
+              style={{ transform: `scaleX(${step.fraction})` }}
+            />
+          </div>
+          <span className="t-caption text-text-secondary">
+            {step.fraction === 0
+              ? t("phones.transferring.preparing")
+              : t("phones.transferring.progress", { percent: Math.round(step.fraction * 100) })}
           </span>
         </div>
       )}

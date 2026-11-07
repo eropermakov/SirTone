@@ -70,6 +70,21 @@ pub fn export(
     app_version: &str,
     parts: Parts,
 ) -> Result<ExportSummary, SyncError> {
+    export_with(conn, root, out, platform, app_version, parts, parts.music)
+}
+
+/// As [`export`]; with `copy_music` false the manifest still lists the music (so the other side
+/// imports it) but the files are not copied into `out` — the hub sends them to the phone
+/// straight from the library ([`music_sources`]) instead of doubling them on the PC's disk.
+pub fn export_with(
+    conn: &Connection,
+    root: &Path,
+    out: &Path,
+    platform: Platform,
+    app_version: &str,
+    parts: Parts,
+    copy_music: bool,
+) -> Result<ExportSummary, SyncError> {
     let uid = transfer::library_uid(conn)?;
     let key = |track: i64| format!("{uid}:{track}");
 
@@ -179,7 +194,7 @@ pub fn export(
         events: events.len() as u32,
         ..ExportSummary::default()
     };
-    if parts.music {
+    if parts.music && copy_music {
         let at = |p: &str| p.split('/').fold(out.to_path_buf(), |d, part| d.join(part));
         let size_at = |p: &str| std::fs::metadata(at(p)).ok().map(|m| m.len());
         let pending: Vec<TrackEntry> = manifest.pending(size_at).into_iter().cloned().collect();
@@ -204,6 +219,25 @@ pub fn export(
         }
     }
     Ok(sum)
+}
+
+/// The music of a package written by [`export_with`] without copying: (file in the library,
+/// its path inside the package) for every listed track.
+pub fn music_sources(root: &Path, out: &Path) -> Result<Vec<(PathBuf, String)>, SyncError> {
+    let m = Manifest::read(out)?;
+    if !m.parts.music {
+        return Ok(Vec::new());
+    }
+    Ok(m.tracks
+        .iter()
+        .map(|t| {
+            let rel = t.file.strip_prefix("music/").unwrap_or(&t.file);
+            let src = rel
+                .split('/')
+                .fold(root.to_path_buf(), |p, part| p.join(part));
+            (src, t.file.clone())
+        })
+        .collect())
 }
 
 /// The caller's import of new music files into the open library (its platform ports).
@@ -393,4 +427,72 @@ pub fn apply(
         }
     }
     Ok(sum)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sirtone_library::repo::{
+        Identity, NewTrack, album_get_or_create, artist_get_or_create, track_insert,
+    };
+
+    /// The hub's way to the phone: the manifest lists the music, `out` holds no music, and the
+    /// sources point into the library.
+    #[test]
+    fn export_without_copy_lists_music_in_place() {
+        let base = std::env::temp_dir().join(format!("sirtone-sync-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (root, out) = (base.join("lib"), base.join("out"));
+        std::fs::create_dir_all(root.join("Кино")).unwrap();
+        std::fs::write(root.join("Кино/01 Ёлка.flac"), b"flac").unwrap();
+        let mut conn = sirtone_library::open(
+            &root.join(".sirtone").join("library.db"),
+            sirtone_library::Medium::Fixed,
+        )
+        .unwrap();
+        let kino = artist_get_or_create(&conn, "Кино").unwrap();
+        let album = album_get_or_create(&conn, "Ёлка", kino, None).unwrap();
+        track_insert(
+            &mut conn,
+            &NewTrack {
+                rel_path: "Кино/01 Ёлка.flac".into(),
+                size_bytes: 4,
+                mtime_ms: 0,
+                content_hash: "h1".into(),
+                container: "flac".into(),
+                codec: "flac".into(),
+                lossless: true,
+                sample_rate: Some(44100),
+                channels: Some(2),
+                duration_ms: 1_000,
+                title: "Ёлка".into(),
+                album_id: Some(album),
+                disc_no: None,
+                track_no: Some(1),
+                year: None,
+                identity: Identity::Inferred,
+                identity_conf: 0.9,
+                unknown_reason: None,
+                artists: vec![kino],
+            },
+        )
+        .unwrap();
+        let parts = Parts {
+            music: true,
+            playlists: true,
+            taste: true,
+            settings: false,
+        };
+        let s = export_with(&conn, &root, &out, Platform::Windows, "t", parts, false).unwrap();
+        assert_eq!((s.tracks, s.copied), (1, 0));
+        assert!(
+            !out.join(MUSIC_DIR).exists(),
+            "no music copied into the package"
+        );
+        let src = music_sources(&root, &out).unwrap();
+        assert_eq!(src.len(), 1);
+        assert_eq!(src[0].0, root.join("Кино").join("01 Ёлка.flac"));
+        assert_eq!(src[0].1, format!("{MUSIC_DIR}/Кино/01 Ёлка.flac"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }
