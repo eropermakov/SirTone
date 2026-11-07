@@ -507,7 +507,9 @@ export type ErrorCode = "FileNotFound" | "UnsupportedFormat" | "DecodeFailed" | 
 /**  No app package to install (dev: `SIRTONE_IOS_APP`; later GitHub Releases). */
 "PhonePackageMissing" | 
 /**  Moving the library to or from the phone failed (M6.2); a repeat resumes. */
-"PhoneTransfer" | "Internal";
+"PhoneTransfer" | 
+/**  The phone has no room for the music (MR §6.1 step 4). */
+"PhoneNoSpace" | "Internal";
 
 /**  One event for the settings list. */
 export type EventInfo = {

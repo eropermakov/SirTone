@@ -34,6 +34,8 @@ pub enum ErrorCode {
     PhonePackageMissing,
     /// Moving the library to or from the phone failed (M6.2); a repeat resumes.
     PhoneTransfer,
+    /// The phone has no room for the music (MR §6.1 step 4).
+    PhoneNoSpace,
     Internal,
 }
 

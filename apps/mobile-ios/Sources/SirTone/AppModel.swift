@@ -107,6 +107,9 @@ final class AppModel: ObservableObject {
         let packages = ((try? fm.contentsOfDirectory(at: inbox, includingPropertiesForKeys: nil)) ?? [])
             .filter { fm.fileExists(atPath: $0.appendingPathComponent(Self.complete).path) }
         var moved = 0
+        // The core is busy while it applies a package: the library shows that it is working.
+        if !packages.isEmpty { importing = true }
+        defer { importing = false }
         for p in packages {
             let r = await Task.detached { try? lib.applyPackage(dir: p.path) }.value
             if let r {

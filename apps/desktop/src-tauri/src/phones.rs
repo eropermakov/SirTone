@@ -610,6 +610,12 @@ async fn send(
     let music = sirtone_sync::music_sources(&root, &out)
         .map_err(|e| AppError::new(ErrorCode::PhoneTransfer).with_details(e.code()))?;
     let mut files = appfiles::open(udid).await.map_err(|e| app_error(&e))?;
+    if let Some(free) = files.free_bytes().await {
+        let already = files.already_sent(&summary.package_id).await;
+        if !appfiles::fits(free, summary.total_bytes, already) {
+            return Err(AppError::new(ErrorCode::PhoneNoSpace));
+        }
+    }
     let report = |done: u64, total: u64| {
         let f = if total == 0 {
             1.0

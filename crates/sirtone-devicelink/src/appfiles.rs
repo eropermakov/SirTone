@@ -34,6 +34,15 @@ pub const COMPLETE: &str = ".complete";
 pub const LIBRARY: &str = "/Library/Application Support/SirTone";
 
 const CHUNK: usize = 1 << 20;
+/// Kept free on the phone after a transfer.
+const RESERVE: u64 = 256 << 20;
+
+/// Whether a package of `package_bytes` fits: the inbox copy and the library copy the app makes
+/// while applying it (~2×), minus what an earlier cut transfer already left, plus a reserve.
+pub fn fits(free: u64, package_bytes: u64, already: u64) -> bool {
+    let need = (package_bytes * 2).saturating_sub(already) + RESERVE;
+    free >= need
+}
 
 fn afc_err(e: IdeviceError) -> LinkError {
     LinkError::Apple("phone.transfer", format!("{e:?}"))
@@ -181,6 +190,24 @@ impl AppFiles {
             let _ = self.afc.mk_dir(at.clone()).await;
         }
         Ok(())
+    }
+
+    /// Free space on the phone (bytes), if the phone says.
+    pub async fn free_bytes(&mut self) -> Option<u64> {
+        self.afc
+            .get_device_info()
+            .await
+            .ok()
+            .map(|d| d.free_bytes as u64)
+    }
+
+    /// Bytes already in the inbox for this package (a resumed transfer).
+    pub async fn already_sent(&mut self, package_id: &str) -> u64 {
+        let remote = format!("{INBOX}/{}", package_folder(package_id));
+        self.list_files(&remote)
+            .await
+            .map(|f| f.iter().map(|(_, n)| n).sum())
+            .unwrap_or(0)
     }
 
     /// Writes small bytes as one file (markers).
@@ -410,6 +437,17 @@ mod tests {
             Some("studio.serkov.sirtone.mobile.ABCDE12345")
         );
         assert_eq!(ours(["com.other.app".to_string()]), None);
+    }
+
+    #[test]
+    fn room_counts_both_copies_resume_and_reserve() {
+        let gb = 1u64 << 30;
+        assert!(fits(5 * gb, 2 * gb, 0));
+        assert!(!fits(4 * gb, 2 * gb, 0), "the reserve on top of 2×");
+        assert!(
+            fits(3 * gb, 2 * gb, gb + gb / 2),
+            "what is already there counts"
+        );
     }
 
     #[test]

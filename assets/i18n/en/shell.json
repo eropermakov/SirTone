@@ -331,6 +331,7 @@
       "PhoneInstall": "",
       "PhonePackageMissing": "",
       "PhoneTransfer": "",
+      "PhoneNoSpace": "",
       "DeviceUnavailable": "",
       "DeviceBusy": "",
       "InvalidArgument": "",
