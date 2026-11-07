@@ -633,9 +633,7 @@ pub async fn phone_pull(
 
 /// The phone library's database files: the database and its write-ahead log (the app may be
 /// playing and writing; `-shm` is rebuilt by SQLite and never copied).
-fn phone_db_file(rel: &str) -> bool {
-    rel == ".sirtone/library.db" || rel == ".sirtone/library.db-wal"
-}
+const PHONE_DB: [&str; 2] = [".sirtone/library.db", ".sirtone/library.db-wal"];
 
 async fn pull(
     app: &AppHandle,
@@ -667,8 +665,11 @@ async fn pull(
         for name in ["library.db", "library.db-wal", "library.db-shm"] {
             let _ = std::fs::remove_file(db.with_file_name(name));
         }
+        let db_files = files
+            .sizes(appfiles::LIBRARY, &PHONE_DB.map(String::from))
+            .await;
         files
-            .pull_dir(appfiles::LIBRARY, &phone_root, &phone_db_file, &|_, _| {})
+            .pull_files(appfiles::LIBRARY, &phone_root, db_files, &|_, _| {})
             .await
             .map_err(|e| app_error(&e))?;
         whole = sirtone_library::open_existing(&db, sirtone_library::Medium::Fixed)
@@ -715,13 +716,13 @@ async fn pull(
     .map_err(|_| AppError::new(ErrorCode::Internal))??;
 
     // 3. Only the music this PC lacks, by the matcher the apply uses.
-    let need: std::collections::HashSet<String> = lib
+    let need: Vec<String> = lib
         .with_read(|c| Ok(sirtone_sync::needed(c, &pkg)))?
         .map_err(|e| fail(e.code()))?
         .into_iter()
         .filter_map(|f| f.strip_prefix("music/").map(str::to_string))
         .collect();
-    let want = move |rel: &str| need.contains(rel);
+    let music = files.sizes(appfiles::LIBRARY, &need).await;
     let report = |done: u64, total: u64| {
         let f = if total == 0 {
             1.0
@@ -733,7 +734,7 @@ async fn pull(
         });
     };
     files
-        .pull_dir(appfiles::LIBRARY, &pkg.join("music"), &want, &report)
+        .pull_files(appfiles::LIBRARY, &pkg.join("music"), music, &report)
         .await
         .map_err(|e| app_error(&e))?;
     drop(files);

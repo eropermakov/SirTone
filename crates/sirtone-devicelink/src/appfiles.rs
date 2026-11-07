@@ -351,6 +351,31 @@ impl AppFiles {
             .into_iter()
             .filter(|(rel, _)| want(rel))
             .collect();
+        self.pull_files(remote, local, files, progress).await
+    }
+
+    /// The sizes of the named files under `remote` (missing ones left out) — a few lookups
+    /// instead of walking a whole library when the caller knows what it wants.
+    pub async fn sizes(&mut self, remote: &str, rels: &[String]) -> Vec<(String, u64)> {
+        let mut out = Vec::with_capacity(rels.len());
+        for rel in rels {
+            if let Ok(info) = self.afc.get_file_info(format!("{remote}/{rel}")).await
+                && info.st_ifmt == "S_IFREG"
+            {
+                out.push((rel.clone(), info.size as u64));
+            }
+        }
+        out
+    }
+
+    /// Copies `files` (path under `remote`, size) into `local`, resuming by size.
+    pub async fn pull_files(
+        &mut self,
+        remote: &str,
+        local: &Path,
+        files: Vec<(String, u64)>,
+        progress: &(dyn Fn(u64, u64) + Send + Sync),
+    ) -> Result<Copied, LinkError> {
         let total: u64 = files.iter().map(|(_, n)| n).sum();
         let io = |e: std::io::Error| LinkError::Apple("phone.transfer", e.to_string());
         let mut done = 0u64;

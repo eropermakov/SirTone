@@ -42,10 +42,10 @@ struct WaveView: View {
             .background(p.bgLayer)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    // S01: the wave's settings icon in the corner; filled while a filter is on.
+                    // S01: the wave's settings icon in the corner; in the accent while a filter is on
+                    // (one long-standing symbol: a wrong name would draw nothing).
                     Button { tuning = true } label: {
-                        Image(systemName: app.tuning.isEmpty
-                              ? "slider.horizontal.3" : "slider.horizontal.below.square.filled.and.square")
+                        Image(systemName: "slider.horizontal.3")
                             .foregroundStyle(app.tuning.isEmpty ? p.icon : p.accent.text)
                     }
                     .accessibilityLabel(L.t("tune.title"))

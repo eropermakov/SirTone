@@ -21,7 +21,7 @@ struct TuneView: View {
                       ("rest", "cup.and.saucer"), ("party", "party.popper"), ("sleep", "moon")]),
         ("frequency", [("loved", "heart"), ("often", "repeat"), ("forgotten", "clock.arrow.circlepath")]),
         ("mood", [("upbeat", "bolt"), ("happy", "sun.max"), ("calm", "leaf"), ("sad", "cloud.rain")]),
-        ("language", [("ru", "character.cursor.ibeam"), ("foreign", "globe"), ("none", "music.note")]),
+        ("language", [("ru", "textformat"), ("foreign", "globe"), ("none", "music.note")]),
     ]
 
     /// «Ещё настройки»: several at once …
