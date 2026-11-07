@@ -7,6 +7,7 @@ import {
   type PhoneAccount,
   type PhoneInfo,
   type PhonesStatus,
+  type PullDone,
   type TransferDone,
   type TransferProgress,
   type TwoFactorReply,
@@ -75,4 +76,16 @@ export async function sendToPhone(
 
 export async function forgetPhone(udid: string): Promise<void> {
   unwrap(await commands.phoneForget(udid));
+}
+
+/**
+ * «Забрать с телефона» (MR §6.2): the phone's library comes to this PC — only the music it lacks,
+ * plus plays, marks and playlists (D-140); works with the app closed. `onProgress` gets 0…1.
+ */
+export async function pullFromPhone(
+  udid: string,
+  onProgress: (f: number) => void,
+): Promise<PullDone> {
+  const progress = new Channel<TransferProgress>((p) => onProgress(p.fraction ?? 0));
+  return unwrap(await commands.phonePull(udid, progress));
 }

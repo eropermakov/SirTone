@@ -69,6 +69,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             updates::update_status,
             phones::phones_list,
             phones::phone_send,
+            phones::phone_pull,
             phones::phone_account,
             phones::phone_apple_login,
             phones::phone_apple_2fa,

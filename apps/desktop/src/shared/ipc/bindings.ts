@@ -96,6 +96,13 @@ export const commands = {
 	 *  the phone (cable, else Wi-Fi). The app applies it when opened. A repeat resumes.
 	 */
 	phoneSend: (udid: string, quality: string, progress: Channel<TransferProgress>) => typedError<TransferDone, AppError>(__TAURI_INVOKE("phone_send", { udid, quality, progress })),
+	/**
+	 *  «Забрать с телефона» (MR §6.2, FR-HUB-003): the phone's library database is read over the
+	 *  cable or Wi-Fi, its package is written on the PC, only the music this PC does not have is
+	 *  fetched, then the package is applied like any other (new music — ordinary import; plays,
+	 *  marks and playlists once each, D-140). Works with the app closed: nothing runs on the phone.
+	 */
+	phonePull: (udid: string, progress: Channel<TransferProgress>) => typedError<PullDone, AppError>(__TAURI_INVOKE("phone_pull", { udid, progress })),
 	phoneAccount: (udid: string) => __TAURI_INVOKE<PhoneAccount>("phone_account", { udid }),
 	/**
 	 *  Logs in with the Apple ID of this phone's owner (wizard step 6). Each 2FA request goes to
@@ -861,6 +868,16 @@ export type PlaylistsChanged = {
 export type PresetRating = {
 	name: string,
 	rating: number,
+};
+
+export type PullDone = {
+	/**  Tracks in the phone's library. */
+	tracks: number,
+	/**  Of them, new to this PC (brought over and imported). */
+	newTracks: number,
+	plays: number,
+	marks: number,
+	playlists: number,
 };
 
 /**  The queue changed (order, contents, modes): the panel refetches. */

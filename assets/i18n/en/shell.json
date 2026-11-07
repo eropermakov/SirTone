@@ -261,6 +261,12 @@
       "progress": "",
       "preparing": ""
     },
+    "pull": {
+      "action": "Take from phone",
+      "title": "Taking the library from the phone",
+      "progress": "Taking from the phone — {percent}%",
+      "done": "From the phone: {count, plural, one {# new track} other {# new tracks}}, {plays} plays"
+    },
     "installing": {
       "busy": "",
       "signing": "",

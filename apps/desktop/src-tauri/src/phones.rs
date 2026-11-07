@@ -569,6 +569,172 @@ pub async fn phone_send(
     r
 }
 
+#[derive(Debug, Clone, Copy, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PullDone {
+    /// Tracks in the phone's library.
+    pub tracks: u32,
+    /// Of them, new to this PC (brought over and imported).
+    pub new_tracks: u32,
+    pub plays: u32,
+    pub marks: u32,
+    pub playlists: u32,
+}
+
+/// «Забрать с телефона» (MR §6.2, FR-HUB-003): the phone's library database is read over the
+/// cable or Wi-Fi, its package is written on the PC, only the music this PC does not have is
+/// fetched, then the package is applied like any other (new music — ordinary import; plays,
+/// marks and playlists once each, D-140). Works with the app closed: nothing runs on the phone.
+#[tauri::command(async)]
+#[specta::specta]
+pub async fn phone_pull(
+    app: AppHandle,
+    udid: String,
+    progress: Channel<TransferProgress>,
+) -> Result<PullDone, AppError> {
+    use tauri::Manager as _;
+    let hub = app.state::<PhoneHub>();
+    if !hub
+        .installing
+        .lock()
+        .is_ok_and(|mut s| s.insert(udid.clone()))
+    {
+        return Err(AppError::new(ErrorCode::DeviceBusy));
+    }
+    let r = pull(&app, &udid, &progress).await;
+    if let Ok(mut s) = hub.installing.lock() {
+        s.remove(&udid);
+    }
+    r
+}
+
+/// The phone library's database files: the database and its write-ahead log (the app may be
+/// playing and writing; `-shm` is rebuilt by SQLite and never copied).
+fn phone_db_file(rel: &str) -> bool {
+    rel == ".sirtone/library.db" || rel == ".sirtone/library.db-wal"
+}
+
+async fn pull(
+    app: &AppHandle,
+    udid: &str,
+    progress: &Channel<TransferProgress>,
+) -> Result<PullDone, AppError> {
+    use sirtone_devicelink::appfiles;
+    use tauri::Manager as _;
+    let fail = |c: &'static str| AppError::new(ErrorCode::PhoneTransfer).with_details(c);
+    let lib = app.state::<crate::library::Library>();
+    if lib.root().is_none() {
+        return Err(AppError::new(ErrorCode::LibraryRootNotSet));
+    }
+    let base = app
+        .path()
+        .app_cache_dir()
+        .map_err(|_| AppError::new(ErrorCode::Internal))?
+        .join("phone-in")
+        .join(appfiles::package_folder(udid));
+    let (phone_root, pkg) = (base.join("library"), base.join("package"));
+    let db = phone_root.join(".sirtone").join("library.db");
+    let _ = progress.send(TransferProgress { fraction: 0.0 });
+    let mut files = appfiles::open(udid).await.map_err(|e| app_error(&e))?;
+
+    // 1. A whole snapshot of the database: the two files are read one after the other while
+    //    the app may write, so check it and read once more if it came torn.
+    let mut whole = false;
+    for _ in 0..2 {
+        for name in ["library.db", "library.db-wal", "library.db-shm"] {
+            let _ = std::fs::remove_file(db.with_file_name(name));
+        }
+        files
+            .pull_dir(appfiles::LIBRARY, &phone_root, &phone_db_file, &|_, _| {})
+            .await
+            .map_err(|e| app_error(&e))?;
+        whole = sirtone_library::open_existing(&db, sirtone_library::Medium::Fixed)
+            .ok()
+            .and_then(|c| {
+                c.query_row("PRAGMA quick_check", [], |r| r.get::<_, String>(0))
+                    .ok()
+            })
+            .is_some_and(|s| s == "ok");
+        if whole {
+            break;
+        }
+    }
+    if !whole {
+        return Err(fail("transfer.snapshot"));
+    }
+    let _ = progress.send(TransferProgress { fraction: 0.05 });
+
+    // 2. The phone library's package, written fresh every time (a manifest left from an earlier
+    //    pull would miss what was added since); fetched music stays for a resume.
+    let _ = std::fs::remove_file(pkg.join("manifest.json"));
+    let _ = std::fs::remove_file(pkg.join("events.jsonl"));
+    let (db2, root2, pkg2) = (db.clone(), phone_root.clone(), pkg.clone());
+    tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+        let conn = sirtone_library::open_existing(&db2, sirtone_library::Medium::Fixed)?;
+        sirtone_sync::export_with(
+            &conn,
+            &root2,
+            &pkg2,
+            sirtone_transfer::Platform::Ios,
+            env!("CARGO_PKG_VERSION"),
+            sirtone_transfer::Parts {
+                music: true,
+                playlists: true,
+                taste: true,
+                settings: false,
+            },
+            false,
+        )
+        .map(|_| ())
+        .map_err(|e| fail(e.code()))
+    })
+    .await
+    .map_err(|_| AppError::new(ErrorCode::Internal))??;
+
+    // 3. Only the music this PC lacks, by the matcher the apply uses.
+    let need: std::collections::HashSet<String> = lib
+        .with_read(|c| Ok(sirtone_sync::needed(c, &pkg)))?
+        .map_err(|e| fail(e.code()))?
+        .into_iter()
+        .filter_map(|f| f.strip_prefix("music/").map(str::to_string))
+        .collect();
+    let want = move |rel: &str| need.contains(rel);
+    let report = |done: u64, total: u64| {
+        let f = if total == 0 {
+            1.0
+        } else {
+            done as f32 / total as f32
+        };
+        let _ = progress.send(TransferProgress {
+            fraction: 0.05 + 0.8 * f,
+        });
+    };
+    files
+        .pull_dir(appfiles::LIBRARY, &pkg.join("music"), &want, &report)
+        .await
+        .map_err(|e| app_error(&e))?;
+    drop(files);
+    let _ = progress.send(TransferProgress { fraction: 0.85 });
+
+    // 4. Applied on the import worker; the new music shows up in «Импорт» as usual.
+    let (app2, pkg2) = (app.clone(), pkg.clone());
+    let s = tokio::task::spawn_blocking(move || {
+        app2.state::<crate::library::Library>().apply_package(pkg2)
+    })
+    .await
+    .map_err(|_| AppError::new(ErrorCode::Internal))??;
+    let _ = std::fs::remove_dir_all(&base);
+    let _ = progress.send(TransferProgress { fraction: 1.0 });
+    tracing::info!(target: "sirtone::phones", tracks = s.tracks, new = s.new_files, plays = s.plays, "pulled");
+    Ok(PullDone {
+        tracks: s.tracks,
+        new_tracks: s.new_files,
+        plays: s.plays,
+        marks: s.marks,
+        playlists: s.playlists,
+    })
+}
+
 async fn send(
     app: &AppHandle,
     udid: &str,

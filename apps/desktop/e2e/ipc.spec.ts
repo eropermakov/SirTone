@@ -307,6 +307,14 @@ async function mockTauri(page: Page) {
             }
             return { tracks: 118, missing: 0 };
           }
+          case "phone_pull": {
+            const ch = callbacks.get((args.progress as { id: number }).id);
+            for (const [index, fraction] of [0, 0.4, 1].entries()) {
+              ch?.({ message: { fraction }, index });
+              await new Promise((r) => setTimeout(r, 30));
+            }
+            return { tracks: 120, newTracks: 2, plays: 10, marks: 1, playlists: 0 };
+          }
           case "phone_install": {
             if (w.__mockInstallError) throw w.__mockInstallError;
             const ch = callbacks.get((args.progress as { id: number }).id);
@@ -1201,6 +1209,31 @@ test("«Телефоны»: «Перенести всё» installs, then moves t
   const sends = await calls(page, "phone_send");
   expect(sends).toHaveLength(1);
   expect((sends[0]?.args as Record<string, unknown> | undefined)?.quality).toBe("economy");
+});
+
+test("«Телефоны»: «Забрать с телефона» brings the phone's library to the PC (MR §6.2)", async ({
+  page,
+}) => {
+  await page.addInitScript((phones) => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__mockPhones = phones;
+    w.__mockPhoneAccount = {
+      appleId: "owner@example.com",
+      signedIn: true,
+      loginUntilMs: 1.9e12,
+      installedAtMs: null,
+      worksUntilMs: Date.now() + 3.5 * 86_400_000,
+      package: true,
+    };
+  }, ownerPhone);
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Телефоны", exact: true }).click();
+  const card = page.getByRole("article", { name: "iPhone владельца" });
+  await card.getByRole("button", { name: "Забрать с телефона" }).click();
+  await expect(page.getByText("С телефона: 2 новых трека, прослушиваний — 10")).toBeVisible();
+  await expect(card.getByRole("button", { name: "Забрать с телефона" })).toBeVisible();
+  expect(await calls(page, "phone_pull")).toHaveLength(1);
 });
 
 test("«Телефоны»: without the app package the wizard says it is not ready", async ({ page }) => {

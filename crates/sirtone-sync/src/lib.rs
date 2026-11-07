@@ -260,6 +260,20 @@ pub struct ApplySummary {
     pub skipped: u32,
 }
 
+/// The package files the library at `conn` does not have yet — what [`apply`] would import, by
+/// the same matcher. The hub fetches only these from the phone («Забрать с телефона»).
+pub fn needed(conn: &Connection, pkg: &Path) -> Result<Vec<String>, SyncError> {
+    let manifest = Manifest::read(pkg)?;
+    let matches = merge::match_tracks(&manifest.tracks, &local_tracks(conn)?);
+    Ok(manifest
+        .tracks
+        .iter()
+        .zip(&matches)
+        .filter(|(_, m)| **m == merge::TrackMatch::New)
+        .map(|(t, _)| t.file.clone())
+        .collect())
+}
+
 fn local_tracks(conn: &Connection) -> Result<Vec<merge::LocalTrack>, LibraryError> {
     Ok(transfer::tracks(conn)?
         .into_iter()
@@ -512,6 +526,18 @@ mod tests {
         assert_eq!(src.len(), 1);
         assert_eq!(src[0].0, root.join("Кино").join("01 Ёлка.flac"));
         assert_eq!(src[0].1, format!("{MUSIC_DIR}/Кино/01 Ёлка.flac"));
+
+        // «Забрать с телефона»: a library needs nothing of its own package, an empty one all.
+        assert!(needed(&conn, &out).unwrap().is_empty());
+        let empty = sirtone_library::open(
+            &base.join("empty").join(".sirtone").join("library.db"),
+            sirtone_library::Medium::Fixed,
+        )
+        .unwrap();
+        assert_eq!(
+            needed(&empty, &out).unwrap(),
+            vec![format!("{MUSIC_DIR}/Кино/01 Ёлка.flac")]
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 }

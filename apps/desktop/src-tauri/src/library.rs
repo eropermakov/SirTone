@@ -173,6 +173,11 @@ pub enum ImportStart {
 /// pipeline's own placements can never race the watcher (docs/05 §7).
 enum Job {
     Import(Vec<PathBuf>),
+    /// «Забрать с телефона»: apply a transfer package (new music imported, then the journal).
+    ApplyPackage {
+        pkg: PathBuf,
+        reply: mpsc::Sender<Result<sirtone_sync::ApplySummary, AppError>>,
+    },
     Reconcile {
         confirmed: bool,
     },
@@ -488,6 +493,24 @@ impl Library {
         ImportStart::Started
     }
 
+    /// «Забрать с телефона»: applies the package in `pkg` on the import worker (its new music
+    /// is an ordinary import with progress) and waits for the summary. Blocking: call it off
+    /// the async runtime.
+    pub(crate) fn apply_package(
+        &self,
+        pkg: PathBuf,
+    ) -> Result<sirtone_sync::ApplySummary, AppError> {
+        if self.root().is_none() {
+            return Err(AppError::new(ErrorCode::LibraryRootNotSet));
+        }
+        let (reply, rx) = mpsc::channel();
+        self.cancel.store(false, Ordering::Relaxed);
+        self.jobs
+            .send(Job::ApplyPackage { pkg, reply })
+            .map_err(|_| AppError::new(ErrorCode::Internal))?;
+        rx.recv().map_err(|_| AppError::new(ErrorCode::Internal))?
+    }
+
     /// Runs a short write on the writer connection of the current (online) library. A failed
     /// attempt reopens the connection and tries once more (a stick pulled and put back leaves a
     /// dead handle; each write is one transaction, so a failed one changed nothing).
@@ -749,9 +772,11 @@ fn import_worker(
         let mut assigns = Vec::new();
         let mut merges = Vec::new();
         let mut organize = Vec::new();
+        let mut applies = Vec::new();
         for j in jobs {
             match j {
                 Job::Import(p) => imports.extend(p),
+                Job::ApplyPackage { pkg, reply } => applies.push((pkg, reply)),
                 Job::Assign {
                     track,
                     assignment,
@@ -920,63 +945,21 @@ fn import_worker(
             }
         }
         for batch in batches {
-            let mut last_progress = Instant::now() - Duration::from_secs(1);
-            let mut last_change = Instant::now();
-            let mut added_since = 0u32;
-            let mut released = false;
-            let shared_ev = shared.clone();
-            let app_ev = app.clone();
-            let mut on_event = |e: ImportEvent| match e {
-                ImportEvent::Progress { done, total } => {
-                    if done == total || last_progress.elapsed() >= Duration::from_millis(200) {
-                        last_progress = Instant::now();
-                        let _ = ImportProgress {
-                            done: done as u32,
-                            total: total as u32,
-                            sources_released: released,
-                        }
-                        .emit(&app_ev);
-                    }
-                }
-                ImportEvent::TrackAdded { .. } => {
-                    added_since += 1;
-                    if last_change.elapsed() >= Duration::from_millis(400) {
-                        last_change = Instant::now();
-                        emit_changed(&app_ev, &shared_ev);
-                        added_since = 0;
-                    }
-                }
-                ImportEvent::SourcesReleased => {
-                    released = true;
-                }
-            };
-            match import::run_batch(db, &root, batch, &deps, &cancel, &mut on_event) {
-                Ok(r) => {
-                    let mut reasons: Vec<String> =
-                        r.rejected.iter().map(|(_, r)| r.clone()).collect();
-                    reasons.sort();
-                    reasons.dedup();
-                    let _ = ImportFinished {
-                        batch: r.batch_id as u32,
-                        added: r.added as u32,
-                        unknown: r.unknown as u32,
-                        duplicates: r.duplicates.len() as u32,
-                        rejected: r.rejected.len() as u32,
-                        rejected_reasons: reasons,
-                        cancelled: r.cancelled as u32,
-                        can_eject: r.can_eject,
-                    }
-                    .emit(&app);
-                    tracing::info!(target: "sirtone::import", added = r.added, unknown = r.unknown, "batch done");
-                    // New «Неизвестные» are looked up online when there is a network (D-87).
-                    if r.unknown > 0 {
-                        crate::resolve::kick(&app);
-                    }
-                }
-                Err(e) => tracing::error!(target: "sirtone::import", error = %e, "batch failed"),
-            }
-            let _ = added_since;
+            let _ = run_one_batch(&app, &shared, db, &root, &deps, &cancel, batch);
+        }
+        // «Забрать с телефона»: the package's new music through the same import, then plays,
+        // marks and playlists once each (D-140).
+        for (pkg, reply) in applies {
+            importing.store(true, Ordering::Relaxed);
+            let r = sirtone_sync::apply(db, &pkg, &mut |db, files| {
+                let batch =
+                    import::start_batch(db, files, "external").map_err(|e| e.to_string())?;
+                run_one_batch(&app, &shared, db, &root, &deps, &cancel, batch)
+            })
+            .map_err(|e| AppError::new(ErrorCode::PhoneTransfer).with_details(e.code()));
             emit_changed(&app, &shared);
+            refresh_queue(&app);
+            let _ = reply.send(r);
         }
         cancel.store(false, Ordering::Relaxed);
         importing.store(false, Ordering::Relaxed);
@@ -984,6 +967,73 @@ fn import_worker(
             run_reconcile(&app, &shared, db, &root, &deps, confirmed);
         }
     }
+}
+
+/// One import batch with the UI's progress events; the summary goes to «Импорт» as usual.
+fn run_one_batch(
+    app: &AppHandle,
+    shared: &Arc<Mutex<Shared>>,
+    db: &mut Connection,
+    root: &Path,
+    deps: &ImportDeps,
+    cancel: &AtomicBool,
+    batch: i64,
+) -> Result<(), String> {
+    let mut last_progress = Instant::now() - Duration::from_secs(1);
+    let mut last_change = Instant::now();
+    let mut released = false;
+    let mut on_event = |e: ImportEvent| match e {
+        ImportEvent::Progress { done, total } => {
+            if done == total || last_progress.elapsed() >= Duration::from_millis(200) {
+                last_progress = Instant::now();
+                let _ = ImportProgress {
+                    done: done as u32,
+                    total: total as u32,
+                    sources_released: released,
+                }
+                .emit(app);
+            }
+        }
+        ImportEvent::TrackAdded { .. } => {
+            if last_change.elapsed() >= Duration::from_millis(400) {
+                last_change = Instant::now();
+                emit_changed(app, shared);
+            }
+        }
+        ImportEvent::SourcesReleased => {
+            released = true;
+        }
+    };
+    let out = match import::run_batch(db, root, batch, deps, cancel, &mut on_event) {
+        Ok(r) => {
+            let mut reasons: Vec<String> = r.rejected.iter().map(|(_, r)| r.clone()).collect();
+            reasons.sort();
+            reasons.dedup();
+            let _ = ImportFinished {
+                batch: r.batch_id as u32,
+                added: r.added as u32,
+                unknown: r.unknown as u32,
+                duplicates: r.duplicates.len() as u32,
+                rejected: r.rejected.len() as u32,
+                rejected_reasons: reasons,
+                cancelled: r.cancelled as u32,
+                can_eject: r.can_eject,
+            }
+            .emit(app);
+            tracing::info!(target: "sirtone::import", added = r.added, unknown = r.unknown, "batch done");
+            // New «Неизвестные» are looked up online when there is a network (D-87).
+            if r.unknown > 0 {
+                crate::resolve::kick(app);
+            }
+            Ok(())
+        }
+        Err(e) => {
+            tracing::error!(target: "sirtone::import", error = %e, "batch failed");
+            Err(e.to_string())
+        }
+    };
+    emit_changed(app, shared);
+    out
 }
 
 /// One reconcile pass after the journal is settled (`recover` runs first on every job).
