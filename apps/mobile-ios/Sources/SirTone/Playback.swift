@@ -234,6 +234,9 @@ final class Playback: ObservableObject {
 
     private var lastFormat: TrackFormat?
     private var heardFrom: UInt64 = 0
+    /// A track is being opened: the core still reports the old one as ended until it is in, so
+    /// the timer must not move on a second time.
+    private var opening = false
 
     private func open(at i: Int) {
         guard queue.indices.contains(i), let lib = model?.library else { return }
@@ -243,8 +246,10 @@ final class Playback: ObservableObject {
         durationMs = item.track.durationMs
         cover = nil
         heardFrom = 0
+        opening = true
         let core = self.core
         Task {
+            defer { if index == i { opening = false } }
             let opened = await Task.detached { () -> (TrackFormat, UInt64, Bool, UIImage?)? in
                 guard let path = try? lib.trackPath(trackId: item.track.id),
                       let f = try? core.open(path: path) else { return nil }
@@ -344,7 +349,7 @@ final class Playback: ObservableObject {
 
     private func tick() {
         sleepTick()
-        guard index != nil else { return }
+        guard index != nil, !opening else { return }
         positionMs = core.positionMs()
         if playing && core.ended() { next(user: false) }
     }

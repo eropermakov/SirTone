@@ -196,6 +196,8 @@ struct AllTracksView: View {
     @State private var tracks: [TrackItem] = []
     @State private var next: TrackCursor?
     @State private var done = false
+    /// One page at a time: several rows appear together and would ask for the same page.
+    @State private var loading = false
 
     var body: some View {
         List {
@@ -217,7 +219,9 @@ struct AllTracksView: View {
     }
 
     private func more() async {
-        guard !done, let lib = app.library else { return }
+        guard !done, !loading, let lib = app.library else { return }
+        loading = true
+        defer { loading = false }
         let after = next
         guard let page = await Task.detached(operation: { try? lib.tracks(after: after, limit: 200) }).value
         else { done = true; return }
@@ -234,6 +238,8 @@ struct AlbumsView: View {
     @State private var albums: [AlbumItem] = []
     @State private var next: PageCursor?
     @State private var done = false
+    /// One page at a time: several rows appear together and would ask for the same page.
+    @State private var loading = false
 
     private let cols = [GridItem(.flexible(), spacing: M.space4), GridItem(.flexible(), spacing: M.space4)]
 
@@ -271,7 +277,9 @@ struct AlbumsView: View {
     }
 
     private func more() async {
-        guard !done, let lib = app.library else { return }
+        guard !done, !loading, let lib = app.library else { return }
+        loading = true
+        defer { loading = false }
         let after = next
         guard let page = await Task.detached(operation: { try? lib.albums(after: after, limit: 60) }).value
         else { done = true; return }
@@ -288,6 +296,8 @@ struct ArtistsView: View {
     @State private var artists: [ArtistItem] = []
     @State private var next: PageCursor?
     @State private var done = false
+    /// One page at a time: several rows appear together and would ask for the same page.
+    @State private var loading = false
 
     var body: some View {
         List {
@@ -323,7 +333,9 @@ struct ArtistsView: View {
     }
 
     private func more() async {
-        guard !done, let lib = app.library else { return }
+        guard !done, !loading, let lib = app.library else { return }
+        loading = true
+        defer { loading = false }
         let after = next
         guard let page = await Task.detached(operation: { try? lib.artists(after: after, limit: 200) }).value
         else { done = true; return }

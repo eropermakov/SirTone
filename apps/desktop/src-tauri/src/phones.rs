@@ -124,6 +124,9 @@ struct PhoneRecord {
     /// profile's end (FR-HUB-RENEW).
     #[serde(default)]
     works_until_ms: Option<u64>,
+    /// The last renewal that failed (unix ms): the planner waits before asking Apple again.
+    #[serde(default)]
+    renew_failed_ms: Option<u64>,
 }
 
 impl PhoneRecord {
@@ -140,12 +143,18 @@ const WEEK_MS: u64 = 7 * 24 * 3_600_000;
 const RENEW_WINDOW_MS: u64 = 3 * 24 * 3_600_000;
 /// How often the tray-resident hub looks.
 const RENEW_EVERY: Duration = Duration::from_secs(600);
+/// After a failed renewal: don't call Apple's developer services again before this.
+const RENEW_BACKOFF_MS: u64 = 6 * 3_600_000;
 
 /// Phones whose signature is inside the renewal window now.
 fn due(records: &BTreeMap<String, PhoneRecord>, now: u64) -> Vec<(String, String)> {
     records
         .iter()
         .filter(|(_, r)| r.works_until().is_some_and(|u| now + RENEW_WINDOW_MS >= u))
+        .filter(|(_, r)| {
+            r.renew_failed_ms
+                .is_none_or(|f| now >= f + RENEW_BACKOFF_MS)
+        })
         .map(|(udid, r)| (udid.clone(), r.apple_id.clone()))
         .collect()
 }
@@ -194,13 +203,25 @@ pub fn start_renewals(app: AppHandle) {
                                 &udid,
                                 PhoneRecord {
                                     works_until_ms: Some(ms),
+                                    renew_failed_ms: None,
                                     ..rec
                                 },
                             );
                         }
                         tracing::info!(target: "sirtone::phones", "renewed");
                     }
-                    Err(e) => tracing::info!(target: "sirtone::phones", code = e.code(), "renew"),
+                    Err(e) => {
+                        if let Some(rec) = hub.record(&udid) {
+                            hub.remember(
+                                &udid,
+                                PhoneRecord {
+                                    renew_failed_ms: Some(now_ms()),
+                                    ..rec
+                                },
+                            );
+                        }
+                        tracing::info!(target: "sirtone::phones", code = e.code(), "renew");
+                    }
                 }
             }
         }
@@ -646,6 +667,9 @@ mod renew_tests {
         all.insert("near".to_string(), rec(Some(now + 2 * day), None));
         all.insert("old-install".to_string(), rec(None, Some(now - 6 * day)));
         all.insert("never".to_string(), rec(None, None));
+        let mut failed = rec(Some(now + day), None);
+        failed.renew_failed_ms = Some(now - 3_600_000);
+        all.insert("failed-just-now".to_string(), failed);
         let ids: Vec<String> = due(&all, now).into_iter().map(|(u, _)| u).collect();
         assert_eq!(ids, ["near", "old-install"]);
     }

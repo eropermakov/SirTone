@@ -103,6 +103,15 @@ fn recognise<'a>(
     })
 }
 
+/// The phone's own «no» to our record, as opposed to a broken connection.
+fn rejected(e: &idevice::IdeviceError) -> bool {
+    use idevice::remote_pairing::errors::RemotePairingError as R;
+    matches!(
+        e,
+        idevice::IdeviceError::RemotePairing(R::PairVerifyFailed | R::PairingRejected(_))
+    )
+}
+
 /// Whether this phone can be reached over Wi-Fi (a record exists; no network).
 pub fn is_paired(udid: &str) -> bool {
     load(&keyring(), udid).is_some()
@@ -255,10 +264,14 @@ pub async fn open(udid: &str, wait: Duration) -> Result<Tunnel, LinkError> {
         |e: idevice::IdeviceError| LinkError::Apple("phone.wifi_tunnel", format!("{e:?}"));
     control.attempt_pair_verify().await.map_err(tunnel_err)?;
     if let Err(e) = control.validate_pairing(&mut rec).await {
-        // The phone no longer knows this PC (network settings reset, iOS update, pairing
-        // removed): drop the record, so the next cable install pairs again (step 10).
-        let _ = remove(&keyring(), udid);
-        return Err(LinkError::Apple("phone.wifi_not_paired", format!("{e:?}")));
+        // The phone said it no longer knows this PC (network settings reset, iOS update, pairing
+        // removed): drop the record, so the next cable install pairs again (step 10). A network
+        // hiccup is not that — the record stays.
+        if rejected(&e) {
+            let _ = remove(&keyring(), udid);
+            return Err(LinkError::Apple("phone.wifi_not_paired", format!("{e:?}")));
+        }
+        return Err(LinkError::Apple("phone.wifi_unreachable", format!("{e:?}")));
     }
     let port = control.create_tcp_listener().await.map_err(tunnel_err)?;
     let ts = tokio::net::TcpStream::connect(SocketAddr::new(ip, port))
@@ -322,6 +335,21 @@ mod tests {
         assert_eq!(recognise(&records, "svc-id", &tag_b), Some("B"));
         assert_eq!(recognise(&records, "other-id", &tag_b), None);
         assert_eq!(recognise(&records, "svc-id", "AAAAAAAA"), None);
+    }
+
+    /// Only the phone's explicit refusal drops a record; a cut connection keeps it.
+    #[test]
+    fn only_a_refusal_counts_as_unpaired() {
+        use idevice::remote_pairing::errors::RemotePairingError as R;
+        assert!(rejected(&idevice::IdeviceError::RemotePairing(
+            R::PairVerifyFailed
+        )));
+        assert!(rejected(&idevice::IdeviceError::RemotePairing(
+            R::PairingRejected(String::new())
+        )));
+        assert!(!rejected(&idevice::IdeviceError::Socket(
+            std::io::Error::other("cut")
+        )));
     }
 
     /// Records survive a round trip, the index stays in step, forgetting removes one phone only.
