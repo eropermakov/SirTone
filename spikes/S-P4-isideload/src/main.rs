@@ -12,6 +12,8 @@
 //! already signed with them. Secrets never reach the log: isideload is held at WARN and its
 //! debug mode stays off.
 
+mod rp;
+
 use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -354,7 +356,7 @@ async fn main() -> ExitCode {
     let _ = isideload::init();
     // isideload at WARN: its INFO/DEBUG lines are progress, but errors may carry plists.
     tracing_subscriber::fmt()
-        .with_env_filter("warn,apple_codesign=error,sp4_isideload=info")
+        .with_env_filter(std::env::var("SP4_LOG").unwrap_or_else(|_| "warn,apple_codesign=error,sp4_isideload=info".into()))
         .init();
 
     let args: Vec<String> = std::env::args().collect();
@@ -370,6 +372,13 @@ async fn main() -> ExitCode {
             (Some(udid), Some(app)) => net_install(id, ip, udid, PathBuf::from(app)).await,
             _ => Err("usage: sp4 net-install <apple-id> <ip> <udid> <App.app>".into()),
         },
+        (Some("rsd-usb"), Some(id), Some(app)) => rp::rsd_usb(id, PathBuf::from(app)).await,
+        (Some("rp-pair"), _, _) => rp::rp_pair().await,
+        (Some("rp-find"), udid, _) => rp::rp_find(udid.map(String::as_str)).await,
+        (Some("rp-wifi"), Some(id), Some(udid)) => {
+            let app = args.get(4).filter(|a| a.as_str() != "-").map(PathBuf::from);
+            rp::rp_wifi(id, udid, app, args.get(5).map(String::as_str)).await
+        }
         _ => Err("usage: sp4 login|info <apple-id> | sp4 install <apple-id> <App.app>".into()),
     };
     match r {

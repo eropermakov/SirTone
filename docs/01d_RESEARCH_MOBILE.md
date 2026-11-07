@@ -22,6 +22,7 @@
 | Sideloadly [M18, M19] | Автопродление по Wi-Fi; предупреждает, что экран iPhone должен быть включён | закрытый | Поведение: «подсказка от телефона» хабу (MR §10) |
 | Apollo Reborn [M20] | Расширения тратят App ID | — | Лимит 10 App ID: приложение + виджет = 2 |
 | NOOP (DX fork) [M21], ai_usage [M22] | Виджет и App Group при подписи бесплатным аккаунтом — работает / обратный опыт | — | П5 и запасной вид виджета |
+| idevice tools [M8a] | Эталонная цепочка Wi-Fi для iOS 17+: `remotepairing_lockdown.rs` — запись RPPairing по доверенному кабелю без запроса (`com.apple.dt.remotepairingdeviced.lockdown`); `pair_rsd_ios.rs` — `_remotepairing._tcp` → pair-verify → `createListener` → TLS-PSK + CDTunnel → jktcp → RSD; `rppairing.rs` — то же по кабелю через CoreDeviceProxy (github.com/jkcoxson/idevice, `tools/src`, проверено 2026-11-07) | MIT | П4б: установка по Wi-Fi (`install_app_rsd` из isideload); тот же механизм — П9 |
 | iPASide [M23] | Лимит 3 приложений считается на устройство (все бесплатные Apple ID) | — | Ошибка «Занято 3 приложения» |
 
 ## B. Плееры на телефоне (проверено 2026-11-05; дополнять перед задачами М3–М5)
