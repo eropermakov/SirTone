@@ -31,13 +31,20 @@ impl Clock for PhoneClock {
 
 /// «Настроить волну» on the phone (MR S07; the compact four blocks of D-130): keys as on the PC
 /// (`activity`: workout, sleep, work, road, rest, party; `frequency`: loved, often, forgotten;
-/// `mood`: upbeat, happy, calm, sad; `language`: ru, foreign, none). Empty — no filter.
+/// `mood`: upbeat, happy, calm, sad, and under «Ещё настройки» positive, negative; `language`:
+/// ru, foreign, none). «Ещё настройки»: `character` (energetic, aggressive, calm), `daypart`
+/// 0 dawn … 5 night, `weather` 0 clear … 5 storm, `season` auto / winter / spring / summer /
+/// autumn / off. Empty — no filter.
 #[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
 pub struct WaveTuning {
     pub activity: Vec<String>,
     pub frequency: Vec<String>,
     pub mood: Vec<String>,
     pub language: Vec<String>,
+    pub character: Vec<String>,
+    pub daypart: Option<u8>,
+    pub weather: Option<u8>,
+    pub season: Option<String>,
 }
 
 /// «Подходит N треков»; `relaxed` — too few, the wave widens the filters itself.
@@ -48,13 +55,51 @@ pub struct TuningCount {
 }
 
 fn query(t: &WaveTuning) -> Result<sirtone_wave::query::WaveQuery, CoreError> {
-    use sirtone_wave::query::{Activity, Freq, Lang, Mood, WaveQuery};
+    use sirtone_core::wave::{Daypart, WeatherClass};
+    use sirtone_wave::query::{Activity, Character, Freq, Lang, Mood, SeasonPick, WaveQuery};
     fn keys<T>(v: &[String], parse: fn(&str) -> Option<T>) -> Result<Vec<T>, CoreError> {
         v.iter()
             .map(|k| parse(k).ok_or_else(|| wave_err("wave.tuning")))
             .collect()
     }
+    let pick = |i: Option<u8>, n: usize| -> Result<Option<usize>, CoreError> {
+        match i {
+            None => Ok(None),
+            Some(i) if usize::from(i) < n => Ok(Some(usize::from(i))),
+            Some(_) => Err(wave_err("wave.tuning")),
+        }
+    };
+    let dayparts = [
+        Daypart::Dawn,
+        Daypart::Morning,
+        Daypart::Day,
+        Daypart::Evening,
+        Daypart::Dusk,
+        Daypart::Night,
+    ];
+    let weathers = [
+        WeatherClass::Clear,
+        WeatherClass::Cloudy,
+        WeatherClass::Fog,
+        WeatherClass::DrizzleRain,
+        WeatherClass::Snow,
+        WeatherClass::Storm,
+    ];
+    let season = match t.season.as_deref() {
+        None | Some("auto") => SeasonPick::Auto,
+        Some("off") => SeasonPick::Off,
+        Some(s) => SeasonPick::Only(
+            ["winter", "spring", "summer", "autumn"]
+                .iter()
+                .position(|x| *x == s)
+                .ok_or_else(|| wave_err("wave.tuning"))? as u8,
+        ),
+    };
     Ok(WaveQuery {
+        character: keys(&t.character, Character::from_key)?,
+        daypart: pick(t.daypart, dayparts.len())?.map(|i| dayparts[i]),
+        weather: pick(t.weather, weathers.len())?.map(|i| weathers[i]),
+        season,
         activity: keys(&t.activity, Activity::from_key)?,
         frequency: keys(&t.frequency, Freq::from_key)?,
         mood: keys(&t.mood, Mood::from_key)?,
@@ -322,6 +367,21 @@ mod tests {
         let c = wave.tune(liked).unwrap();
         assert!(c.tracks <= all_n);
         assert!(!wave.next(1, 0.5, 180).unwrap().is_empty());
+        let more = WaveTuning {
+            character: vec!["calm".into()],
+            daypart: Some(5),
+            weather: Some(3),
+            season: Some("winter".into()),
+            ..WaveTuning::default()
+        };
+        assert!(wave.tuning_count(more).is_ok());
+        assert!(
+            wave.tuning_count(WaveTuning {
+                daypart: Some(6),
+                ..WaveTuning::default()
+            })
+            .is_err()
+        );
         assert!(
             wave.tune(WaveTuning {
                 mood: vec!["furious".into()],
