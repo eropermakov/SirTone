@@ -757,6 +757,8 @@ export type PhoneAccount = {
 	/**  Unix ms when the Apple login ends (then the person signs in again). */
 	loginUntilMs: number | null,
 	installedAtMs: number | null,
+	/**  Unix ms when the app on the phone stops opening unless renewed (S11, «Работает ещё N дней»). */
+	worksUntilMs: number | null,
 	/**  The app package is available to install. */
 	package: boolean,
 };

@@ -1181,6 +1181,7 @@ test("«Телефоны»: «Перенести всё» installs, then moves t
       signedIn: true,
       loginUntilMs: 1.9e12,
       installedAtMs: null,
+      worksUntilMs: Date.now() + 3.5 * 86_400_000,
       package: true,
     };
   }, ownerPhone);
@@ -1188,6 +1189,8 @@ test("«Телефоны»: «Перенести всё» installs, then moves t
   await page.goto("/");
   await page.getByRole("button", { name: "Телефоны", exact: true }).click();
   const card = page.getByRole("article", { name: "iPhone владельца" });
+  // S11: the hub says how long the app keeps working.
+  await expect(card.getByText("Работает ещё 3 дня")).toBeVisible();
   await card.getByRole("button", { name: "Установить Сиртон" }).click();
   await card.getByText("Перенести всё", { exact: true }).click();
   await card.getByRole("button", { name: "Дальше" }).click();

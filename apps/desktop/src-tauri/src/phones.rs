@@ -120,6 +120,91 @@ struct PhoneRecord {
     model: Option<String>,
     #[serde(default)]
     os_version: Option<String>,
+    /// When the app's signature ends (unix ms): a fresh install gives 7 days, a renewal the new
+    /// profile's end (FR-HUB-RENEW).
+    #[serde(default)]
+    works_until_ms: Option<u64>,
+}
+
+impl PhoneRecord {
+    /// The signature's end: as known, else 7 days from the install.
+    fn works_until(&self) -> Option<u64> {
+        self.works_until_ms
+            .or_else(|| self.installed_at_ms.map(|t| t + WEEK_MS))
+    }
+}
+
+/// A free Apple ID signs for 7 days (MR §1).
+const WEEK_MS: u64 = 7 * 24 * 3_600_000;
+/// Renew this long before the end (MR §10: a 3-day window, a try whenever the phone shows up).
+const RENEW_WINDOW_MS: u64 = 3 * 24 * 3_600_000;
+/// How often the tray-resident hub looks.
+const RENEW_EVERY: Duration = Duration::from_secs(600);
+
+/// Phones whose signature is inside the renewal window now.
+fn due(records: &BTreeMap<String, PhoneRecord>, now: u64) -> Vec<(String, String)> {
+    records
+        .iter()
+        .filter(|(_, r)| r.works_until().is_some_and(|u| now + RENEW_WINDOW_MS >= u))
+        .map(|(udid, r)| (udid.clone(), r.apple_id.clone()))
+        .collect()
+}
+
+/// The renewal planner (M2.3, FR-HUB-RENEW): every 10 minutes, phones in the 3-day window that
+/// are reachable (cable or Wi-Fi) get a fresh profile — no reinstall, the music keeps playing
+/// (check П3). Offline, or while a phone is being installed or filled, it waits.
+pub fn start_renewals(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        use tauri::Manager as _;
+        loop {
+            tokio::time::sleep(RENEW_EVERY).await;
+            if crate::net::offline(&app) {
+                continue;
+            }
+            let hub = app.state::<PhoneHub>();
+            let list = hub
+                .records
+                .lock()
+                .map(|r| due(&r, now_ms()))
+                .unwrap_or_default();
+            if list.is_empty() {
+                continue;
+            }
+            let (seen, _) = sirtone_devicelink::all_phones().await;
+            for (udid, apple_id) in list {
+                if !seen.iter().any(|p| p.id == udid) || apple::signed_in(&apple_id).is_none() {
+                    continue;
+                }
+                if !hub
+                    .installing
+                    .lock()
+                    .is_ok_and(|mut s| s.insert(udid.clone()))
+                {
+                    continue;
+                }
+                let r = apple::renew(&apple_id, &udid).await;
+                if let Ok(mut s) = hub.installing.lock() {
+                    s.remove(&udid);
+                }
+                match r {
+                    Ok(until) => {
+                        let ms = apple::iso_to_ms(&until).unwrap_or(now_ms() + WEEK_MS);
+                        if let Some(rec) = hub.record(&udid) {
+                            hub.remember(
+                                &udid,
+                                PhoneRecord {
+                                    works_until_ms: Some(ms),
+                                    ..rec
+                                },
+                            );
+                        }
+                        tracing::info!(target: "sirtone::phones", "renewed");
+                    }
+                    Err(e) => tracing::info!(target: "sirtone::phones", code = e.code(), "renew"),
+                }
+            }
+        }
+    });
 }
 
 pub struct PhoneHub {
@@ -237,6 +322,8 @@ pub struct PhoneAccount {
     /// Unix ms when the Apple login ends (then the person signs in again).
     pub login_until_ms: Option<f64>,
     pub installed_at_ms: Option<f64>,
+    /// Unix ms when the app on the phone stops opening unless renewed (S11, «Работает ещё N дней»).
+    pub works_until_ms: Option<f64>,
     /// The app package is available to install.
     pub package: bool,
 }
@@ -256,7 +343,8 @@ pub fn phone_account(hub: State<'_, PhoneHub>, udid: String) -> PhoneAccount {
         apple_id: r.as_ref().map(|r| r.apple_id.clone()),
         signed_in: s.is_some_and(|s| s.token_expiry_ms > now_ms()),
         login_until_ms: s.map(|s| s.token_expiry_ms as f64),
-        installed_at_ms: r.and_then(|r| r.installed_at_ms).map(|t| t as f64),
+        installed_at_ms: r.as_ref().and_then(|r| r.installed_at_ms).map(|t| t as f64),
+        works_until_ms: r.and_then(|r| r.works_until()).map(|t| t as f64),
         package: package().is_some(),
     }
 }
@@ -411,6 +499,7 @@ pub async fn phone_install(
         &udid,
         PhoneRecord {
             installed_at_ms: Some(now_ms()),
+            works_until_ms: Some(now_ms() + WEEK_MS),
             ..record
         },
     );
@@ -536,4 +625,28 @@ pub fn phone_forget(hub: State<'_, PhoneHub>, udid: String) -> Result<(), AppErr
         apple::forget(&r.apple_id).map_err(|e| app_error(&e))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod renew_tests {
+    use super::*;
+
+    #[test]
+    fn renews_inside_the_three_day_window_only() {
+        let now = 1_800_000_000_000u64;
+        let day = 24 * 3_600_000;
+        let rec = |until: Option<u64>, installed: Option<u64>| PhoneRecord {
+            apple_id: "a@b.c".into(),
+            installed_at_ms: installed,
+            works_until_ms: until,
+            ..PhoneRecord::default()
+        };
+        let mut all = BTreeMap::new();
+        all.insert("far".to_string(), rec(Some(now + 5 * day), None));
+        all.insert("near".to_string(), rec(Some(now + 2 * day), None));
+        all.insert("old-install".to_string(), rec(None, Some(now - 6 * day)));
+        all.insert("never".to_string(), rec(None, None));
+        let ids: Vec<String> = due(&all, now).into_iter().map(|(u, _)| u).collect();
+        assert_eq!(ids, ["near", "old-install"]);
+    }
 }

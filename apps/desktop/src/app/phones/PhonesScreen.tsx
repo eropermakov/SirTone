@@ -1,7 +1,7 @@
 import { Cable, Smartphone, Wifi } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { type PhoneInfo, type PhonesStatus, phonesList } from "@/shared/ipc/phones";
+import { type PhoneInfo, type PhonesStatus, phoneAccount, phonesList } from "@/shared/ipc/phones";
 import { Button } from "@/shared/ui/Button";
 import { Skeleton } from "@/shared/ui/Skeleton";
 import { PhoneWizard } from "./PhoneWizard";
@@ -112,6 +112,8 @@ function PhoneCard({
     .filter(Boolean)
     .join(" · ");
   const Link = phone.usb ? Cable : Wifi;
+  const until = useWorksUntil(phone, picking);
+  const days = until === null ? null : Math.floor((until - Date.now()) / 86_400_000);
   return (
     <article
       aria-label={title}
@@ -122,6 +124,11 @@ function PhoneCard({
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="t-card-title truncate text-text-primary">{title}</span>
           {details && <span className="t-caption text-text-secondary">{details}</span>}
+          {days !== null && (
+            <span className="t-caption text-text-secondary">
+              {days >= 0 ? t("phones.worksFor", { count: days }) : t("phones.expired")}
+            </span>
+          )}
         </div>
         <Link
           aria-label={phone.usb ? t("phones.link.usb") : t("phones.link.wifi")}
@@ -147,4 +154,21 @@ function PhoneCard({
       )}
     </article>
   );
+}
+
+/** When the app on a known iPhone stops opening unless renewed (S11); `null` before the hub
+ * installed it. Re-read when the wizard closes (an install sets a new end). */
+function useWorksUntil(phone: PhoneInfo, picking: boolean): number | null {
+  const [until, setUntil] = useState<number | null>(null);
+  useEffect(() => {
+    if (phone.platform !== "ios" || picking) return;
+    let alive = true;
+    phoneAccount(phone.id)
+      .then((a) => alive && setUntil(a.worksUntilMs ?? null))
+      .catch(() => alive && setUntil(null));
+    return () => {
+      alive = false;
+    };
+  }, [phone.id, phone.platform, picking]);
+  return until;
 }

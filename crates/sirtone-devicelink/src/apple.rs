@@ -448,6 +448,35 @@ fn profile_expiry(profile: &[u8]) -> Option<String> {
     Some(after[start..start + end].trim().to_string())
 }
 
+/// Unix ms of an ISO 8601 UTC time as profiles write it (`2026-11-14T10:00:00Z`).
+pub fn iso_to_ms(s: &str) -> Option<u64> {
+    let s = s.trim().trim_end_matches('Z');
+    let (date, time) = s.split_once('T')?;
+    let mut d = date.split('-').map(|x| x.parse::<i64>());
+    let (y, m, day) = (d.next()?.ok()?, d.next()?.ok()?, d.next()?.ok()?);
+    let mut t = time
+        .split(':')
+        .map(|x| x.split('.').next().unwrap_or("0").parse::<i64>());
+    let (hh, mm, ss) = (
+        t.next()?.ok()?,
+        t.next()?.ok()?,
+        t.next().unwrap_or(Ok(0)).ok()?,
+    );
+    if !(1..=12).contains(&m) || !(1..=31).contains(&day) {
+        return None;
+    }
+    // Days from the civil date (H. Hinnant's algorithm).
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (m + if m > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    u64::try_from(((days * 24 + hh) * 60 + mm) * 60 + ss)
+        .ok()
+        .map(|s| s * 1000)
+}
+
 /// Renews the app's signature without reinstalling (check П3): a fresh provisioning profile for
 /// the app's App ID from Apple, installed by `misagent` — over the cable when the phone is on it,
 /// else through the Wi-Fi tunnel. The certificate stays the same, so the app keeps running
@@ -520,6 +549,14 @@ pub async fn renew(apple_id: &str, udid: &str) -> Result<String, LinkError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn iso_dates_become_unix_ms() {
+        assert_eq!(iso_to_ms("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(iso_to_ms("2026-11-14T10:00:00Z"), Some(1_794_650_400_000));
+        assert_eq!(iso_to_ms("2024-02-29T23:59:59Z"), Some(1_709_251_199_000));
+        assert_eq!(iso_to_ms("not a date"), None);
+    }
 
     #[test]
     fn reads_the_profile_end() {

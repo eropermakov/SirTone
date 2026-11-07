@@ -1478,7 +1478,7 @@
     "install": "Установить Сиртон",
     "transferring": {
       "title": "Переношу медиатеку",
-      "progress": "Переношу музыку — {{percent}}%",
+      "progress": "Переношу музыку — {percent}%",
       "preparing": "Готовлю список треков"
     },
     "installing": {
@@ -1487,6 +1487,8 @@
       "sending": "Передаю на iPhone — не отключайте кабель"
     },
     "androidSoon": "Версия для Android готовится.",
+    "worksFor": "Работает ещё {count, plural, one {# день} few {# дня} many {# дней} other {# дня}}",
+    "expired": "Срок работы закончился — подключите телефон, продлю сам",
     "unnamedIphone": "iPhone",
     "unnamedAndroid": "Телефон на Android",
     "ios": "iOS {v}",

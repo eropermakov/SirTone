@@ -192,6 +192,7 @@ fn main() {
                 tracing::error!(target: "sirtone::startup", error = %e, "tray failed");
             }
             taskbar::start(app.handle());
+            phones::start_renewals(app.handle().clone());
             widget::apply(app.handle());
             let store = app.state::<Arc<settings_store::SettingsStore>>().inner().clone();
             autostart::sync(app.handle(), &store);
