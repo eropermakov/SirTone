@@ -250,6 +250,12 @@
     },
     "trust": "",
     "install": "",
+    "quality": {
+      "title": "",
+      "original": "",
+      "economy": "",
+      "max": ""
+    },
     "transferring": {
       "title": "",
       "progress": "",

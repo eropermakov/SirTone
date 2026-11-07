@@ -234,4 +234,54 @@ mod tests {
         assert!(wav.exists(), "the source outside the library is only read");
         let _ = std::fs::remove_dir_all(&base);
     }
+
+    /// Q-34: a copy-only track travels with its mark — the receiving library keeps it as a copy.
+    #[test]
+    fn a_copy_travels_marked() {
+        let base =
+            std::env::temp_dir().join(format!("sirtone-ffi-copy-move-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("in")).unwrap();
+        let wav = base.join("in").join("Кино - Звезда.wav");
+        let rate = 44_100u32;
+        let frames = rate * 2;
+        let mut b = Vec::new();
+        b.extend_from_slice(b"RIFF");
+        b.extend_from_slice(&(36 + frames * 4).to_le_bytes());
+        b.extend_from_slice(b"WAVEfmt ");
+        b.extend_from_slice(&16u32.to_le_bytes());
+        b.extend_from_slice(&1u16.to_le_bytes());
+        b.extend_from_slice(&2u16.to_le_bytes());
+        b.extend_from_slice(&rate.to_le_bytes());
+        b.extend_from_slice(&(rate * 4).to_le_bytes());
+        b.extend_from_slice(&4u16.to_le_bytes());
+        b.extend_from_slice(&16u16.to_le_bytes());
+        b.extend_from_slice(b"data");
+        b.extend_from_slice(&(frames * 4).to_le_bytes());
+        for i in 0..frames {
+            let v = ((i as f32 * 0.041).sin() * 8_000.0) as i16;
+            b.extend_from_slice(&v.to_le_bytes());
+            b.extend_from_slice(&v.to_le_bytes());
+        }
+        std::fs::write(&wav, &b).unwrap();
+        let phone =
+            crate::library::Library::open(base.join("phone").to_string_lossy().into_owned())
+                .unwrap();
+        phone
+            .import_files_as(vec![wav.to_string_lossy().into_owned()], Some("max".into()))
+            .unwrap();
+        let pkg = base.join("pkg");
+        phone
+            .export_package(pkg.to_string_lossy().into_owned(), true)
+            .unwrap();
+        let pc =
+            crate::library::Library::open(base.join("pc").to_string_lossy().into_owned()).unwrap();
+        let r = pc
+            .apply_package(pkg.to_string_lossy().into_owned())
+            .unwrap();
+        assert_eq!(r.new_tracks, 1, "{r:?}");
+        let s = pc.storage_info().unwrap();
+        assert_eq!((s.copy_only, s.original_only), (1, 0), "{s:?}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }

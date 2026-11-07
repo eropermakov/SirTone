@@ -1193,10 +1193,14 @@ test("«Телефоны»: «Перенести всё» installs, then moves t
   await expect(card.getByText("Работает ещё 3 дня")).toBeVisible();
   await card.getByRole("button", { name: "Установить Сиртон" }).click();
   await card.getByText("Перенести всё", { exact: true }).click();
+  // D-146: the PC can send economy copies instead of the originals.
+  await card.getByText("Экономно", { exact: false }).click();
   await card.getByRole("button", { name: "Дальше" }).click();
   await expect(card.getByText("Включите режим разработчика")).toBeVisible();
   expect(await calls(page, "phone_install")).toHaveLength(1);
-  expect(await calls(page, "phone_send")).toHaveLength(1);
+  const sends = await calls(page, "phone_send");
+  expect(sends).toHaveLength(1);
+  expect((sends[0]?.args as Record<string, unknown> | undefined)?.quality).toBe("economy");
 });
 
 test("«Телефоны»: without the app package the wizard says it is not ready", async ({ page }) => {

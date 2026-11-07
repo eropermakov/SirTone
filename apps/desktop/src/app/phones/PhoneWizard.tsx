@@ -8,6 +8,7 @@ import {
   installOnPhone,
   type PhoneInfo,
   phoneAccount,
+  type Quality,
   sendToPhone,
   type TwoFactorRequest,
 } from "@/shared/ipc/phones";
@@ -17,6 +18,7 @@ import { Skeleton } from "@/shared/ui/Skeleton";
 
 type Choice = "all" | "pick" | "app";
 const CHOICES: Choice[] = ["all", "pick", "app"];
+const QUALITIES: Quality[] = ["original", "economy", "max"];
 /** «Выбрать» (parts by checkboxes) comes later; «Перенести всё» and «Только приложение» work. */
 const READY: ReadonlySet<Choice> = new Set(["all", "app"]);
 
@@ -54,6 +56,7 @@ export function PhoneWizard({
   const { t } = useTranslation("shell");
   const [step, setStep] = useState<Step>({ k: "choose" });
   const [choice, setChoice] = useState<Choice>("app");
+  const [quality, setQuality] = useState<Quality>("original");
   const [appleId, setAppleId] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -75,6 +78,7 @@ export function PhoneWizard({
           setStep({ k: "transfer", fraction: 0 });
           await sendToPhone(
             phone.id,
+            quality,
             (f) => alive.current && setStep({ k: "transfer", fraction: f }),
           );
         }
@@ -159,6 +163,34 @@ export function PhoneWizard({
               </label>
             ))}
           </fieldset>
+          {choice === "all" && (
+            <fieldset aria-label={t("phones.quality.title")} className="flex flex-col gap-2">
+              <span className="t-caption text-text-secondary">{t("phones.quality.title")}</span>
+              <div className="flex flex-wrap gap-2">
+                {QUALITIES.map((q) => (
+                  <label
+                    key={q}
+                    className={cn(
+                      "t-menu flex h-(--chip-height) cursor-pointer items-center rounded-full border px-3 has-focus-visible:outline-2 has-focus-visible:outline-focus-ring",
+                      quality === q
+                        ? "border-transparent bg-primary text-on-primary"
+                        : "border-border text-text-primary hover:bg-bg-hover",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name={`phone-quality-${phone.id}`}
+                      value={q}
+                      checked={quality === q}
+                      onChange={() => setQuality(q)}
+                      className="sr-only"
+                    />
+                    {t(`phones.quality.${q}`)}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
           <Actions primary={t("phones.choose.next")} onPrimary={next} onCancel={onClose} />
         </>
       )}

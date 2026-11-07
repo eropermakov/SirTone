@@ -167,6 +167,26 @@ pub fn detect(conn: &Connection, track: TrackId) -> Result<u32, LibraryError> {
     Ok(found)
 }
 
+/// «Тот же звук» pairs of `track` where one side is an economy copy and the other an original
+/// (Q-34, D-146): the original replaces the copy without asking. Returns (keep, drop) =
+/// (original, copy).
+pub fn copy_replacements(
+    conn: &Connection,
+    track: TrackId,
+) -> Result<Vec<(TrackId, TrackId)>, LibraryError> {
+    let mut st = conn.prepare_cached(
+        "SELECT CASE WHEN ta.is_copy = 1 THEN d.b ELSE d.a END,
+                CASE WHEN ta.is_copy = 1 THEN d.a ELSE d.b END
+         FROM duplicate_pair d JOIN track ta ON ta.id = d.a JOIN track tb ON tb.id = d.b
+         WHERE d.class = 'same_sound' AND d.decision IS NULL AND (d.a = ?1 OR d.b = ?1)
+           AND ta.is_copy <> tb.is_copy AND ta.state = 'ok' AND tb.state = 'ok'",
+    )?;
+    let rows = st
+        .query_map([track], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
 /// A pair waiting for a decision, with what the choice needs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Pair {
@@ -473,6 +493,30 @@ mod tests {
         )
         .unwrap();
         id
+    }
+
+    /// Q-34: an original with the same sound as a copy-only track replaces it; two originals
+    /// (or two copies) stay a question for the person.
+    #[test]
+    fn an_original_replaces_a_copy() {
+        let mut c = lib("copy");
+        let m = melody(7, 900);
+        let copy = track(&mut c, 1, "Ёлка", "Кино", 200_000, &noisy(&m, 1, 3));
+        c.execute(
+            "UPDATE track SET is_copy = 1, copy_level = 'economy' WHERE id = ?1",
+            [copy],
+        )
+        .unwrap();
+        let other = track(&mut c, 2, "Ёлка", "Кино", 200_000, &noisy(&m, 1, 5));
+        let original = track(&mut c, 3, "Ёлка", "Кино", 200_000, &m);
+        assert!(detect(&c, original).unwrap() > 0);
+        assert_eq!(copy_replacements(&c, original).unwrap(), [(original, copy)]);
+        assert!(
+            copy_replacements(&c, other)
+                .unwrap()
+                .iter()
+                .all(|(_, d)| *d == copy)
+        );
     }
 
     #[test]

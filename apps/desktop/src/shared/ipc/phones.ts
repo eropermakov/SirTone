@@ -58,15 +58,19 @@ export async function installOnPhone(udid: string, onProgress: (f: number) => vo
 }
 
 /**
- * «Перенести всё» (M6.2): the PC library into the app's inbox on the phone (the app applies it
+ * «Перенести всё» (M6.2): the PC library into the app's inbox on the phone, as originals or
+ * economy copies made by the PC (D-146) (the app applies it
  * when opened); `onProgress` gets 0…1. A repeat after a cut cable resumes.
  */
+export type Quality = "original" | "economy" | "max";
+
 export async function sendToPhone(
   udid: string,
+  quality: Quality,
   onProgress: (f: number) => void,
 ): Promise<TransferDone> {
   const progress = new Channel<TransferProgress>((p) => onProgress(p.fraction ?? 0));
-  return unwrap(await commands.phoneSend(udid, progress));
+  return unwrap(await commands.phoneSend(udid, quality, progress));
 }
 
 export async function forgetPhone(udid: string): Promise<void> {

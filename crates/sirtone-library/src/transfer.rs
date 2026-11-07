@@ -32,6 +32,8 @@ pub struct TransferTrack {
     pub fingerprint: Option<Vec<u8>>,
     /// BLAKE3 of the whole file (computed on import): the same file on both sides.
     pub content_hash: String,
+    /// The file is an economy copy at this level (D-146).
+    pub copy: Option<String>,
 }
 
 /// Every track of the library, in id order.
@@ -40,7 +42,8 @@ pub fn tracks(conn: &Connection) -> Result<Vec<TransferTrack>, LibraryError> {
         "SELECT t.id, t.rel_path, t.size_bytes, t.duration_ms, t.title, al.title,
                 (SELECT a.name FROM track_artist ta JOIN artist a ON a.id = ta.artist_id
                   WHERE ta.track_id = t.id AND ta.role = 'primary' ORDER BY ta.position LIMIT 1),
-                t.fingerprint, t.content_hash
+                t.fingerprint, t.content_hash,
+                CASE WHEN t.is_copy = 1 THEN t.copy_level END
            FROM track t LEFT JOIN album al ON al.id = t.album_id
           ORDER BY t.id",
     )?;
@@ -55,6 +58,7 @@ pub fn tracks(conn: &Connection) -> Result<Vec<TransferTrack>, LibraryError> {
             artist: r.get(6)?,
             fingerprint: r.get(7)?,
             content_hash: r.get(8)?,
+            copy: r.get(9)?,
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)

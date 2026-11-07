@@ -115,6 +115,7 @@ pub fn export_with(
                         .as_deref()
                         .and_then(sirtone_core::fingerprint::decompress),
                     hash: Some(t.content_hash),
+                    copy: t.copy,
                 });
             }
             if parts.playlists {
@@ -319,6 +320,21 @@ pub fn apply(
             merge::TrackMatch::New => None,
         })
         .collect();
+
+    // 3b. Music that came as an economy copy stays marked so (Q-34): only tracks this run
+    //     imported — a track the library already had keeps its own file.
+    for ((t, first), m) in manifest
+        .tracks
+        .iter()
+        .zip(&matches)
+        .zip(merge::match_tracks(&manifest.tracks, &local_tracks(conn)?))
+    {
+        if let (Some(level), merge::TrackMatch::New, merge::TrackMatch::Same(id)) =
+            (t.copy.as_deref(), first, m)
+        {
+            sirtone_library::copies::mark_copy_only(conn, id, level)?;
+        }
+    }
 
     // 4. Plays and marks, once per key; this library's own events that travelled there and back
     //    are already here; for ♡ the latest mark wins (D-140).

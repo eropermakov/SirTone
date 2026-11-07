@@ -550,6 +550,7 @@ pub struct TransferDone {
 pub async fn phone_send(
     app: AppHandle,
     udid: String,
+    quality: String,
     progress: Channel<TransferProgress>,
 ) -> Result<TransferDone, AppError> {
     use tauri::Manager as _;
@@ -561,7 +562,7 @@ pub async fn phone_send(
     {
         return Err(AppError::new(ErrorCode::DeviceBusy));
     }
-    let r = send(&app, &udid, &progress).await;
+    let r = send(&app, &udid, &quality, &progress).await;
     if let Ok(mut s) = hub.installing.lock() {
         s.remove(&udid);
     }
@@ -571,6 +572,7 @@ pub async fn phone_send(
 async fn send(
     app: &AppHandle,
     udid: &str,
+    quality: &str,
     progress: &Channel<TransferProgress>,
 ) -> Result<TransferDone, AppError> {
     use sirtone_devicelink::appfiles;
@@ -607,8 +609,16 @@ async fn send(
             other => sirtone_library::LibraryError::Invalid(other.code().into()),
         })
     })?;
-    let music = sirtone_sync::music_sources(&root, &out)
+    let mut music = sirtone_sync::music_sources(&root, &out)
         .map_err(|e| AppError::new(ErrorCode::PhoneTransfer).with_details(e.code()))?;
+    // «Экономно» / «Максимально» (D-146): the PC makes the Opus copies into the package (faster
+    // than the phone, spares its battery); the originals stay untouched.
+    if let Some(level) = sirtone_audio::encode::Level::parse(quality) {
+        let (out2, prog) = (out.clone(), progress.clone());
+        music = tokio::task::spawn_blocking(move || encode_package(&out2, music, level, &prog))
+            .await
+            .map_err(|_| AppError::new(ErrorCode::Internal))??;
+    }
     let mut files = appfiles::open(udid).await.map_err(|e| app_error(&e))?;
     if let Some(free) = files.free_bytes().await {
         let already = files.already_sent(&summary.package_id).await;
@@ -634,6 +644,54 @@ async fn send(
         tracks: summary.tracks,
         missing: c.missing,
     })
+}
+
+/// Makes the Opus copies of `music` inside the package `out` and rewrites its manifest so the
+/// phone imports them marked as copies. Resumes: a finished copy (renamed from `.part`) is kept.
+/// Returns what to send instead of the originals.
+fn encode_package(
+    out: &std::path::Path,
+    music: Vec<(PathBuf, String)>,
+    level: sirtone_audio::encode::Level,
+    progress: &Channel<TransferProgress>,
+) -> Result<Vec<(PathBuf, String)>, AppError> {
+    use sirtone_audio::encode::{self, Tags};
+    let fail = |c: &'static str| AppError::new(ErrorCode::PhoneTransfer).with_details(c);
+    let mut manifest =
+        sirtone_transfer::Manifest::read(out).map_err(|_| fail("transfer.manifest"))?;
+    let none = std::sync::atomic::AtomicBool::new(false);
+    let total = music.len().max(1);
+    let mut sent = Vec::with_capacity(music.len());
+    for (i, (src, file)) in music.into_iter().enumerate() {
+        let copy_file = sirtone_library::copies::copy_rel_for(&file);
+        let dst = copy_file
+            .split('/')
+            .fold(out.to_path_buf(), |p, s| p.join(s));
+        let entry = manifest.tracks.iter_mut().find(|t| t.file == file);
+        let ok = dst.exists() || {
+            let tags = Tags {
+                title: entry.as_ref().and_then(|t| t.title.clone()),
+                artist: entry.as_ref().and_then(|t| t.artist.clone()),
+                album: entry.as_ref().and_then(|t| t.album.clone()),
+            };
+            encode::to_opus(&src, &dst, level, &tags, &none).is_ok()
+        };
+        if ok && let Some(t) = entry {
+            t.file = copy_file.clone();
+            t.size = std::fs::metadata(&dst).map(|m| m.len()).unwrap_or(0);
+            // Another file than the original: the phone must not take it for the same bytes.
+            t.hash = None;
+            t.copy = Some(level.as_str().to_string());
+        } else {
+            // An unreadable original is sent as is.
+            sent.push((src, file));
+        }
+        let _ = progress.send(TransferProgress {
+            fraction: 0.5 * (i + 1) as f32 / total as f32,
+        });
+    }
+    manifest.write(out).map_err(|_| fail("transfer.manifest"))?;
+    Ok(sent)
 }
 
 /// «Отключить телефон»: forgets the phone and, if no other phone uses it, its Apple ID (D-132).

@@ -95,7 +95,7 @@ export const commands = {
 	 *  the app's cache folder, the music sent straight from the library — into the app's inbox on
 	 *  the phone (cable, else Wi-Fi). The app applies it when opened. A repeat resumes.
 	 */
-	phoneSend: (udid: string, progress: Channel<TransferProgress>) => typedError<TransferDone, AppError>(__TAURI_INVOKE("phone_send", { udid, progress })),
+	phoneSend: (udid: string, quality: string, progress: Channel<TransferProgress>) => typedError<TransferDone, AppError>(__TAURI_INVOKE("phone_send", { udid, quality, progress })),
 	phoneAccount: (udid: string) => __TAURI_INVOKE<PhoneAccount>("phone_account", { udid }),
 	/**
 	 *  Logs in with the Apple ID of this phone's owner (wizard step 6). Each 2FA request goes to

@@ -168,6 +168,11 @@ fn step(
             }
             // T3.5: a fresh fingerprint is compared with the library (duplicates by sound).
             if b.fingerprint.is_some() && sirtone_library::duplicates::detect(c, track)? > 0 {
+                // Q-34 (D-146): an original found for a phone's economy copy replaces it.
+                let swaps = sirtone_library::duplicates::copy_replacements(c, track)?;
+                if !swaps.is_empty() {
+                    crate::duplicates::replace_copies(app, swaps);
+                }
                 crate::duplicates::found(app, sirtone_library::duplicates::pending_count(c)?);
             }
             Ok(())

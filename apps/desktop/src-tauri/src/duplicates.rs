@@ -114,6 +114,34 @@ fn merge(lib: &Library, pb: &Playback, keep: u32, drop: u32) -> Result<(), AppEr
     lib.remove_track(i64::from(drop), true)
 }
 
+/// Economy copies from the phone replaced by originals found on the PC (Q-34, D-146): the
+/// original takes the copy's plays, ♡ and playlist places; the copy goes to the Recycle Bin
+/// through the journal — as «Заменить» does, without asking. Off the analysis connection.
+pub fn replace_copies(app: &tauri::AppHandle, swaps: Vec<(i64, i64)>) {
+    use tauri::Manager as _;
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let (Some(lib), Some(pb)) = (app.try_state::<Library>(), app.try_state::<Playback>())
+        else {
+            return;
+        };
+        for (keep, drop) in swaps {
+            let (Ok(k), Ok(d)) = (u32::try_from(keep), u32::try_from(drop)) else {
+                continue;
+            };
+            match merge(&lib, &pb, k, d) {
+                Ok(()) => {
+                    tracing::info!(target: "sirtone::duplicates", "copy replaced by original")
+                }
+                Err(e) => {
+                    tracing::warn!(target: "sirtone::duplicates", code = ?e.code, "copy replace")
+                }
+            }
+        }
+        lib.notify_changed(&app);
+    });
+}
+
 /// «Заменить старый новым» (`keep` = new, `drop` = old) or «Убрать новый» (the other way):
 /// `keep` takes `drop`'s history, `drop`'s file goes to the Recycle Bin.
 #[tauri::command(async)]

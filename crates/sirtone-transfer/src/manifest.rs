@@ -54,6 +54,10 @@ pub struct TrackEntry {
     /// BLAKE3 of the whole file: the exact same file is recognised before any sound match.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hash: Option<String>,
+    /// The file is an economy copy at this level (`economy` | `max`, D-146): the receiving side
+    /// marks the track so, and an original found there later replaces it (Q-34).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copy: Option<String>,
 }
 
 mod fp_codec {
@@ -220,6 +224,7 @@ mod tests {
                 album: None,
                 fingerprint: None,
                 hash: None,
+                copy: None,
             });
         }
         m

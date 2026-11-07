@@ -162,6 +162,7 @@ mod tests {
             album: None,
             fingerprint: f,
             hash: None,
+            copy: None,
         }
     }
 
