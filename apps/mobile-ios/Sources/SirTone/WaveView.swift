@@ -85,7 +85,7 @@ struct WaveView: View {
                 title: playback.waveOn && playback.playing ? L.t("wave.playing") : L.t("wave.start"),
                 icon: "play.fill"
             ) {
-                if playback.waveOn && playback.current != nil { playback.toggle() } else { playback.startWave() }
+                if playback.waveOn && playback.current != nil { playback.toggle() } else { app.startWave() }
             }
             .disabled(app.wave == nil)
         }

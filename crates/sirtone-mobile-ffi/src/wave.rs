@@ -79,6 +79,18 @@ impl Wave {
     /// «Моя волна» over `library`, learnt from its journal (D-128: unanalysed tracks take part).
     #[uniffi::constructor]
     pub fn start(library: Arc<Library>) -> Result<Arc<Self>, CoreError> {
+        Self::start_profile(library, "my_wave".into())
+    }
+
+    /// Another built-in profile: `sleep` — «Засыпательная волна» (calmer and quieter towards the
+    /// end, with the sleep timer the app starts), `seasonal`, `for_all`; anything else is
+    /// «Моя волна».
+    #[uniffi::constructor]
+    pub fn start_profile(library: Arc<Library>, profile: String) -> Result<Arc<Self>, CoreError> {
+        let profile = match profile.as_str() {
+            "sleep" | "seasonal" | "for_all" => profile.as_str(),
+            _ => "my_wave",
+        };
         let now = PhoneClock { offset_min: 0 }.now_utc_ms();
         let (tracks, history) = library.with(|c| {
             use sirtone_library::wave as w;
@@ -90,7 +102,7 @@ impl Wave {
                 },
             ))
         })?;
-        let cfg = Config::builtin_profile("my_wave").map_err(|_| wave_err("wave.profile"))?;
+        let cfg = Config::builtin_profile(profile).map_err(|_| wave_err("wave.profile"))?;
         // A different order each start, as on the PC.
         let seed = now as u64;
         Ok(Arc::new(Self {
@@ -317,6 +329,12 @@ mod tests {
             })
             .is_err()
         );
+        let sleep = Wave::start_profile(lib.clone(), "sleep".into()).unwrap();
+        assert!(
+            !sleep.next(2, 0.5, 180).unwrap().is_empty(),
+            "the sleep wave plays too"
+        );
+        drop(sleep);
         drop(wave);
         drop(lib);
         let _ = std::fs::remove_dir_all(&dir);

@@ -13,6 +13,8 @@ import UIKit
 final class AppModel: ObservableObject {
     @Published private(set) var library: Library?
     @Published private(set) var wave: Wave?
+    /// The running wave's profile: `my_wave` or `sleep` («Засыпательная волна»).
+    @Published private(set) var waveProfile = "my_wave"
     @Published private(set) var counts: LibraryCounts?
     /// Bumped after anything changes the library: lists reload.
     @Published private(set) var revision = 0
@@ -192,6 +194,33 @@ final class AppModel: ObservableObject {
         playback.retune()
     }
 
+    /// The big start: «Моя волна» (back from «Засыпательная», if that was the last one).
+    func startWave(profile: String = "my_wave") {
+        guard let lib = library else { return }
+        if profile == waveProfile, wave != nil {
+            playback.startWave()
+            return
+        }
+        let t = tuning
+        Task {
+            let w = await Task.detached { () -> Wave? in
+                guard let w = try? Wave.startProfile(library: lib, profile: profile) else { return nil }
+                if profile == "my_wave" { _ = try? w.tune(tuning: t) }
+                return w
+            }.value
+            guard let w else { return }
+            wave = w
+            waveProfile = profile
+            playback.startWave()
+        }
+    }
+
+    /// «Засыпательная волна» (as on the PC): 30 minutes of the sleep timer, then quiet.
+    func startSleepWave() {
+        playback.sleep(minutes: 30)
+        startWave(profile: "sleep")
+    }
+
     /// «Подходит N треков» for the current choice.
     func tuningCount() async -> TuningCount? {
         guard let wave else { return nil }
@@ -251,6 +280,7 @@ final class AppModel: ObservableObject {
             if let w = await Task.detached(operation: { try? Wave.start(library: lib) }).value {
                 _ = try? w.tune(tuning: tuning)
                 wave = w
+                waveProfile = "my_wave"
             }
             await refresh()
         }

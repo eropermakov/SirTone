@@ -75,7 +75,7 @@ struct OnboardingView: View {
                 PageTitle(text: L.t("onb.ready", tracks))
                 PrimaryButton(title: L.t("onb.listen"), icon: "play.fill") {
                     onboarded = true
-                    playback.startWave()
+                    app.startWave()
                 }
             } else {
                 PageTitle(text: L.t("onb.music"))

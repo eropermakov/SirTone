@@ -33,6 +33,17 @@ struct TuneView: View {
                             FlowChips(keys: b.keys, block: b.block)
                         }
                     }
+                    if app.tuning.has("activity", "sleep") {
+                        VStack(alignment: .leading, spacing: M.space2) {
+                            Text(verbatim: L.t("tune.hintSleep"))
+                                .font(.sirtone(Ty.body))
+                                .foregroundStyle(p.textSecondary)
+                            SecondaryButton(title: L.t("tune.sleepWave"), icon: "moon") {
+                                app.startSleepWave()
+                                dismiss()
+                            }
+                        }
+                    }
                     if let count {
                         Text(verbatim: L.count("tune.count", Int(count.tracks))
                             + (count.relaxed ? L.t("tune.relaxed") : ""))
