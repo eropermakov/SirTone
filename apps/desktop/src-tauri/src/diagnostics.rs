@@ -38,6 +38,28 @@ pub fn data_dir() -> PathBuf {
         .join("SirTone")
 }
 
+/// D-132, MAT-16: the Apple and phone libraries stay quiet whatever `SIRTONE_LOG` says — their
+/// info lines carry account details (certificate names hold the Apple ID) and idevice's debug
+/// lines print pairing handshakes and keys.
+const QUIET: [&str; 6] = [
+    "isideload=warn",
+    "apple_codesign=error",
+    "idevice=warn",
+    "jktcp=warn",
+    "reqwest=warn",
+    "hyper=warn",
+];
+
+/// `filter` with the [`QUIET`] caps on top (they win over any wider level).
+fn quiet(mut filter: EnvFilter) -> EnvFilter {
+    for cap in QUIET {
+        if let Ok(d) = cap.parse() {
+            filter = filter.add_directive(d);
+        }
+    }
+    filter
+}
+
 /// Starts file logging. Keep the guard alive for the whole process, otherwise lines are lost.
 pub fn init_logging(dir: &Path, debug: bool) -> Option<WorkerGuard> {
     let logs = dir.join("logs");
@@ -54,20 +76,8 @@ pub fn init_logging(dir: &Path, debug: bool) -> Option<WorkerGuard> {
         .ok()?;
     let (writer, guard) = tracing_appender::non_blocking(appender);
     let default = if debug { "debug" } else { "info" };
-    let mut filter =
-        EnvFilter::try_from_env("SIRTONE_LOG").unwrap_or_else(|_| EnvFilter::new(default));
-    // D-132: the Apple login libraries stay quiet whatever SIRTONE_LOG says — their info lines
-    // carry account details (certificate names hold the Apple ID).
-    for cap in [
-        "isideload=warn",
-        "apple_codesign=error",
-        "reqwest=warn",
-        "hyper=warn",
-    ] {
-        if let Ok(d) = cap.parse() {
-            filter = filter.add_directive(d);
-        }
-    }
+    let filter =
+        quiet(EnvFilter::try_from_env("SIRTONE_LOG").unwrap_or_else(|_| EnvFilter::new(default)));
     let installed = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_writer(writer)
@@ -157,6 +167,43 @@ pub fn write_crash_report(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// MAT-16: even at `SIRTONE_LOG=trace` the Apple and phone libraries write nothing below
+    /// their caps — no handshake, key or certificate line reaches the log file.
+    #[test]
+    fn apple_and_phone_libraries_stay_quiet() {
+        use std::sync::{Arc, Mutex};
+        #[derive(Clone, Default)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf::default();
+        let out = buf.clone();
+        let sub = tracing_subscriber::fmt()
+            .with_env_filter(quiet(EnvFilter::new("trace")))
+            .with_writer(move || out.clone())
+            .with_ansi(false)
+            .finish();
+        tracing::subscriber::with_default(sub, || {
+            tracing::debug!(target: "idevice::pairing", "PAIRING-KEY");
+            tracing::info!(target: "isideload::dev", "CERT-OWNER-NAME");
+            tracing::info!(target: "apple_codesign", "SIGNER-NAME");
+            tracing::debug!(target: "jktcp::adapter", "SEGMENT");
+            tracing::debug!(target: "sirtone::phones", "our own line");
+        });
+        let text = String::from_utf8(buf.0.lock().unwrap().clone()).unwrap();
+        assert!(text.contains("our own line"), "{text}");
+        for secret in ["PAIRING-KEY", "CERT-OWNER-NAME", "SIGNER-NAME", "SEGMENT"] {
+            assert!(!text.contains(secret), "{secret} leaked: {text}");
+        }
+    }
 
     fn tmp(name: &str) -> PathBuf {
         let p = std::env::temp_dir().join(format!("sirtone-test-{name}-{}", std::process::id()));
