@@ -36,3 +36,6 @@ rtrb = { workspace = true }
 rusqlite = { workspace = true }
 uniffi = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+image = { workspace = true }

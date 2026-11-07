@@ -11,7 +11,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::error::LibraryError;
 use crate::repo::TrackId;
 
-/// A track waiting for its copy.
+/// A track waiting for its copy, with what the copy's own tags need.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CopyJob {
     pub id: TrackId,
@@ -19,6 +19,13 @@ pub struct CopyJob {
     pub title: String,
     pub artists: String,
     pub album: Option<String>,
+    pub album_artist: Option<String>,
+    pub track_no: Option<u32>,
+    pub disc_no: Option<u32>,
+    pub year: Option<i32>,
+    pub genre: Option<String>,
+    /// The album cover's original picture in the cover store.
+    pub cover: Option<std::path::PathBuf>,
 }
 
 /// What the phone keeps («Хранилище»).
@@ -36,18 +43,14 @@ pub struct Storage {
     pub original_only: u64,
 }
 
-/// The copy's place next to the original: same folder and name, `.opus`
-/// (`.copy.opus` when the original is Opus already).
-pub fn copy_rel_for(rel_path: &str) -> String {
+/// The copy's place next to the original: same folder and name plus the track id, `.opus` —
+/// two tracks with one stem (`X.flac`, `X.mp3`) never share a copy.
+pub fn copy_rel_for(rel_path: &str, id: TrackId) -> String {
     let (dir, name) = rel_path
         .rsplit_once('/')
         .map_or(("", rel_path), |(d, n)| (d, n));
-    let (stem, ext) = name.rsplit_once('.').unwrap_or((name, ""));
-    let file = if ext.eq_ignore_ascii_case("opus") {
-        format!("{stem}.copy.opus")
-    } else {
-        format!("{stem}.opus")
-    };
+    let stem = name.rsplit_once('.').map_or(name, |(s, _)| s);
+    let file = format!("{stem}.{id}.opus");
     if dir.is_empty() {
         file
     } else {
@@ -55,35 +58,67 @@ pub fn copy_rel_for(rel_path: &str) -> String {
     }
 }
 
+const JOB_COLS: &str = "t.id, t.rel_path, t.title,
+    coalesce((SELECT group_concat(name, ', ') FROM
+      (SELECT a.name FROM track_artist ta JOIN artist a ON a.id = ta.artist_id
+       WHERE ta.track_id = t.id ORDER BY ta.position)), ''),
+    al.title, (SELECT name FROM artist WHERE id = al.album_artist_id),
+    t.track_no, t.disc_no, coalesce(t.year, al.year), t.genre_main,
+    (SELECT hash FROM cover WHERE id = al.cover_id)";
+
+fn job(root: &Path, r: &rusqlite::Row<'_>) -> rusqlite::Result<CopyJob> {
+    let cover: Option<String> = r.get(10)?;
+    Ok(CopyJob {
+        id: r.get(0)?,
+        rel_path: r.get(1)?,
+        title: r.get(2)?,
+        artists: r.get(3)?,
+        album: r.get(4)?,
+        album_artist: r.get(5)?,
+        track_no: r.get(6)?,
+        disc_no: r.get(7)?,
+        year: r.get(8)?,
+        genre: r.get(9)?,
+        cover: cover.and_then(|h| crate::covers::original(root, &h)),
+    })
+}
+
+/// One track's copy job (the hub makes copies for tracks it sends).
+pub fn job_for(
+    conn: &Connection,
+    root: &Path,
+    id: TrackId,
+) -> Result<Option<CopyJob>, LibraryError> {
+    Ok(conn
+        .query_row(
+            &format!(
+                "SELECT {JOB_COLS} FROM track t LEFT JOIN album al ON al.id = t.album_id
+                 WHERE t.id = ?1"
+            ),
+            [id],
+            |r| job(root, r),
+        )
+        .optional()?)
+}
+
 /// Tracks that would gain from a copy at `kbps`: no copy yet, not a copy themselves, not Opus,
 /// and not already about as small. `after` — only tracks with a larger id (a fresh import).
 pub fn candidates(
     conn: &Connection,
+    root: &Path,
     kbps: u32,
     after: TrackId,
     limit: u32,
 ) -> Result<Vec<CopyJob>, LibraryError> {
-    let mut st = conn.prepare_cached(
-        "SELECT t.id, t.rel_path, t.title,
-                coalesce((SELECT group_concat(name, ', ') FROM
-                  (SELECT a.name FROM track_artist ta JOIN artist a ON a.id = ta.artist_id
-                   WHERE ta.track_id = t.id ORDER BY ta.position)), ''),
-                al.title
+    let mut st = conn.prepare_cached(&format!(
+        "SELECT {JOB_COLS}
          FROM track t LEFT JOIN album al ON al.id = t.album_id
          WHERE t.state = 'ok' AND t.id > ?1 AND t.copy_rel_path IS NULL AND t.is_copy = 0
            AND t.codec <> 'opus' AND (t.bitrate_kbps IS NULL OR t.bitrate_kbps > ?2)
-         ORDER BY t.id LIMIT ?3",
-    )?;
+         ORDER BY t.id LIMIT ?3"
+    ))?;
     let rows = st
-        .query_map(params![after, kbps + 32, limit], |r| {
-            Ok(CopyJob {
-                id: r.get(0)?,
-                rel_path: r.get(1)?,
-                title: r.get(2)?,
-                artists: r.get(3)?,
-                album: r.get(4)?,
-            })
-        })?
+        .query_map(params![after, kbps + 32, limit], |r| job(root, r))?
         .collect::<Result<_, _>>()?;
     Ok(rows)
 }
@@ -125,25 +160,33 @@ pub fn keep_copy_only(
     root: &Path,
     id: TrackId,
 ) -> Result<Option<u64>, LibraryError> {
-    let row: Option<(String, Option<String>, i64)> = conn
+    let row: Option<(String, Option<String>, i64, Option<String>)> = conn
         .query_row(
-            "SELECT rel_path, copy_rel_path, size_bytes FROM track WHERE id = ?1 AND is_copy = 0",
+            "SELECT rel_path, copy_rel_path, size_bytes, copy_level FROM track
+             WHERE id = ?1 AND is_copy = 0",
             [id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
         .optional()?;
-    let Some((original, Some(copy), size)) = row else {
+    let Some((original, Some(copy), size, level)) = row else {
         return Ok(None);
+    };
+    // The row describes the copy now (quality ranking must not see the original's numbers).
+    let kbps = if level.as_deref() == Some("max") {
+        64
+    } else {
+        128
     };
     let at = |rel: &str| rel.split('/').fold(root.to_path_buf(), |p, s| p.join(s));
     let bytes = std::fs::read(at(&copy))?;
     let hash = blake3::hash(&bytes).to_hex().to_string();
     conn.execute(
         "UPDATE track SET rel_path = ?2, size_bytes = ?3, content_hash = ?4, codec = 'opus',
-                container = 'ogg', lossless = 0, is_copy = 1,
+                container = 'ogg', lossless = 0, is_copy = 1, bitrate_kbps = ?5,
+                sample_rate = 48000, bit_depth = NULL,
                 copy_rel_path = NULL, copy_bytes = NULL
          WHERE id = ?1",
-        params![id, copy, bytes.len() as i64, hash],
+        params![id, copy, bytes.len() as i64, hash, kbps],
     )?;
     let _ = std::fs::remove_file(at(&original));
     Ok(Some(size.max(0) as u64))
@@ -190,11 +233,15 @@ mod tests {
     #[test]
     fn copy_sits_next_to_the_original() {
         assert_eq!(
-            copy_rel_for("Кино/Группа крови/01 Ёлка.flac"),
-            "Кино/Группа крови/01 Ёлка.opus"
+            copy_rel_for("Кино/Группа крови/01 Ёлка.flac", 7),
+            "Кино/Группа крови/01 Ёлка.7.opus"
         );
-        assert_eq!(copy_rel_for("a/b.opus"), "a/b.copy.opus");
-        assert_eq!(copy_rel_for("t.mp3"), "t.opus");
+        assert_ne!(
+            copy_rel_for("a/X.flac", 1),
+            copy_rel_for("a/X.mp3", 2),
+            "one stem, two copies"
+        );
+        assert_eq!(copy_rel_for("t.opus", 3), "t.3.opus");
     }
 
     #[test]
@@ -232,17 +279,17 @@ mod tests {
             },
         )
         .unwrap();
-        let jobs = candidates(&c, 128, 0, 10).unwrap();
+        let jobs = candidates(&c, &root, 128, 0, 10).unwrap();
         assert_eq!(jobs.len(), 1);
         assert_eq!(
             (jobs[0].artists.as_str(), jobs[0].album.as_deref()),
             ("Кино", Some("Ёлка"))
         );
-        let copy = copy_rel_for(&jobs[0].rel_path);
-        std::fs::write(root.join("Кино/01 Ёлка.opus"), vec![1u8; 700]).unwrap();
+        let copy = copy_rel_for(&jobs[0].rel_path, id);
+        std::fs::write(root.join(&copy), vec![1u8; 700]).unwrap();
         set_copy(&c, id, &copy, 700, "economy").unwrap();
         assert!(
-            candidates(&c, 128, 0, 10).unwrap().is_empty(),
+            candidates(&c, &root, 128, 0, 10).unwrap().is_empty(),
             "no second copy"
         );
         let s = storage(&c).unwrap();
@@ -257,7 +304,7 @@ mod tests {
                 r.get(0)
             })
             .unwrap();
-        assert_eq!(rel, "Кино/01 Ёлка.opus");
+        assert_eq!(rel, copy);
         assert_eq!(
             keep_copy_only(&c, &root, id).unwrap(),
             None,

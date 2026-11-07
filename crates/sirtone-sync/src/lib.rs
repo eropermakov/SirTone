@@ -223,7 +223,8 @@ pub fn export_with(
 }
 
 /// The music of a package written by [`export_with`] without copying: (file in the library,
-/// its path inside the package) for every listed track.
+/// its path inside the package) for every listed track that is not a copy made into the
+/// package (those files are in `out` already).
 pub fn music_sources(root: &Path, out: &Path) -> Result<Vec<(PathBuf, String)>, SyncError> {
     let m = Manifest::read(out)?;
     if !m.parts.music {
@@ -231,6 +232,8 @@ pub fn music_sources(root: &Path, out: &Path) -> Result<Vec<(PathBuf, String)>, 
     }
     Ok(m.tracks
         .iter()
+        // A copy made into the package is already there (D-146).
+        .filter(|t| t.copy.is_none())
         .map(|t| {
             let rel = t.file.strip_prefix("music/").unwrap_or(&t.file);
             let src = rel

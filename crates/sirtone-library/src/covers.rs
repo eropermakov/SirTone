@@ -134,6 +134,18 @@ fn valid_hash(h: &str) -> bool {
     h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
+/// The stored original picture of a cover (for copies that carry their own cover).
+pub fn original(root: &Path, hash: &str) -> Option<PathBuf> {
+    if !valid_hash(hash) {
+        return None;
+    }
+    let dir = covers_dir(root).join("orig");
+    ["jpg", "png"]
+        .iter()
+        .map(|e| dir.join(format!("{hash}.{e}")))
+        .find(|p| p.exists())
+}
+
 /// Path of the `size` px WebP for `hash`, generated on first request (square crop, Lanczos3,
 /// quality 80). Only known hashes and sizes are accepted — nothing else on disk is reachable.
 pub fn variant(root: &Path, hash: &str, size: u32) -> Result<PathBuf, LibraryError> {

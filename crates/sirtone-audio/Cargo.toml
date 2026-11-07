@@ -18,6 +18,7 @@ symphonia-adapter-libopus.workspace = true
 rubato.workspace = true
 opusic-sys.workspace = true
 ogg.workspace = true
+base64 = "0.22"
 rtrb.workspace = true
 rustfft.workspace = true
 tracing.workspace = true

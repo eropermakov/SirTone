@@ -7246,6 +7246,7 @@ dependencies = [
 name = "sirtone-audio"
 version = "0.1.38"
 dependencies = [
+ "base64 0.22.1",
  "cc",
  "ogg",
  "opusic-sys",
@@ -7337,6 +7338,7 @@ dependencies = [
 name = "sirtone-mobile-ffi"
 version = "0.1.38"
 dependencies = [
+ "image",
  "rtrb",
  "rusqlite",
  "sirtone-audio",

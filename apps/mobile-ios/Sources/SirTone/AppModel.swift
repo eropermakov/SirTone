@@ -7,6 +7,7 @@ import Foundation
 import SirToneCore
 import SirToneDesign
 import SwiftUI
+import UIKit
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -39,7 +40,24 @@ final class AppModel: ObservableObject {
 
     private var opened = false
 
-    init() { playback.attach(model: self) }
+    private var powerObserver: NSObjectProtocol?
+
+    init() {
+        playback.attach(model: self)
+        // «Только музыка» follows Low Power Mode as it flips (D-147).
+        powerObserver = NotificationCenter.default.addObserver(
+            forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.objectWillChange.send() }
+        }
+    }
+
+    /// Long work (import, copies) keeps going for a while when the app leaves the screen.
+    private func background<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
+        let id = UIApplication.shared.beginBackgroundTask(withName: "sirtone.work")
+        defer { if id != .invalid { UIApplication.shared.endBackgroundTask(id) } }
+        return await Task.detached(operation: work).value
+    }
 
     var documents: URL { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0] }
 
@@ -96,9 +114,9 @@ final class AppModel: ObservableObject {
             var done = 0
             while true {
                 let from = after
-                guard let b = await Task.detached(operation: {
+                guard let b = await background({
                     try? lib.makeCopies(levelName: level, after: from, limit: 5)
-                }).value else { break }
+                }) else { break }
                 done += Int(b.made + b.failed)
                 copying = (done, max(total, done))
                 after = b.nextAfter
@@ -137,12 +155,12 @@ final class AppModel: ObservableObject {
         let level = quality ?? addQuality
         importing = true
         Task {
-            let summary = await Task.detached { () -> ImportSummary? in
+            let summary = await background { () -> ImportSummary? in
                 var granted: [URL] = []
                 for u in urls where u.startAccessingSecurityScopedResource() { granted.append(u) }
                 defer { granted.forEach { $0.stopAccessingSecurityScopedResource() } }
                 return try? lib.importFilesAs(paths: urls.map(\.path), levelName: level)
-            }.value
+            }
             importing = false
             report(summary)
             await refresh()

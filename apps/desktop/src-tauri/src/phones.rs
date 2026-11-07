@@ -581,12 +581,15 @@ async fn send(
     let root = lib
         .root()
         .ok_or_else(|| AppError::new(ErrorCode::LibraryRootNotSet))?;
+    let level = sirtone_audio::encode::Level::parse(quality);
+    // One package folder per quality: a resume continues the same one, a switch starts clean.
     let out = app
         .path()
         .app_cache_dir()
         .map_err(|_| AppError::new(ErrorCode::Internal))?
         .join("phone-out")
-        .join(appfiles::package_folder(udid));
+        .join(appfiles::package_folder(udid))
+        .join(level.map_or("original", |l| l.as_str()));
     let parts = sirtone_transfer::Parts {
         music: true,
         playlists: true,
@@ -609,30 +612,65 @@ async fn send(
             other => sirtone_library::LibraryError::Invalid(other.code().into()),
         })
     })?;
+    // The phone first: no point encoding a thousand tracks for a phone that is gone or full.
+    let mut files = appfiles::open(udid).await.map_err(|e| app_error(&e))?;
+    let manifest = sirtone_transfer::Manifest::read(&out)
+        .map_err(|_| AppError::new(ErrorCode::PhoneTransfer).with_details("transfer.manifest"))?;
+    let need = match level {
+        // Opus at a fixed rate: duration × bitrate (+ the small manifest and journal).
+        Some(l) => manifest
+            .tracks
+            .iter()
+            .map(|t| u64::from(t.duration_ms) * u64::from(l.kbps()) / 8)
+            .sum::<u64>(),
+        None => summary.total_bytes,
+    };
+    if let Some(free) = files.free_bytes().await {
+        let already = files.already_sent(&summary.package_id).await;
+        if !appfiles::fits(free, need, already) {
+            return Err(AppError::new(ErrorCode::PhoneNoSpace));
+        }
+    }
     let mut music = sirtone_sync::music_sources(&root, &out)
         .map_err(|e| AppError::new(ErrorCode::PhoneTransfer).with_details(e.code()))?;
     // «Экономно» / «Максимально» (D-146): the PC makes the Opus copies into the package (faster
     // than the phone, spares its battery); the originals stay untouched.
-    if let Some(level) = sirtone_audio::encode::Level::parse(quality) {
+    if let Some(level) = level {
+        let jobs: Vec<Option<sirtone_library::copies::CopyJob>> = music
+            .iter()
+            .map(|(_, file)| {
+                let id = manifest
+                    .tracks
+                    .iter()
+                    .find(|t| &t.file == file)
+                    .and_then(|t| t.key.rsplit_once(':'))
+                    .and_then(|(_, id)| id.parse::<i64>().ok())?;
+                lib.with_read(|c| sirtone_library::copies::job_for(c, &root, id))
+                    .ok()
+                    .flatten()
+            })
+            .collect();
         let (out2, prog) = (out.clone(), progress.clone());
-        music = tokio::task::spawn_blocking(move || encode_package(&out2, music, level, &prog))
-            .await
-            .map_err(|_| AppError::new(ErrorCode::Internal))??;
+        music =
+            tokio::task::spawn_blocking(move || encode_package(&out2, music, jobs, level, &prog))
+                .await
+                .map_err(|_| AppError::new(ErrorCode::Internal))??;
     }
-    let mut files = appfiles::open(udid).await.map_err(|e| app_error(&e))?;
-    if let Some(free) = files.free_bytes().await {
-        let already = files.already_sent(&summary.package_id).await;
-        if !appfiles::fits(free, summary.total_bytes, already) {
-            return Err(AppError::new(ErrorCode::PhoneNoSpace));
-        }
-    }
+    // With copies the first half of the bar was the encoding.
+    let (from, span) = if level.is_some() {
+        (0.5, 0.5)
+    } else {
+        (0.0, 1.0)
+    };
     let report = |done: u64, total: u64| {
         let f = if total == 0 {
             1.0
         } else {
             done as f32 / total as f32
         };
-        let _ = progress.send(TransferProgress { fraction: f });
+        let _ = progress.send(TransferProgress {
+            fraction: from + span * f,
+        });
     };
     let c = files
         .send_package(&out, &summary.package_id, &music, &report)
@@ -647,11 +685,13 @@ async fn send(
 }
 
 /// Makes the Opus copies of `music` inside the package `out` and rewrites its manifest so the
-/// phone imports them marked as copies. Resumes: a finished copy (renamed from `.part`) is kept.
-/// Returns what to send instead of the originals.
+/// phone imports them marked as copies; each copy carries its track's tags and cover (`jobs`, in
+/// the order of `music`). Resumes: a finished copy (renamed from `.part`) is kept. Returns what
+/// is left to send from the library (originals that could not be read).
 fn encode_package(
     out: &std::path::Path,
     music: Vec<(PathBuf, String)>,
+    jobs: Vec<Option<sirtone_library::copies::CopyJob>>,
     level: sirtone_audio::encode::Level,
     progress: &Channel<TransferProgress>,
 ) -> Result<Vec<(PathBuf, String)>, AppError> {
@@ -661,37 +701,56 @@ fn encode_package(
         sirtone_transfer::Manifest::read(out).map_err(|_| fail("transfer.manifest"))?;
     let none = std::sync::atomic::AtomicBool::new(false);
     let total = music.len().max(1);
-    let mut sent = Vec::with_capacity(music.len());
-    for (i, (src, file)) in music.into_iter().enumerate() {
-        let copy_file = sirtone_library::copies::copy_rel_for(&file);
+    let mut left = Vec::new();
+    for (i, ((src, file), job)) in music.into_iter().zip(jobs).enumerate() {
+        let Some(entry) = manifest.tracks.iter_mut().find(|t| t.file == file) else {
+            left.push((src, file));
+            continue;
+        };
+        let id = entry
+            .key
+            .rsplit_once(':')
+            .and_then(|(_, id)| id.parse::<i64>().ok())
+            .unwrap_or(i as i64);
+        let copy_file = sirtone_library::copies::copy_rel_for(&file, id);
         let dst = copy_file
             .split('/')
             .fold(out.to_path_buf(), |p, s| p.join(s));
-        let entry = manifest.tracks.iter_mut().find(|t| t.file == file);
-        let ok = dst.exists() || {
-            let tags = Tags {
-                title: entry.as_ref().and_then(|t| t.title.clone()),
-                artist: entry.as_ref().and_then(|t| t.artist.clone()),
-                album: entry.as_ref().and_then(|t| t.album.clone()),
-            };
-            encode::to_opus(&src, &dst, level, &tags, &none).is_ok()
+        let tags = match &job {
+            Some(j) => Tags {
+                title: Some(j.title.clone()),
+                artist: Some(j.artists.clone()).filter(|a| !a.is_empty()),
+                album: j.album.clone(),
+                album_artist: j.album_artist.clone(),
+                track_no: j.track_no,
+                disc_no: j.disc_no,
+                year: j.year,
+                genre: j.genre.clone(),
+                cover: j.cover.as_ref().and_then(|p| std::fs::read(p).ok()),
+            },
+            None => Tags {
+                title: entry.title.clone(),
+                artist: entry.artist.clone(),
+                album: entry.album.clone(),
+                ..Tags::default()
+            },
         };
-        if ok && let Some(t) = entry {
-            t.file = copy_file.clone();
-            t.size = std::fs::metadata(&dst).map(|m| m.len()).unwrap_or(0);
+        if dst.exists() || encode::to_opus(&src, &dst, level, &tags, &none).is_ok() {
+            entry.file = copy_file;
+            entry.size = std::fs::metadata(&dst).map(|m| m.len()).unwrap_or(0);
             // Another file than the original: the phone must not take it for the same bytes.
-            t.hash = None;
-            t.copy = Some(level.as_str().to_string());
+            entry.hash = None;
+            entry.copy = Some(level.as_str().to_string());
         } else {
             // An unreadable original is sent as is.
-            sent.push((src, file));
+            left.push((src, file));
         }
         let _ = progress.send(TransferProgress {
             fraction: 0.5 * (i + 1) as f32 / total as f32,
         });
     }
     manifest.write(out).map_err(|_| fail("transfer.manifest"))?;
-    Ok(sent)
+    Ok(left)
 }
 
 /// «Отключить телефон»: forgets the phone and, if no other phone uses it, its Apple ID (D-132).
@@ -710,6 +769,128 @@ pub fn phone_forget(hub: State<'_, PhoneHub>, udid: String) -> Result<(), AppErr
         apple::forget(&r.apple_id).map_err(|e| app_error(&e))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod copy_package_tests {
+    use super::*;
+    use sirtone_library::repo::{Identity, NewTrack, artist_get_or_create, track_insert};
+
+    fn wav(path: &std::path::Path) {
+        let (rate, frames) = (44_100u32, 44_100u32);
+        let mut b = Vec::new();
+        b.extend_from_slice(b"RIFF");
+        b.extend_from_slice(&(36 + frames * 2).to_le_bytes());
+        b.extend_from_slice(b"WAVEfmt ");
+        b.extend_from_slice(&16u32.to_le_bytes());
+        b.extend_from_slice(&1u16.to_le_bytes());
+        b.extend_from_slice(&1u16.to_le_bytes());
+        b.extend_from_slice(&rate.to_le_bytes());
+        b.extend_from_slice(&(rate * 2).to_le_bytes());
+        b.extend_from_slice(&2u16.to_le_bytes());
+        b.extend_from_slice(&16u16.to_le_bytes());
+        b.extend_from_slice(b"data");
+        b.extend_from_slice(&(frames * 2).to_le_bytes());
+        for i in 0..frames {
+            b.extend_from_slice(&(((i as f32 * 0.05).sin() * 7_000.0) as i16).to_le_bytes());
+        }
+        std::fs::write(path, b).unwrap();
+    }
+
+    /// Copies go into the package and the manifest says so; a repeat finds them there (nothing
+    /// «missing» from the library); another quality uses its own folder.
+    #[test]
+    fn copies_into_the_package_resume_cleanly() {
+        let base = std::env::temp_dir().join(format!("sirtone-hub-copies-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("lib");
+        std::fs::create_dir_all(root.join("Кино")).unwrap();
+        wav(&root.join("Кино").join("01 Ёлка.wav"));
+        let mut c = sirtone_library::open(
+            &root.join(".sirtone/library.db"),
+            sirtone_library::Medium::Fixed,
+        )
+        .unwrap();
+        let kino = artist_get_or_create(&c, "Кино").unwrap();
+        track_insert(
+            &mut c,
+            &NewTrack {
+                rel_path: "Кино/01 Ёлка.wav".into(),
+                size_bytes: 88_244,
+                mtime_ms: 0,
+                content_hash: "h".into(),
+                container: "wav".into(),
+                codec: "pcm_s16le".into(),
+                lossless: true,
+                sample_rate: Some(44_100),
+                channels: Some(1),
+                duration_ms: 1_000,
+                title: "Ёлка".into(),
+                album_id: None,
+                disc_no: None,
+                track_no: Some(1),
+                year: None,
+                identity: Identity::Inferred,
+                identity_conf: 0.9,
+                unknown_reason: None,
+                artists: vec![kino],
+            },
+        )
+        .unwrap();
+        let parts = sirtone_transfer::Parts {
+            music: true,
+            playlists: true,
+            taste: true,
+            settings: false,
+        };
+        let progress: Channel<TransferProgress> = Channel::new(|_| Ok(()));
+        let level = sirtone_audio::encode::Level::Economy;
+        let out = base.join("out").join(level.as_str());
+        for round in 0..2 {
+            sirtone_sync::export_with(
+                &c,
+                &root,
+                &out,
+                sirtone_transfer::Platform::Windows,
+                "t",
+                parts,
+                false,
+            )
+            .unwrap();
+            let music = sirtone_sync::music_sources(&root, &out).unwrap();
+            assert_eq!(music.len(), if round == 0 { 1 } else { 0 }, "round {round}");
+            let jobs = music.iter().map(|_| None).collect();
+            let left = encode_package(&out, music, jobs, level, &progress).unwrap();
+            assert!(left.is_empty());
+            let m = sirtone_transfer::Manifest::read(&out).unwrap();
+            assert_eq!(m.tracks[0].copy.as_deref(), Some("economy"));
+            assert!(m.tracks[0].file.ends_with(".opus"));
+            let copy = m.tracks[0]
+                .file
+                .split('/')
+                .fold(out.clone(), |p, s| p.join(s));
+            assert!(copy.exists());
+            assert!(m.tracks[0].size > 0 && m.tracks[0].size < 88_244);
+        }
+        // «Оригинал» afterwards: its own folder, the original music, no copy marks.
+        let orig = base.join("out").join("original");
+        sirtone_sync::export_with(
+            &c,
+            &root,
+            &orig,
+            sirtone_transfer::Platform::Windows,
+            "t",
+            parts,
+            false,
+        )
+        .unwrap();
+        let music = sirtone_sync::music_sources(&root, &orig).unwrap();
+        assert_eq!(music.len(), 1);
+        assert!(music[0].0.exists());
+        let m = sirtone_transfer::Manifest::read(&orig).unwrap();
+        assert!(m.tracks[0].copy.is_none());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }
 
 #[cfg(test)]

@@ -56,12 +56,38 @@ impl Level {
     }
 }
 
-/// Text tags carried into the copy (its own player-independent identity).
+/// Tags carried into the copy, so it stands on its own on another device: names, order, year,
+/// genre and the front cover (Vorbis comments, `METADATA_BLOCK_PICTURE`).
 #[derive(Debug, Clone, Default)]
 pub struct Tags {
     pub title: Option<String>,
     pub artist: Option<String>,
     pub album: Option<String>,
+    pub album_artist: Option<String>,
+    pub track_no: Option<u32>,
+    pub disc_no: Option<u32>,
+    pub year: Option<i32>,
+    pub genre: Option<String>,
+    /// JPEG or PNG bytes of the front cover.
+    pub cover: Option<Vec<u8>>,
+}
+
+/// FLAC picture block (type 3, front cover), base64 — how Ogg carries cover art.
+fn picture_block(img: &[u8]) -> String {
+    use base64::Engine as _;
+    let png = img.starts_with(&[0x89, b'P', b'N', b'G']);
+    let mime: &[u8] = if png { b"image/png" } else { b"image/jpeg" };
+    let mut b = Vec::with_capacity(img.len() + 64);
+    b.extend_from_slice(&3u32.to_be_bytes());
+    b.extend_from_slice(&(mime.len() as u32).to_be_bytes());
+    b.extend_from_slice(mime);
+    b.extend_from_slice(&0u32.to_be_bytes()); // description
+    for _ in 0..4 {
+        b.extend_from_slice(&0u32.to_be_bytes()); // width, height, depth, colours: unknown
+    }
+    b.extend_from_slice(&(img.len() as u32).to_be_bytes());
+    b.extend_from_slice(img);
+    base64::engine::general_purpose::STANDARD.encode(b)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -143,14 +169,27 @@ fn opus_head(channels: u8, pre_skip: u16, input_rate: u32) -> Vec<u8> {
 fn opus_tags(tags: &Tags) -> Vec<u8> {
     let vendor = b"SirTone";
     let mut comments: Vec<String> = Vec::new();
+    let numbers = [
+        ("TRACKNUMBER", tags.track_no.map(|n| n.to_string())),
+        ("DISCNUMBER", tags.disc_no.map(|n| n.to_string())),
+        ("DATE", tags.year.map(|y| y.to_string())),
+    ];
     for (k, v) in [
-        ("TITLE", &tags.title),
-        ("ARTIST", &tags.artist),
-        ("ALBUM", &tags.album),
-    ] {
-        if let Some(v) = v.as_deref().filter(|v| !v.is_empty()) {
+        ("TITLE", tags.title.clone()),
+        ("ARTIST", tags.artist.clone()),
+        ("ALBUM", tags.album.clone()),
+        ("ALBUMARTIST", tags.album_artist.clone()),
+        ("GENRE", tags.genre.clone()),
+    ]
+    .into_iter()
+    .chain(numbers)
+    {
+        if let Some(v) = v.filter(|v| !v.is_empty()) {
             comments.push(format!("{k}={v}"));
         }
+    }
+    if let Some(img) = tags.cover.as_deref().filter(|i| !i.is_empty()) {
+        comments.push(format!("METADATA_BLOCK_PICTURE={}", picture_block(img)));
     }
     let mut t = b"OpusTags".to_vec();
     t.extend_from_slice(&(vendor.len() as u32).to_le_bytes());
@@ -380,7 +419,8 @@ mod tests {
         let tags = Tags {
             title: Some("Ёлка".into()),
             artist: Some("Кино".into()),
-            album: None,
+            track_no: Some(3),
+            ..Tags::default()
         };
         let e = to_opus(&src, &dst, Level::Economy, &tags, &AtomicBool::new(false)).unwrap();
         assert!((2_980..=3_020).contains(&e.duration_ms), "{e:?}");

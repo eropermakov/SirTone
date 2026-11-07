@@ -45,11 +45,27 @@ fn level(s: &str) -> Result<Level, CoreError> {
     })
 }
 
+/// What the copy carries so it stands on its own on another device (the PC, a reinstall).
+pub(crate) fn tags_of(j: &copies::CopyJob) -> Tags {
+    Tags {
+        title: Some(j.title.clone()),
+        artist: Some(j.artists.clone()).filter(|a| !a.is_empty()),
+        album: j.album.clone(),
+        album_artist: j.album_artist.clone(),
+        track_no: j.track_no,
+        disc_no: j.disc_no,
+        year: j.year,
+        genre: j.genre.clone(),
+        cover: j.cover.as_ref().and_then(|p| std::fs::read(p).ok()),
+    }
+}
+
 impl Library {
     /// Up to `limit` copies at `level` for tracks with an id above `after`.
     fn copies_batch(&self, lvl: Level, after: i64, limit: u32) -> Result<CopyBatch, CoreError> {
         let root = PathBuf::from(self.root());
-        let jobs = self.with(|c| copies::candidates(c, lvl.kbps(), after, limit.max(1) + 1))?;
+        let jobs =
+            self.with(|c| copies::candidates(c, &root, lvl.kbps(), after, limit.max(1) + 1))?;
         let more = jobs.len() > limit.max(1) as usize;
         let none = AtomicBool::new(false);
         let mut out = CopyBatch {
@@ -61,12 +77,8 @@ impl Library {
         let at = |rel: &str| rel.split('/').fold(root.clone(), |p, s| p.join(s));
         for j in jobs.into_iter().take(limit.max(1) as usize) {
             out.next_after = j.id;
-            let copy_rel = copies::copy_rel_for(&j.rel_path);
-            let tags = Tags {
-                title: Some(j.title.clone()),
-                artist: Some(j.artists.clone()).filter(|a| !a.is_empty()),
-                album: j.album.clone(),
-            };
+            let copy_rel = copies::copy_rel_for(&j.rel_path, j.id);
+            let tags = tags_of(&j);
             match encode::to_opus(&at(&j.rel_path), &at(&copy_rel), lvl, &tags, &none) {
                 Ok(e) => {
                     self.with(|c| copies::set_copy(c, j.id, &copy_rel, e.bytes, lvl.as_str()))?;
@@ -161,6 +173,7 @@ impl Library {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::library::tests::sample;
 
     #[test]
@@ -282,6 +295,70 @@ mod tests {
         assert_eq!(r.new_tracks, 1, "{r:?}");
         let s = pc.storage_info().unwrap();
         assert_eq!((s.copy_only, s.original_only), (1, 0), "{s:?}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A copy keeps the cover and the track order: imported again on its own, it has both.
+    #[test]
+    fn a_copy_carries_cover_and_order() {
+        let base =
+            std::env::temp_dir().join(format!("sirtone-ffi-copy-tags-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let wav = base.join("src.wav");
+        let rate = 44_100u32;
+        let frames = rate;
+        let mut b = Vec::new();
+        b.extend_from_slice(b"RIFF");
+        b.extend_from_slice(&(36 + frames * 2).to_le_bytes());
+        b.extend_from_slice(b"WAVEfmt ");
+        b.extend_from_slice(&16u32.to_le_bytes());
+        b.extend_from_slice(&1u16.to_le_bytes());
+        b.extend_from_slice(&1u16.to_le_bytes());
+        b.extend_from_slice(&rate.to_le_bytes());
+        b.extend_from_slice(&(rate * 2).to_le_bytes());
+        b.extend_from_slice(&2u16.to_le_bytes());
+        b.extend_from_slice(&16u16.to_le_bytes());
+        b.extend_from_slice(b"data");
+        b.extend_from_slice(&(frames * 2).to_le_bytes());
+        for i in 0..frames {
+            b.extend_from_slice(&(((i as f32 * 0.05).sin() * 7_000.0) as i16).to_le_bytes());
+        }
+        std::fs::write(&wav, &b).unwrap();
+        let mut png = Vec::new();
+        image::RgbImage::from_pixel(32, 32, image::Rgb([200, 30, 40]))
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        let tags = Tags {
+            title: Some("Звезда по имени Солнце".into()),
+            artist: Some("Кино".into()),
+            album: Some("Звезда по имени Солнце".into()),
+            album_artist: Some("Кино".into()),
+            track_no: Some(1),
+            year: Some(1989),
+            cover: Some(png),
+            ..Tags::default()
+        };
+        let copy = base.join("Кино - Звезда.opus");
+        encode::to_opus(&wav, &copy, Level::Economy, &tags, &AtomicBool::new(false)).unwrap();
+        let lib =
+            crate::library::Library::open(base.join("lib").to_string_lossy().into_owned()).unwrap();
+        lib.import_files(vec![copy.to_string_lossy().into_owned()])
+            .unwrap();
+        let t = lib.tracks(None, 10).unwrap().tracks;
+        assert_eq!(t[0].title, "Звезда по имени Солнце");
+        assert!(
+            lib.track_cover(t[0].id).is_some(),
+            "the cover came with the copy"
+        );
+        let no: Option<i64> = lib
+            .with(|c| {
+                c.query_row("SELECT track_no FROM track WHERE id = ?1", [t[0].id], |r| {
+                    r.get(0)
+                })
+            })
+            .unwrap();
+        assert_eq!(no, Some(1));
         let _ = std::fs::remove_dir_all(&base);
     }
 }

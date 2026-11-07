@@ -33,7 +33,7 @@ use sirtone_audio::{EngineCmd, EngineEvent, PlayState};
 
 fn usage() -> ExitCode {
     eprintln!(
-        "sirtone-cli {}\nusage: sirtone-cli probe <file>... | play <file> [--volume 0..1] | render <file>... --out <wav> [--rate N] [--volume V] | soak --minutes N [--volume V] <file>... | latency [--runs N] <file> | drift --minutes N <file> | import <root> [src]... | verify <root> | wave calendar <year> | wave coverage <library.db copy> [days] | smtc [toggle <title>] | fuzz --minutes N [--out DIR]",
+        "sirtone-cli {}\nusage: sirtone-cli probe <file>... | play <file> [--volume 0..1] | render <file>... --out <wav> [--rate N] [--volume V] | soak --minutes N [--volume V] <file>... | latency [--runs N] <file> | drift --minutes N <file> | import <root> [src]... | verify <root> | wave calendar <year> | wave coverage <library.db copy> [days] | smtc [toggle <title>] | fuzz --minutes N [--out DIR] | transfer export|import ... | phone list|wifi-find | phone login|adopt|forget <apple-id> | phone install <apple-id> <udid|usb> <app> | phone renew <apple-id> <udid|usb> | phone wifi-pair|send|pull-library <udid|usb> ... | phone bonjour <_svc._tcp.local>",
         env!("CARGO_PKG_VERSION")
     );
     ExitCode::from(2)

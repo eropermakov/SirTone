@@ -33,7 +33,8 @@ struct Artwork: View {
         .task(id: hash) {
             image = nil
             guard let hash, let lib = app.library else { return }
-            let px = UInt32(size * UIScreen.main.scale)
+            // «Только музыка»: small pictures only (less decoding, less memory).
+            let px = app.musicOnly ? 128 : UInt32(size * UIScreen.main.scale)
             image = await Task.detached {
                 lib.coverPath(hash: hash, size: px).flatMap { UIImage(contentsOfFile: $0) }
             }.value
