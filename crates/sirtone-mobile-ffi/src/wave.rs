@@ -29,6 +29,40 @@ impl Clock for PhoneClock {
     }
 }
 
+/// «Настроить волну» on the phone (MR S07; the compact four blocks of D-130): keys as on the PC
+/// (`activity`: workout, sleep, work, road, rest, party; `frequency`: loved, often, forgotten;
+/// `mood`: upbeat, happy, calm, sad; `language`: ru, foreign, none). Empty — no filter.
+#[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
+pub struct WaveTuning {
+    pub activity: Vec<String>,
+    pub frequency: Vec<String>,
+    pub mood: Vec<String>,
+    pub language: Vec<String>,
+}
+
+/// «Подходит N треков»; `relaxed` — too few, the wave widens the filters itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct TuningCount {
+    pub tracks: u32,
+    pub relaxed: bool,
+}
+
+fn query(t: &WaveTuning) -> Result<sirtone_wave::query::WaveQuery, CoreError> {
+    use sirtone_wave::query::{Activity, Freq, Lang, Mood, WaveQuery};
+    fn keys<T>(v: &[String], parse: fn(&str) -> Option<T>) -> Result<Vec<T>, CoreError> {
+        v.iter()
+            .map(|k| parse(k).ok_or_else(|| wave_err("wave.tuning")))
+            .collect()
+    }
+    Ok(WaveQuery {
+        activity: keys(&t.activity, Activity::from_key)?,
+        frequency: keys(&t.frequency, Freq::from_key)?,
+        mood: keys(&t.mood, Mood::from_key)?,
+        language: keys(&t.language, Lang::from_key)?,
+        ..WaveQuery::default()
+    })
+}
+
 fn wave_err(code: &str) -> CoreError {
     CoreError::Failed { code: code.into() }
 }
@@ -173,6 +207,38 @@ impl Wave {
         Ok(())
     }
 
+    /// «Настроить волну»: the filters for this session, at once (the app drops the wave's queued
+    /// picks and asks again). Returns what matches now.
+    pub fn tune(&self, tuning: WaveTuning) -> Result<TuningCount, CoreError> {
+        let q = query(&tuning)?;
+        let now = PhoneClock { offset_min: 0 }.now_utc_ms();
+        let mut e = self
+            .engine
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (n, relaxed) = e.query_count(&q, now);
+        e.set_query(q, now);
+        Ok(TuningCount {
+            tracks: u32::try_from(n).unwrap_or(u32::MAX),
+            relaxed,
+        })
+    }
+
+    /// The live «Подходит N треков» while choosing, without changing the wave.
+    pub fn tuning_count(&self, tuning: WaveTuning) -> Result<TuningCount, CoreError> {
+        let q = query(&tuning)?;
+        let now = PhoneClock { offset_min: 0 }.now_utc_ms();
+        let (n, relaxed) = self
+            .engine
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .query_count(&q, now);
+        Ok(TuningCount {
+            tracks: u32::try_from(n).unwrap_or(u32::MAX),
+            relaxed,
+        })
+    }
+
     /// «Почему этот трек» (FR-LEARN-009): reason codes for the app to word — `liked`, `taste`,
     /// `session`, `new`, `forgotten`, `for_all`, `genre:<0..5>`, `context:<daypart>`,
     /// `season:<0..3>`.
@@ -233,6 +299,24 @@ mod tests {
         assert_eq!(rows, 2);
         wave.not_now(ids[0], 180).unwrap();
         let _ = wave.why(ids[0]);
+        // «Настроить волну»: no filter counts everything, a filter narrows or widens itself,
+        // an unknown key is refused, and the wave keeps playing after tuning.
+        let all_n = wave.tuning_count(WaveTuning::default()).unwrap().tracks;
+        assert!(all_n >= ids.len() as u32);
+        let liked = WaveTuning {
+            frequency: vec!["loved".into()],
+            ..WaveTuning::default()
+        };
+        let c = wave.tune(liked).unwrap();
+        assert!(c.tracks <= all_n);
+        assert!(!wave.next(1, 0.5, 180).unwrap().is_empty());
+        assert!(
+            wave.tune(WaveTuning {
+                mood: vec!["furious".into()],
+                ..WaveTuning::default()
+            })
+            .is_err()
+        );
         drop(wave);
         drop(lib);
         let _ = std::fs::remove_dir_all(&dir);

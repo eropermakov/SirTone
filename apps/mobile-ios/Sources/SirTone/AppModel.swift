@@ -32,6 +32,9 @@ final class AppModel: ObservableObject {
     @AppStorage("addQuality") var addQuality = "original"
     /// «Только музыка» (D-147): the switch, and «вместе с энергосбережением iPhone».
     @AppStorage("musicOnly") var musicOnlySwitch = false
+    /// «Настроить волну» (S07), kept until «Сбросить» as on the PC.
+    @AppStorage("waveTuning") private var tuningStored = ""
+    var tuning: WaveTuning { WaveTuning(stored: tuningStored) }
     @AppStorage("musicOnlyWithLowPower") var musicOnlyWithLowPower = true
     /// Files waiting for the person to choose their quality («Поделиться», «Открыть в»).
     @Published var pendingImport: [URL] = []
@@ -86,6 +89,7 @@ final class AppModel: ObservableObject {
                 guard let lib = try? Library.open(root: path) else { return nil }
                 return (lib, try? Wave.start(library: lib))
             }.value
+            if let w = made?.1 { _ = try? w.tune(tuning: tuning) }
             guard let (lib, wave) = made else { return }
             library = lib
             self.wave = wave
@@ -179,6 +183,22 @@ final class AppModel: ObservableObject {
             : L.t("import.done", Int(s.added), Int(s.unknown))
     }
 
+    /// «Настроить волну»: applies at once — the wave's queued picks are asked again.
+    func setTuning(_ t: WaveTuning) {
+        tuningStored = t.stored
+        objectWillChange.send()
+        guard let wave else { return }
+        _ = try? wave.tune(tuning: t)
+        playback.retune()
+    }
+
+    /// «Подходит N треков» for the current choice.
+    func tuningCount() async -> TuningCount? {
+        guard let wave else { return nil }
+        let t = tuning
+        return await Task.detached { try? wave.tuningCount(tuning: t) }.value
+    }
+
     /// Twice a second while importing: the core counts without its lock, so this never waits.
     private func watchWork() {
         workTask?.cancel()
@@ -229,6 +249,7 @@ final class AppModel: ObservableObject {
         }
         if moved > 0 || !dropped.isEmpty {
             if let w = await Task.detached(operation: { try? Wave.start(library: lib) }).value {
+                _ = try? w.tune(tuning: tuning)
                 wave = w
             }
             await refresh()

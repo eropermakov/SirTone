@@ -278,6 +278,14 @@ final class Playback: ObservableObject {
         }
     }
 
+    /// «Настроить волну» changed: the wave's picks after the current track are asked again.
+    func retune() {
+        guard waveOn else { return }
+        let keep = (index ?? -1) + 1
+        queue = queue.enumerated().filter { $0.offset < keep || !$0.element.fromWave }.map(\.element)
+        refill(thenPlay: false)
+    }
+
     /// Adds the wave's next picks to the end of the queue.
     private func refill(thenPlay: Bool) {
         guard !refilling, let wave = model?.wave, let lib = model?.library else { return }
