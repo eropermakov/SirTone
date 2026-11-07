@@ -36,6 +36,7 @@ struct RootView: View {
     @Environment(\.colorScheme) private var system
     @Environment(\.scenePhase) private var phase
     @State private var expanded = false
+    @AppStorage("onboarded") private var onboarded = false
 
     var body: some View {
         let p = app.palette(system: system)
@@ -50,6 +51,9 @@ struct RootView: View {
         .modifier(Toast(text: $playback.notice))
         .fullScreenCover(isPresented: $expanded) {
             NowPlayingView().environment(\.palette, p)
+        }
+        .fullScreenCover(isPresented: Binding(get: { !onboarded }, set: { onboarded = !$0 })) {
+            OnboardingView().environment(\.palette, p)
         }
         .onAppear { app.open() }
         .onChange(of: phase) { _, now in if now == .active { app.becameActive() } }

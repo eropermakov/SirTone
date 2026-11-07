@@ -31,6 +31,8 @@ final class Playback: ObservableObject {
     @Published var novelty: Float = 0.5
     /// A short message for the toast (DESIGN.md §9: errors are toasts, never modal).
     @Published var notice: String?
+    /// «Сон» (F09, AT-17): when the music stops; the last 10 minutes fade linearly in dB.
+    @Published private(set) var sleepAt: Date?
 
     var current: Item? { index.flatMap { queue.indices.contains($0) ? queue[$0] : nil } }
     var upNext: ArraySlice<Item> { index.map { queue.dropFirst($0 + 1) } ?? queue[...] }
@@ -160,6 +162,44 @@ final class Playback: ObservableObject {
             positionMs = ms
             updateNowPlaying()
         }
+    }
+
+    // MARK: Sleep (F09)
+
+    private static let fadeSpan: TimeInterval = 600
+    private static let fadeFloorDb: Float = -40
+
+    func sleep(minutes: Int) {
+        sleepAt = Date().addingTimeInterval(TimeInterval(minutes * 60))
+        core.setVolume(volume: 1)
+    }
+
+    /// «+15 мин»: later, and the volume comes back at once.
+    func sleepLater() {
+        guard let at = sleepAt else { return }
+        sleepAt = max(at, Date()).addingTimeInterval(15 * 60)
+        core.setVolume(volume: 1)
+    }
+
+    func sleepCancel() {
+        sleepAt = nil
+        core.setVolume(volume: 1)
+    }
+
+    private func sleepTick() {
+        guard let at = sleepAt else { return }
+        let left = at.timeIntervalSinceNow
+        if left <= 0 {
+            pause()
+            sleepAt = nil
+            core.setVolume(volume: 1)
+            return
+        }
+        guard left < Self.fadeSpan else { return }
+        // Linear in dB from 0 to the floor over the last 10 minutes; the final 30 s at the floor.
+        let t = Float(max(0, left - 30) / (Self.fadeSpan - 30))
+        let db = Self.fadeFloorDb * (1 - t)
+        core.setVolume(volume: powf(10, db / 20))
     }
 
     // MARK: Marks
@@ -303,6 +343,7 @@ final class Playback: ObservableObject {
     }
 
     private func tick() {
+        sleepTick()
         guard index != nil else { return }
         positionMs = core.positionMs()
         if playing && core.ended() { next(user: false) }

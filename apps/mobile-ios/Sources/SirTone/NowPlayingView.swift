@@ -158,6 +158,8 @@ struct NowPlayingView: View {
                 .accessibilityLabel(L.t("player.why"))
                 Spacer()
             }
+            SleepMenu()
+            Spacer()
             RoutePicker().frame(width: 44, height: 44)
             Spacer()
             Button { showQueue = true } label: {
@@ -168,6 +170,31 @@ struct NowPlayingView: View {
         .font(.system(size: 20))
         .opacity(0.85)
         .buttonStyle(.plain)
+    }
+}
+
+/// «Сон» (F09): 15–60 minutes; while on — what is left, «+15 мин», cancel.
+private struct SleepMenu: View {
+    @EnvironmentObject private var playback: Playback
+    @Environment(\.palette) private var p
+
+    var body: some View {
+        Menu {
+            if let at = playback.sleepAt {
+                Text(verbatim: L.t("sleep.left", Clock.text(UInt64(max(0, at.timeIntervalSinceNow) * 1000))))
+                Button(L.t("sleep.later")) { playback.sleepLater() }
+                Button(L.t("sleep.cancel"), role: .destructive) { playback.sleepCancel() }
+            } else {
+                ForEach([15, 30, 45, 60], id: \.self) { m in
+                    Button(L.t("sleep.minutes", m)) { playback.sleep(minutes: m) }
+                }
+            }
+        } label: {
+            Image(systemName: playback.sleepAt == nil ? "moon" : "moon.fill")
+                .foregroundStyle(playback.sleepAt == nil ? Color.white : p.accent.text)
+                .frame(width: 44, height: 44)
+        }
+        .accessibilityLabel(L.t("sleep.title"))
     }
 }
 
