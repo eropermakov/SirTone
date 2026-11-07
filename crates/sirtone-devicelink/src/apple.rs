@@ -601,7 +601,10 @@ mod tests {
         ))
         .context("Failed to list developer teams")
         .into_dynamic();
-        assert_eq!(apple_fail("phone.install", &r).code(), "phone.apple_signed_out");
+        assert_eq!(
+            apple_fail("phone.install", &r).code(),
+            "phone.apple_signed_out"
+        );
         let other: rootcause::Report = rootcause::report!("boom");
         assert_eq!(apple_fail("phone.install", &other).code(), "phone.install");
     }
