@@ -178,6 +178,12 @@ pub fn apply_play(
     if !mark_seen(&tx, key)? {
         return Ok(false);
     }
+    // The same play coming back under the other device's key (it was sent there before and
+    // is in its journal now): one play, one row.
+    if echo(&tx, "play_event", track_id, ts, None)? {
+        tx.commit()?;
+        return Ok(false);
+    }
     let e = PlayEvent {
         ts,
         track_id,
@@ -220,6 +226,10 @@ pub fn apply_mark(
     if !mark_seen(&tx, key)? {
         return Ok(false);
     }
+    if echo(&tx, "feedback", track_id, ts, Some(kind))? {
+        tx.commit()?;
+        return Ok(false);
+    }
     let write = match kind {
         "like" | "unlike" => write_like,
         "never" | "unnever" => {
@@ -239,6 +249,31 @@ pub fn apply_mark(
     }
     tx.commit()?;
     Ok(true)
+}
+
+/// A row for this track at exactly this millisecond is already here: the event has travelled
+/// out and back (a package carries every journal row, also those that came from packages).
+fn echo(
+    tx: &Connection,
+    table: &str,
+    track_id: i64,
+    ts: i64,
+    kind: Option<&str>,
+) -> Result<bool, LibraryError> {
+    let sql = match (table, kind) {
+        ("play_event", _) => {
+            "SELECT EXISTS(SELECT 1 FROM play_event WHERE track_id = ?1 AND ts = ?2)"
+        }
+        (_, Some(_)) => {
+            "SELECT EXISTS(SELECT 1 FROM feedback WHERE track_id = ?1 AND ts = ?2 AND kind = ?3)"
+        }
+        _ => return Ok(false),
+    };
+    let found: bool = match kind {
+        Some(k) => tx.query_row(sql, rusqlite::params![track_id, ts, k], |r| r.get(0))?,
+        None => tx.query_row(sql, rusqlite::params![track_id, ts], |r| r.get(0))?,
+    };
+    Ok(found)
 }
 
 #[cfg(test)]
@@ -351,5 +386,38 @@ mod tests {
         assert!(apply_mark(&c, "phone:mark:2", id, 3_000, "never", false).unwrap());
         assert!(crate::feedback::track_state(&c, id).unwrap().never_track);
         assert!(!apply_mark(&c, "phone:mark:2", id, 3_000, "never", false).unwrap());
+
+        // Out and back: the same play and mark under the other device's own keys land nowhere.
+        assert!(
+            !apply_play(
+                &c,
+                "pc:play:77",
+                id,
+                1_000,
+                200_000,
+                287_000,
+                "finished",
+                "wave",
+                &ctx
+            )
+            .unwrap()
+        );
+        assert!(!apply_mark(&c, "pc:mark:9", id, 3_000, "never", false).unwrap());
+        let plays: i64 = c
+            .query_row(
+                "SELECT count(*) FROM play_event WHERE track_id = ?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(plays, 1, "an echo is not a second play");
+        let marks: i64 = c
+            .query_row(
+                "SELECT count(*) FROM feedback WHERE track_id = ?1 AND kind = 'never'",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(marks, 1);
     }
 }
