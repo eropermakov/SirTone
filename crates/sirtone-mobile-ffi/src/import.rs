@@ -87,7 +87,7 @@ impl Library {
     pub fn import_files(&self, paths: Vec<String>) -> Result<ImportSummary, CoreError> {
         let root = PathBuf::from(self.root());
         let sources: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-        self.with(|conn| import_with(conn, &root, &sources))
+        self.with(|conn| import_with(conn, &root, &sources, &self.work))
             .map_err(Into::into)
     }
 }
@@ -97,6 +97,19 @@ pub(crate) fn import_with(
     conn: &mut rusqlite::Connection,
     root: &Path,
     sources: &[PathBuf],
+    work: &crate::library::Work,
+) -> Result<ImportSummary, sirtone_library::LibraryError> {
+    work.set(0, 0);
+    let r = import_batches(conn, root, sources, work);
+    work.set(0, 0);
+    r
+}
+
+fn import_batches(
+    conn: &mut rusqlite::Connection,
+    root: &Path,
+    sources: &[PathBuf],
+    work: &crate::library::Work,
 ) -> Result<ImportSummary, sirtone_library::LibraryError> {
     {
         let root = root.to_path_buf();
@@ -121,7 +134,11 @@ pub(crate) fn import_with(
                 skipped: 0,
             };
             for b in batches {
-                let r = import::run_batch(conn, &root, b, &deps, &cancel, &mut |_| {})?;
+                let r = import::run_batch(conn, &root, b, &deps, &cancel, &mut |e| {
+                    if let import::ImportEvent::Progress { done, total } = e {
+                        work.set(done, total);
+                    }
+                })?;
                 sum.added += r.added;
                 sum.unknown += r.unknown;
                 sum.duplicates += r.duplicates.len() as u64;

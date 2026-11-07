@@ -90,6 +90,33 @@ pub(crate) fn item(t: repo::TrackRow) -> TrackItem {
 pub struct Library {
     root: PathBuf,
     conn: Mutex<Connection>,
+    /// Long work in progress (import, a package from the PC): read without the connection's
+    /// lock, so the app can show it while the core is busy.
+    pub(crate) work: Work,
+}
+
+/// Files done of files to do in the running import; 0 of 0 when idle.
+#[derive(Debug, Default)]
+pub(crate) struct Work {
+    done: std::sync::atomic::AtomicU32,
+    total: std::sync::atomic::AtomicU32,
+}
+
+impl Work {
+    pub(crate) fn set(&self, done: u64, total: u64) {
+        use std::sync::atomic::Ordering::Relaxed;
+        self.total
+            .store(u32::try_from(total).unwrap_or(u32::MAX), Relaxed);
+        self.done
+            .store(u32::try_from(done).unwrap_or(u32::MAX), Relaxed);
+    }
+}
+
+/// What the app shows under «Разбираю…»: `done` of `total` files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct WorkProgress {
+    pub done: u32,
+    pub total: u32,
 }
 
 impl Library {
@@ -117,7 +144,17 @@ impl Library {
         Ok(std::sync::Arc::new(Self {
             root,
             conn: Mutex::new(conn),
+            work: Work::default(),
         }))
+    }
+
+    /// The running import's progress (polled by the app; never waits for the core).
+    pub fn work_progress(&self) -> WorkProgress {
+        use std::sync::atomic::Ordering::Relaxed;
+        WorkProgress {
+            done: self.work.done.load(Relaxed),
+            total: self.work.total.load(Relaxed),
+        }
     }
 
     pub fn root(&self) -> String {

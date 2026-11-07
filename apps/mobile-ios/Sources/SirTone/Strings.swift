@@ -61,7 +61,10 @@ enum L {
         "import.done": "Добавлено %d, в Неизвестных %d",
         "import.nothing": "Ничего нового не нашлось",
         "import.failed": "Не получилось добавить музыку. Попробуйте ещё раз",
-        "transfer.done": "Перенесено с ПК: %d треков",
+        "transfer.done.one": "Перенесено с ПК: %d трек",
+        "transfer.done.few": "Перенесено с ПК: %d трека",
+        "transfer.done.many": "Перенесено с ПК: %d треков",
+        "work.progress": "Добавляю музыку: %d из %d",
         // Search (S03)
         "search.prompt": "Артисты, альбомы, треки",
         "search.recent": "Недавние запросы",

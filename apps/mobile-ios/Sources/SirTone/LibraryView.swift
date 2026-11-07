@@ -70,7 +70,21 @@ struct LibraryView: View {
             }
             .overlay(alignment: .top) {
                 if app.importing {
-                    ProgressView().tint(p.accent.text).padding(M.space2)
+                    if let w = app.work {
+                        VStack(spacing: M.space1) {
+                            ProgressView(value: Double(w.done), total: Double(w.total))
+                                .tint(p.accent.text)
+                            Text(L.t("work.progress", Int(w.done), Int(w.total)))
+                                .font(.sirtone(Ty.caption, relativeTo: .caption))
+                                .foregroundStyle(p.textSecondary)
+                                .monospacedDigit()
+                        }
+                        .padding(M.space2)
+                        .background(p.bgRaised, in: RoundedRectangle(cornerRadius: M.radiusMd))
+                        .padding(M.space2)
+                    } else {
+                        ProgressView().tint(p.accent.text).padding(M.space2)
+                    }
                 }
             }
         }

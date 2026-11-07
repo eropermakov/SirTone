@@ -33,7 +33,7 @@ impl Library {
         let root = PathBuf::from(self.root());
         self.with(|conn| {
             sirtone_sync::apply(conn, Path::new(&dir), &mut |db, files| {
-                crate::import::import_with(db, &root, files)
+                crate::import::import_with(db, &root, files, &self.work)
                     .map(|_| ())
                     .map_err(|e| e.to_string())
             })

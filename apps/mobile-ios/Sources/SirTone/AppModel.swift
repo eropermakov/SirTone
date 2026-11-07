@@ -16,7 +16,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var counts: LibraryCounts?
     /// Bumped after anything changes the library: lists reload.
     @Published private(set) var revision = 0
-    @Published private(set) var importing = false
+    @Published private(set) var importing = false {
+        didSet { if importing != oldValue { watchWork() } }
+    }
+    /// Files done of files to do while the core imports or applies a package from the PC.
+    @Published private(set) var work: WorkProgress?
+    private var workTask: Task<Void, Never>?
 
     let playback = Playback()
 
@@ -174,6 +179,22 @@ final class AppModel: ObservableObject {
             : L.t("import.done", Int(s.added), Int(s.unknown))
     }
 
+    /// Twice a second while importing: the core counts without its lock, so this never waits.
+    private func watchWork() {
+        workTask?.cancel()
+        guard importing, let lib = library else {
+            work = nil
+            return
+        }
+        workTask = Task { [weak self] in
+            while !Task.isCancelled {
+                let w = lib.workProgress()
+                self?.work = w.total > 0 ? w : nil
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+    }
+
     private func pickUp() async {
         guard let lib = library else { return }
         let fm = FileManager.default
@@ -192,7 +213,7 @@ final class AppModel: ObservableObject {
                 try? fm.removeItem(at: p)
             }
         }
-        if moved > 0 { playback.notice = L.t("transfer.done", moved) }
+        if moved > 0 { playback.notice = L.count("transfer.done", moved) }
         // Files dropped into «Входящие»: imported, then removed from there (the library keeps
         // its own copy).
         let dropped = (try? fm.contentsOfDirectory(at: incoming, includingPropertiesForKeys: nil)) ?? []
