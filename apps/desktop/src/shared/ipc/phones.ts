@@ -8,6 +8,7 @@ import {
   type PhoneInfo,
   type PhonesStatus,
   type PullDone,
+  type SendParts,
   type TransferDone,
   type TransferProgress,
   type TwoFactorReply,
@@ -68,10 +69,11 @@ export type Quality = "original" | "economy" | "max";
 export async function sendToPhone(
   udid: string,
   quality: Quality,
+  parts: SendParts,
   onProgress: (f: number) => void,
 ): Promise<TransferDone> {
   const progress = new Channel<TransferProgress>((p) => onProgress(p.fraction ?? 0));
-  return unwrap(await commands.phoneSend(udid, quality, progress));
+  return unwrap(await commands.phoneSend(udid, quality, parts, progress));
 }
 
 export async function forgetPhone(udid: string): Promise<void> {

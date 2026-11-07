@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ErrorCode } from "@/shared/ipc/bindings";
+import type { ErrorCode, LibraryStatus, SendParts } from "@/shared/ipc/bindings";
+import { getStatus } from "@/shared/ipc/library";
 import {
   answerTwoFactor,
   appleLogin,
@@ -19,8 +20,19 @@ import { Skeleton } from "@/shared/ui/Skeleton";
 type Choice = "all" | "pick" | "app";
 const CHOICES: Choice[] = ["all", "pick", "app"];
 const QUALITIES: Quality[] = ["original", "economy", "max"];
-/** «Выбрать» (parts by checkboxes) comes later; «Перенести всё» and «Только приложение» work. */
-const READY: ReadonlySet<Choice> = new Set(["all", "app"]);
+const READY: ReadonlySet<Choice> = new Set(CHOICES);
+type Part = keyof SendParts;
+/** «Выбрать» (MR §6.1 step 5): what can go; «Настройки и тема» do not travel yet. */
+const PARTS: Part[] = ["music", "playlists", "taste"];
+const ALL: SendParts = { music: true, playlists: true, taste: true };
+/** Opus copy rates (D-146), kbit/s — the size estimate before sending. */
+const KBPS: Record<Quality, number | null> = { original: null, economy: 128, max: 64 };
+
+/** The music's size on the phone in the chosen quality, bytes. */
+function musicBytes(status: LibraryStatus, quality: Quality): number {
+  const kbps = KBPS[quality];
+  return kbps === null ? (status.bytes ?? 0) : (status.durationSec * kbps * 1000) / 8;
+}
 
 type Step =
   | { k: "choose" }
@@ -57,16 +69,22 @@ export function PhoneWizard({
   const [step, setStep] = useState<Step>({ k: "choose" });
   const [choice, setChoice] = useState<Choice>("app");
   const [quality, setQuality] = useState<Quality>("original");
+  const [picked, setPicked] = useState<SendParts>(ALL);
+  const [library, setLibrary] = useState<LibraryStatus | null>(null);
+  const parts = choice === "pick" ? picked : ALL;
+  const sends = choice !== "app" && (parts.music || parts.playlists || parts.taste);
   const [appleId, setAppleId] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const alive = useRef(true);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    getStatus()
+      .then((s) => alive.current && setLibrary(s))
+      .catch(() => {});
+    return () => {
       alive.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   const install = () => {
     setStep({ k: "install", fraction: 0 });
@@ -74,11 +92,12 @@ export function PhoneWizard({
     installOnPhone(phone.id, (f) => alive.current && setStep({ k: "install", fraction: f }))
       .then(async () => {
         if (!alive.current) return;
-        if (choice === "all") {
+        if (sends) {
           setStep({ k: "transfer", fraction: 0 });
           await sendToPhone(
             phone.id,
             quality,
+            parts,
             (f) => alive.current && setStep({ k: "transfer", fraction: f }),
           );
         }
@@ -163,7 +182,33 @@ export function PhoneWizard({
               </label>
             ))}
           </fieldset>
-          {choice === "all" && (
+          {choice === "pick" && (
+            <fieldset aria-label={t("phones.parts.title")} className="flex flex-col gap-2">
+              {PARTS.map((part) => (
+                <label
+                  key={part}
+                  className="flex cursor-pointer items-center gap-3 has-focus-visible:outline-2 has-focus-visible:outline-focus-ring"
+                >
+                  <input
+                    type="checkbox"
+                    checked={picked[part]}
+                    onChange={(e) => setPicked({ ...picked, [part]: e.target.checked })}
+                    className="size-4 accent-(--accent-fill)"
+                  />
+                  <span className="t-body text-text-primary">{t(`phones.parts.${part}`)}</span>
+                  {part === "music" && library !== null && (
+                    <span className="t-caption text-text-secondary">
+                      <Size bytes={musicBytes(library, quality)} />
+                    </span>
+                  )}
+                </label>
+              ))}
+              <span className="t-caption text-text-secondary">
+                {t("phones.parts.settingsLater")}
+              </span>
+            </fieldset>
+          )}
+          {choice !== "app" && parts.music && (
             <fieldset aria-label={t("phones.quality.title")} className="flex flex-col gap-2">
               <span className="t-caption text-text-secondary">{t("phones.quality.title")}</span>
               <div className="flex flex-wrap gap-2">
@@ -191,7 +236,12 @@ export function PhoneWizard({
               </div>
             </fieldset>
           )}
-          <Actions primary={t("phones.choose.next")} onPrimary={next} onCancel={onClose} />
+          <Actions
+            primary={t("phones.choose.next")}
+            onPrimary={next}
+            onCancel={onClose}
+            disabled={choice === "pick" && !sends}
+          />
         </>
       )}
 
@@ -411,19 +461,30 @@ export function PhoneWizard({
   );
 }
 
+/** «540 МБ» / «1.2 ГБ» (the collection's own format). */
+function Size({ bytes }: { bytes: number }) {
+  const { t } = useTranslation("shell");
+  const gb = bytes / 1024 ** 3;
+  return gb >= 1
+    ? t("collection.sizeGb", { value: gb.toFixed(1) })
+    : t("collection.sizeMb", { value: Math.round(bytes / 1024 ** 2) });
+}
+
 function Actions({
   primary,
   onPrimary,
   onCancel,
+  disabled = false,
 }: {
   primary: string;
   onPrimary: () => void;
   onCancel: () => void;
+  disabled?: boolean;
 }) {
   const { t } = useTranslation("shell");
   return (
     <div className="flex gap-2">
-      <Button variant="primary" onClick={onPrimary}>
+      <Button variant="primary" onClick={onPrimary} disabled={disabled}>
         {primary}
       </Button>
       <Button variant="ghost" onClick={onCancel}>

@@ -256,6 +256,13 @@
       "economy": "",
       "max": ""
     },
+    "parts": {
+      "title": "What to move",
+      "music": "Music",
+      "playlists": "Playlists",
+      "taste": "Taste and wave",
+      "settingsLater": "Settings and theme — in a later version"
+    },
     "transferring": {
       "title": "",
       "progress": "",

@@ -44,6 +44,22 @@ async function mockTauri(page: Page) {
           }
           case "plugin:event|unlisten":
             return null;
+          case "library_status":
+            return (
+              w.__mockLibrary ?? {
+                root: null,
+                defaultRoot: "D:/Music",
+                tracks: 0,
+                artists: 0,
+                albums: 0,
+                unknown: 0,
+                durationSec: 0,
+                bytes: 0,
+                importing: false,
+                offline: false,
+                goneQuestion: null,
+              }
+            );
           case "app_bootstrap":
             return {
               version: "0.1.2",
@@ -1070,13 +1086,13 @@ test("«Телефоны»: phones the hub sees, trust hint, «Что устан
   await expect(page.getByRole("article", { name: "iPhone", exact: true })).toContainText(
     "«Доверять»",
   );
-  // One Primary per card; it opens step 4 with three choices — transfer comes later (M6).
+  // One Primary per card; it opens step 4 with three choices.
   await mine.getByRole("button", { name: "Установить Сиртон" }).click();
   const choices = mine.getByRole("group", { name: "Что установить?" });
   await expect(choices.getByRole("radio")).toHaveCount(3);
   await expect(choices.getByRole("radio", { name: /Только приложение/ })).toBeChecked();
   await expect(choices.getByRole("radio", { name: /Перенести всё/ })).toBeEnabled();
-  await expect(choices.getByRole("radio", { name: /Выбрать/ })).toBeDisabled();
+  await expect(choices.getByRole("radio", { name: /Выбрать/ })).toBeEnabled();
   await mine.getByRole("button", { name: "Отмена" }).click();
   await expect(mine.getByRole("button", { name: "Установить Сиртон" })).toBeVisible();
   expect((await calls(page, "phones_list")).length).toBeGreaterThan(0);
@@ -1209,6 +1225,72 @@ test("«Телефоны»: «Перенести всё» installs, then moves t
   const sends = await calls(page, "phone_send");
   expect(sends).toHaveLength(1);
   expect((sends[0]?.args as Record<string, unknown> | undefined)?.quality).toBe("economy");
+  expect((sends[0]?.args as Record<string, unknown> | undefined)?.parts).toEqual({
+    music: true,
+    playlists: true,
+    taste: true,
+  });
+});
+
+test("«Телефоны»: «Выбрать» sends only the ticked parts, the music size up front (MR §6.1)", async ({
+  page,
+}) => {
+  await page.addInitScript((phones) => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__mockPhones = phones;
+    w.__mockPhoneAccount = {
+      appleId: "owner@example.com",
+      signedIn: true,
+      loginUntilMs: 1.9e12,
+      installedAtMs: null,
+      worksUntilMs: null,
+      package: true,
+    };
+    w.__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 118,
+      artists: 30,
+      albums: 40,
+      unknown: 0,
+      durationSec: 3600,
+      bytes: 540 * 1024 ** 2,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+  }, ownerPhone);
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Телефоны", exact: true }).click();
+  const card = page.getByRole("article", { name: "iPhone владельца" });
+  await card.getByRole("button", { name: "Установить Сиртон" }).click();
+  await card.getByText("Выбрать", { exact: true }).click();
+  const parts = card.getByRole("group", { name: "Что перенести" });
+  await expect(parts.getByRole("checkbox")).toHaveCount(3);
+  await expect(parts).toContainText("540 МБ");
+  // An hour at «Экономно» is ~55 MB: the estimate follows the quality.
+  await card.getByText("Экономно", { exact: false }).click();
+  await expect(parts).toContainText("55 МБ");
+  // Nothing ticked — nothing to move.
+  for (const name of ["Музыка", "Плейлисты", "Вкусы и волна"]) {
+    await parts.getByRole("checkbox", { name }).uncheck();
+  }
+  await expect(card.getByRole("button", { name: "Дальше" })).toBeDisabled();
+  await parts.getByRole("checkbox", { name: "Плейлисты" }).check();
+  // Without music there is no quality to choose.
+  await expect(card.getByRole("group", { name: "В каком качестве перенести музыку" })).toHaveCount(
+    0,
+  );
+  await card.getByRole("button", { name: "Дальше" }).click();
+  await expect(card.getByText("Включите режим разработчика")).toBeVisible();
+  const sends = await calls(page, "phone_send");
+  expect(sends).toHaveLength(1);
+  expect((sends[0]?.args as Record<string, unknown> | undefined)?.parts).toEqual({
+    music: false,
+    playlists: true,
+    taste: false,
+  });
 });
 
 test("«Телефоны»: «Забрать с телефона» brings the phone's library to the PC (MR §6.2)", async ({

@@ -95,7 +95,7 @@ export const commands = {
 	 *  the app's cache folder, the music sent straight from the library — into the app's inbox on
 	 *  the phone (cable, else Wi-Fi). The app applies it when opened. A repeat resumes.
 	 */
-	phoneSend: (udid: string, quality: string, progress: Channel<TransferProgress>) => typedError<TransferDone, AppError>(__TAURI_INVOKE("phone_send", { udid, quality, progress })),
+	phoneSend: (udid: string, quality: string, parts: SendParts, progress: Channel<TransferProgress>) => typedError<TransferDone, AppError>(__TAURI_INVOKE("phone_send", { udid, quality, parts, progress })),
 	/**
 	 *  «Забрать с телефона» (MR §6.2, FR-HUB-003): the phone's library database is read over the
 	 *  cable or Wi-Fi, its package is written on the PC, only the music this PC does not have is
@@ -934,6 +934,16 @@ export type SearchResults = {
 	vibe: VibeHit | null,
 	/**  Nothing found: the library's closest artists. */
 	suggestions: ArtistItem[],
+};
+
+/**
+ *  What goes to the phone: «Перенести всё» is all three, «Выбрать» the ticked ones (MR §11).
+ *  Settings and theme do not travel yet.
+ */
+export type SendParts = {
+	music: boolean,
+	playlists: boolean,
+	taste: boolean,
 };
 
 /**  «Bit-perfect» / «Ресемплинг 44,1 → 48» / «DSP» (`04` §8). */

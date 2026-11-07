@@ -542,6 +542,28 @@ pub struct TransferDone {
     pub missing: u32,
 }
 
+/// What goes to the phone: «Перенести всё» is all three, «Выбрать» the ticked ones (MR §11).
+/// Settings and theme do not travel yet.
+#[derive(Debug, Clone, Copy, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SendParts {
+    pub music: bool,
+    pub playlists: bool,
+    pub taste: bool,
+}
+
+impl SendParts {
+    /// The package folder's suffix: another choice is another package (a resume keeps its own).
+    fn tag(self) -> String {
+        format!(
+            "m{}p{}t{}",
+            u8::from(self.music),
+            u8::from(self.playlists),
+            u8::from(self.taste)
+        )
+    }
+}
+
 /// «Перенести всё» (M6.2, MR §11): the PC library's package — manifest and journal written to
 /// the app's cache folder, the music sent straight from the library — into the app's inbox on
 /// the phone (cable, else Wi-Fi). The app applies it when opened. A repeat resumes.
@@ -551,6 +573,7 @@ pub async fn phone_send(
     app: AppHandle,
     udid: String,
     quality: String,
+    parts: SendParts,
     progress: Channel<TransferProgress>,
 ) -> Result<TransferDone, AppError> {
     use tauri::Manager as _;
@@ -562,7 +585,7 @@ pub async fn phone_send(
     {
         return Err(AppError::new(ErrorCode::DeviceBusy));
     }
-    let r = send(&app, &udid, &quality, &progress).await;
+    let r = send(&app, &udid, &quality, parts, &progress).await;
     if let Ok(mut s) = hub.installing.lock() {
         s.remove(&udid);
     }
@@ -739,6 +762,7 @@ async fn send(
     app: &AppHandle,
     udid: &str,
     quality: &str,
+    chosen: SendParts,
     progress: &Channel<TransferProgress>,
 ) -> Result<TransferDone, AppError> {
     use sirtone_devicelink::appfiles;
@@ -747,7 +771,11 @@ async fn send(
     let root = lib
         .root()
         .ok_or_else(|| AppError::new(ErrorCode::LibraryRootNotSet))?;
-    let level = sirtone_audio::encode::Level::parse(quality);
+    let level = if chosen.music {
+        sirtone_audio::encode::Level::parse(quality)
+    } else {
+        None
+    };
     // One package folder per quality: a resume continues the same one, a switch starts clean.
     let out = app
         .path()
@@ -755,11 +783,15 @@ async fn send(
         .map_err(|_| AppError::new(ErrorCode::Internal))?
         .join("phone-out")
         .join(appfiles::package_folder(udid))
-        .join(level.map_or("original", |l| l.as_str()));
+        .join(format!(
+            "{}-{}",
+            level.map_or("original", |l| l.as_str()),
+            chosen.tag()
+        ));
     let parts = sirtone_transfer::Parts {
-        music: true,
-        playlists: true,
-        taste: true,
+        music: chosen.music,
+        playlists: chosen.playlists,
+        taste: chosen.taste,
         settings: false,
     };
     let _ = progress.send(TransferProgress { fraction: 0.0 });
@@ -783,6 +815,8 @@ async fn send(
     let manifest = sirtone_transfer::Manifest::read(&out)
         .map_err(|_| AppError::new(ErrorCode::PhoneTransfer).with_details("transfer.manifest"))?;
     let need = match level {
+        // Without music only the manifest and journal go: no music to count.
+        _ if !chosen.music => 0,
         // Opus at a fixed rate: duration × bitrate (+ the small manifest and journal).
         Some(l) => manifest
             .tracks
@@ -797,8 +831,12 @@ async fn send(
             return Err(AppError::new(ErrorCode::PhoneNoSpace));
         }
     }
-    let mut music = sirtone_sync::music_sources(&root, &out)
-        .map_err(|e| AppError::new(ErrorCode::PhoneTransfer).with_details(e.code()))?;
+    let mut music = if chosen.music {
+        sirtone_sync::music_sources(&root, &out)
+            .map_err(|e| AppError::new(ErrorCode::PhoneTransfer).with_details(e.code()))?
+    } else {
+        Vec::new()
+    };
     // «Экономно» / «Максимально» (D-146): the PC makes the Opus copies into the package (faster
     // than the phone, spares its battery); the originals stay untouched.
     if let Some(level) = level {
