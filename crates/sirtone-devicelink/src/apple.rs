@@ -106,6 +106,16 @@ pub(crate) fn short(e: &rootcause::Report) -> String {
         .to_string()
 }
 
+/// An Apple failure under `code`, except a closed session: Apple ends the developer session
+/// (error 1100) long before the stored token's own expiry, and then only a new login helps.
+pub(crate) fn apple_fail(code: &'static str, e: &rootcause::Report) -> LinkError {
+    let full = e.to_string();
+    if full.contains("Developer error 1100") {
+        return LinkError::Apple("phone.apple_signed_out", short(e));
+    }
+    LinkError::Apple(code, short(e))
+}
+
 fn anisette(storage: AccountStorage) -> Result<RemoteV3AnisetteProvider, LinkError> {
     Ok(RemoteV3AnisetteProvider::default()
         .map_err(|e| LinkError::Apple("phone.apple_anisette", short(&e)))?
@@ -374,7 +384,7 @@ pub async fn install(
                 )
                 .await
                 .map(|_| ())
-                .map_err(|e| LinkError::Apple("phone.install", short(&e)))
+                .map_err(|e| apple_fail("phone.install", &e))
         }
         None => {
             Box::pin(install_wifi(
@@ -410,7 +420,7 @@ where
     Fut: Future<Output = ()>,
 {
     let mut tunnel = Box::pin(crate::wifi::open(udid, std::time::Duration::from_secs(10))).await?;
-    let fail = |e: rootcause::Report| LinkError::Apple("phone.install", short(&e));
+    let fail = |e: rootcause::Report| apple_fail("phone.install", &e);
     let team = sideloader.get_team().await.map_err(fail)?;
     let name = tunnel.name.clone().unwrap_or_else(|| "iPhone".into());
     sideloader
@@ -508,7 +518,7 @@ pub async fn renew(apple_id: &str, udid: &str) -> Result<String, LinkError> {
         .storage(Box::new(AccountStorage::new(SERVICE, apple_id)))
         .machine_name(MACHINE.to_string())
         .build();
-    let fail = |code: &'static str| move |e: rootcause::Report| LinkError::Apple(code, short(&e));
+    let fail = |code: &'static str| move |e: rootcause::Report| apple_fail(code, &e);
     let team = sideloader.get_team().await.map_err(fail("phone.renew"))?;
     let wanted = format!("{BUNDLE}.{}", team.team_id);
     let dev = sideloader.get_dev_session();
@@ -581,6 +591,19 @@ mod tests {
         assert_eq!(a.k("token"), b.k("token"));
         assert_ne!(a.k("token"), c.k("token"));
         assert!(!a.k("token").contains("example"), "no e-mail in key names");
+    }
+
+    #[test]
+    fn closed_session_asks_for_login() {
+        let r: rootcause::Report = rootcause::report!(isideload::SideloadError::DeveloperError(
+            1100,
+            "Your session has expired. Please log in.".into()
+        ))
+        .context("Failed to list developer teams")
+        .into_dynamic();
+        assert_eq!(apple_fail("phone.install", &r).code(), "phone.apple_signed_out");
+        let other: rootcause::Report = rootcause::report!("boom");
+        assert_eq!(apple_fail("phone.install", &other).code(), "phone.install");
     }
 
     /// D-132: what the hub shows or logs never carries what a report's attachments hold.
