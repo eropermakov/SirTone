@@ -17,13 +17,15 @@ export interface AccentSet {
   onPrimary: string;
 }
 
-/** Neutral backgrounds the accent must work on (DESIGN.md §3). */
+/** Neutral backgrounds the accent must work on (DESIGN.md §3, palette 2.0 — D-144). */
 export const BACKGROUNDS: Record<Theme, { base: string; layer: string; flyout: string }> = {
-  dark: { base: "#333333", layer: "#3a3a3a", flyout: "#424242" },
-  light: { base: "#f2eee6", layer: "#f9f6f0", flyout: "#fdfcf9" },
+  dark: { base: "#110d0c", layer: "#171211", flyout: "#272020" },
+  light: { base: "#efe9df", layer: "#f7f2ea", flyout: "#fffdf9" },
 };
 export const INK_DARK = "#1c1616";
 export const INK_LIGHT = "#f9f6f0";
+/** `on-primary` of each theme (DESIGN.md §3): text on a `primary` plate, ≥ 7:1. */
+export const ON_PRIMARY: Record<Theme, string> = { dark: "#f3ece2", light: "#f9f6f0" };
 
 export function hexToRgb(hex: string): Rgb {
   const h = hex.replace("#", "");
@@ -145,7 +147,7 @@ export function generateAccentSet(seedHex: string, theme: Theme): AccentSet {
   const accentText = adjustL(hexToOklch(accentFill), theme, (h) => minContrast(h, theme) >= 4.5);
   const deep: Oklch = { l: theme === "dark" ? 0.3 : 0.38, c: Math.min(seed.c, 0.12), h: seed.h };
   let primary = oklchToHex(deep);
-  for (let i = 0; i < 60 && contrast(primary, INK_LIGHT) < 7; i++) {
+  for (let i = 0; i < 60 && contrast(primary, ON_PRIMARY[theme]) < 7; i++) {
     deep.l -= 0.01;
     primary = oklchToHex(deep);
   }
@@ -158,6 +160,6 @@ export function generateAccentSet(seedHex: string, theme: Theme): AccentSet {
     accentOn: inkOn(accentFill),
     primary,
     primaryText,
-    onPrimary: INK_LIGHT,
+    onPrimary: ON_PRIMARY[theme],
   };
 }

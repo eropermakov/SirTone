@@ -20,7 +20,7 @@ test("navigation, theme and colour switch apply instantly", async ({ page }) => 
   await page.getByRole("button", { name: "Настройки" }).click();
   await page.getByRole("button", { name: "Светлая" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(242, 238, 230)");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(239, 233, 223)");
   await page.getByRole("button", { name: "Бордовый" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-accent", "bordeaux");
 });
@@ -38,11 +38,11 @@ test("owner palettes: orange and black & white (D-74)", async ({ page }) => {
   const html = page.locator("html");
   await expect(html).toHaveAttribute("data-palette", "ember");
   await expect(html).toHaveAttribute("data-theme", "dark");
-  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(51, 51, 51)");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(17, 13, 12)");
   await expect(page.getByRole("button", { name: "Синий" })).toBeDisabled();
   await page.getByRole("button", { name: "Чёрно-белая" }).click();
   await expect(html).toHaveAttribute("data-palette", "mono");
-  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(51, 51, 51)");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(17, 13, 12)");
   await page.getByRole("button", { name: "Тёмная" }).click();
   await expect(html).not.toHaveAttribute("data-palette", /./);
   await expect(page.getByRole("button", { name: "Синий" })).toBeEnabled();

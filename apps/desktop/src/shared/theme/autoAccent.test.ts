@@ -3,19 +3,19 @@ import { pickSlug } from "./autoPick";
 
 // Light-theme fills (sirtone.css): enough for the nearest-set step.
 const FILLS: Record<string, string> = {
-  sirkov: "#66bb00",
+  sirkov: "#4e9700",
   blue: "#2c68e7",
   violet: "#6a3df0",
   lilac: "#8a4fd6",
   lavender: "#a86ccf",
   gray: "#6b6b6b",
   black: "#1c1616",
-  yellow: "#ad8103",
-  orange: "#d76b09",
+  yellow: "#ab7f03",
+  orange: "#d36909",
   ginger: "#bf4d09",
   coral: "#e5533d",
   brick: "#b0482c",
-  lightred: "#f05252",
+  lightred: "#eb5050",
   red: "#dc1e20",
   darkred: "#a8121e",
   burgundy: "#8f1d4a",

@@ -44,7 +44,7 @@
 
 | Доля | Роль | В Сиртоне |
 |---|---|---|
-| **60%** | Доминантный нейтральный | Поверхности `bg-base`, `bg-layer`, `bg-raised`, `bg-flyout` — тёплый сигарный (тёмная) / матовый белый (светлая) |
+| **60%** | Доминантный нейтральный | Поверхности `bg-base`, `bg-layer`, `bg-raised`, `bg-flyout` — «ночная студия» (тёмная) / «утренняя бумага» (светлая) |
 | **30%** | Основной (бренд) | **Плашки** `primary`: выбранный пункт навигации, активный чип, бейджи, брендовая панель. Заголовки страниц и полок — `primary-text`. Остальную «тридцатку» отдаём обложкам |
 | **10%** | Акцент (CTA) | `accent-fill`: Play, «Слушать», отмеченный чекбокс, переключатель, счётчик уведомлений. `accent-text`: ссылки, прогресс, индикатор «играет», включённые повтор/перемешать |
 
@@ -54,11 +54,13 @@
 
 | | Тёмная | Светлая |
 |---|---|---|
-| Фон (60%) | Сигарный `#1C1616` | Матовый белый `#F9F6F0` |
-| Основной (30%) | Maroon Oak `#590212` | Maroon `#8C031C` |
-| Акцент (10%) | Неоновый вольт `#CCFF00` | Цифровой лайм `#66BB00` |
-| Текст | Алебастр `#F9F6F0` | Сигарный `#1C1616` |
-| Неактивный | `#3D3535` | `#C2BCB2` |
+| Фон (60%) | «Ночная студия» `#110D0C` (окно) · `#171211` (слой) | «Утренняя бумага» `#EFE9DF` (окно) · `#F7F2EA` (слой) |
+| Основной (30%) | Maroon Oak `#5E0A18` | Maroon `#7E0A1E` |
+| Акцент (10%) | Неоновый вольт `#CCFF00` | Цифровой лайм `#4E9700` (текст и тонкие индикаторы — `#3D7400`) |
+| Текст | Тёплый алебастр `#F3ECE2` | Сигарный `#1C1616` |
+| Неактивный | `#3A302E` | `#CFC7BA` |
+
+Палитра 2.0 (D-144, 2026-11-07): тёмная тема — «ночная студия» (тёплый почти-чёрный), светлая — «утренняя бумага» (тёплая бумажная). Лайм светлой темы уплотнён до ≥ 3:1 к любому фону.
 
 ---
 
@@ -66,25 +68,26 @@
 
 | Токен | Тёмная | Светлая | Где |
 |---|---|---|---|
-| `bg-base` | `#161111` | `#f2eee6` | Фон окна, сайдбара и плеера (под Mica) |
-| `bg-layer` | `#1c1616` | `#f9f6f0` | Фирменный фон Sir.kov (60%): тёмная — сигарный, светлая — матовый белый |
-| `bg-raised` | `#241d1d` | `#fdfcf9` | Карточки-панели — всегда с border и radius-xl, без тени |
-| `bg-flyout` | `#2b2323` | `#fdfcf9` | Меню, контекстные меню, поповеры — с border, shadow-flyout, radius-lg |
-| `bg-hover` | `rgba(249,246,240,0.07)` | `rgba(28,22,22,0.05)` | Пилюля наведения на пункт меню, сайдбара, строку трека |
-| `bg-selected` | `rgba(249,246,240,0.11)` | `rgba(28,22,22,0.08)` | Выделенная строка трека, подсветка клавиатурой в меню |
-| `inactive` | `#3d3535` | `#c2bcb2` | Фирменный «цвет неактивного» Sir.kov: пустая часть прогресса и слайдеров, неактивные заливки, деликатные линии |
-| `border` | `rgba(249,246,240,0.10)` | `rgba(28,22,22,0.10)` | Обводка 1px у панелей, меню, вторичных кнопок, неактивных чипов |
-| `separator` | `rgba(249,246,240,0.10)` | `rgba(28,22,22,0.09)` | Разделитель в меню с отступами 12px; линия над плеером |
-| `text-primary` | `#f9f6f0` | `#1c1616` | Основной текст |
-| `text-secondary` | `#c4bbb5` | `#5c5351` | Исполнитель, подписи, значения справа в меню, заголовки групп |
-| `text-tertiary` | `#a39994` | `#6f6563` | Таймкоды, длительности, горячие клавиши, выполненные пункты |
-| `icon` | `#c4bbb5` | `#5c5351` | Контурные иконки 20px |
-| `focus-ring` | `#f9f6f0` | `#1c1616` | Кольцо фокуса 2px с отступом 2px |
-| `artwork-placeholder` | `#2b2323` | `#e8e3da` | Пустая обложка до загрузки, скелетоны |
+| `bg-base` | `#110d0c` | `#efe9df` | Фон окна, сайдбара и плеера (под Mica) |
+| `bg-layer` | `#171211` | `#f7f2ea` | Фирменный фон Sir.kov (60%): тёмная — «ночная студия», светлая — «утренняя бумага» |
+| `bg-raised` | `#201918` | `#fffdf9` | Карточки-панели — всегда с border и radius-xl, без тени |
+| `bg-flyout` | `#272020` | `#fffdf9` | Меню, контекстные меню, поповеры — с border, shadow-flyout, radius-lg |
+| `bg-hover` | `rgba(243,236,226,0.07)` | `rgba(28,22,22,0.05)` | Пилюля наведения на пункт меню, сайдбара, строку трека |
+| `bg-selected` | `rgba(243,236,226,0.11)` | `rgba(28,22,22,0.08)` | Выделенная строка трека, подсветка клавиатурой в меню |
+| `inactive` | `#3a302e` | `#cfc7ba` | Фирменный «цвет неактивного» Sir.kov: пустая часть прогресса и слайдеров, неактивные заливки, деликатные линии |
+| `border` | `rgba(243,236,226,0.10)` | `rgba(28,22,22,0.10)` | Обводка 1px у панелей, меню, вторичных кнопок, неактивных чипов |
+| `separator` | `rgba(243,236,226,0.08)` | `rgba(28,22,22,0.09)` | Разделитель в меню с отступами 12px; линия над плеером |
+| `text-primary` | `#f3ece2` | `#1c1616` | Основной текст |
+| `text-secondary` | `#b8aea6` | `#5c5351` | Исполнитель, подписи, значения справа в меню, заголовки групп |
+| `text-tertiary` | `#9c918b` | `#6f6563` | Таймкоды, длительности, горячие клавиши, выполненные пункты |
+| `icon` | `#b8aea6` | `#5c5351` | Контурные иконки 20px |
+| `focus-ring` | `#f3ece2` | `#1c1616` | Кольцо фокуса 2px с отступом 2px |
+| `artwork-placeholder` | `#272020` | `#e6dfd3` | Пустая обложка до загрузки, скелетоны |
 | `artwork-scrim` | `rgba(0,0,0,0.45)` | `rgba(0,0,0,0.45)` | Затемнение на обложке при наведении |
 | `danger` | `#ff6b6b` | `#c62828` | Деструктивные действия и ошибки |
+| `on-primary` | `#f3ece2` | `#f9f6f0` | Текст и иконки на плашке `primary` (≥ 7:1 к любой плашке) |
 
-`inactive` — фирменный «цвет неактивного»: пустые дорожки прогресса и слайдеров, неактивные заливки, деликатные линии. **Для текста не использовать** (1.5–1.8:1) — подписи берут `text-secondary` / `text-tertiary`.
+`inactive` — фирменный «цвет неактивного»: пустые дорожки прогресса и слайдеров, неактивные заливки, деликатные линии. **Для текста не использовать** (1.25:1 в тёмной, 1.4:1 в светлой) — подписи берут `text-secondary` / `text-tertiary`.
 
 ---
 
@@ -101,43 +104,68 @@
 | `accent-on` | Текст/иконка поверх `accent-fill` |
 | `primary` | Плашки (30%) |
 | `primary-text` | Заголовки страниц и полок, иконки разделов |
-| `on-primary` | Текст/иконка на плашке — всегда алебастр `#F9F6F0` |
+| `on-primary` | Текст/иконка на плашке — светлый тон темы: `#F3ECE2` в тёмной, `#F9F6F0` в светлой |
 
 Пользователь выбирает цвет → в эти токены подставляется набор этого цвета для текущей темы. Для пресета Sir.kov основной — фирменный Maroon, акцент — лайм/вольт. Для любого из 16 цветов акцентом становится сам цвет, а основным — его глубокий тон того же оттенка. Компонент никогда не обращается к конкретному цвету палитры напрямую (исключение — AccentPicker).
 
-**Правило толщины:** тонкое (≤ 4px, текст, ссылки) — всегда `accent-text`; крупное (кнопки, кружки ≥ 22px) — `accent-fill`. Так контраст гарантирован даже у бледных заливок вроде лайма в светлой теме.
+**Правило толщины:** тонкое (≤ 4px, текст, ссылки) — всегда `accent-text`; крупное (кнопки, кружки ≥ 22px) — `accent-fill`. Так контраст текста гарантирован при любом цвете, даже если заливка проходит только порог 3:1.
 
 ### Палитра (17 наборов, рассчитаны и проверены на контраст)
 
-Гарантии: `-fill` ≥ 3:1 к фону (кроме фирменного лайма в светлой — 2.2:1, сознательно сохранён ради бренда); `-text` и `-primary-text` ≥ 4.5:1 к `bg-base`, `bg-layer`, `bg-flyout`; `-on` ≥ 4.5:1 к своей заливке; `on-primary` ≥ 7.4:1 к любой плашке.
+Гарантии — **без исключений** (D-144): `-fill` ≥ 3:1, `-text` и `-primary-text` ≥ 4.5:1 к `bg-base`, `bg-layer` и `bg-flyout`; `-on` ≥ 4.5:1 к своей заливке; `on-primary` ≥ 7:1 к любой плашке. Проверяет тест `color.test.ts`.
 
 | slug | Цвет | Тёмная: fill · text · on · primary · primary-text | Светлая: fill · text · on · primary · primary-text |
 |---|---|---|---|
-| `sirkov` | Sir.kov | `#ccff00` · `#ccff00` · `#1c1616` · `#590212` · `#ce7273` | `#66bb00` · `#407a00` · `#1c1616` · `#8c031c` · `#8c031c` |
-| `lilac` | Лиловый | `#b98cf0` · `#b98cf0` · `#1c1616` · `#381b5b` · `#9a7fc8` | `#8a4fd6` · `#874cd3` · `#f9f6f0` · `#5b3291` · `#5b3291` |
-| `coral` | Коралловый | `#ff8a73` · `#ff8a73` · `#1c1616` · `#590c03` · `#ca7565` | `#e5533d` · `#c5341f` · `#1c1616` · `#8d1c0d` · `#8d1c0d` |
-| `blue` | Синий | `#6fa0ff` · `#6fa0ff` · `#1c1616` · `#0d2964` · `#688ccf` | `#2c68e7` · `#2662e0` · `#f9f6f0` · `#1d469d` · `#1d469d` |
-| `gray` | Серый | `#a3a3a3` · `#a3a3a3` · `#1c1616` · `#342b2b` · `#f9f6f0` | `#6b6b6b` · `#6b6b6b` · `#f9f6f0` · `#534b4b` · `#1c1616` |
+| `sirkov` | Sir.kov | `#ccff00` · `#ccff00` · `#110d0c` · `#5e0a18` · `#e39a8f` | `#4e9700` · `#3d7400` · `#1c1616` · `#7e0a1e` · `#7e0a1e` |
+| `lilac` | Лиловый | `#b98cf0` · `#b98cf0` · `#1c1616` · `#381b5b` · `#9a7fc8` | `#8a4fd6` · `#844acf` · `#f9f6f0` · `#5b3291` · `#5b3291` |
+| `coral` | Коралловый | `#ff8a73` · `#ff8a73` · `#1c1616` · `#590c03` · `#ca7565` | `#e5533d` · `#c4341f` · `#1c1616` · `#8d1c0d` · `#8d1c0d` |
+| `blue` | Синий | `#6fa0ff` · `#6fa0ff` · `#1c1616` · `#0d2964` · `#688ccf` | `#2c68e7` · `#2661df` · `#f9f6f0` · `#1d469d` · `#1d469d` |
+| `gray` | Серый | `#a3a3a3` · `#a3a3a3` · `#1c1616` · `#342b2b` · `#f9f6f0` | `#6b6b6b` · `#696969` · `#f9f6f0` · `#534b4b` · `#1c1616` |
 | `black` | Чёрный | `#f9f6f0` · `#f9f6f0` · `#1c1616` · `#342b2b` · `#f9f6f0` | `#1c1616` · `#1c1616` · `#f9f6f0` · `#534b4b` · `#1c1616` |
-| `red` | Красный | `#ff5a5a` · `#ff5a5a` · `#1c1616` · `#590b0a` · `#ca746a` | `#dc1e20` · `#d50f18` · `#f9f6f0` · `#8d1b18` · `#8d1b18` |
+| `red` | Красный | `#ff5a5a` · `#ff5a5a` · `#1c1616` · `#590b0a` · `#ca746a` | `#dc1e20` · `#d30f18` · `#f9f6f0` · `#8d1b18` · `#8d1b18` |
 | `brick` | Кирпичный | `#d9765a` · `#d9765a` · `#1c1616` · `#561100` · `#c67762` | `#b0482c` · `#b0482c` · `#f9f6f0` · `#8a2302` · `#8a2302` |
 | `violet` | Фиолетовый | `#9b7bff` · `#9b7bff` · `#1c1616` · `#2c2061` · `#8a85cf` | `#6a3df0` · `#6a3df0` · `#f9f6f0` · `#4a3999` · `#4a3999` |
-| `lavender` | Сиреневый | `#d4a8f0` · `#d4a8f0` · `#1c1616` · `#3f1855` · `#a57cc0` | `#a86ccf` · `#8c51b1` · `#1c1616` · `#662d88` · `#662d88` |
-| `orange` | Оранжевый | `#ff9a3d` · `#ff9a3d` · `#1c1616` · `#4b2000` · `#b68263` | `#d76b09` · `#ac5300` · `#1c1616` · `#783904` · `#783904` |
-| `yellow` | Жёлтый | `#f5c842` · `#f5c842` · `#1c1616` · `#3c2b00` · `#9e8a61` | `#ad8103` · `#88650d` · `#1c1616` · `#624802` · `#624802` |
-| `ginger` | Рыжий | `#f08a45` · `#f08a45` · `#1c1616` · `#501a00` · `#bd7d63` | `#bf4d09` · `#b54a0d` · `#f9f6f0` · `#813001` · `#813001` |
-| `darkred` | Тёмно-красный | `#bd2e30` · `#eb5b56` · `#f9f6f0` · `#590a0e` · `#ca736d` | `#a8121e` · `#a8121e` · `#f9f6f0` · `#8d1a1e` · `#8d1a1e` |
-| `lightred` | Светло-красный | `#ff8a8a` · `#ff8a8a` · `#1c1616` · `#590a0f` · `#ca736e` | `#f05252` · `#cc2d35` · `#1c1616` · `#8d1a20` · `#8d1a20` |
-| `burgundy` | Бургунди | `#ac3a61` · `#dc668a` · `#f9f6f0` · `#560929` · `#ca748c` | `#8f1d4a` · `#8f1d4a` · `#f9f6f0` · `#891846` · `#891846` |
-| `bordeaux` | Бордовый | `#a64641` · `#d57069` · `#f9f6f0` · `#590a0d` · `#ca736c` | `#7a1c1c` · `#7a1c1c` · `#f9f6f0` · `#852725` · `#852725` |
+| `lavender` | Сиреневый | `#d4a8f0` · `#d4a8f0` · `#1c1616` · `#3f1855` · `#a57cc0` | `#a86ccf` · `#8b50af` · `#1c1616` · `#662d88` · `#662d88` |
+| `orange` | Оранжевый | `#ff9a3d` · `#ff9a3d` · `#1c1616` · `#4b2000` · `#b68263` | `#d36909` · `#a95100` · `#1c1616` · `#783904` · `#783904` |
+| `yellow` | Жёлтый | `#f5c842` · `#f5c842` · `#1c1616` · `#3c2b00` · `#9e8a61` | `#ab7f03` · `#87640d` · `#1c1616` · `#624802` · `#624802` |
+| `ginger` | Рыжий | `#f08a45` · `#f08a45` · `#1c1616` · `#501a00` · `#bd7d63` | `#bf4d09` · `#b2490d` · `#f9f6f0` · `#813001` · `#813001` |
+| `darkred` | Тёмно-красный | `#c53637` · `#eb5b56` · `#f9f6f0` · `#590a0e` · `#ca736d` | `#a8121e` · `#a8121e` · `#f9f6f0` · `#8d1a1e` · `#8d1a1e` |
+| `lightred` | Светло-красный | `#ff8a8a` · `#ff8a8a` · `#1c1616` · `#590a0f` · `#ca736e` | `#eb5050` · `#c72c34` · `#1c1616` · `#8d1a20` · `#8d1a20` |
+| `burgundy` | Бургунди | `#b54369` · `#dc668a` · `#f9f6f0` · `#560929` · `#ca748c` | `#8f1d4a` · `#8f1d4a` · `#f9f6f0` · `#891846` · `#891846` |
+| `bordeaux` | Бордовый | `#ae4d47` · `#d57069` · `#f9f6f0` · `#590a0d` · `#ca736c` | `#7a1c1c` · `#7a1c1c` · `#f9f6f0` · `#852725` · `#852725` |
+
+### Палитра 2.0: правки (D-144)
+
+Фон сдвинулся, поэтому все 17 наборов пересчитаны скриптом к новым `bg-base`, `bg-layer`, `bg-flyout` обеих тем. Где гарантия не проходила, менялась только светлота (в OKLCH; в светлой теме — масштабированием sRGB к чёрному, чтобы у края охвата не терялась насыщенность). Оттенок держится в пределах 0,3°. Пресеты «Чёрный», «Кирпичный», «Фиолетовый» прошли без правок, остальные — ниже.
+
+| Набор · тема | Токен | Было → стало | Причина | ΔL (OKLab) |
+|---|---|---|---|---|
+| Sir.kov · светлая | fill | `#4f9a00` → `#4e9700` | 2.98 → 3.02 к `bg-base` | −0.008 |
+| Лиловый · светлая | text | `#874cd3` → `#844acf` | < 4.5 к `bg-base` | −0.009 |
+| Коралловый · светлая | text | `#c5341f` → `#c4341f` | < 4.5 | −0.002 |
+| Синий · светлая | text | `#2662e0` → `#2661df` | < 4.5 | −0.003 |
+| Серый · светлая | text | `#6b6b6b` → `#696969` | < 4.5 | −0.007 |
+| Красный · светлая | text | `#d50f18` → `#d30f18` | < 4.5 | −0.004 |
+| Сиреневый · светлая | text | `#8c51b1` → `#8b50af` | < 4.5 | −0.004 |
+| Оранжевый · светлая | text | `#ac5300` → `#a95100` | < 4.5 | −0.008 |
+| Оранжевый · светлая | fill | `#d76b09` → `#d36909` | < 3 | −0.009 |
+| Жёлтый · светлая | text | `#88650d` → `#87640d` | < 4.5 | −0.003 |
+| Жёлтый · светлая | fill | `#ad8103` → `#ab7f03` | < 3 | −0.006 |
+| Рыжий · светлая | text | `#b54a0d` → `#b2490d` | < 4.5 | −0.006 |
+| Светло-красный · светлая | text | `#cc2d35` → `#c72c34` | < 4.5 | −0.010 |
+| Светло-красный · светлая | fill | `#f05252` → `#eb5050` | < 3 | −0.010 |
+| Тёмно-красный · тёмная | fill | `#bd2e30` → `#c53637` | < 3 к `bg-flyout` | +0.022 |
+| Бургунди · тёмная | fill | `#ac3a61` → `#b54369` | < 3 к `bg-flyout` | +0.027 |
+| Бордовый · тёмная | fill | `#a64641` → `#ae4d47` | < 3 к `bg-flyout` | +0.024 |
 
 ### Особые случаи
 
-- **Sir.kov / светлая:** лайм `#66BB00` идёт заливкой только с тёмным содержимым `#1C1616`; ссылки и прогресс — `#407A00`.
+- **Sir.kov / светлая:** лайм `#4E9700` — заливка ≥ 3:1 к любому фону (исключения 2.2:1 больше нет), содержимое на нём — тёмное `#1C1616`; ссылки и прогресс — `#3D7400`.
+- **Sir.kov / тёмная:** содержимое на вольте — фон окна `#110D0C`.
 - **Чёрный** в тёмной теме — алебастр с тёмным содержимым, иначе исчез бы.
 - **Серый и Чёрный** — монохромные режимы, их плашки — тёплый тёмно-серый.
 - **Тёмно-красный, Бургунди, Бордовый** в тёмной теме остаются глубокими с алебастровым содержимым, не высветляются до розового.
-- Содержимое на заливке выбирается между `#1C1616` и `#F9F6F0` по контрасту — всегда бери `accent-on`, не хардкодь.
+- Содержимое на заливке выбирается между `#1C1616` и `#F9F6F0` (у Sir.kov в тёмной — `#110D0C`) по контрасту — всегда бери `accent-on`, не хардкодь.
 
 ### Авто-режим (цвет из обложки)
 
@@ -367,34 +395,34 @@
 
 /* Нейтрали: тёмная — по умолчанию */
 :root, [data-theme="dark"] {
-  --bg-base: #161111;
-  --bg-layer: #1c1616;
-  --bg-raised: #241d1d;
-  --bg-flyout: #2b2323;
-  --bg-hover: rgba(249,246,240,0.07);
-  --bg-selected: rgba(249,246,240,0.11);
-  --inactive: #3d3535;
-  --border: rgba(249,246,240,0.10);
-  --separator: rgba(249,246,240,0.10);
-  --text-primary: #f9f6f0;
-  --text-secondary: #c4bbb5;
-  --text-tertiary: #a39994;
-  --icon: #c4bbb5;
-  --focus-ring: #f9f6f0;
-  --artwork-placeholder: #2b2323;
+  --bg-base: #110d0c;
+  --bg-layer: #171211;
+  --bg-raised: #201918;
+  --bg-flyout: #272020;
+  --bg-hover: rgba(243,236,226,0.07);
+  --bg-selected: rgba(243,236,226,0.11);
+  --inactive: #3a302e;
+  --border: rgba(243,236,226,0.10);
+  --separator: rgba(243,236,226,0.08);
+  --text-primary: #f3ece2;
+  --text-secondary: #b8aea6;
+  --text-tertiary: #9c918b;
+  --icon: #b8aea6;
+  --focus-ring: #f3ece2;
+  --artwork-placeholder: #272020;
   --artwork-scrim: rgba(0,0,0,0.45);
   --danger: #ff6b6b;
-  --on-primary: #f9f6f0;
+  --on-primary: #f3ece2;
 }
 
 [data-theme="light"] {
-  --bg-base: #f2eee6;
-  --bg-layer: #f9f6f0;
-  --bg-raised: #fdfcf9;
-  --bg-flyout: #fdfcf9;
+  --bg-base: #efe9df;
+  --bg-layer: #f7f2ea;
+  --bg-raised: #fffdf9;
+  --bg-flyout: #fffdf9;
   --bg-hover: rgba(28,22,22,0.05);
   --bg-selected: rgba(28,22,22,0.08);
-  --inactive: #c2bcb2;
+  --inactive: #cfc7ba;
   --border: rgba(28,22,22,0.10);
   --separator: rgba(28,22,22,0.09);
   --text-primary: #1c1616;
@@ -402,51 +430,51 @@
   --text-tertiary: #6f6563;
   --icon: #5c5351;
   --focus-ring: #1c1616;
-  --artwork-placeholder: #e8e3da;
+  --artwork-placeholder: #e6dfd3;
   --artwork-scrim: rgba(0,0,0,0.45);
   --danger: #c62828;
   --on-primary: #f9f6f0;
 }
 
-/* Цвет пользователя → 5 активных токенов (+ on-primary общий). По умолчанию data-accent="sirkov" */
-[data-theme="dark"][data-accent="sirkov"], :root:not([data-theme])[data-accent="sirkov"] { --accent-fill: #ccff00; --accent-text: #ccff00; --accent-on: #1c1616; --primary: #590212; --primary-text: #ce7273; } /* Sir.kov */
-[data-theme="light"][data-accent="sirkov"] { --accent-fill: #66bb00; --accent-text: #407a00; --accent-on: #1c1616; --primary: #8c031c; --primary-text: #8c031c; } /* Sir.kov */
+/* Цвет пользователя → 5 активных токенов (+ on-primary из нейтралей темы). По умолчанию data-accent="sirkov" */
+[data-theme="dark"][data-accent="sirkov"], :root:not([data-theme])[data-accent="sirkov"] { --accent-fill: #ccff00; --accent-text: #ccff00; --accent-on: #110d0c; --primary: #5e0a18; --primary-text: #e39a8f; } /* Sir.kov */
+[data-theme="light"][data-accent="sirkov"] { --accent-fill: #4e9700; --accent-text: #3d7400; --accent-on: #1c1616; --primary: #7e0a1e; --primary-text: #7e0a1e; } /* Sir.kov */
 [data-theme="dark"][data-accent="lilac"], :root:not([data-theme])[data-accent="lilac"] { --accent-fill: #b98cf0; --accent-text: #b98cf0; --accent-on: #1c1616; --primary: #381b5b; --primary-text: #9a7fc8; } /* Лиловый */
-[data-theme="light"][data-accent="lilac"] { --accent-fill: #8a4fd6; --accent-text: #874cd3; --accent-on: #f9f6f0; --primary: #5b3291; --primary-text: #5b3291; } /* Лиловый */
+[data-theme="light"][data-accent="lilac"] { --accent-fill: #8a4fd6; --accent-text: #844acf; --accent-on: #f9f6f0; --primary: #5b3291; --primary-text: #5b3291; } /* Лиловый */
 [data-theme="dark"][data-accent="coral"], :root:not([data-theme])[data-accent="coral"] { --accent-fill: #ff8a73; --accent-text: #ff8a73; --accent-on: #1c1616; --primary: #590c03; --primary-text: #ca7565; } /* Коралловый */
-[data-theme="light"][data-accent="coral"] { --accent-fill: #e5533d; --accent-text: #c5341f; --accent-on: #1c1616; --primary: #8d1c0d; --primary-text: #8d1c0d; } /* Коралловый */
+[data-theme="light"][data-accent="coral"] { --accent-fill: #e5533d; --accent-text: #c4341f; --accent-on: #1c1616; --primary: #8d1c0d; --primary-text: #8d1c0d; } /* Коралловый */
 [data-theme="dark"][data-accent="blue"], :root:not([data-theme])[data-accent="blue"] { --accent-fill: #6fa0ff; --accent-text: #6fa0ff; --accent-on: #1c1616; --primary: #0d2964; --primary-text: #688ccf; } /* Синий */
-[data-theme="light"][data-accent="blue"] { --accent-fill: #2c68e7; --accent-text: #2662e0; --accent-on: #f9f6f0; --primary: #1d469d; --primary-text: #1d469d; } /* Синий */
+[data-theme="light"][data-accent="blue"] { --accent-fill: #2c68e7; --accent-text: #2661df; --accent-on: #f9f6f0; --primary: #1d469d; --primary-text: #1d469d; } /* Синий */
 [data-theme="dark"][data-accent="gray"], :root:not([data-theme])[data-accent="gray"] { --accent-fill: #a3a3a3; --accent-text: #a3a3a3; --accent-on: #1c1616; --primary: #342b2b; --primary-text: #f9f6f0; } /* Серый */
-[data-theme="light"][data-accent="gray"] { --accent-fill: #6b6b6b; --accent-text: #6b6b6b; --accent-on: #f9f6f0; --primary: #534b4b; --primary-text: #1c1616; } /* Серый */
+[data-theme="light"][data-accent="gray"] { --accent-fill: #6b6b6b; --accent-text: #696969; --accent-on: #f9f6f0; --primary: #534b4b; --primary-text: #1c1616; } /* Серый */
 [data-theme="dark"][data-accent="black"], :root:not([data-theme])[data-accent="black"] { --accent-fill: #f9f6f0; --accent-text: #f9f6f0; --accent-on: #1c1616; --primary: #342b2b; --primary-text: #f9f6f0; } /* Чёрный */
 [data-theme="light"][data-accent="black"] { --accent-fill: #1c1616; --accent-text: #1c1616; --accent-on: #f9f6f0; --primary: #534b4b; --primary-text: #1c1616; } /* Чёрный */
 [data-theme="dark"][data-accent="red"], :root:not([data-theme])[data-accent="red"] { --accent-fill: #ff5a5a; --accent-text: #ff5a5a; --accent-on: #1c1616; --primary: #590b0a; --primary-text: #ca746a; } /* Красный */
-[data-theme="light"][data-accent="red"] { --accent-fill: #dc1e20; --accent-text: #d50f18; --accent-on: #f9f6f0; --primary: #8d1b18; --primary-text: #8d1b18; } /* Красный */
+[data-theme="light"][data-accent="red"] { --accent-fill: #dc1e20; --accent-text: #d30f18; --accent-on: #f9f6f0; --primary: #8d1b18; --primary-text: #8d1b18; } /* Красный */
 [data-theme="dark"][data-accent="brick"], :root:not([data-theme])[data-accent="brick"] { --accent-fill: #d9765a; --accent-text: #d9765a; --accent-on: #1c1616; --primary: #561100; --primary-text: #c67762; } /* Кирпичный */
 [data-theme="light"][data-accent="brick"] { --accent-fill: #b0482c; --accent-text: #b0482c; --accent-on: #f9f6f0; --primary: #8a2302; --primary-text: #8a2302; } /* Кирпичный */
 [data-theme="dark"][data-accent="violet"], :root:not([data-theme])[data-accent="violet"] { --accent-fill: #9b7bff; --accent-text: #9b7bff; --accent-on: #1c1616; --primary: #2c2061; --primary-text: #8a85cf; } /* Фиолетовый */
 [data-theme="light"][data-accent="violet"] { --accent-fill: #6a3df0; --accent-text: #6a3df0; --accent-on: #f9f6f0; --primary: #4a3999; --primary-text: #4a3999; } /* Фиолетовый */
 [data-theme="dark"][data-accent="lavender"], :root:not([data-theme])[data-accent="lavender"] { --accent-fill: #d4a8f0; --accent-text: #d4a8f0; --accent-on: #1c1616; --primary: #3f1855; --primary-text: #a57cc0; } /* Сиреневый */
-[data-theme="light"][data-accent="lavender"] { --accent-fill: #a86ccf; --accent-text: #8c51b1; --accent-on: #1c1616; --primary: #662d88; --primary-text: #662d88; } /* Сиреневый */
+[data-theme="light"][data-accent="lavender"] { --accent-fill: #a86ccf; --accent-text: #8b50af; --accent-on: #1c1616; --primary: #662d88; --primary-text: #662d88; } /* Сиреневый */
 [data-theme="dark"][data-accent="orange"], :root:not([data-theme])[data-accent="orange"] { --accent-fill: #ff9a3d; --accent-text: #ff9a3d; --accent-on: #1c1616; --primary: #4b2000; --primary-text: #b68263; } /* Оранжевый */
-[data-theme="light"][data-accent="orange"] { --accent-fill: #d76b09; --accent-text: #ac5300; --accent-on: #1c1616; --primary: #783904; --primary-text: #783904; } /* Оранжевый */
+[data-theme="light"][data-accent="orange"] { --accent-fill: #d36909; --accent-text: #a95100; --accent-on: #1c1616; --primary: #783904; --primary-text: #783904; } /* Оранжевый */
 [data-theme="dark"][data-accent="yellow"], :root:not([data-theme])[data-accent="yellow"] { --accent-fill: #f5c842; --accent-text: #f5c842; --accent-on: #1c1616; --primary: #3c2b00; --primary-text: #9e8a61; } /* Жёлтый */
-[data-theme="light"][data-accent="yellow"] { --accent-fill: #ad8103; --accent-text: #88650d; --accent-on: #1c1616; --primary: #624802; --primary-text: #624802; } /* Жёлтый */
+[data-theme="light"][data-accent="yellow"] { --accent-fill: #ab7f03; --accent-text: #87640d; --accent-on: #1c1616; --primary: #624802; --primary-text: #624802; } /* Жёлтый */
 [data-theme="dark"][data-accent="ginger"], :root:not([data-theme])[data-accent="ginger"] { --accent-fill: #f08a45; --accent-text: #f08a45; --accent-on: #1c1616; --primary: #501a00; --primary-text: #bd7d63; } /* Рыжий */
-[data-theme="light"][data-accent="ginger"] { --accent-fill: #bf4d09; --accent-text: #b54a0d; --accent-on: #f9f6f0; --primary: #813001; --primary-text: #813001; } /* Рыжий */
-[data-theme="dark"][data-accent="darkred"], :root:not([data-theme])[data-accent="darkred"] { --accent-fill: #bd2e30; --accent-text: #eb5b56; --accent-on: #f9f6f0; --primary: #590a0e; --primary-text: #ca736d; } /* Тёмно-красный */
+[data-theme="light"][data-accent="ginger"] { --accent-fill: #bf4d09; --accent-text: #b2490d; --accent-on: #f9f6f0; --primary: #813001; --primary-text: #813001; } /* Рыжий */
+[data-theme="dark"][data-accent="darkred"], :root:not([data-theme])[data-accent="darkred"] { --accent-fill: #c53637; --accent-text: #eb5b56; --accent-on: #f9f6f0; --primary: #590a0e; --primary-text: #ca736d; } /* Тёмно-красный */
 [data-theme="light"][data-accent="darkred"] { --accent-fill: #a8121e; --accent-text: #a8121e; --accent-on: #f9f6f0; --primary: #8d1a1e; --primary-text: #8d1a1e; } /* Тёмно-красный */
 [data-theme="dark"][data-accent="lightred"], :root:not([data-theme])[data-accent="lightred"] { --accent-fill: #ff8a8a; --accent-text: #ff8a8a; --accent-on: #1c1616; --primary: #590a0f; --primary-text: #ca736e; } /* Светло-красный */
-[data-theme="light"][data-accent="lightred"] { --accent-fill: #f05252; --accent-text: #cc2d35; --accent-on: #1c1616; --primary: #8d1a20; --primary-text: #8d1a20; } /* Светло-красный */
-[data-theme="dark"][data-accent="burgundy"], :root:not([data-theme])[data-accent="burgundy"] { --accent-fill: #ac3a61; --accent-text: #dc668a; --accent-on: #f9f6f0; --primary: #560929; --primary-text: #ca748c; } /* Бургунди */
+[data-theme="light"][data-accent="lightred"] { --accent-fill: #eb5050; --accent-text: #c72c34; --accent-on: #1c1616; --primary: #8d1a20; --primary-text: #8d1a20; } /* Светло-красный */
+[data-theme="dark"][data-accent="burgundy"], :root:not([data-theme])[data-accent="burgundy"] { --accent-fill: #b54369; --accent-text: #dc668a; --accent-on: #f9f6f0; --primary: #560929; --primary-text: #ca748c; } /* Бургунди */
 [data-theme="light"][data-accent="burgundy"] { --accent-fill: #8f1d4a; --accent-text: #8f1d4a; --accent-on: #f9f6f0; --primary: #891846; --primary-text: #891846; } /* Бургунди */
-[data-theme="dark"][data-accent="bordeaux"], :root:not([data-theme])[data-accent="bordeaux"] { --accent-fill: #a64641; --accent-text: #d57069; --accent-on: #f9f6f0; --primary: #590a0d; --primary-text: #ca736c; } /* Бордовый */
+[data-theme="dark"][data-accent="bordeaux"], :root:not([data-theme])[data-accent="bordeaux"] { --accent-fill: #ae4d47; --accent-text: #d57069; --accent-on: #f9f6f0; --primary: #590a0d; --primary-text: #ca736c; } /* Бордовый */
 [data-theme="light"][data-accent="bordeaux"] { --accent-fill: #7a1c1c; --accent-text: #7a1c1c; --accent-on: #f9f6f0; --primary: #852725; --primary-text: #852725; } /* Бордовый */
 
 /* Палитра целиком — только для AccentPicker */
 :root, [data-theme="dark"] {
-  --accent-sirkov-fill: #ccff00; --accent-sirkov-on: #1c1616; --accent-sirkov-primary: #590212;
+  --accent-sirkov-fill: #ccff00; --accent-sirkov-on: #110d0c; --accent-sirkov-primary: #5e0a18;
   --accent-lilac-fill: #b98cf0; --accent-lilac-on: #1c1616; --accent-lilac-primary: #381b5b;
   --accent-coral-fill: #ff8a73; --accent-coral-on: #1c1616; --accent-coral-primary: #590c03;
   --accent-blue-fill: #6fa0ff; --accent-blue-on: #1c1616; --accent-blue-primary: #0d2964;
@@ -459,13 +487,13 @@
   --accent-orange-fill: #ff9a3d; --accent-orange-on: #1c1616; --accent-orange-primary: #4b2000;
   --accent-yellow-fill: #f5c842; --accent-yellow-on: #1c1616; --accent-yellow-primary: #3c2b00;
   --accent-ginger-fill: #f08a45; --accent-ginger-on: #1c1616; --accent-ginger-primary: #501a00;
-  --accent-darkred-fill: #bd2e30; --accent-darkred-on: #f9f6f0; --accent-darkred-primary: #590a0e;
+  --accent-darkred-fill: #c53637; --accent-darkred-on: #f9f6f0; --accent-darkred-primary: #590a0e;
   --accent-lightred-fill: #ff8a8a; --accent-lightred-on: #1c1616; --accent-lightred-primary: #590a0f;
-  --accent-burgundy-fill: #ac3a61; --accent-burgundy-on: #f9f6f0; --accent-burgundy-primary: #560929;
-  --accent-bordeaux-fill: #a64641; --accent-bordeaux-on: #f9f6f0; --accent-bordeaux-primary: #590a0d;
+  --accent-burgundy-fill: #b54369; --accent-burgundy-on: #f9f6f0; --accent-burgundy-primary: #560929;
+  --accent-bordeaux-fill: #ae4d47; --accent-bordeaux-on: #f9f6f0; --accent-bordeaux-primary: #590a0d;
 }
 [data-theme="light"] {
-  --accent-sirkov-fill: #66bb00; --accent-sirkov-on: #1c1616; --accent-sirkov-primary: #8c031c;
+  --accent-sirkov-fill: #4e9700; --accent-sirkov-on: #1c1616; --accent-sirkov-primary: #7e0a1e;
   --accent-lilac-fill: #8a4fd6; --accent-lilac-on: #f9f6f0; --accent-lilac-primary: #5b3291;
   --accent-coral-fill: #e5533d; --accent-coral-on: #1c1616; --accent-coral-primary: #8d1c0d;
   --accent-blue-fill: #2c68e7; --accent-blue-on: #f9f6f0; --accent-blue-primary: #1d469d;
@@ -475,11 +503,11 @@
   --accent-brick-fill: #b0482c; --accent-brick-on: #f9f6f0; --accent-brick-primary: #8a2302;
   --accent-violet-fill: #6a3df0; --accent-violet-on: #f9f6f0; --accent-violet-primary: #4a3999;
   --accent-lavender-fill: #a86ccf; --accent-lavender-on: #1c1616; --accent-lavender-primary: #662d88;
-  --accent-orange-fill: #d76b09; --accent-orange-on: #1c1616; --accent-orange-primary: #783904;
-  --accent-yellow-fill: #ad8103; --accent-yellow-on: #1c1616; --accent-yellow-primary: #624802;
+  --accent-orange-fill: #d36909; --accent-orange-on: #1c1616; --accent-orange-primary: #783904;
+  --accent-yellow-fill: #ab7f03; --accent-yellow-on: #1c1616; --accent-yellow-primary: #624802;
   --accent-ginger-fill: #bf4d09; --accent-ginger-on: #f9f6f0; --accent-ginger-primary: #813001;
   --accent-darkred-fill: #a8121e; --accent-darkred-on: #f9f6f0; --accent-darkred-primary: #8d1a1e;
-  --accent-lightred-fill: #f05252; --accent-lightred-on: #1c1616; --accent-lightred-primary: #8d1a20;
+  --accent-lightred-fill: #eb5050; --accent-lightred-on: #1c1616; --accent-lightred-primary: #8d1a20;
   --accent-burgundy-fill: #8f1d4a; --accent-burgundy-on: #f9f6f0; --accent-burgundy-primary: #891846;
   --accent-bordeaux-fill: #7a1c1c; --accent-bordeaux-on: #f9f6f0; --accent-bordeaux-primary: #852725;
 }
