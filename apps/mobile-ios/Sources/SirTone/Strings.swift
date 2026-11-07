@@ -1,0 +1,134 @@
+// Every word the app shows, by key (the same rule as the PC: no literal text in views). Russian
+// first; plural forms one/few/many as in Russian (1 трек, 2 трека, 5 треков).
+
+import Foundation
+
+enum L {
+    static func t(_ key: String) -> String { ru[key] ?? key }
+
+    static func t(_ key: String, _ args: CVarArg...) -> String {
+        String(format: ru[key] ?? key, locale: Locale(identifier: "ru"), arguments: args)
+    }
+
+    /// `key.one` / `key.few` / `key.many` with `%d`.
+    static func count(_ key: String, _ n: Int) -> String {
+        let m10 = n % 10, m100 = n % 100
+        let form = m10 == 1 && m100 != 11 ? "one"
+            : (2...4).contains(m10) && !(12...14).contains(m100) ? "few" : "many"
+        return t("\(key).\(form)", n)
+    }
+
+    private static let ru: [String: String] = [
+        // Tabs
+        "tab.wave": "Волна",
+        "tab.library": "Медиатека",
+        "tab.search": "Поиск",
+        // Wave (S01)
+        "wave.morning": "Доброе утро",
+        "wave.day": "Добрый день",
+        "wave.evening": "Добрый вечер",
+        "wave.night": "Доброй ночи",
+        "wave.title": "Моя волна",
+        "wave.subtitle": "Музыка под вас и под этот момент",
+        "wave.start": "Слушать волну",
+        "wave.playing": "Волна играет",
+        "wave.novelty": "Знакомое ↔ Неожиданное",
+        "wave.familiar": "Знакомое",
+        "wave.surprise": "Неожиданное",
+        "wave.continue": "Продолжить прослушивание",
+        "wave.empty": "Добавьте музыку — и волна начнётся с первого трека",
+        // Library (S02)
+        "library.playlists": "Плейлисты",
+        "library.albums": "Альбомы",
+        "library.artists": "Исполнители",
+        "library.tracks": "Треки",
+        "library.liked": "Любимое",
+        "library.unknown": "Неизвестные",
+        "library.add": "Добавить музыку",
+        "library.empty": "Здесь будет ваша музыка",
+        "library.empty.hint": "Выберите файлы или папку, отправьте трек через «Поделиться» или перенесите медиатеку с ПК",
+        "library.listen": "Слушать",
+        "library.shuffle": "Перемешать",
+        "library.nothing": "Пока пусто",
+        "library.new_playlist": "Новый плейлист",
+        "library.playlist_name": "Название",
+        "library.create": "Создать",
+        "library.cancel": "Отмена",
+        "tracks.one": "%d трек",
+        "tracks.few": "%d трека",
+        "tracks.many": "%d треков",
+        // Import (S09)
+        "import.done": "Добавлено %d, в Неизвестных %d",
+        "import.nothing": "Ничего нового не нашлось",
+        "import.failed": "Не получилось добавить музыку. Попробуйте ещё раз",
+        "transfer.done": "Перенесено с ПК: %d треков",
+        // Search (S03)
+        "search.prompt": "Артисты, альбомы, треки",
+        "search.recent": "Недавние запросы",
+        "search.empty": "Ничего не нашлось",
+        // Player (S04–S06)
+        "player.play": "Играть",
+        "player.pause": "Пауза",
+        "player.next": "Следующий",
+        "player.previous": "Предыдущий",
+        "player.like": "Нравится",
+        "player.unlike": "Убрать из любимого",
+        "player.not_now": "Не сейчас",
+        "player.queue": "Очередь",
+        "player.why": "Почему этот трек",
+        "player.close": "Свернуть",
+        "player.unknown_artist": "Неизвестный исполнитель",
+        "queue.title": "Далее",
+        "queue.wave_continues": "Волна продолжится",
+        "queue.empty": "Очередь пуста",
+        "player.open_failed": "Этот трек не открывается — играю следующий",
+        // Why (FR-LEARN-009)
+        "why.liked": "Вы отметили его ♡",
+        "why.taste": "Похож на то, что вы любите",
+        "why.session": "Подходит к тому, что играло сейчас",
+        "why.new": "Новое для вас",
+        "why.forgotten": "Давно не слушали",
+        "why.for_all": "Нравится многим",
+        "why.genre": "Ваш жанр",
+        "why.context": "Вы часто слушаете такое в это время",
+        "why.season": "По сезону",
+        "why.none": "Волна выбрала его для разнообразия",
+        // Settings (S10)
+        "settings.title": "Настройки",
+        "settings.appearance": "Внешний вид",
+        "settings.theme": "Тема",
+        "settings.theme.system": "Как в системе",
+        "settings.theme.dark": "Тёмная",
+        "settings.theme.light": "Светлая",
+        "settings.color": "Цвет",
+        "settings.storage": "Хранилище",
+        "settings.pc": "ПК-Сиртон",
+        "settings.pc.hint": "Перенос медиатеки и продление работы — в разделе «Телефоны» Сиртона на ПК",
+        "settings.about": "О программе",
+        "settings.about.line": "Сиртон · Sir.kov Studio",
+        "settings.version": "Версия %@",
+        "settings.done": "Готово",
+        "color.sirkov": "Sir.kov",
+        "color.lilac": "Лиловый",
+        "color.coral": "Коралловый",
+        "color.blue": "Синий",
+        "color.gray": "Серый",
+        "color.black": "Чёрный",
+        "color.red": "Красный",
+        "color.brick": "Кирпичный",
+        "color.violet": "Фиолетовый",
+        "color.lavender": "Сиреневый",
+        "color.orange": "Оранжевый",
+        "color.yellow": "Жёлтый",
+        "color.ginger": "Рыжий",
+        "color.darkred": "Тёмно-красный",
+        "color.lightred": "Светло-красный",
+        "color.burgundy": "Бургунди",
+        "color.bordeaux": "Бордовый",
+        "storage.tracks": "Треков: %d",
+        "storage.size": "Занято: %@",
+        "core.missing": "Ядро не подключено",
+        "folder.incoming": "Входящие",
+        "menu.play_next": "Воспроизвести далее",
+    ]
+}

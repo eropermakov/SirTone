@@ -12,7 +12,7 @@ let hasCore = FileManager.default.fileExists(
     atPath: here.appendingPathComponent("Frameworks/SirToneCoreFFI.xcframework").path)
 
 var targets: [Target] = [
-    .target(name: "SirToneDesign"),
+    .target(name: "SirToneDesign", resources: [.copy("Resources/Geologica.ttf")]),
     .target(
         name: "SirTone",
         dependencies: ["SirToneDesign"] + (hasCore ? ["SirToneCore"] : [])
@@ -28,6 +28,7 @@ if hasCore {
 
 let package = Package(
     name: "SirTone",
+    defaultLocalization: "ru",
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
         .library(name: "SirTone", targets: ["SirTone"]),
