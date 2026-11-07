@@ -16,12 +16,13 @@
 
 use std::path::{Path, PathBuf};
 
-use idevice::usbmuxd::{UsbmuxdAddr, UsbmuxdConnection};
+use idevice::usbmuxd::{Connection, UsbmuxdAddr, UsbmuxdConnection};
 use isideload::anisette::remote_v3::RemoteV3AnisetteProvider;
 use isideload::auth::apple_account::{
     AppToken, AppleAccount, TwoFactorCallbackParams, TwoFactorCallbackResponse,
 };
 use isideload::dev::developer_session::DeveloperSession;
+use isideload::dev::devices::DevicesApi;
 use isideload::sideload::builder::MaxCertsBehavior;
 use isideload::sideload::{SideloaderBuilder, TeamSelection};
 use isideload::util::callbacks::{ExtensionsBehaviorCallbackBox, MaxCertsCallbackBox};
@@ -96,7 +97,7 @@ fn key_name(apple_id: &str) -> String {
 }
 
 /// The report's first context line («● …»): its message, never its attachments (D-132).
-fn short(e: &rootcause::Report) -> String {
+pub(crate) fn short(e: &rootcause::Report) -> String {
     e.to_string()
         .lines()
         .find_map(|l| l.trim_start().strip_prefix('●'))
@@ -289,11 +290,12 @@ fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Signs and installs the app (`.app` folder or `.ipa`) on the phone over the cable, with the
-/// stored login. Installing over the same app keeps its files — this is also how the hub renews
-/// until profile-only renewal (П3) is proven.
-/// `progress` gets 0…1: signing reaches 0.5, then 0.6 while the phone receives and installs it,
-/// 1.0 when done (isideload reports no finer steps for the transfer).
+/// Signs and installs the app (`.app` folder or `.ipa`) on the phone, with the stored login:
+/// over the cable when the phone is on it, else over Wi-Fi when it has a Wi-Fi record
+/// ([`crate::wifi`], check П4б). Installing over the same app keeps its files — this is also how
+/// the hub renews until profile-only renewal (П3) is proven.
+/// `progress` gets 0…1: signing reaches 0.5, then the transfer and install (over Wi-Fi with
+/// steps, over the cable 0.6 until done — isideload reports no finer steps there), 1.0 when done.
 pub async fn install(
     apple_id: &str,
     udid: &str,
@@ -303,18 +305,24 @@ pub async fn install(
     if !app.exists() {
         return Err(LinkError::Apple("phone.app_missing", String::new()));
     }
+    let started = std::time::Instant::now();
+    // The cable first; without the Apple service or the cable — Wi-Fi, if set up.
+    let cable = match UsbmuxdConnection::default().await {
+        Ok(mut mux) => mux
+            .get_devices()
+            .await
+            .map_err(|e| LinkError::Device(format!("{e:?}")))?
+            .into_iter()
+            .find(|d| d.udid == udid && matches!(d.connection_type, Connection::Usb)),
+        Err(e) if !crate::wifi::is_paired(udid) => {
+            return Err(LinkError::AppleServiceMissing(format!("{e:?}")));
+        }
+        Err(_) => None,
+    };
+    if cable.is_none() && !crate::wifi::is_paired(udid) {
+        return Err(LinkError::Device("not connected".into()));
+    }
     let dev = session(apple_id).await?;
-    let mut mux = UsbmuxdConnection::default()
-        .await
-        .map_err(|e| LinkError::AppleServiceMissing(format!("{e:?}")))?;
-    let device = mux
-        .get_devices()
-        .await
-        .map_err(|e| LinkError::Device(format!("{e:?}")))?
-        .into_iter()
-        .find(|d| d.udid == udid)
-        .ok_or(LinkError::Device("not connected".into()))?;
-    let provider = device.to_provider(UsbmuxdAddr::default(), "sirtone");
 
     // isideload signs a `.app` in place and deletes it after installing: hand it a copy.
     let work = std::env::temp_dir().join(format!("sirtone-install-{}", std::process::id()));
@@ -345,24 +353,87 @@ pub async fn install(
         .storage(Box::new(AccountStorage::new(SERVICE, apple_id)))
         .machine_name(MACHINE.to_string())
         .build();
-    let started = std::time::Instant::now();
-    let r = sideloader
-        .install_app(
-            &provider,
-            input,
-            false,
-            Some(|p: f32| {
-                // Signing ends at 0.5; the transfer and install follow without callbacks.
-                progress(if p >= 0.5 { 0.6 } else { p });
-                std::future::ready(())
-            }),
-            None,
-        )
-        .await;
+    let signing = |p: f32| {
+        // Signing ends at 0.5; the transfer and install follow.
+        progress(p.min(0.5));
+        std::future::ready(())
+    };
+    let r = match cable {
+        Some(device) => {
+            let provider = device.to_provider(UsbmuxdAddr::default(), "sirtone");
+            sideloader
+                .install_app(
+                    &provider,
+                    input,
+                    false,
+                    Some(|p: f32| {
+                        progress(if p >= 0.5 { 0.6 } else { p });
+                        std::future::ready(())
+                    }),
+                    None,
+                )
+                .await
+                .map(|_| ())
+                .map_err(|e| LinkError::Apple("phone.install", short(&e)))
+        }
+        None => {
+            Box::pin(install_wifi(
+                &mut sideloader,
+                udid,
+                input,
+                &signing,
+                progress,
+            ))
+            .await
+        }
+    };
     let _ = std::fs::remove_dir_all(&work);
-    r.map_err(|e| LinkError::Apple("phone.install", short(&e)))?;
+    r?;
     progress(1.0);
     Ok(started.elapsed())
+}
+
+/// The Wi-Fi leg: what `Sideloader::install_app` does over the cable — register the phone, sign —
+/// then AFC + installation_proxy through the RemotePairing tunnel (`install_app_rsd`).
+async fn install_wifi<F, Fut>(
+    sideloader: &mut isideload::sideload::sideloader::Sideloader<
+        MaxCertsCallbackBox,
+        ExtensionsBehaviorCallbackBox,
+    >,
+    udid: &str,
+    input: PathBuf,
+    signing: &F,
+    progress: &(dyn Fn(f32) + Send + Sync),
+) -> Result<(), LinkError>
+where
+    F: Fn(f32) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let mut tunnel = Box::pin(crate::wifi::open(udid, std::time::Duration::from_secs(10))).await?;
+    let fail = |e: rootcause::Report| LinkError::Apple("phone.install", short(&e));
+    let team = sideloader.get_team().await.map_err(fail)?;
+    let name = tunnel.name.clone().unwrap_or_else(|| "iPhone".into());
+    sideloader
+        .get_dev_session()
+        .ensure_device_registered(&team, &name, udid, None)
+        .await
+        .map_err(fail)?;
+    let (signed, _) = sideloader
+        .sign_app(input, Some(team), false, Some(signing), None, Some(udid))
+        .await
+        .map_err(fail)?;
+    let r = isideload::sideload::install::install_app_rsd(
+        &mut tunnel.handle,
+        &mut tunnel.rsd,
+        &signed,
+        |pct| progress(0.5 + 0.5 * (pct.min(100) as f32) / 100.0),
+    )
+    .await
+    .map_err(fail);
+    // Only the signed bundle itself (as isideload does): for an `.ipa` it sits in the shared
+    // temp folder, so never its parent.
+    let _ = std::fs::remove_dir_all(&signed);
+    r
 }
 
 #[cfg(test)]

@@ -4,7 +4,9 @@
 //! sirtone-cli phone list
 //! sirtone-cli phone login <apple-id>              once, in the owner's own console (password, 2FA)
 //! sirtone-cli phone adopt <apple-id>              take over the П4 spike's identity (same certificate)
-//! sirtone-cli phone install <apple-id> <udid|usb> <App.app|.ipa>   sign + install over the cable
+//! sirtone-cli phone install <apple-id> <udid|usb> <App.app|.ipa>   sign + install (cable, else Wi-Fi)
+//! sirtone-cli phone wifi-pair <udid|usb>          once, on the cable: Wi-Fi access (RPPairing, П4б)
+//! sirtone-cli phone wifi-find                     paired phones seen on the network now
 //! sirtone-cli phone forget <apple-id>             delete everything kept for this Apple ID
 //! ```
 //!
@@ -98,24 +100,60 @@ pub fn adopt(apple_id: &str) -> ExitCode {
     }
 }
 
+fn resolve(rt: &tokio::runtime::Runtime, phone: &str) -> Option<String> {
+    if phone != "usb" {
+        return Some(phone.to_string());
+    }
+    let (phones, _) = rt.block_on(sirtone_devicelink::all_phones());
+    let found = phones
+        .into_iter()
+        .find(|p| p.platform == Platform::Ios && p.link == Link::Usb)
+        .map(|p| p.id);
+    if found.is_none() {
+        eprintln!("phone.device: no iPhone on the cable");
+    }
+    found
+}
+
+pub fn wifi_pair(phone: &str) -> ExitCode {
+    let Some(rt) = runtime() else {
+        return ExitCode::FAILURE;
+    };
+    let Some(udid) = resolve(&rt, phone) else {
+        return ExitCode::FAILURE;
+    };
+    match rt.block_on(sirtone_devicelink::wifi::pair_over_cable(&udid)) {
+        Ok(()) => {
+            println!("wifi paired: {udid}");
+            ExitCode::SUCCESS
+        }
+        Err(e) => fail(&e),
+    }
+}
+
+pub fn wifi_find() -> ExitCode {
+    let Some(rt) = runtime() else {
+        return ExitCode::FAILURE;
+    };
+    let wait = std::time::Duration::from_secs(10);
+    match rt.block_on(sirtone_devicelink::wifi::find(wait)) {
+        Ok(seen) => {
+            for s in &seen {
+                println!("{} port {} addresses {}", s.udid, s.port, s.addrs.len());
+            }
+            println!("{} seen", seen.len());
+            ExitCode::SUCCESS
+        }
+        Err(e) => fail(&e),
+    }
+}
+
 pub fn install(apple_id: &str, phone: &str, app: &str) -> ExitCode {
     let Some(rt) = runtime() else {
         return ExitCode::FAILURE;
     };
-    let udid = if phone == "usb" {
-        let (phones, _) = rt.block_on(sirtone_devicelink::all_phones());
-        match phones
-            .into_iter()
-            .find(|p| p.platform == Platform::Ios && p.link == Link::Usb)
-        {
-            Some(p) => p.id,
-            None => {
-                eprintln!("phone.device: no iPhone on the cable");
-                return ExitCode::FAILURE;
-            }
-        }
-    } else {
-        phone.to_string()
+    let Some(udid) = resolve(&rt, phone) else {
+        return ExitCode::FAILURE;
     };
     match rt.block_on(apple::install(apple_id, &udid, Path::new(app), &|_| {})) {
         Ok(took) => {

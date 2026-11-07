@@ -4,12 +4,13 @@
 //! through the Apple Mobile Device service (installed with iTunes) using `idevice`;
 //! [`android::AndroidInstaller`] is a stub for now («Версия для Android готовится», MAT-18).
 //! Apple ID login, signing and installing — [`apple`] (`isideload` + our `apple-codesign` shim,
-//! D-143; check П4). Profile-only renewal (`misagent`) waits for check П3. Errors carry stable codes; the UI writes the words (MR §6.3). Secrets
+//! D-143; check П4); over Wi-Fi — [`wifi`] (RemotePairing tunnel, check П4б). Profile-only renewal (`misagent`) waits for check П3. Errors carry stable codes; the UI writes the words (MR §6.3). Secrets
 //! (Apple ID tokens) never reach logs.
 
 pub mod android;
 pub mod apple;
 pub mod ios;
+pub mod wifi;
 
 use async_trait::async_trait;
 

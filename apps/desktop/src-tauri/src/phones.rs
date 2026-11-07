@@ -168,8 +168,14 @@ fn app_error(e: &sirtone_devicelink::LinkError) -> AppError {
                 .with_details(e.code());
         }
         "phone.app_missing" => ErrorCode::PhonePackageMissing,
-        "phone.install" => ErrorCode::PhoneInstall,
-        "phone.apple_service_missing" | "phone.device" => ErrorCode::DeviceUnavailable,
+        "phone.install" | "phone.wifi_tunnel" | "phone.wifi_pair" | "phone.wifi_not_paired" => {
+            ErrorCode::PhoneInstall
+        }
+        // Not on the cable and not seen on Wi-Fi (screen off, another network): «телефон не виден».
+        "phone.apple_service_missing"
+        | "phone.device"
+        | "phone.wifi_not_found"
+        | "phone.wifi_unreachable" => ErrorCode::DeviceUnavailable,
         _ => ErrorCode::Internal,
     };
     AppError::new(code).with_details(e.code())
@@ -344,6 +350,16 @@ pub async fn phone_install(
     }
     let took = r.map_err(|e| app_error(&e))?;
     tracing::info!(target: "sirtone::phones", secs = took.as_secs_f32(), "installed");
+    // Wizard step 10: Wi-Fi access while the phone is still on the trusted cable (П4б). Best
+    // effort — the install already succeeded; a phone on Wi-Fi only is simply skipped.
+    if !sirtone_devicelink::wifi::is_paired(&udid) {
+        let pair = sirtone_devicelink::wifi::pair_over_cable(&udid);
+        match tokio::time::timeout(std::time::Duration::from_secs(15), pair).await {
+            Ok(Ok(())) => tracing::info!(target: "sirtone::phones", "wifi paired"),
+            Ok(Err(e)) => tracing::info!(target: "sirtone::phones", code = e.code(), "wifi pair"),
+            Err(_) => tracing::info!(target: "sirtone::phones", "wifi pair timeout"),
+        }
+    }
     hub.remember(
         &udid,
         PhoneRecord {
@@ -361,6 +377,7 @@ pub fn phone_forget(hub: State<'_, PhoneHub>, udid: String) -> Result<(), AppErr
     let Some(r) = hub.forget(&udid) else {
         return Ok(());
     };
+    sirtone_devicelink::wifi::forget(&udid).map_err(|e| app_error(&e))?;
     let shared = hub
         .records
         .lock()

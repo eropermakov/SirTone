@@ -18,7 +18,10 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 # Exact pin: idevice breaks its API at every point release until 0.2 (README). `ring` instead of
 # the default aws-lc (no CMake/NASM needed on Windows).
-idevice = { version = "=0.1.68", default-features = false, features = ["ring", "usbmuxd"] }
+idevice = { version = "=0.1.68", default-features = false, features = ["ring", "usbmuxd", "afc", "installation_proxy", "remote_pairing", "rsd", "tunnel_tcp_stack"] }
+# П4б: Bonjour discovery of `_remotepairing._tcp` (pure Rust).
+mdns-sd = "0.13"
+base64 = "0.22"
 # П4 / D-143: Apple ID, developer services, anisette, signing (via our apple-codesign shim) and
 # install. Exact pin: pre-1.0 and still being rewritten (README).
 isideload = { version = "=0.5.2", default-features = false, features = ["install", "keyring-storage", "tokio-mt"] }

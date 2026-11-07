@@ -331,10 +331,12 @@ fn main() -> ExitCode {
             transfer::import(&args[2], &args[3])
         }
         Some("phone") if args.get(1).map(String::as_str) == Some("list") => phone_list(),
+        Some("phone") if args.get(1).map(String::as_str) == Some("wifi-find") => phone::wifi_find(),
         Some("phone") if args.len() > 2 => match (args[1].as_str(), args.get(3), args.get(4)) {
             ("login", _, _) => phone::login(&args[2]),
             ("adopt", _, _) => phone::adopt(&args[2]),
             ("forget", _, _) => phone::forget(&args[2]),
+            ("wifi-pair", _, _) => phone::wifi_pair(&args[2]),
             ("install", Some(p), Some(app)) => phone::install(&args[2], p, app),
             _ => usage(),
         },
