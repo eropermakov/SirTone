@@ -22,6 +22,16 @@ final class AppModel: ObservableObject {
     /// Theme: "system" | "dark" | "light"; colour: an accent slug (DESIGN.md §4).
     @AppStorage("theme") var theme = "system"
     @AppStorage("accent") var accent = "sirkov"
+    /// «Качество при добавлении» (D-146): "original" | "economy" | "max"; «Оригинал» by default.
+    @AppStorage("addQuality") var addQuality = "original"
+    /// «Только музыка» (D-147): the switch, and «вместе с энергосбережением iPhone».
+    @AppStorage("musicOnly") var musicOnlySwitch = false
+    @AppStorage("musicOnlyWithLowPower") var musicOnlyWithLowPower = true
+    /// Files waiting for the person to choose their quality («Поделиться», «Открыть в»).
+    @Published var pendingImport: [URL] = []
+    /// «Хранилище»: what the library keeps; making copies shows its progress here.
+    @Published private(set) var storage: StorageInfo?
+    @Published private(set) var copying: (done: Int, total: Int)?
 
     /// Inbox folder names the hub and the app agree on (`sirtone-devicelink::appfiles`).
     static let transferInbox = "Transfer/Inbox"
@@ -70,21 +80,68 @@ final class AppModel: ObservableObject {
     func refresh() async {
         guard let lib = library else { return }
         counts = await Task.detached { try? lib.counts() }.value
+        storage = await Task.detached { try? lib.storageInfo() }.value
         revision += 1
+    }
+
+    // MARK: Storage (D-146)
+
+    /// «Сделать экономные копии для всего» at `level`, batch by batch with progress.
+    func makeCopies(level: String) {
+        guard let lib = library, copying == nil else { return }
+        let total = Int((storage?.originalOnly ?? 0))
+        copying = (0, max(total, 1))
+        Task {
+            var after: Int64 = 0
+            var done = 0
+            while true {
+                let from = after
+                guard let b = await Task.detached(operation: {
+                    try? lib.makeCopies(levelName: level, after: from, limit: 5)
+                }).value else { break }
+                done += Int(b.made + b.failed)
+                copying = (done, max(total, done))
+                after = b.nextAfter
+                if !b.more { break }
+            }
+            copying = nil
+            await refresh()
+        }
+    }
+
+    /// «Удалить оригиналы, оставить копии».
+    func keepCopiesOnly() {
+        guard let lib = library else { return }
+        Task {
+            let f = await Task.detached { try? lib.keepCopiesOnly() }.value
+            if let f {
+                playback.notice = L.t("storage.freed",
+                    ByteCountFormatter.string(fromByteCount: Int64(f.bytes), countStyle: .file))
+            }
+            await refresh()
+        }
+    }
+
+    // MARK: «Только музыка» (D-147)
+
+    /// The mode in effect: the switch, or iPhone's Low Power Mode when that is allowed.
+    var musicOnly: Bool {
+        musicOnlySwitch || (musicOnlyWithLowPower && ProcessInfo.processInfo.isLowPowerModeEnabled)
     }
 
     // MARK: Import (S09)
 
     /// Files or folders from the system picker or «Поделиться» (security-scoped URLs).
-    func importURLs(_ urls: [URL]) {
+    func importURLs(_ urls: [URL], quality: String? = nil) {
         guard let lib = library, !urls.isEmpty else { return }
+        let level = quality ?? addQuality
         importing = true
         Task {
             let summary = await Task.detached { () -> ImportSummary? in
                 var granted: [URL] = []
                 for u in urls where u.startAccessingSecurityScopedResource() { granted.append(u) }
                 defer { granted.forEach { $0.stopAccessingSecurityScopedResource() } }
-                return try? lib.importFiles(paths: urls.map(\.path))
+                return try? lib.importFilesAs(paths: urls.map(\.path), levelName: level)
             }.value
             importing = false
             report(summary)
@@ -123,7 +180,10 @@ final class AppModel: ObservableObject {
         let dropped = (try? fm.contentsOfDirectory(at: incoming, includingPropertiesForKeys: nil)) ?? []
         if !dropped.isEmpty {
             importing = true
-            let s = await Task.detached { try? lib.importFiles(paths: dropped.map(\.path)) }.value
+            let level = addQuality
+            let s = await Task.detached {
+                try? lib.importFilesAs(paths: dropped.map(\.path), levelName: level)
+            }.value
             importing = false
             if s != nil { dropped.forEach { try? fm.removeItem(at: $0) } }
             report(s)

@@ -21,7 +21,7 @@ struct SirToneApp: App {
             RootView()
                 .environmentObject(app)
                 .environmentObject(app.playback)
-                .onOpenURL { url in app.importURLs([url]) }
+                .onOpenURL { url in app.pendingImport.append(url) }
             #else
             Text(verbatim: "core not linked").padding()
             #endif
@@ -54,6 +54,14 @@ struct RootView: View {
         }
         .fullScreenCover(isPresented: Binding(get: { !onboarded }, set: { onboarded = !$0 })) {
             OnboardingView().environment(\.palette, p)
+        }
+        .qualityDialog(isPresented: Binding(
+            get: { !app.pendingImport.isEmpty },
+            set: { if !$0 { app.pendingImport = [] } }
+        )) { q in
+            let urls = app.pendingImport
+            app.pendingImport = []
+            app.importURLs(urls, quality: q)
         }
         .onAppear { app.open() }
         .onChange(of: phase) { _, now in if now == .active { app.becameActive() } }

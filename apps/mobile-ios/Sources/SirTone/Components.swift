@@ -232,3 +232,28 @@ struct EmptyState: View {
     }
 }
 #endif
+
+#if canImport(SirToneCore)
+/// «В каком качестве добавить?» (D-146): asked on every way music comes in; «Оригинал» first
+/// and the person's default marked.
+struct QualityDialog: ViewModifier {
+    @Binding var isPresented: Bool
+    let choose: (String) -> Void
+    @EnvironmentObject private var app: AppModel
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog(L.t("quality.title"), isPresented: $isPresented, titleVisibility: .visible) {
+            ForEach(["original", "economy", "max"], id: \.self) { q in
+                Button(L.t("quality.\(q)") + (app.addQuality == q ? " ✓" : "")) { choose(q) }
+            }
+            Button(L.t("library.cancel"), role: .cancel) {}
+        }
+    }
+}
+
+extension View {
+    func qualityDialog(isPresented: Binding<Bool>, choose: @escaping (String) -> Void) -> some View {
+        modifier(QualityDialog(isPresented: isPresented, choose: choose))
+    }
+}
+#endif

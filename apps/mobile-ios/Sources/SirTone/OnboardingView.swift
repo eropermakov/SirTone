@@ -13,6 +13,8 @@ struct OnboardingView: View {
     @AppStorage("onboarded") private var onboarded = false
     @State private var step = 0
     @State private var picking = false
+    @State private var asking = false
+    @State private var quality = "original"
 
     var body: some View {
         VStack(alignment: .leading, spacing: M.space6) {
@@ -32,7 +34,11 @@ struct OnboardingView: View {
         .background(p.bgLayer)
         .fileImporter(isPresented: $picking, allowedContentTypes: [.audio, .folder],
                       allowsMultipleSelection: true) { r in
-            if case let .success(urls) = r { app.importURLs(urls) }
+            if case let .success(urls) = r { app.importURLs(urls, quality: quality) }
+        }
+        .qualityDialog(isPresented: $asking) { q in
+            quality = q
+            picking = true
         }
     }
 
@@ -75,7 +81,7 @@ struct OnboardingView: View {
                 PageTitle(text: L.t("onb.music"))
                 Text(verbatim: L.t("onb.music.text")).font(.sirtone(Ty.body)).foregroundStyle(p.textSecondary)
                 HStack(spacing: M.space3) {
-                    PrimaryButton(title: L.t("library.add"), icon: "plus") { picking = true }
+                    PrimaryButton(title: L.t("library.add"), icon: "plus") { asking = true }
                     SecondaryButton(title: L.t("onb.skip")) { onboarded = true }
                 }
             }

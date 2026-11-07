@@ -8,6 +8,7 @@ import SirToneDesign
 import SwiftUI
 
 struct NowPlayingView: View {
+    @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var playback: Playback
     @Environment(\.palette) private var p
     @Environment(\.dismiss) private var dismiss
@@ -49,7 +50,7 @@ struct NowPlayingView: View {
     private var background: some View {
         ZStack {
             p.bgBase
-            if let img = playback.cover {
+            if let img = playback.cover, !app.musicOnly {
                 Image(uiImage: img).resizable().scaledToFill()
                     .blur(radius: 100)
                     .opacity(0.9)
@@ -75,8 +76,8 @@ struct NowPlayingView: View {
         .frame(width: side, height: side)
         .clipShape(RoundedRectangle(cornerRadius: M.radiusLg, style: .continuous))
         .shadow(color: .black.opacity(0.24), radius: 16, y: 4)
-        .scaleEffect(playback.playing || reduceMotion ? 1 : 0.9)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: playback.playing)
+        .scaleEffect(playback.playing || reduceMotion || app.musicOnly ? 1 : 0.9)
+        .animation(reduceMotion || app.musicOnly ? nil : .easeOut(duration: 0.25), value: playback.playing)
         .accessibilityHidden(true)
     }
 

@@ -9,6 +9,12 @@ struct SettingsView: View {
     @EnvironmentObject private var app: AppModel
     @Environment(\.palette) private var p
     @Environment(\.dismiss) private var dismiss
+    @State private var askLevel = false
+    @State private var confirmKeep = false
+
+    private static func size(_ b: UInt64) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(b), countStyle: .file)
+    }
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
@@ -32,11 +38,47 @@ struct SettingsView: View {
                     .padding(.vertical, M.space2)
                     .listRowBackground(p.bgRaised)
                 }
+                Section(L.t("musiconly.title")) {
+                    Toggle(L.t("musiconly.title"), isOn: $app.musicOnlySwitch)
+                        .tint(p.accent.fill)
+                        .listRowBackground(p.bgRaised)
+                    Toggle(L.t("musiconly.lowpower"), isOn: $app.musicOnlyWithLowPower)
+                        .tint(p.accent.fill)
+                        .listRowBackground(p.bgRaised)
+                    Text(verbatim: L.t("musiconly.hint"))
+                        .font(.sirtone(Ty.caption, relativeTo: .caption)).foregroundStyle(p.textSecondary)
+                        .listRowBackground(p.bgRaised)
+                }
                 Section(L.t("settings.storage")) {
                     if let c = app.counts {
                         Text(verbatim: L.t("storage.tracks", Int(c.tracks))).listRowBackground(p.bgRaised)
-                        Text(verbatim: L.t("storage.size",
-                                           ByteCountFormatter.string(fromByteCount: Int64(c.bytes), countStyle: .file)))
+                    }
+                    if let s = app.storage {
+                        Text(verbatim: L.t("storage.originals", Self.size(s.originalBytes)))
+                            .listRowBackground(p.bgRaised)
+                        Text(verbatim: L.t("storage.copies", Self.size(s.copyBytes)))
+                            .listRowBackground(p.bgRaised)
+                    }
+                    Picker(L.t("quality.setting"), selection: $app.addQuality) {
+                        ForEach(["original", "economy", "max"], id: \.self) { q in
+                            Text(verbatim: L.t("quality.short.\(q)")).tag(q)
+                        }
+                    }
+                    .listRowBackground(p.bgRaised)
+                    if let c = app.copying {
+                        ProgressView(value: Double(c.done), total: Double(max(c.total, 1))) {
+                            Text(verbatim: L.t("storage.making", c.done, c.total))
+                                .font(.sirtone(Ty.caption, relativeTo: .caption))
+                        }
+                        .tint(p.accent.text)
+                        .listRowBackground(p.bgRaised)
+                    } else {
+                        Button(L.t("storage.make")) { askLevel = true }
+                            .foregroundStyle(p.accent.text)
+                            .disabled((app.storage?.originalOnly ?? 0) == 0)
+                            .listRowBackground(p.bgRaised)
+                        Button(L.t("storage.keep"), role: .destructive) { confirmKeep = true }
+                            .disabled((app.storage?.both ?? 0) == 0)
                             .listRowBackground(p.bgRaised)
                     }
                 }
@@ -55,6 +97,17 @@ struct SettingsView: View {
             .foregroundStyle(p.textPrimary)
             .scrollContentBackground(.hidden)
             .background(p.bgLayer)
+            .confirmationDialog(L.t("storage.make"), isPresented: $askLevel, titleVisibility: .visible) {
+                Button(L.t("quality.economy")) { app.makeCopies(level: "economy") }
+                Button(L.t("quality.max")) { app.makeCopies(level: "max") }
+                Button(L.t("library.cancel"), role: .cancel) {}
+            }
+            .confirmationDialog(L.t("storage.keep"), isPresented: $confirmKeep, titleVisibility: .visible) {
+                Button(L.t("storage.keep"), role: .destructive) { app.keepCopiesOnly() }
+                Button(L.t("library.cancel"), role: .cancel) {}
+            } message: {
+                Text(verbatim: L.t("storage.keep.confirm"))
+            }
             .navigationTitle(L.t("settings.title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

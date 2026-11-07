@@ -442,6 +442,13 @@ final class Playback: ObservableObject {
 
 /// Tactile answer on Play, ♡, track change and drop (MR §4).
 enum Haptics {
-    @MainActor static func tap() { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+    @MainActor static func tap() {
+        // «Только музыка» (D-147): no vibration motor either.
+        let d = UserDefaults.standard
+        let musicOnly = d.bool(forKey: "musicOnly")
+            || ((d.object(forKey: "musicOnlyWithLowPower") as? Bool ?? true)
+                && ProcessInfo.processInfo.isLowPowerModeEnabled)
+        if !musicOnly { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+    }
 }
 #endif

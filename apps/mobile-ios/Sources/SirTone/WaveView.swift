@@ -41,9 +41,19 @@ struct WaveView: View {
             .background(p.bgLayer)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { settings = true } label: { Image(systemName: "gearshape") }
-                        .accessibilityLabel(L.t("settings.title"))
-                        .foregroundStyle(p.icon)
+                    // «⋯» next to the settings (D-147): extra functions live here, not on the screen.
+                    Menu {
+                        Toggle(isOn: $app.musicOnlySwitch) {
+                            Label(L.t("musiconly.title"), systemImage: "leaf")
+                        }
+                        Button { settings = true } label: {
+                            Label(L.t("settings.title"), systemImage: "gearshape")
+                        }
+                    } label: {
+                        Image(systemName: app.musicOnly ? "leaf.fill" : "ellipsis.circle")
+                            .foregroundStyle(app.musicOnly ? p.accent.text : p.icon)
+                    }
+                    .accessibilityLabel(L.t("menu.more"))
                 }
             }
             .sheet(isPresented: $settings) { SettingsView() }

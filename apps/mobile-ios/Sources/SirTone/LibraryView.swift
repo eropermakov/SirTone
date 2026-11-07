@@ -18,6 +18,8 @@ struct LibraryView: View {
     @Environment(\.palette) private var p
     @State private var path: [LibraryRoute] = []
     @State private var picking = false
+    @State private var asking = false
+    @State private var quality = "original"
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -30,7 +32,7 @@ struct LibraryView: View {
                 if (app.counts?.tracks ?? 0) == 0 && !app.importing {
                     EmptyState(
                         title: L.t("library.empty"), hint: L.t("library.empty.hint"),
-                        action: (L.t("library.add"), { picking = true })
+                        action: (L.t("library.add"), { asking = true })
                     )
                     .listRowBackground(Color.clear)
                 } else {
@@ -49,7 +51,7 @@ struct LibraryView: View {
             .background(p.bgLayer)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { picking = true } label: { Image(systemName: "plus") }
+                    Button { asking = true } label: { Image(systemName: "plus") }
                         .accessibilityLabel(L.t("library.add"))
                         .foregroundStyle(p.icon)
                 }
@@ -60,7 +62,11 @@ struct LibraryView: View {
                 allowedContentTypes: [.audio, .folder],
                 allowsMultipleSelection: true
             ) { result in
-                if case let .success(urls) = result { app.importURLs(urls) }
+                if case let .success(urls) = result { app.importURLs(urls, quality: quality) }
+            }
+            .qualityDialog(isPresented: $asking) { q in
+                quality = q
+                picking = true
             }
             .overlay(alignment: .top) {
                 if app.importing {
