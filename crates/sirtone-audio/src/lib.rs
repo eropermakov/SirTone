@@ -6,6 +6,7 @@
 pub mod decode;
 #[cfg(windows)]
 pub mod devices;
+pub mod encode;
 #[cfg(windows)]
 pub mod engine;
 pub mod eq;

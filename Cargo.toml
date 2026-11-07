@@ -40,6 +40,10 @@ symphonia = { version = "0.6.1", features = ["aac", "alac", "isomp4", "mp3", "ai
 symphonia-adapter-libopus = "0.3"
 wasapi = "0.26"
 rubato = "5.0"
+# D-146: economy copies — libopus encoder (already linked through the symphonia adapter) and
+# the Ogg container writer (RustAudio, BSD-3-Clause).
+opusic-sys = "0.7"
+ogg = "0.9"
 rtrb = "0.4"
 # Phones (D-137): Swift/Kotlin bridge.
 uniffi = "=0.32.2"
