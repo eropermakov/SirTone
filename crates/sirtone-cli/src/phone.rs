@@ -5,8 +5,10 @@
 //! sirtone-cli phone login <apple-id>              once, in the owner's own console (password, 2FA)
 //! sirtone-cli phone adopt <apple-id>              take over the П4 spike's identity (same certificate)
 //! sirtone-cli phone install <apple-id> <udid|usb> <App.app|.ipa>   sign + install (cable, else Wi-Fi)
+//! sirtone-cli phone renew <apple-id> <udid|usb>   new profile only, no reinstall (check П3)
 //! sirtone-cli phone wifi-pair <udid|usb>          once, on the cable: Wi-Fi access (RPPairing, П4б)
 //! sirtone-cli phone wifi-find                     paired phones seen on the network now
+//! sirtone-cli phone bonjour <_svc._tcp.local>     any Bonjour service (does discovery work here?)
 //! sirtone-cli phone forget <apple-id>             delete everything kept for this Apple ID
 //! ```
 //!
@@ -139,13 +141,47 @@ pub fn wifi_find() -> ExitCode {
     match rt.block_on(sirtone_devicelink::wifi::find(wait)) {
         Ok(seen) => {
             for s in &seen {
-                println!("{} port {} addresses {}", s.udid, s.port, s.addrs.len());
+                // Local-network addresses (for `sp4 rp-wifi … <addr:port>`).
+                let addrs: Vec<String> = s.addrs.iter().map(ToString::to_string).collect();
+                println!("{} port {} [{}]", s.udid, s.port, addrs.join(", "));
             }
             println!("{} seen", seen.len());
             ExitCode::SUCCESS
         }
         Err(e) => fail(&e),
     }
+}
+
+/// Instances, ports, address kinds and TXT keys only (no values: they may identify a device).
+#[cfg(windows)]
+pub fn bonjour(service: &str) -> ExitCode {
+    let wait = std::time::Duration::from_secs(8);
+    match sirtone_devicelink::dnssd::browse(service, wait, |_| false) {
+        Ok(found) => {
+            for s in &found {
+                let kinds: Vec<&str> = s
+                    .addrs
+                    .iter()
+                    .map(|a| if a.is_ipv4() { "v4" } else { "v6" })
+                    .collect();
+                let keys: Vec<&str> = s.txt.iter().map(|(k, _)| k.as_str()).collect();
+                println!(
+                    "port {} addrs [{}] txt [{}]",
+                    s.port,
+                    kinds.join(","),
+                    keys.join(",")
+                );
+            }
+            println!("{} found", found.len());
+            ExitCode::SUCCESS
+        }
+        Err(e) => fail(&e),
+    }
+}
+
+#[cfg(not(windows))]
+pub fn bonjour(_: &str) -> ExitCode {
+    ExitCode::FAILURE
 }
 
 pub fn install(apple_id: &str, phone: &str, app: &str) -> ExitCode {
@@ -158,6 +194,26 @@ pub fn install(apple_id: &str, phone: &str, app: &str) -> ExitCode {
     match rt.block_on(apple::install(apple_id, &udid, Path::new(app), &|_| {})) {
         Ok(took) => {
             println!("installed on {udid} in {:.1} s", took.as_secs_f32());
+            ExitCode::SUCCESS
+        }
+        Err(e) => fail(&e),
+    }
+}
+
+pub fn renew(apple_id: &str, phone: &str) -> ExitCode {
+    let Some(rt) = runtime() else {
+        return ExitCode::FAILURE;
+    };
+    let Some(udid) = resolve(&rt, phone) else {
+        return ExitCode::FAILURE;
+    };
+    let started = std::time::Instant::now();
+    match rt.block_on(apple::renew(apple_id, &udid)) {
+        Ok(until) => {
+            println!(
+                "renewed {udid} in {:.1} s, profile until {until}",
+                started.elapsed().as_secs_f32()
+            );
             ExitCode::SUCCESS
         }
         Err(e) => fail(&e),

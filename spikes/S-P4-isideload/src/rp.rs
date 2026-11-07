@@ -8,10 +8,9 @@
 //!                                             (CoreDeviceProxy): proves install inside a tunnel
 //! sp4 rp-pair                                — once, cable: RPPairing record via
 //!                                             `com.apple.dt.remotepairingdeviced.lockdown`
-//!                                             (promptless on a trusted cable), kept in Credential
-//!                                             Manager — never on disk, it holds an Ed25519 key
-//! sp4 rp-find                                — Bonjour `_remotepairing._tcp` (which phones, ports)
-//! sp4 rp-wifi <apple-id> <udid> [App.app] [addr:port]
+//!                                             (promptless on a trusted cable), kept in the hub's
+//!                                             Credential Manager store — never on disk (Ed25519 key)
+//! sp4 rp-wifi <apple-id> <udid> <App.app|-> <addr:port>   (addr:port — `sirtone-cli phone wifi-find`)
 //!                                            — Wi-Fi: pair-verify (no fallback to a new pairing),
 //!                                             tunnel, RSD; with an app — sign and install
 //!
@@ -26,7 +25,7 @@ use idevice::core_device_proxy::CoreDeviceProxy;
 use idevice::lockdown::LockdownClient;
 use idevice::provider::IdeviceProvider;
 use idevice::remote_pairing::{
-    PeerDevice, RemotePairingClient, RemotePairingLockdownService, RpPairingFile, RpPairingSocket,
+    RemotePairingClient, RemotePairingLockdownService, RpPairingFile, RpPairingSocket,
     connect_tls_psk_tunnel_native,
 };
 use idevice::rsd::RsdHandshake;
@@ -41,10 +40,12 @@ use isideload::util::storage::SideloadingStorage;
 
 use crate::{MACHINE, session, short, storage};
 
-const RP_SERVICE: &str = "_remotepairing._tcp.local.";
+/// The hub's store for RPPairing records (`sirtone-devicelink::wifi`): one record per phone for
+/// both, or pairing from one side would replace the other's entry on the phone.
+const RP_STORE: &str = "studio.serkov.sirtone.rppairing";
 
-fn rp_key(udid: &str) -> String {
-    format!("rp:{udid}")
+fn rp_store() -> isideload::util::keyring_storage::KeyringStorage {
+    isideload::util::keyring_storage::KeyringStorage::new(RP_STORE.to_string())
 }
 
 async fn usb_provider() -> Result<(idevice::usbmuxd::UsbmuxdDevice, impl IdeviceProvider), String> {
@@ -198,9 +199,20 @@ pub async fn rp_pair() -> Result<(), String> {
         .connect(&mut rpf, async || "000000".to_string())
         .await
         .map_err(|e| format!("rp pair: {e:?}"))?;
-    storage()
-        .store_data(&rp_key(&device.udid), &rpf.to_bytes())
+    let st = rp_store();
+    st.store_data(&device.udid, &rpf.to_bytes())
         .map_err(|e| format!("store: {}", short(&e)))?;
+    let mut index: Vec<String> = st
+        .retrieve("index")
+        .ok()
+        .flatten()
+        .map(|v| v.split(',').filter(|x| !x.is_empty()).map(str::to_string).collect())
+        .unwrap_or_default();
+    if !index.contains(&device.udid) {
+        index.push(device.udid.clone());
+        st.store("index", &index.join(","))
+            .map_err(|e| format!("store: {}", short(&e)))?;
+    }
     println!(
         "Сопряжено за {:.1} с; запись — в диспетчере учётных данных (alt_irk: {}).",
         t0.elapsed().as_secs_f32(),
@@ -210,64 +222,12 @@ pub async fn rp_pair() -> Result<(), String> {
 }
 
 fn load_rp(udid: &str) -> Result<RpPairingFile, String> {
-    let bytes = storage()
-        .retrieve_data(&rp_key(udid))
+    let bytes = rp_store()
+        .retrieve_data(udid)
         .map_err(|e| format!("keyring: {}", short(&e)))?
         .filter(|b| !b.is_empty())
-        .ok_or("rp.no_record: сначала `sp4 rp-pair` по кабелю")?;
+        .ok_or("rp.no_record: сначала `sirtone-cli phone wifi-pair usb` (или `sp4 rp-pair`) по кабелю")?;
     RpPairingFile::from_bytes(&bytes).map_err(|e| format!("rp record: {e:?}"))
-}
-
-struct Found {
-    addrs: Vec<IpAddr>,
-    port: u16,
-    ours: bool,
-}
-
-/// Browse `_remotepairing._tcp`; a service is ours when its `authTag` matches our record's
-/// `alt_irk` (what CoreDevice does, idevice `PeerDevice::validate_auth_tag`).
-fn browse(alt_irk: Option<&[u8]>, wait: Duration) -> Result<Vec<Found>, String> {
-    let mdns = mdns_sd::ServiceDaemon::new().map_err(|e| format!("mdns: {e}"))?;
-    let rx = mdns.browse(RP_SERVICE).map_err(|e| format!("mdns browse: {e}"))?;
-    let until = Instant::now() + wait;
-    let mut out = Vec::new();
-    while let Some(left) = until.checked_duration_since(Instant::now()) {
-        match rx.recv_timeout(left) {
-            Ok(mdns_sd::ServiceEvent::ServiceResolved(info)) => {
-                let id = info.get_property_val_str("identifier").unwrap_or("");
-                let tag = info.get_property_val_str("authTag").unwrap_or("");
-                let ours = alt_irk.is_some_and(|k| PeerDevice::validate_auth_tag(k, id, tag));
-                let keys: Vec<String> =
-                    info.get_properties().iter().map(|p| p.key().to_string()).collect();
-                let mut addrs: Vec<IpAddr> = info.get_addresses().iter().copied().collect();
-                addrs.sort_by_key(|a| !a.is_ipv4());
-                println!(
-                    "  найдено: порт {}, адресов {} ({}), TXT: {}{}",
-                    info.get_port(),
-                    addrs.len(),
-                    addrs.iter().map(|a| if a.is_ipv4() { "v4" } else { "v6" }).collect::<Vec<_>>().join(","),
-                    keys.join(","),
-                    if ours { " — наш телефон" } else { "" }
-                );
-                out.push(Found { addrs, port: info.get_port(), ours });
-                if ours {
-                    break;
-                }
-            }
-            Ok(_) => {}
-            Err(_) => break,
-        }
-    }
-    let _ = mdns.shutdown();
-    Ok(out)
-}
-
-pub async fn rp_find(udid: Option<&str>) -> Result<(), String> {
-    let rpf = udid.map(load_rp).transpose()?;
-    println!("Ищу {RP_SERVICE} 15 с…");
-    let found = browse(rpf.as_ref().and_then(|r| r.alt_irk()), Duration::from_secs(15))?;
-    println!("Итого: {}", found.len());
-    Ok(())
 }
 
 async fn connect_any(addrs: &[IpAddr], port: u16) -> Result<(tokio::net::TcpStream, IpAddr), String> {
@@ -288,21 +248,13 @@ async fn connect_any(addrs: &[IpAddr], port: u16) -> Result<(tokio::net::TcpStre
 pub async fn rp_wifi(apple_id: &str, udid: &str, app: Option<PathBuf>, at: Option<&str>) -> Result<(), String> {
     let mut rpf = load_rp(udid)?;
     let t0 = Instant::now();
-    let (addrs, port) = match at {
-        Some(a) => {
-            let sa: SocketAddr = a.parse().map_err(|_| "addr:port")?;
-            (vec![sa.ip()], sa.port())
-        }
-        None => {
-            let found = browse(rpf.alt_irk(), Duration::from_secs(15))?;
-            let f = found
-                .into_iter()
-                .find(|f| f.ours)
-                .ok_or("wifi.not_found: телефон не виден в сети (экран включён? та же сеть?)")?;
-            (f.addrs, f.port)
-        }
-    };
-    println!("Найден за {:.1} с.", t0.elapsed().as_secs_f32());
+    // Discovery is the hub's (`sirtone-cli phone wifi-find`, Windows DNS-SD): mdns-sd heard
+    // nothing on this PC (spike-P-04b §4).
+    let sa: SocketAddr = at
+        .ok_or("usage: … <addr:port> из `sirtone-cli phone wifi-find`")?
+        .parse()
+        .map_err(|_| "addr:port")?;
+    let (addrs, port) = (vec![sa.ip()], sa.port());
     let (stream, ip) = connect_any(&addrs, port).await?;
     let mut rpc = RemotePairingClient::new(RpPairingSocket::new(stream), MACHINE);
     rpc.attempt_pair_verify().await.map_err(|e| format!("rp handshake: {e:?}"))?;

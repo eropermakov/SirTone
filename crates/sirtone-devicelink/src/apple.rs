@@ -436,9 +436,105 @@ where
     r
 }
 
+/// The app's bundle identifier before the team suffix (D-136).
+const BUNDLE: &str = "studio.serkov.sirtone.mobile";
+
+/// `ExpirationDate` of a provisioning profile (CMS-wrapped XML plist), as written there (ISO 8601).
+fn profile_expiry(profile: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(profile);
+    let after = &text[text.find("<key>ExpirationDate</key>")?..];
+    let start = after.find("<date>")? + "<date>".len();
+    let end = after[start..].find("</date>")?;
+    Some(after[start..start + end].trim().to_string())
+}
+
+/// Renews the app's signature without reinstalling (check П3): a fresh provisioning profile for
+/// the app's App ID from Apple, installed by `misagent` — over the cable when the phone is on it,
+/// else through the Wi-Fi tunnel. The certificate stays the same, so the app keeps running
+/// (AltStore `RefreshAppOperation`, `01d` [M11]). Returns the new profile's end (ISO 8601).
+/// `phone.renew_no_app_id` — Apple no longer has the App ID (expired): reinstall instead.
+pub async fn renew(apple_id: &str, udid: &str) -> Result<String, LinkError> {
+    use idevice::misagent::MisagentClient;
+    use idevice::{IdeviceService, RsdService};
+    use isideload::dev::app_ids::AppIdsApi;
+
+    let cable = match UsbmuxdConnection::default().await {
+        Ok(mut mux) => mux.get_devices().await.ok().and_then(|ds| {
+            ds.into_iter()
+                .find(|d| d.udid == udid && matches!(d.connection_type, Connection::Usb))
+        }),
+        Err(_) => None,
+    };
+    if cable.is_none() && !crate::wifi::is_paired(udid) {
+        return Err(LinkError::Device("not connected".into()));
+    }
+    let dev = session(apple_id).await?;
+    let mut sideloader =
+        SideloaderBuilder::<MaxCertsCallbackBox, ExtensionsBehaviorCallbackBox>::new(
+            dev,
+            apple_id.to_string(),
+        )
+        .team_selection(TeamSelection::First)
+        .max_certs_behavior(MaxCertsBehavior::Error)
+        .storage(Box::new(AccountStorage::new(SERVICE, apple_id)))
+        .machine_name(MACHINE.to_string())
+        .build();
+    let fail = |code: &'static str| move |e: rootcause::Report| LinkError::Apple(code, short(&e));
+    let team = sideloader.get_team().await.map_err(fail("phone.renew"))?;
+    let wanted = format!("{BUNDLE}.{}", team.team_id);
+    let dev = sideloader.get_dev_session();
+    let ids = dev
+        .list_app_ids(&team, None)
+        .await
+        .map_err(fail("phone.renew"))?;
+    let app_id = ids
+        .app_ids
+        .into_iter()
+        .find(|a| a.identifier == wanted)
+        .ok_or(LinkError::Apple("phone.renew_no_app_id", String::new()))?;
+    let profile = dev
+        .download_team_provisioning_profile(&team, &app_id, None)
+        .await
+        .map_err(fail("phone.renew"))?;
+    let bytes: Vec<u8> = profile.encoded_profile.as_ref().to_vec();
+    let expiry = profile_expiry(&bytes).unwrap_or_default();
+    let mis = |e: idevice::IdeviceError| LinkError::Apple("phone.renew", format!("{e:?}"));
+    match cable {
+        Some(device) => {
+            let provider = device.to_provider(UsbmuxdAddr::default(), "sirtone");
+            let mut c = MisagentClient::connect(&provider).await.map_err(mis)?;
+            c.install(bytes).await.map_err(mis)?;
+        }
+        None => {
+            let mut t =
+                Box::pin(crate::wifi::open(udid, std::time::Duration::from_secs(10))).await?;
+            let mut c = MisagentClient::connect_rsd(&mut t.handle, &mut t.rsd)
+                .await
+                .map_err(mis)?;
+            c.install(bytes).await.map_err(mis)?;
+        }
+    }
+    Ok(expiry)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_the_profile_end() {
+        let mut p = vec![0x30, 0x82];
+        p.extend_from_slice(
+            b"<plist><dict><key>CreationDate</key><date>2026-11-07T10:00:00Z</date>",
+        );
+        p.extend_from_slice(
+            b"<key>ExpirationDate</key>
+	<date>2026-11-14T10:00:00Z</date></dict>",
+        );
+        p.extend_from_slice(b"</plist>junk");
+        assert_eq!(profile_expiry(&p).as_deref(), Some("2026-11-14T10:00:00Z"));
+        assert_eq!(profile_expiry(b"no plist"), None);
+    }
 
     #[test]
     fn account_keys_are_separate_and_stable() {

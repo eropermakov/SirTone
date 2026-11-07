@@ -5,17 +5,19 @@
 //! 1. **Once, on a trusted cable** — [`pair_over_cable`]: an RPPairing record for this PC through
 //!    `com.apple.dt.remotepairingdeviced.lockdown` (no prompt: the cable is already trusted). The
 //!    record holds an Ed25519 private key, so it lives only in Windows Credential Manager.
-//! 2. **Then over Wi-Fi** — [`find`] browses Bonjour `_remotepairing._tcp` and recognises our
+//! 2. **Then over Wi-Fi** — [`find`] browses Bonjour `_remotepairing._tcp` (Windows' own DNS-SD,
+//!    [`crate::dnssd`]) and recognises our
 //!    phones by `authTag` (keyed with the record's `alt_irk`, as CoreDevice does); [`open`]
 //!    pair-verifies with the record (never a fresh pairing: a broken record must show, not
-//!    prompt on the phone), asks for a tunnel listener, does TLS-PSK + CDTunnel, runs the
+//!    prompt on the phone; a record the phone rejects is dropped, the next cable install pairs
+//!    again), asks for a tunnel listener, does TLS-PSK + CDTunnel, runs the
 //!    userspace TCP stack (jktcp) and the RSD handshake. AFC and installation_proxy then go
 //!    through the tunnel (`apple::install`).
 //!
 //! Nothing personal reaches logs or errors: debug codes and counts only.
 
 use std::net::{IpAddr, SocketAddr};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use idevice::IdeviceService;
 use idevice::remote_pairing::{
@@ -37,7 +39,7 @@ const SERVICE: &str = "studio.serkov.sirtone.rppairing";
 /// every phone gets a second pairing entry.
 const HOST: &str = "SirTone-PC";
 const INDEX: &str = "index";
-const BONJOUR: &str = "_remotepairing._tcp.local.";
+const BONJOUR: &str = "_remotepairing._tcp.local";
 
 fn err(code: &'static str) -> impl Fn(rootcause::Report) -> LinkError {
     move |e| LinkError::Apple(code, crate::apple::short(&e))
@@ -163,37 +165,32 @@ pub async fn find(wait: Duration) -> Result<Vec<Sighting>, LinkError> {
         .map_err(|e| LinkError::Device(e.to_string()))?
 }
 
+#[cfg(windows)]
 fn browse(records: &[(String, RpPairingFile)], wait: Duration) -> Result<Vec<Sighting>, LinkError> {
-    let mdns = mdns_sd::ServiceDaemon::new().map_err(|e| LinkError::Device(e.to_string()))?;
-    let rx = mdns
-        .browse(BONJOUR)
-        .map_err(|e| LinkError::Device(e.to_string()))?;
-    let until = Instant::now() + wait;
-    let mut out: Vec<Sighting> = Vec::new();
-    while let Some(left) = until.checked_duration_since(Instant::now()) {
-        let Ok(ev) = rx.recv_timeout(left) else { break };
-        let mdns_sd::ServiceEvent::ServiceResolved(info) = ev else {
-            continue;
-        };
-        let id = info.get_property_val_str("identifier").unwrap_or("");
-        let tag = info.get_property_val_str("authTag").unwrap_or("");
-        let Some(udid) = recognise(records, id, tag) else {
-            continue;
-        };
-        let mut addrs: Vec<IpAddr> = info.get_addresses().iter().copied().collect();
-        addrs.sort_by_key(|a| !a.is_ipv4());
-        out.retain(|x| x.udid != udid);
-        out.push(Sighting {
+    let ours = |svc: &crate::dnssd::Service| {
+        recognise(
+            records,
+            svc.txt("identifier").unwrap_or(""),
+            svc.txt("authTag").unwrap_or(""),
+        )
+        .map(|udid| Sighting {
             udid: udid.to_string(),
-            addrs,
-            port: info.get_port(),
-        });
-        if out.len() == records.len() {
-            break;
-        }
-    }
-    let _ = mdns.shutdown();
+            addrs: svc.addrs.clone(),
+            port: svc.port,
+        })
+    };
+    let all = crate::dnssd::browse(BONJOUR, wait, |found| {
+        found.iter().filter_map(ours).count() >= records.len()
+    })?;
+    let mut out: Vec<Sighting> = all.iter().filter_map(ours).collect();
+    out.sort_by(|a, b| a.udid.cmp(&b.udid));
+    out.dedup_by(|a, b| a.udid == b.udid);
     Ok(out)
+}
+
+#[cfg(not(windows))]
+fn browse(_: &[(String, RpPairingFile)], _: Duration) -> Result<Vec<Sighting>, LinkError> {
+    Ok(Vec::new())
 }
 
 async fn connect_any(
@@ -236,10 +233,12 @@ pub async fn open(udid: &str, wait: Duration) -> Result<Tunnel, LinkError> {
     let tunnel_err =
         |e: idevice::IdeviceError| LinkError::Apple("phone.wifi_tunnel", format!("{e:?}"));
     control.attempt_pair_verify().await.map_err(tunnel_err)?;
-    control
-        .validate_pairing(&mut rec)
-        .await
-        .map_err(|e| LinkError::Apple("phone.wifi_not_paired", format!("{e:?}")))?;
+    if let Err(e) = control.validate_pairing(&mut rec).await {
+        // The phone no longer knows this PC (network settings reset, iOS update, pairing
+        // removed): drop the record, so the next cable install pairs again (step 10).
+        let _ = remove(&keyring(), udid);
+        return Err(LinkError::Apple("phone.wifi_not_paired", format!("{e:?}")));
+    }
     let port = control.create_tcp_listener().await.map_err(tunnel_err)?;
     let ts = tokio::net::TcpStream::connect(SocketAddr::new(ip, port))
         .await

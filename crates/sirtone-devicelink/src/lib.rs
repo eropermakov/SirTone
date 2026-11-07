@@ -9,6 +9,8 @@
 
 pub mod android;
 pub mod apple;
+#[cfg(windows)]
+pub mod dnssd;
 pub mod ios;
 pub mod wifi;
 

@@ -351,14 +351,20 @@ pub async fn phone_install(
     let took = r.map_err(|e| app_error(&e))?;
     tracing::info!(target: "sirtone::phones", secs = took.as_secs_f32(), "installed");
     // Wizard step 10: Wi-Fi access while the phone is still on the trusted cable (П4б). Best
-    // effort — the install already succeeded; a phone on Wi-Fi only is simply skipped.
+    // effort and detached — the install already succeeded and the wizard moves on at once; a
+    // phone on Wi-Fi only is simply skipped.
     if !sirtone_devicelink::wifi::is_paired(&udid) {
-        let pair = sirtone_devicelink::wifi::pair_over_cable(&udid);
-        match tokio::time::timeout(std::time::Duration::from_secs(15), pair).await {
-            Ok(Ok(())) => tracing::info!(target: "sirtone::phones", "wifi paired"),
-            Ok(Err(e)) => tracing::info!(target: "sirtone::phones", code = e.code(), "wifi pair"),
-            Err(_) => tracing::info!(target: "sirtone::phones", "wifi pair timeout"),
-        }
+        let id = udid.clone();
+        tauri::async_runtime::spawn(async move {
+            let pair = sirtone_devicelink::wifi::pair_over_cable(&id);
+            match tokio::time::timeout(std::time::Duration::from_secs(15), pair).await {
+                Ok(Ok(())) => tracing::info!(target: "sirtone::phones", "wifi paired"),
+                Ok(Err(e)) => {
+                    tracing::info!(target: "sirtone::phones", code = e.code(), "wifi pair");
+                }
+                Err(_) => tracing::info!(target: "sirtone::phones", "wifi pair timeout"),
+            }
+        });
     }
     hub.remember(
         &udid,

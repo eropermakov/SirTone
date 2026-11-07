@@ -374,7 +374,6 @@ async fn main() -> ExitCode {
         },
         (Some("rsd-usb"), Some(id), Some(app)) => rp::rsd_usb(id, PathBuf::from(app)).await,
         (Some("rp-pair"), _, _) => rp::rp_pair().await,
-        (Some("rp-find"), udid, _) => rp::rp_find(udid.map(String::as_str)).await,
         (Some("rp-wifi"), Some(id), Some(udid)) => {
             let app = args.get(4).filter(|a| a.as_str() != "-").map(PathBuf::from);
             rp::rp_wifi(id, udid, app, args.get(5).map(String::as_str)).await
