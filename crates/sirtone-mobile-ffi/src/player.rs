@@ -454,6 +454,19 @@ impl VizFeed {
 
 impl Drop for VizFeed {
     fn drop(&mut self) {
+        // The side ring goes back for the next visualiser (unless a new track brought its own),
+        // as on the PC: reopened within a track, it still hears the music.
+        let tap = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .tap
+            .take();
+        if let (Some(t), Ok(mut slot)) = (tap, self.player.shared.viz_tap.lock())
+            && slot.is_none()
+        {
+            *slot = Some(t);
+        }
         self.player.shared.viz_on.fetch_sub(1, Ordering::AcqRel);
     }
 }
@@ -692,6 +705,8 @@ pub(crate) mod tests {
         assert!(l.iter().any(|&x| x > 165) && l.iter().any(|&x| x < 91));
         drop(feed);
         assert_eq!(p.shared.viz_on.load(Ordering::Relaxed), 0);
+        // Reopened within the same track: the ring is back for the new feed.
+        assert!(p.shared.viz_tap.lock().unwrap().is_some());
         // SAFETY: done with it.
         unsafe { sirtone_render_release(h) };
         drop(p);

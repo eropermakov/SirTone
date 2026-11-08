@@ -266,6 +266,34 @@ pub fn send(phone: &str, pkg: &str) -> ExitCode {
     }
 }
 
+pub fn pull(phone: &str, out: &str, files: &[String]) -> ExitCode {
+    use sirtone_devicelink::appfiles;
+    let Some(rt) = runtime() else {
+        return ExitCode::FAILURE;
+    };
+    let Some(udid) = resolve(&rt, phone) else {
+        return ExitCode::FAILURE;
+    };
+    let r = rt.block_on(async {
+        let mut f = appfiles::open(&udid).await?;
+        let rels: Vec<String> = files
+            .iter()
+            .map(|x| x.trim_start_matches('/').to_owned())
+            .collect();
+        let found = f.sizes("", &rels).await;
+        f.pull_files("", Path::new(out), found, &progress_line)
+            .await
+    });
+    eprintln!();
+    match r {
+        Ok(c) => {
+            println!("pulled {} files ({} KB)", c.files, c.bytes / 1_000);
+            ExitCode::SUCCESS
+        }
+        Err(e) => fail(&e),
+    }
+}
+
 pub fn pull_library(phone: &str, out: &str) -> ExitCode {
     use sirtone_devicelink::appfiles;
     let Some(rt) = runtime() else {

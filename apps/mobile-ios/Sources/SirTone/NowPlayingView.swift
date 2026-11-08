@@ -67,13 +67,17 @@ struct NowPlayingView: View {
     private var background: some View {
         ZStack {
             p.bgBase
-            if let img = playback.cover, !app.musicOnly {
-                // Color.clear takes the screen's size; the picture in its overlay cannot grow it.
-                Color.clear
-                    .overlay { Image(uiImage: img).resizable().scaledToFill() }
-                    .clipped()
-                    .blur(radius: 100)
-                    .opacity(0.9)
+            if !app.musicOnly {
+                // The waves of the track's colours behind the player, as on the PC (D-148); the
+                // blurred cover shows through until the page draws.
+                if let img = playback.cover {
+                    Color.clear
+                        .overlay { Image(uiImage: img).resizable().scaledToFill() }
+                        .clipped()
+                        .blur(radius: 100)
+                        .opacity(0.9)
+                }
+                VizBackground(paused: showViz)
             }
             p.artworkScrim.ignoresSafeArea()
         }

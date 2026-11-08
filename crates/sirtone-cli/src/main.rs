@@ -340,6 +340,9 @@ fn main() -> ExitCode {
             ("bonjour", _, _) => phone::bonjour(&args[2]),
             ("send", Some(pkg), _) => phone::send(&args[2], pkg),
             ("pull-library", Some(out), _) => phone::pull_library(&args[2], out),
+            // `phone pull <udid|usb> <out> <app-relative file>...` — single files (the phone's
+            // database, the visualiser's numbers) without the music.
+            ("pull", Some(out), Some(_)) => phone::pull(&args[2], out, &args[4..]),
             ("install", Some(p), Some(app)) => phone::install(&args[2], p, app),
             ("renew", Some(p), _) => phone::renew(&args[2], p),
             _ => usage(),

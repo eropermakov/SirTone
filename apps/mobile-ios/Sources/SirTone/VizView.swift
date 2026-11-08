@@ -25,15 +25,19 @@ struct VizView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             VizWeb(bridge: bridge).ignoresSafeArea()
+            // Taps and the swipe down live on their own layer under the controls: on the whole
+            // screen they took the mode buttons' taps (MilkDrop did not switch, 2026-11-08).
+            Color.clear
+                .contentShape(Rectangle())
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { controls.toggle() }
+                }
+                .gesture(DragGesture().onEnded { g in if g.translation.height > 120 { dismiss() } })
             if controls { overlay.transition(.opacity) }
         }
         .background(Color.black)
         .statusBarHidden(!controls)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { controls.toggle() }
-        }
-        .gesture(DragGesture().onEnded { g in if g.translation.height > 120 { dismiss() } })
         .onAppear { configure() }
         .onChange(of: mode) { _, _ in configure() }
         .onChange(of: playback.current?.track.id) { _, _ in bridge.sendColors() }
@@ -63,12 +67,24 @@ struct VizView: View {
                 }
                 .accessibilityLabel(L.t("viz.close"))
                 Spacer()
-                Picker(L.t("viz.mode"), selection: $mode) {
-                    Text(verbatim: L.t("viz.waves")).tag("waves")
-                    Text(verbatim: L.t("viz.milkdrop")).tag("milkdrop")
+                HStack(spacing: 0) {
+                    ForEach(["waves", "milkdrop"], id: \.self) { m in
+                        Button { mode = m } label: {
+                            Text(verbatim: L.t("viz.\(m)"))
+                                .font(.sirtone(Ty.menu))
+                                .foregroundStyle(mode == m ? Color.black : Color.white)
+                                .padding(.horizontal, M.space4)
+                                .frame(height: 36)
+                                .background(mode == m ? Color.white : Color.clear, in: Capsule())
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(mode == m ? .isSelected : [])
+                    }
                 }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 220)
+                .padding(3)
+                .background(Color.white.opacity(0.18), in: Capsule())
+                .accessibilityLabel(L.t("viz.mode"))
                 Spacer()
                 Color.clear.frame(width: 44, height: 44)
             }
@@ -131,7 +147,8 @@ final class VizBridge: NSObject, ObservableObject, WKScriptMessageHandler {
         cfg.mediaTypesRequiringUserActionForPlayback = .all
         web = WKWebView(frame: .zero, configuration: cfg)
         web.isOpaque = false
-        web.backgroundColor = .black
+        web.backgroundColor = .clear
+        web.scrollView.backgroundColor = .clear
         web.scrollView.isScrollEnabled = false
         web.isUserInteractionEnabled = false
         super.init()
@@ -212,9 +229,12 @@ final class VizBridge: NSObject, ObservableObject, WKScriptMessageHandler {
             begin()
         case "failed":
             failed = true
+            stats["error"] = m.body
+            saveStats()
         case "stats":
             if let d = m.body as? [String: Any], let mode = d["mode"] as? String {
                 stats[mode] = d
+                saveStats()
             }
         default:
             break
@@ -239,6 +259,33 @@ private final class WeakHandler: NSObject, WKScriptMessageHandler {
     init(_ t: WKScriptMessageHandler) { target = t }
     func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) {
         target?.userContentController(c, didReceive: m)
+    }
+}
+
+/// «Волны» behind «Сейчас играет» (as the PC's player over its waves, D-148): the same page, a
+/// lighter level, under the artwork scrim; paused while the full-screen visualiser is open.
+struct VizBackground: View {
+    @EnvironmentObject private var app: AppModel
+    @EnvironmentObject private var playback: Playback
+    @Environment(\.palette) private var p
+    @Environment(\.scenePhase) private var phase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let paused: Bool
+    @StateObject private var bridge = VizBridge()
+
+    var body: some View {
+        VizWeb(bridge: bridge)
+            .onAppear {
+                bridge.configure(mode: "waves", accent: p.accent.fill.hex, reduced: reduceMotion,
+                                 level: ProcessInfo.processInfo.isLowPowerModeEnabled ? 1 : 2,
+                                 playback: playback, library: app.library)
+                if paused { bridge.halt() }
+            }
+            .onChange(of: playback.current?.track.id) { _, _ in bridge.sendColors() }
+            .onChange(of: playback.deckGen) { _, _ in if !paused { bridge.halt(); bridge.run() } }
+            .onChange(of: paused) { _, now in now ? bridge.halt() : bridge.run() }
+            .onChange(of: phase) { _, now in now == .active && !paused ? bridge.run() : bridge.halt() }
+            .onDisappear { bridge.halt() }
     }
 }
 

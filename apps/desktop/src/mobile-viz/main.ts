@@ -9,7 +9,7 @@ import { parseFrame } from "@/shared/ipc/viz";
 import { MilkDropEngine, milkdropStats } from "@/shared/viz/milkdrop";
 import { lookOf, WAVES } from "@/shared/viz/palette";
 import { MILKDROP, type PresetDesc, pick, rank, targetOf } from "@/shared/viz/presetPick";
-import { WavesEngine, wavesStats } from "@/shared/viz/waves";
+import { WavesEngine, wavesMood, wavesStats } from "@/shared/viz/waves";
 import index from "../../../../assets/viz/milkdrop/index.json";
 
 type Mode = "waves" | "milkdrop";
@@ -78,9 +78,10 @@ async function start(o: Start) {
   opts = o;
   const canvas = freshCanvas();
   if (o.mode === "milkdrop") {
-    const m = new MilkDropEngine(canvas, { onLost: () => post("failed", "milkdrop") });
+    const m = new MilkDropEngine(canvas, { onLost: () => post("failed", "milkdrop: lost") });
     if (!(await m.init())) {
-      post("failed", "milkdrop");
+      const why = (window as unknown as { __sirtoneMilkdropError?: string }).__sirtoneMilkdropError;
+      post("failed", `milkdrop: ${why ?? "init"}`);
       return;
     }
     m.setQuality(MILKDROP.quality[String(o.level) as "1"]);
@@ -89,8 +90,11 @@ async function start(o: Start) {
     m.resume();
     rotate = window.setInterval(() => nextPreset(m), MILKDROP.preset_s * 1000);
   } else {
+    // «Уменьшение движения» (owner, 2026-11-08): the visualiser still flows — at half speed,
+    // with no pulses or flashes (the page never calls `pulse` then) — instead of one still frame.
+    wavesMood.speed = o.reduced ? 0.5 : 1;
     const w = new WavesEngine(canvas, {
-      reducedMotion: o.reduced,
+      reducedMotion: false,
       onLost: () => post("failed", "waves"),
     });
     if (!w.init()) {
@@ -155,7 +159,9 @@ window.setInterval(() => {
     applyColors();
   },
   frame,
-  pulse: () => engine?.waves?.pulse("like"),
+  pulse: () => {
+    if (!opts.reduced) engine?.waves?.pulse("like");
+  },
   pause: () => {
     engine?.waves?.pause();
     engine?.milk?.pause();
@@ -166,4 +172,9 @@ window.setInterval(() => {
   },
   stop,
 };
+// Anything that breaks on the phone reaches the app (saved with the numbers for the PC to read).
+window.addEventListener("error", (e) => post("failed", `error: ${e.message}`));
+window.addEventListener("unhandledrejection", (e) =>
+  post("failed", `rejection: ${String(e.reason)}`),
+);
 post("ready", true);
