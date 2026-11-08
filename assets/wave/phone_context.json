@@ -1,0 +1,26 @@
+{
+  "_doc": "Обстановка на телефоне (D-149, D-150, docs/mobile/full-port.md §2; референсы — 01d §F: Endel, Google Awareness, Samsung Modes, Spotify «В машине», Core Motion). Что значит сигнал для «Моей волны» — занятие из ключей PC (activities: workout, sleep, work, road, rest, party). Только когда человек сам не выбрал занятие в «Настроить волну». Пороги — здесь, не в коде.",
+  "schema": "sirtone.phone_context/1",
+  "motion": {
+    "walking": "road",
+    "running": "workout",
+    "cycling": "workout",
+    "automotive": "road"
+  },
+  "car_audio": "road",
+  "place": {
+    "work": "work",
+    "home_evening": "rest"
+  },
+  "home_evening_from_h": 18,
+  "night_from_h": 22,
+  "night_to_h": 6,
+  "work_from_h": 9,
+  "work_to_h": 18,
+  "stable_s": 120,
+  "long_drive_min": 20,
+  "place_radius_m": 200,
+  "ask_after_min": 30,
+  "weather_every_min": 45,
+  "coord_step_deg": 0.1
+}

@@ -116,7 +116,75 @@ fn wave_err(code: &str) -> CoreError {
 pub struct Wave {
     library: Arc<Library>,
     engine: Mutex<Engine>,
-    context: ContextBuilder,
+    context: Mutex<ContextBuilder>,
+    /// «Моя волна» (the only profile the phone's context steers, as on the PC).
+    my_wave: bool,
+    /// What the person chose in «Настроить волну», the activity the phone's context suggests
+    /// (D-149) and the influences (season, context, events; 1 — as the profile says).
+    chosen: Mutex<Steer>,
+}
+
+#[derive(Default)]
+struct Steer {
+    query: sirtone_wave::query::WaveQuery,
+    auto: Option<sirtone_wave::query::Activity>,
+    /// Its key, for «Почему этот трек» («Вы в пути»).
+    auto_key: Option<String>,
+    influence: Option<[f32; 3]>,
+}
+
+impl Steer {
+    /// The query the engine runs: the chosen one, the context's activity only when none is
+    /// chosen (the PC's `with_activity`), the influences on top.
+    fn effective(&self, my_wave: bool) -> sirtone_wave::query::WaveQuery {
+        let mut q = self.query.clone();
+        if my_wave
+            && q.activity.is_empty()
+            && let Some(a) = self.auto
+        {
+            q.activity = vec![a];
+        }
+        if let Some(i) = self.influence {
+            q.influence = i;
+        }
+        q
+    }
+}
+
+impl Wave {
+    fn ctx(&self) -> std::sync::MutexGuard<'_, ContextBuilder> {
+        self.context
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn steer(&self) -> std::sync::MutexGuard<'_, Steer> {
+        self.chosen
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// The engine's reasons as codes.
+    fn why_engine(&self, track_id: i64) -> Vec<String> {
+        use sirtone_wave::engine::Why;
+        self.engine
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .why(track_id)
+            .into_iter()
+            .map(|w| match w {
+                Why::Liked => "liked".to_string(),
+                Why::Genre(g) => format!("genre:{g}"),
+                Why::Taste => "taste".to_string(),
+                Why::Context(d) => format!("context:{d}"),
+                Why::Session => "session".to_string(),
+                Why::NewForYou => "new".to_string(),
+                Why::Forgotten => "forgotten".to_string(),
+                Why::Season(s) => format!("season:{s}"),
+                Why::ForAll => "for_all".to_string(),
+            })
+            .collect()
+    }
 }
 
 #[uniffi::export]
@@ -153,7 +221,9 @@ impl Wave {
         Ok(Arc::new(Self {
             library,
             engine: Mutex::new(Engine::new(cfg, &tracks, &history, now, seed)),
-            context: ContextBuilder::default(),
+            context: Mutex::new(ContextBuilder::default()),
+            my_wave: profile == "my_wave",
+            chosen: Mutex::new(Steer::default()),
         }))
     }
 
@@ -168,7 +238,7 @@ impl Wave {
             offset_min: utc_offset_min,
         };
         let now = clock.now_utc_ms();
-        let ctx: ContextSnapshot = self.context.snapshot_at(&clock, now);
+        let ctx: ContextSnapshot = self.ctx().snapshot_at(&clock, now);
         let shelf = self
             .library
             .with(|c| sirtone_library::wave::not_now(c, now))?;
@@ -236,7 +306,7 @@ impl Wave {
                 PlaySource::Collection
             },
             profile: from_wave.then(|| "my_wave".to_string()),
-            context: self.context.snapshot_at(&clock, now),
+            context: self.ctx().snapshot_at(&clock, now),
             event_id: None,
             novelty: None,
             category: None,
@@ -256,7 +326,7 @@ impl Wave {
         let clock = PhoneClock {
             offset_min: utc_offset_min,
         };
-        let ctx = self.context.snapshot_at(&clock, clock.now_utc_ms());
+        let ctx = self.ctx().snapshot_at(&clock, clock.now_utc_ms());
         let key = sirtone_wave::context::bucket_key(&ctx);
         self.library
             .with(|c| sirtone_library::feedback::not_now(c, track_id, &key))?;
@@ -269,12 +339,17 @@ impl Wave {
     pub fn tune(&self, tuning: WaveTuning) -> Result<TuningCount, CoreError> {
         let q = query(&tuning)?;
         let now = PhoneClock { offset_min: 0 }.now_utc_ms();
+        let eff = {
+            let mut st = self.steer();
+            st.query = q;
+            st.effective(self.my_wave)
+        };
         let mut e = self
             .engine
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let (n, relaxed) = e.query_count(&q, now);
-        e.set_query(q, now);
+        let (n, relaxed) = e.query_count(&eff, now);
+        e.set_query(eff, now);
         Ok(TuningCount {
             tracks: u32::try_from(n).unwrap_or(u32::MAX),
             relaxed,
@@ -296,28 +371,78 @@ impl Wave {
         })
     }
 
+    /// The activity the phone's context suggests (D-149; `context::auto_activity`), `None` —
+    /// nothing or switched off. Only for «Моя волна» without a chosen activity. Returns whether
+    /// the wave changed (the app then drops its queued picks and asks again).
+    pub fn set_auto_activity(&self, activity: Option<String>) -> bool {
+        use sirtone_wave::query::Activity;
+        let a = activity.as_deref().and_then(Activity::from_key);
+        let eff = {
+            let mut st = self.steer();
+            if st.auto == a {
+                return false;
+            }
+            st.auto = a;
+            st.auto_key = a.and(activity);
+            if !self.my_wave || !st.query.activity.is_empty() {
+                return false;
+            }
+            st.effective(true)
+        };
+        let now = PhoneClock { offset_min: 0 }.now_utc_ms();
+        self.engine
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_query(eff, now);
+        true
+    }
+
+    /// «Сила влияний» (S07): season, context, events, 0…2 (1 — as the profile says).
+    pub fn set_influence(&self, season: f32, context: f32, events: f32) {
+        let clamp = |v: f32| v.clamp(0.0, 2.0);
+        let eff = {
+            let mut st = self.steer();
+            st.influence = Some([clamp(season), clamp(context), clamp(events)]);
+            st.effective(self.my_wave)
+        };
+        let now = PhoneClock { offset_min: 0 }.now_utc_ms();
+        self.engine
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_query(eff, now);
+    }
+
+    /// The weather where the phone is (Open-Meteo's answer to `context::weather_query`) and the
+    /// place for the daypart by the sun. Returns the weather class (`clear`…`storm`) or `None`
+    /// when the answer is unreadable. Only rounded coordinates are kept (D-149).
+    pub fn set_weather(&self, json: Vec<u8>, lat: f64, lon: f64) -> Option<String> {
+        let (lat, lon) = crate::context::coarse(lat, lon);
+        let now = PhoneClock { offset_min: 0 }.now_utc_ms();
+        let w = sirtone_wave::weather::parse(&json, lat, lon, now)?;
+        let class = w
+            .class()
+            .map(sirtone_wave::weather::class_key)
+            .map(str::to_owned);
+        let mut c = self.ctx();
+        c.coords = Some((lat, lon));
+        c.southern = lat < 0.0;
+        c.weather = Some(w);
+        class
+    }
+
     /// «Почему этот трек» (FR-LEARN-009): reason codes for the app to word — `liked`, `taste`,
     /// `session`, `new`, `forgotten`, `for_all`, `genre:<0..5>`, `context:<daypart>`,
     /// `season:<0..3>`.
     pub fn why(&self, track_id: i64) -> Vec<String> {
-        use sirtone_wave::engine::Why;
-        self.engine
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .why(track_id)
-            .into_iter()
-            .map(|w| match w {
-                Why::Liked => "liked".to_string(),
-                Why::Genre(g) => format!("genre:{g}"),
-                Why::Taste => "taste".to_string(),
-                Why::Context(d) => format!("context:{d}"),
-                Why::Session => "session".to_string(),
-                Why::NewForYou => "new".to_string(),
-                Why::Forgotten => "forgotten".to_string(),
-                Why::Season(s) => format!("season:{s}"),
-                Why::ForAll => "for_all".to_string(),
-            })
-            .collect()
+        // The phone's context first when it steers the wave now (D-149: the reason is named).
+        let auto = {
+            let st = self.steer();
+            st.auto_key
+                .clone()
+                .filter(|_| self.my_wave && st.query.activity.is_empty())
+                .map(|k| format!("auto:{k}"))
+        };
+        auto.into_iter().chain(self.why_engine(track_id)).collect()
     }
 }
 
@@ -358,6 +483,26 @@ mod tests {
         let _ = wave.why(ids[0]);
         // «Настроить волну»: no filter counts everything, a filter narrows or widens itself,
         // an unknown key is refused, and the wave keeps playing after tuning.
+        // The phone's context (D-149): an activity steers «Моя волна» and is named in «Почему»;
+        // a chosen activity wins; the same value again changes nothing.
+        assert!(wave.set_auto_activity(Some("road".into())));
+        assert!(!wave.set_auto_activity(Some("road".into())));
+        assert_eq!(
+            wave.why(ids[0]).first().map(String::as_str),
+            Some("auto:road")
+        );
+        wave.tune(WaveTuning {
+            activity: vec!["work".into()],
+            ..WaveTuning::default()
+        })
+        .unwrap();
+        assert!(wave.why(ids[0]).iter().all(|w| !w.starts_with("auto:")));
+        wave.tune(WaveTuning::default()).unwrap();
+        assert!(wave.set_auto_activity(None));
+        wave.set_influence(1.5, 0.0, 1.0);
+        assert!(!wave.next(1, 0.5, 180).unwrap().is_empty());
+        // An unreadable weather answer is ignored.
+        assert_eq!(wave.set_weather(b"{}".to_vec(), 55.75, 37.62), None);
         let all_n = wave.tuning_count(WaveTuning::default()).unwrap().tracks;
         assert!(all_n >= ids.len() as u32);
         let liked = WaveTuning {

@@ -230,6 +230,26 @@ impl Library {
         feedback::set_like(&self.db(), track_id, on)?;
         Ok(())
     }
+
+    /// «Никогда в волне» (PC `settingsNever`): the wave never picks the track; off again from
+    /// «Настройки → Волна».
+    pub fn set_never(&self, track_id: i64, on: bool) -> Result<(), CoreError> {
+        feedback::set_never_track(&mut self.db(), track_id, on)?;
+        Ok(())
+    }
+
+    /// The tracks under «Никогда в волне», by title.
+    pub fn never_tracks(&self) -> Result<Vec<TrackItem>, CoreError> {
+        let ids: Vec<i64> = self.with(|c| -> Result<Vec<i64>, sirtone_library::LibraryError> {
+            let mut st =
+                c.prepare("SELECT id FROM track WHERE wave_never = 1 ORDER BY title_norm, id")?;
+            let ids = st
+                .query_map([], |r| r.get(0))?
+                .collect::<Result<Vec<i64>, _>>()?;
+            Ok(ids)
+        })?;
+        self.tracks_by_ids(ids)
+    }
 }
 
 #[cfg(test)]
