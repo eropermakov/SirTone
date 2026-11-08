@@ -105,6 +105,12 @@ export const commands = {
 	phonePull: (udid: string, progress: Channel<TransferProgress>) => typedError<PullDone, AppError>(__TAURI_INVOKE("phone_pull", { udid, progress })),
 	phoneAccount: (udid: string) => __TAURI_INVOKE<PhoneAccount>("phone_account", { udid }),
 	/**
+	 *  Сиртон is already on this phone (FR-HUB-003): a phone set up from the command line or another
+	 *  PC gets «Перенести на телефон» and «Забрать с телефона» without a reinstall, which would
+	 *  restart its 7-day count. Its renewal date stays unknown until the hub installs or renews it.
+	 */
+	phoneHasApp: (udid: string) => __TAURI_INVOKE<boolean>("phone_has_app", { udid }),
+	/**
 	 *  Logs in with the Apple ID of this phone's owner (wizard step 6). Each 2FA request goes to
 	 *  `asks`; the form answers with [`phone_apple_2fa`]. The password is dropped when this returns.
 	 */

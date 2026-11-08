@@ -35,6 +35,11 @@ export function phoneAccount(udid: string): Promise<PhoneAccount> {
   return commands.phoneAccount(udid);
 }
 
+/** Сиртон is already on the phone, wherever it was installed from (FR-HUB-003). */
+export function phoneHasApp(udid: string): Promise<boolean> {
+  return commands.phoneHasApp(udid);
+}
+
 /**
  * Wizard step 6: logs in with the Apple ID; `onAsk` gets each 2FA request and the form answers
  * with {@link answerTwoFactor}. The password goes to the core once and is never kept here.

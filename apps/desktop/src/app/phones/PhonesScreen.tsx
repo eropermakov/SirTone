@@ -7,6 +7,7 @@ import {
   type PhoneInfo,
   type PhonesStatus,
   phoneAccount,
+  phoneHasApp,
   phonesList,
   pullFromPhone,
 } from "@/shared/ipc/phones";
@@ -126,8 +127,10 @@ function PhoneCard({
   const Link = phone.usb ? Cable : Wifi;
   const [confirming, setConfirming] = useState(false);
   const [until, setUntil] = useWorksUntil(phone, picking !== null);
-  // A phone this PC installed: moving and taking come first, a reinstall is the exception.
-  const known = until !== null;
+  const hasApp = useHasApp(phone, picking !== null);
+  // A phone with Сиртон on it — installed here, from the command line or another PC: moving and
+  // taking come first, a reinstall is the exception. «Отключить» only forgets what this PC keeps.
+  const known = until !== null || hasApp;
   const days = until === null ? null : Math.floor((until - Date.now()) / 86_400_000);
   return (
     <article
@@ -200,9 +203,11 @@ function PhoneCard({
           <Button variant="ghost" onClick={() => onPick("install")}>
             {t("phones.reinstall")}
           </Button>
-          <Button variant="ghost" onClick={() => setConfirming(true)}>
-            {t("phones.forget.action")}
-          </Button>
+          {until !== null && (
+            <Button variant="ghost" onClick={() => setConfirming(true)}>
+              {t("phones.forget.action")}
+            </Button>
+          )}
         </div>
       ) : (
         <div>
@@ -259,6 +264,22 @@ function PullAction({ phone, onBusy }: { phone: PhoneInfo; onBusy: (busy: boolea
       </span>
     </div>
   );
+}
+
+/** Whether Сиртон is already on a trusted iPhone (asked once per card, again after the wizard). */
+function useHasApp(phone: PhoneInfo, picking: boolean): boolean {
+  const [has, setHas] = useState(false);
+  useEffect(() => {
+    if (phone.platform !== "ios" || phone.state !== "ready" || picking) return;
+    let alive = true;
+    phoneHasApp(phone.id)
+      .then((v) => alive && setHas(v))
+      .catch(() => alive && setHas(false));
+    return () => {
+      alive = false;
+    };
+  }, [phone.id, phone.platform, phone.state, picking]);
+  return has;
 }
 
 /** When the app on a known iPhone stops opening unless renewed (S11); `null` before the hub

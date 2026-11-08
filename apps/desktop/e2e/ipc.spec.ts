@@ -287,6 +287,8 @@ async function mockTauri(page: Page) {
                 package: true,
               }
             );
+          case "phone_has_app":
+            return w.__mockHasApp ?? false;
           case "phone_apple_login": {
             // Asks for a code through the channel; «111111» is wrong once, anything else passes.
             const ch = callbacks.get((args.asks as { id: number }).id);
@@ -1359,6 +1361,30 @@ test("«Телефоны»: a known phone gets the library without a reinstall; 
   await card.getByRole("button", { name: "Отключить", exact: true }).click();
   await expect(page.getByText("Телефон отключён")).toBeVisible();
   expect(await calls(page, "phone_forget")).toHaveLength(1);
+});
+
+test("«Телефоны»: Сиртон installed elsewhere — moving without a reinstall (FR-HUB-003)", async ({
+  page,
+}) => {
+  await page.addInitScript((phones) => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__mockPhones = phones;
+    // No record on this PC (installed from the command line), but the app is on the phone.
+    w.__mockHasApp = true;
+  }, ownerPhone);
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Телефоны", exact: true }).click();
+  const card = page.getByRole("article", { name: "iPhone владельца" });
+  await card.getByRole("button", { name: "Перенести на телефон" }).click();
+  await card.getByRole("button", { name: "Дальше" }).click();
+  await expect(card.getByText("Откройте Сиртон на iPhone", { exact: false })).toBeVisible();
+  expect(await calls(page, "phone_install")).toHaveLength(0);
+  expect(await calls(page, "phone_send")).toHaveLength(1);
+  await card.getByRole("button", { name: "Готово" }).click();
+  // Nothing of this phone is kept here: nothing to forget.
+  await expect(card.getByRole("button", { name: "Отключить телефон" })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "Забрать с телефона" })).toBeVisible();
 });
 
 test("«Телефоны»: without the app package the wizard says it is not ready", async ({ page }) => {

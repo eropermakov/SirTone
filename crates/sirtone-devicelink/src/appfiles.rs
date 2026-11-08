@@ -62,6 +62,12 @@ fn ours(apps: impl IntoIterator<Item = String>) -> Option<String> {
         .min()
 }
 
+/// Whether Сиртон is on this phone and its container opens — also when it was put there by
+/// another PC or the command line, so the hub need not have installed it (FR-HUB-003).
+pub async fn has_app(udid: &str) -> bool {
+    open(udid).await.is_ok()
+}
+
 /// Opens the app's container: the cable when the phone is on it, else Wi-Fi.
 /// `phone.app_not_installed` — Сиртон is not on this phone.
 pub async fn open(udid: &str) -> Result<AppFiles, LinkError> {

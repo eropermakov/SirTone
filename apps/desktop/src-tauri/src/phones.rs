@@ -573,6 +573,15 @@ impl SendParts {
     }
 }
 
+/// Сиртон is already on this phone (FR-HUB-003): a phone set up from the command line or another
+/// PC gets «Перенести на телефон» and «Забрать с телефона» without a reinstall, which would
+/// restart its 7-day count. Its renewal date stays unknown until the hub installs or renews it.
+#[tauri::command(async)]
+#[specta::specta]
+pub async fn phone_has_app(udid: String) -> bool {
+    sirtone_devicelink::appfiles::has_app(&udid).await
+}
+
 /// «Перенести всё» (M6.2, MR §11): the PC library's package — manifest and journal written to
 /// the app's cache folder, the music sent straight from the library — into the app's inbox on
 /// the phone (cable, else Wi-Fi). The app applies it when opened. A repeat resumes.
