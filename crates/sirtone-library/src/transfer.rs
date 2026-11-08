@@ -251,6 +251,22 @@ pub fn apply_mark(
     Ok(true)
 }
 
+/// The receiving side already holds this play (`mark` — `None`) or mark: what [`apply_play`] and
+/// [`apply_mark`] would skip as an echo. The sender leaves such events out (D-152).
+pub fn has_event(
+    conn: &Connection,
+    track_id: i64,
+    ts: i64,
+    mark: Option<&str>,
+) -> Result<bool, LibraryError> {
+    let table = if mark.is_some() {
+        "feedback"
+    } else {
+        "play_event"
+    };
+    echo(conn, table, track_id, ts, mark)
+}
+
 /// A row for this track at exactly this millisecond is already here: the event has travelled
 /// out and back (a package carries every journal row, also those that came from packages).
 fn echo(

@@ -5,6 +5,7 @@ import {
   MoreHorizontal,
   Play,
   RefreshCw,
+  Smartphone,
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -12,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { openExport } from "@/app/export/ExportDialog";
 import { mb } from "@/app/library/TrackCard";
 import { type GoTo, TrackList } from "@/app/library/TrackList";
+import { openToPhone } from "@/app/phones/ToPhoneDialog";
 import { playTracks } from "@/shared/ipc/library";
 import {
   deletePlaylist,
@@ -254,6 +256,13 @@ export function PlaylistScreen({
               label: t("export.menu"),
               icon: FolderOutput,
               onSelect: () => openExport({ kind: "playlist", id, title: meta?.name ?? "" }),
+            },
+            {
+              id: "toPhone",
+              label: t("phones.toPhone.menu"),
+              icon: Smartphone,
+              onSelect: () =>
+                openToPhone({ title: meta?.name ?? "", selection: { playlists: [id] } }),
             },
             {
               id: "delete",

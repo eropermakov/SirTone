@@ -287,6 +287,18 @@ async function mockTauri(page: Page) {
                 package: true,
               }
             );
+          case "phone_pick_lists":
+            return {
+              artists: [
+                { id: 7, key: null, name: "Кино", detail: null, tracks: 12 },
+                { id: 8, key: null, name: "Аквариум", detail: null, tracks: 5 },
+              ],
+              albums: [{ id: 3, key: null, name: "Звезда", detail: "Кино", tracks: 11 }],
+              genres: [{ id: 0, key: "rock", name: "Rock", detail: null, tracks: 3 }],
+              playlists: [],
+            };
+          case "phone_selection_size":
+            return { tracks: 12, bytes: 400 * 1024 ** 2, durationSec: 2_400 };
           case "phone_has_app":
             return w.__mockHasApp ?? false;
           case "phone_apple_login": {
@@ -324,7 +336,9 @@ async function mockTauri(page: Page) {
               ch?.({ message: { fraction }, index });
               await new Promise((r) => setTimeout(r, 30));
             }
-            return { tracks: 118, missing: 0 };
+            return w.__mockSendAlready
+              ? { tracks: 0, missing: 0, already: true }
+              : { tracks: 118, missing: 0, already: false };
           }
           case "phone_pull": {
             const ch = callbacks.get((args.progress as { id: number }).id);
@@ -1385,6 +1399,116 @@ test("«Телефоны»: Сиртон installed elsewhere — moving without 
   // Nothing of this phone is kept here: nothing to forget.
   await expect(card.getByRole("button", { name: "Отключить телефон" })).toHaveCount(0);
   await expect(card.getByRole("button", { name: "Забрать с телефона" })).toBeVisible();
+});
+
+test("«Телефоны»: «Выбранная» музыка — groups, search, only the chosen go (D-152)", async ({
+  page,
+}) => {
+  await page.addInitScript((phones) => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__mockPhones = phones;
+    w.__mockHasApp = true;
+  }, ownerPhone);
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Телефоны", exact: true }).click();
+  const card = page.getByRole("article", { name: "iPhone владельца" });
+  await card.getByRole("button", { name: "Перенести на телефон" }).click();
+  await card.getByText("Выбрать", { exact: true }).click();
+  await card.getByText("Выбранная", { exact: true }).click();
+  // Nothing chosen yet: nothing to send.
+  await expect(card.getByRole("button", { name: "Дальше" })).toBeDisabled();
+  await card.getByRole("searchbox", { name: "Найти" }).fill("кин");
+  await expect(card.getByText("Аквариум")).toHaveCount(0);
+  await card.getByRole("checkbox", { name: /Кино/ }).check();
+  await expect(card.getByRole("tab", { name: "Исполнители: 1" })).toBeVisible();
+  await card.getByRole("tab", { name: "Жанры" }).click();
+  await card.getByRole("searchbox", { name: "Найти" }).fill("");
+  await card.getByRole("checkbox", { name: /Rock/ }).check();
+  await expect(card.getByText("400 МБ")).toBeVisible();
+  await card.getByRole("button", { name: "Дальше" }).click();
+  await expect(card.getByText("Готово: 118 песен", { exact: false })).toBeVisible();
+  const sent = (await calls(page, "phone_send")).at(-1)?.args as {
+    selection: { artists: number[]; genres: string[] };
+  };
+  expect(sent.selection.artists).toEqual([7]);
+  expect(sent.selection.genres).toEqual(["rock"]);
+});
+
+test("«На телефон» in a track's menu; a repeat with nothing new says so (D-152)", async ({
+  page,
+}) => {
+  await page.addInitScript((phones) => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__mockPhones = phones;
+    w.__mockHasApp = true;
+    w.__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 3,
+      artists: 3,
+      albums: 2,
+      unknown: 0,
+      durationSec: 515,
+      bytes: 300,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+  }, ownerPhone);
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Все треки", exact: true }).click();
+  const list = page.getByRole("list", { name: "Все треки" });
+  await list.getByText("Арфа").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Ещё" }).click();
+  await page.getByRole("menuitem", { name: "На телефон" }).click();
+  const dlg = page.getByTestId("to-phone-dialog");
+  await expect(dlg.getByText("Уйдёт только то, чего на телефоне ещё нет")).toBeVisible();
+  await dlg.getByRole("button", { name: "Перенести" }).click();
+  await expect(dlg.getByText("Готово: 118 песен", { exact: false })).toBeVisible();
+  const sent = (await calls(page, "phone_send")).at(-1)?.args as {
+    selection: { tracks: number[] };
+    parts: { music: boolean; taste: boolean };
+  };
+  expect(sent.selection.tracks).toEqual([3]);
+  expect(sent.parts).toMatchObject({ music: true, taste: false });
+  await dlg.getByRole("button", { name: "Готово" }).click();
+
+  await page.evaluate(() => {
+    (window as unknown as Record<string, unknown>).__mockSendAlready = true;
+  });
+  await list.getByText("Арфа").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Ещё" }).click();
+  await page.getByRole("menuitem", { name: "На телефон" }).click();
+  await page.getByTestId("to-phone-dialog").getByRole("button", { name: "Перенести" }).click();
+  await expect(page.getByText("На телефоне уже всё есть — переносить нечего")).toBeVisible();
+});
+
+test("«На телефон» without a phone with Сиртон says what to do (D-152)", async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 3,
+      artists: 3,
+      albums: 2,
+      unknown: 0,
+      durationSec: 515,
+      bytes: 300,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Все треки", exact: true }).click();
+  await page.getByRole("list", { name: "Все треки" }).getByText("Арфа").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Ещё" }).click();
+  await page.getByRole("menuitem", { name: "На телефон" }).click();
+  await expect(page.getByText("Подключите iPhone с Сиртоном", { exact: false })).toBeVisible();
+  expect(await calls(page, "phone_send")).toHaveLength(0);
 });
 
 test("«Телефоны»: without the app package the wizard says it is not ready", async ({ page }) => {

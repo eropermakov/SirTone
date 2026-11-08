@@ -546,9 +546,167 @@ pub struct TransferProgress {
 #[derive(Debug, Clone, Copy, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct TransferDone {
+    /// Songs whose music went (new to the phone, D-152).
     pub tracks: u32,
     /// Library files that could not be read (moved since the last scan); the rest went.
     pub missing: u32,
+    /// The phone had everything chosen: nothing was sent («На телефоне уже всё есть»).
+    pub already: bool,
+}
+
+/// «Выбранная» музыка (D-152): groups of the PC library; `None` in `phone_send` — all of it.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PhoneSelection {
+    pub artists: Vec<u32>,
+    pub albums: Vec<u32>,
+    /// Genre keys, as the genre pages address them.
+    pub genres: Vec<String>,
+    pub playlists: Vec<u32>,
+    pub tracks: Vec<u32>,
+}
+
+/// One row of the «Выбранная» picker.
+#[derive(Debug, Clone, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PickItem {
+    pub id: u32,
+    /// Genres only: the key to choose them by.
+    pub key: Option<String>,
+    pub name: String,
+    /// Albums: the artist.
+    pub detail: Option<String>,
+    pub tracks: u32,
+}
+
+#[derive(Debug, Clone, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PickLists {
+    pub artists: Vec<PickItem>,
+    pub albums: Vec<PickItem>,
+    pub genres: Vec<PickItem>,
+    pub playlists: Vec<PickItem>,
+}
+
+/// The chosen music before the phone is asked what it has (the size shown up front).
+#[derive(Debug, Clone, Copy, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectionSize {
+    pub tracks: u32,
+    pub bytes: f64,
+    pub duration_sec: f64,
+}
+
+/// The picker's lists: artists, albums, genres and playlists of the PC library (D-152).
+#[tauri::command(async)]
+#[specta::specta]
+pub fn phone_pick_lists(lib: State<'_, crate::library::Library>) -> Result<PickLists, AppError> {
+    use sirtone_library::collection;
+    const ALL: u32 = 1_000_000;
+    lib.with_read(|c| {
+        let item = |id: i64, name: String, detail: Option<String>, tracks: u32| PickItem {
+            id: u32::try_from(id).unwrap_or_default(),
+            key: None,
+            name,
+            detail,
+            tracks,
+        };
+        Ok(PickLists {
+            artists: collection::artists_page(c, None, ALL)?
+                .0
+                .into_iter()
+                .map(|a| item(a.id, a.name, None, a.tracks))
+                .collect(),
+            albums: collection::albums_page(c, None, ALL)?
+                .0
+                .into_iter()
+                .map(|a| item(a.id, a.title, Some(a.artist), a.tracks))
+                .collect(),
+            genres: collection::genres(c)?
+                .into_iter()
+                .map(|g| PickItem {
+                    id: 0,
+                    key: Some(g.key),
+                    name: g.name,
+                    detail: None,
+                    tracks: g.tracks,
+                })
+                .collect(),
+            playlists: sirtone_library::playlists::list(c)?
+                .into_iter()
+                .map(|p| {
+                    let n = sirtone_library::playlists::tracks(c, p.id)?.len() as u32;
+                    Ok(item(p.id, p.name, None, n))
+                })
+                .collect::<Result<_, sirtone_library::LibraryError>>()?,
+        })
+    })
+}
+
+/// Track ids of a selection (each once) and the names of its playlists.
+fn chosen_tracks(
+    c: &rusqlite::Connection,
+    sel: &PhoneSelection,
+) -> Result<(Vec<i64>, HashSet<String>), sirtone_library::LibraryError> {
+    use sirtone_library::{collection, playlists};
+    let mut ids: Vec<i64> = sel.tracks.iter().map(|&t| i64::from(t)).collect();
+    for &a in &sel.artists {
+        ids.extend(
+            collection::artist_tracks(c, i64::from(a))?
+                .iter()
+                .map(|t| t.id),
+        );
+    }
+    for &a in &sel.albums {
+        ids.extend(
+            collection::album_tracks(c, i64::from(a))?
+                .iter()
+                .map(|t| t.id),
+        );
+    }
+    for g in &sel.genres {
+        ids.extend(collection::genre_tracks(c, g)?.iter().map(|t| t.id));
+    }
+    let mut names = HashSet::new();
+    for p in playlists::list(c)? {
+        if sel.playlists.iter().any(|&id| i64::from(id) == p.id) {
+            ids.extend(playlists::tracks(c, p.id)?.iter().map(|t| t.track.id));
+            names.insert(p.name);
+        }
+    }
+    let mut seen = HashSet::new();
+    ids.retain(|id| seen.insert(*id));
+    Ok((ids, names))
+}
+
+/// How much the chosen music is (before the phone says what it has already).
+#[tauri::command(async)]
+#[specta::specta]
+pub fn phone_selection_size(
+    lib: State<'_, crate::library::Library>,
+    selection: PhoneSelection,
+) -> Result<SelectionSize, AppError> {
+    lib.with_read(|c| {
+        let (ids, _) = chosen_tracks(c, &selection)?;
+        let mut st = c.prepare_cached(
+            "SELECT size_bytes, duration_ms FROM track WHERE id = ?1 AND state = 'ok'",
+        )?;
+        let mut s = SelectionSize {
+            tracks: 0,
+            bytes: 0.0,
+            duration_sec: 0.0,
+        };
+        for id in ids {
+            if let Ok((b, d)) =
+                st.query_row([id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))
+            {
+                s.tracks += 1;
+                s.bytes += b as f64;
+                s.duration_sec += d as f64 / 1000.0;
+            }
+        }
+        Ok(s)
+    })
 }
 
 /// What goes to the phone: «Перенести всё» is all three, «Выбрать» the ticked ones (MR §11).
@@ -592,6 +750,7 @@ pub async fn phone_send(
     udid: String,
     quality: String,
     parts: SendParts,
+    selection: Option<PhoneSelection>,
     progress: Channel<TransferProgress>,
 ) -> Result<TransferDone, AppError> {
     use tauri::Manager as _;
@@ -603,7 +762,7 @@ pub async fn phone_send(
     {
         return Err(AppError::new(ErrorCode::DeviceBusy));
     }
-    let r = send(&app, &udid, &quality, parts, &progress).await;
+    let r = send(&app, &udid, &quality, parts, selection.as_ref(), &progress).await;
     if let Ok(mut s) = hub.installing.lock() {
         s.remove(&udid);
     }
@@ -653,6 +812,40 @@ pub async fn phone_pull(
 /// playing and writing; `-shm` is rebuilt by SQLite and never copied).
 const PHONE_DB: [&str; 2] = [".sirtone/library.db", ".sirtone/library.db-wal"];
 
+/// Copies the phone library's database into `phone_root/.sirtone`: the two files are read one
+/// after the other while the app may write, so it is checked and read once more if it came torn.
+/// `false` — no whole copy (no library on the phone yet, or torn twice).
+async fn phone_db_snapshot(
+    files: &mut sirtone_devicelink::appfiles::AppFiles,
+    phone_root: &std::path::Path,
+) -> Result<bool, AppError> {
+    use sirtone_devicelink::appfiles;
+    let db = phone_root.join(".sirtone").join("library.db");
+    for _ in 0..2 {
+        for name in ["library.db", "library.db-wal", "library.db-shm"] {
+            let _ = std::fs::remove_file(db.with_file_name(name));
+        }
+        let db_files = files
+            .sizes(appfiles::LIBRARY, &PHONE_DB.map(String::from))
+            .await;
+        files
+            .pull_files(appfiles::LIBRARY, phone_root, db_files, &|_, _| {})
+            .await
+            .map_err(|e| app_error(&e))?;
+        let whole = sirtone_library::open_existing(&db, sirtone_library::Medium::Fixed)
+            .ok()
+            .and_then(|c| {
+                c.query_row("PRAGMA quick_check", [], |r| r.get::<_, String>(0))
+                    .ok()
+            })
+            .is_some_and(|s| s == "ok");
+        if whole {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 async fn pull(
     app: &AppHandle,
     udid: &str,
@@ -676,32 +869,8 @@ async fn pull(
     let _ = progress.send(TransferProgress { fraction: 0.0 });
     let mut files = appfiles::open(udid).await.map_err(|e| app_error(&e))?;
 
-    // 1. A whole snapshot of the database: the two files are read one after the other while
-    //    the app may write, so check it and read once more if it came torn.
-    let mut whole = false;
-    for _ in 0..2 {
-        for name in ["library.db", "library.db-wal", "library.db-shm"] {
-            let _ = std::fs::remove_file(db.with_file_name(name));
-        }
-        let db_files = files
-            .sizes(appfiles::LIBRARY, &PHONE_DB.map(String::from))
-            .await;
-        files
-            .pull_files(appfiles::LIBRARY, &phone_root, db_files, &|_, _| {})
-            .await
-            .map_err(|e| app_error(&e))?;
-        whole = sirtone_library::open_existing(&db, sirtone_library::Medium::Fixed)
-            .ok()
-            .and_then(|c| {
-                c.query_row("PRAGMA quick_check", [], |r| r.get::<_, String>(0))
-                    .ok()
-            })
-            .is_some_and(|s| s == "ok");
-        if whole {
-            break;
-        }
-    }
-    if !whole {
+    // 1. A whole snapshot of the database.
+    if !phone_db_snapshot(&mut files, &phone_root).await? {
         return Err(fail("transfer.snapshot"));
     }
     let _ = progress.send(TransferProgress { fraction: 0.05 });
@@ -782,6 +951,7 @@ async fn send(
     udid: &str,
     quality: &str,
     chosen: SendParts,
+    selection: Option<&PhoneSelection>,
     progress: &Channel<TransferProgress>,
 ) -> Result<TransferDone, AppError> {
     use sirtone_devicelink::appfiles;
@@ -795,17 +965,25 @@ async fn send(
     } else {
         None
     };
-    // One package folder per quality: a resume continues the same one, a switch starts clean.
-    let out = app
+    // A chosen playlist travels as a playlist too (D-152).
+    let chosen = SendParts {
+        playlists: chosen.playlists || selection.is_some_and(|s| !s.playlists.is_empty()),
+        ..chosen
+    };
+    // One package folder per quality, parts and choice: a resume continues the same one, another
+    // choice starts clean.
+    let cache = app
         .path()
         .app_cache_dir()
-        .map_err(|_| AppError::new(ErrorCode::Internal))?
+        .map_err(|_| AppError::new(ErrorCode::Internal))?;
+    let out = cache
         .join("phone-out")
         .join(appfiles::package_folder(udid))
         .join(format!(
-            "{}-{}",
+            "{}-{}-{:016x}",
             level.map_or("original", |l| l.as_str()),
-            chosen.tag()
+            chosen.tag(),
+            selection.map_or(0, selection_hash)
         ));
     let parts = sirtone_transfer::Parts {
         music: chosen.music,
@@ -814,6 +992,26 @@ async fn send(
         settings: false,
     };
     let _ = progress.send(TransferProgress { fraction: 0.0 });
+    // The phone first: what it has decides what goes (D-152); no point packing for a phone that
+    // is gone or full.
+    let mut files = appfiles::open(udid).await.map_err(|e| app_error(&e))?;
+    let phone_root = cache
+        .join("phone-in")
+        .join(appfiles::package_folder(udid))
+        .join("library");
+    let has_db = phone_db_snapshot(&mut files, &phone_root)
+        .await
+        .unwrap_or(false);
+    let _ = progress.send(TransferProgress { fraction: 0.02 });
+    let picked = match selection {
+        Some(s) => {
+            let (ids, names) = lib.with_read(|c| chosen_tracks(c, s))?;
+            let uid = lib.with_read(sirtone_library::transfer::library_uid)?;
+            let keys: HashSet<String> = ids.iter().map(|id| format!("{uid}:{id}")).collect();
+            Some((keys, names))
+        }
+        None => None,
+    };
     let summary = lib.with_write(|c| {
         sirtone_sync::export_with(
             c,
@@ -829,20 +1027,48 @@ async fn send(
             other => sirtone_library::LibraryError::Invalid(other.code().into()),
         })
     })?;
-    // The phone first: no point encoding a thousand tracks for a phone that is gone or full.
-    let mut files = appfiles::open(udid).await.map_err(|e| app_error(&e))?;
+    // Only what the phone lacks (D-152): its database decides; without one all is new.
+    let (out2, db) = (out.clone(), phone_root.join(".sirtone").join("library.db"));
+    let narrowed = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
+        let other = if has_db {
+            sirtone_library::open_existing(&db, sirtone_library::Medium::Fixed).ok()
+        } else {
+            None
+        };
+        let (keys, names) = match &picked {
+            Some((k, n)) => (Some(k), Some(n)),
+            None => (None, None),
+        };
+        sirtone_sync::narrow(&out2, other.as_ref(), keys, names)
+            .map_err(|e| AppError::new(ErrorCode::PhoneTransfer).with_details(e.code()))
+    })
+    .await
+    .map_err(|_| AppError::new(ErrorCode::Internal))??;
+    if narrowed.is_empty() {
+        let _ = std::fs::remove_dir_all(&out);
+        let _ = progress.send(TransferProgress { fraction: 1.0 });
+        tracing::info!(target: "sirtone::phones", "nothing new for the phone");
+        return Ok(TransferDone {
+            tracks: 0,
+            missing: 0,
+            already: true,
+        });
+    }
+    let send_set: HashSet<&str> = narrowed.send.iter().map(String::as_str).collect();
     let manifest = sirtone_transfer::Manifest::read(&out)
         .map_err(|_| AppError::new(ErrorCode::PhoneTransfer).with_details("transfer.manifest"))?;
+    let sent = manifest
+        .tracks
+        .iter()
+        .filter(|t| send_set.contains(t.file.as_str()));
     let need = match level {
         // Without music only the manifest and journal go: no music to count.
         _ if !chosen.music => 0,
         // Opus at a fixed rate: duration × bitrate (+ the small manifest and journal).
-        Some(l) => manifest
-            .tracks
-            .iter()
+        Some(l) => sent
             .map(|t| u64::from(t.duration_ms) * u64::from(l.kbps()) / 8)
             .sum::<u64>(),
-        None => summary.total_bytes,
+        None => sent.map(|t| t.size).sum::<u64>(),
     };
     if let Some(free) = files.free_bytes().await {
         let already = files.already_sent(&summary.package_id).await;
@@ -851,8 +1077,10 @@ async fn send(
         }
     }
     let mut music = if chosen.music {
-        sirtone_sync::music_sources(&root, &out)
-            .map_err(|e| AppError::new(ErrorCode::PhoneTransfer).with_details(e.code()))?
+        let mut m = sirtone_sync::music_sources(&root, &out)
+            .map_err(|e| AppError::new(ErrorCode::PhoneTransfer).with_details(e.code()))?;
+        m.retain(|(_, file)| send_set.contains(file.as_str()));
+        m
     } else {
         Vec::new()
     };
@@ -902,9 +1130,20 @@ async fn send(
     let _ = std::fs::remove_dir_all(&out);
     tracing::info!(target: "sirtone::phones", files = c.files, skipped = c.skipped, missing = c.missing, "sent");
     Ok(TransferDone {
-        tracks: summary.tracks,
+        tracks: narrowed.send.len() as u32,
         missing: c.missing,
+        already: false,
     })
+}
+
+/// A stable name for a choice (the package folder): FNV-1a over its JSON.
+fn selection_hash(s: &PhoneSelection) -> u64 {
+    serde_json::to_vec(s)
+        .unwrap_or_default()
+        .iter()
+        .fold(0xcbf2_9ce4_8422_2325, |h, b| {
+            (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3)
+        })
 }
 
 /// Makes the Opus copies of `music` inside the package `out` and rewrites its manifest so the

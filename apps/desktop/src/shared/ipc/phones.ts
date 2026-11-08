@@ -6,8 +6,12 @@ import {
   type InstallProgress,
   type PhoneAccount,
   type PhoneInfo,
+  type PhoneSelection,
   type PhonesStatus,
+  type PickItem,
+  type PickLists,
   type PullDone,
+  type SelectionSize,
   type SendParts,
   type TransferDone,
   type TransferProgress,
@@ -16,7 +20,17 @@ import {
 } from "./bindings";
 
 /** Hub «Телефоны» (stage 8, FR-HUB-001…004): phones this PC sees and the iPhone wizard. */
-export type { PhoneAccount, PhoneInfo, PhonesStatus, TwoFactorReply, TwoFactorRequest };
+export type {
+  PhoneAccount,
+  PhoneInfo,
+  PhoneSelection,
+  PhonesStatus,
+  PickItem,
+  PickLists,
+  TransferDone,
+  TwoFactorReply,
+  TwoFactorRequest,
+};
 
 const unwrap = <T>(r: { status: "ok"; data: T } | { status: "error"; error: AppError }): T => {
   if (r.status === "error") throw r.error;
@@ -71,15 +85,42 @@ export async function installOnPhone(udid: string, onProgress: (f: number) => vo
  */
 export type Quality = "original" | "economy" | "max";
 
+/**
+ * Only what the phone lacks goes (D-152); `selection` — «Выбранная» музыка (`null` — all of it).
+ * `already` in the answer: the phone had everything, nothing was sent.
+ */
 export async function sendToPhone(
   udid: string,
   quality: Quality,
   parts: SendParts,
   onProgress: (f: number) => void,
+  selection: PhoneSelection | null = null,
 ): Promise<TransferDone> {
   const progress = new Channel<TransferProgress>((p) => onProgress(p.fraction ?? 0));
-  return unwrap(await commands.phoneSend(udid, quality, parts, progress));
+  return unwrap(await commands.phoneSend(udid, quality, parts, selection, progress));
 }
+
+/** The «Выбранная» picker's lists: artists, albums, genres, playlists (D-152). */
+export async function pickLists(): Promise<PickLists> {
+  return unwrap(await commands.phonePickLists());
+}
+
+/** The chosen music's size before the phone is asked what it has. */
+export async function selectionSize(selection: PhoneSelection): Promise<SelectionSize> {
+  return unwrap(await commands.phoneSelectionSize(selection));
+}
+
+/** An empty choice. */
+export const NO_SELECTION: PhoneSelection = {
+  artists: [],
+  albums: [],
+  genres: [],
+  playlists: [],
+  tracks: [],
+};
+
+export const selectionCount = (s: PhoneSelection): number =>
+  s.artists.length + s.albums.length + s.genres.length + s.playlists.length + s.tracks.length;
 
 export async function forgetPhone(udid: string): Promise<void> {
   unwrap(await commands.phoneForget(udid));

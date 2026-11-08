@@ -12,11 +12,13 @@ import {
   Pencil,
   Play,
   Radio,
+  Smartphone,
   Trash2,
 } from "lucide-react";
 import { type ReactNode, useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type DragTrack, dropId } from "@/app/dnd/dnd";
+import { openToPhone } from "@/app/phones/ToPhoneDialog";
 import { useAddToPlaylist } from "@/app/playlists/useAddToPlaylist";
 import { useTrackTags } from "@/app/playlists/useTrackTags";
 import { timecode } from "@/app/shell/PlayerBar";
@@ -173,6 +175,12 @@ export function TrackList({
           label: t("trackMenu.details"),
           icon: Pencil,
           onSelect: () => setCard({ id: tr.id, confirmDelete: false }),
+        },
+        {
+          id: "toPhone",
+          label: t("phones.toPhone.menu"),
+          icon: Smartphone,
+          onSelect: () => openToPhone({ title: tr.title, selection: { tracks: [tr.id] } }),
         },
         tagsMenu,
         {

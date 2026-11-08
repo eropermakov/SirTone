@@ -7,12 +7,14 @@ import {
   ListStart,
   MoreHorizontal,
   Play,
+  Smartphone,
   Trash2,
 } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { dropId } from "@/app/dnd/dnd";
 import { openExport } from "@/app/export/ExportDialog";
+import { openToPhone } from "@/app/phones/ToPhoneDialog";
 import { cn } from "@/shared/lib/utils";
 import { Cover } from "@/shared/ui/Cover";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
@@ -105,6 +107,16 @@ export function CardGrid({
       icon: FolderOutput,
       onSelect: () =>
         openExport({ kind: kind === "albums" ? "album" : "artist", id: c.id, title: c.title }),
+    },
+    {
+      id: "toPhone",
+      label: t("phones.toPhone.menu"),
+      icon: Smartphone,
+      onSelect: () =>
+        openToPhone({
+          title: c.title,
+          selection: kind === "albums" ? { albums: [c.id] } : { artists: [c.id] },
+        }),
     },
     ...(onMerge
       ? ([

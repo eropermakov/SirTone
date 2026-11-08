@@ -223,6 +223,153 @@ pub fn export_with(
     Ok(sum)
 }
 
+/// What a package narrowed by [`narrow`] carries.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Narrowed {
+    /// Package paths of the music files to send (chosen, and new to the other library).
+    pub send: Vec<String>,
+    pub plays_and_marks: u32,
+    pub playlists: u32,
+}
+
+impl Narrowed {
+    /// The other side has everything: nothing worth sending (D-152 «уже всё есть»).
+    pub fn is_empty(&self) -> bool {
+        self.send.is_empty() && self.plays_and_marks == 0 && self.playlists == 0
+    }
+}
+
+/// Narrows a package written by [`export_with`] in place (D-152): music only of `chosen` track
+/// keys (all when `None`) that `other` — the receiving library, when its database could be read —
+/// does not have, by the same matcher [`apply`] uses; plays and marks it has not seen; playlists
+/// (only `chosen_playlists` by name, when given) that miss a track there. The manifest keeps only
+/// the tracks sent and those the kept events and playlists point at, so the receiver resolves
+/// them to its own copies; a listed track without its file is never imported. Idempotent: a
+/// resumed transfer narrows the narrowed package again.
+pub fn narrow(
+    out: &Path,
+    other: Option<&Connection>,
+    chosen: Option<&HashSet<String>>,
+    chosen_playlists: Option<&HashSet<String>>,
+) -> Result<Narrowed, SyncError> {
+    let mut manifest = Manifest::read(out)?;
+    let events = match std::fs::File::open(out.join(EVENTS_FILE)) {
+        Ok(f) => sirtone_transfer::events::read_jsonl(std::io::BufReader::new(f))?,
+        Err(_) => Vec::new(),
+    };
+    let there = match other {
+        Some(c) => Some(local_tracks(c)?),
+        None => None,
+    };
+    // Package key → the other library's track (when it has it).
+    let have: HashMap<String, i64> = match &there {
+        Some(t) => manifest
+            .tracks
+            .iter()
+            .zip(merge::match_tracks(&manifest.tracks, t))
+            .filter_map(|(e, m)| match m {
+                merge::TrackMatch::Same(id) => Some((e.key.clone(), id)),
+                merge::TrackMatch::New => None,
+            })
+            .collect(),
+        None => HashMap::new(),
+    };
+    let send: HashSet<String> = if manifest.parts.music {
+        manifest
+            .tracks
+            .iter()
+            .filter(|t| chosen.is_none_or(|c| c.contains(&t.key)))
+            .filter(|t| !have.contains_key(&t.key))
+            .map(|t| t.key.clone())
+            .collect()
+    } else {
+        HashSet::new()
+    };
+
+    let fresh: Vec<Event> = match other {
+        Some(c) => {
+            let seen = transfer::seen_keys(c)?;
+            let theirs = format!("{}:", transfer::library_uid(c)?);
+            let mut fresh = Vec::new();
+            for e in merge::new_events(&seen, &events) {
+                if e.key.starts_with(&theirs) {
+                    continue;
+                }
+                // Already there under another key (it travelled out and back): an echo.
+                if let Some(&id) = have.get(&e.track_key) {
+                    let mark = match &e.kind {
+                        EventKind::Mark { kind } => Some(kind.as_str()),
+                        EventKind::Play { .. } => None,
+                    };
+                    if transfer::has_event(c, id, e.ts, mark)? {
+                        continue;
+                    }
+                }
+                fresh.push(e.clone());
+            }
+            fresh
+        }
+        None => events,
+    };
+
+    let existing = match other {
+        Some(c) => sirtone_library::playlists::list(c)?
+            .into_iter()
+            .filter(|p| !p.smart)
+            .map(|p| {
+                let ids: HashSet<i64> = sirtone_library::playlists::tracks(c, p.id)?
+                    .iter()
+                    .map(|t| t.track.id)
+                    .collect();
+                Ok((p.name, ids))
+            })
+            .collect::<Result<HashMap<String, HashSet<i64>>, LibraryError>>()?,
+        None => HashMap::new(),
+    };
+    manifest.playlists.retain(|p| {
+        if chosen_playlists.is_some_and(|c| !c.contains(&p.name)) {
+            return false;
+        }
+        if there.is_none() {
+            return true; // nothing known of the other side: every chosen playlist goes
+        }
+        // A playlist the other side has whole (every track it can resolve is in it) stays home.
+        match existing.get(&p.name) {
+            Some(ids) => p.tracks.iter().any(|k| match have.get(k) {
+                Some(id) => !ids.contains(id),
+                None => send.contains(k),
+            }),
+            None => p
+                .tracks
+                .iter()
+                .any(|k| have.contains_key(k) || send.contains(k)),
+        }
+    });
+
+    let mut keep: HashSet<&str> = send.iter().map(String::as_str).collect();
+    keep.extend(fresh.iter().map(|e| e.track_key.as_str()));
+    for p in &manifest.playlists {
+        keep.extend(p.tracks.iter().map(String::as_str));
+    }
+    let keep: HashSet<String> = keep.into_iter().map(str::to_owned).collect();
+    manifest.tracks.retain(|t| keep.contains(&t.key));
+    manifest.write(out)?;
+    let mut buf = Vec::new();
+    sirtone_transfer::events::write_jsonl(&mut buf, &fresh)?;
+    std::fs::write(out.join(EVENTS_FILE), buf)?;
+
+    Ok(Narrowed {
+        send: manifest
+            .tracks
+            .iter()
+            .filter(|t| send.contains(&t.key))
+            .map(|t| t.file.clone())
+            .collect(),
+        plays_and_marks: fresh.len() as u32,
+        playlists: manifest.playlists.len() as u32,
+    })
+}
+
 /// The music of a package written by [`export_with`] without copying: (file in the library,
 /// its path inside the package) for every listed track that is not a copy made into the
 /// package (those files are in `out` already).
@@ -593,6 +740,138 @@ mod tests {
             !transfer::apply_analysis(&empty, there, &a).unwrap(),
             "not over an equal one"
         );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    fn song(conn: &mut rusqlite::Connection, rel: &str, title: &str, hash: &str) -> i64 {
+        let kino = artist_get_or_create(conn, "Кино").unwrap();
+        let album = album_get_or_create(conn, "Звезда", kino, None).unwrap();
+        track_insert(
+            conn,
+            &NewTrack {
+                rel_path: rel.into(),
+                size_bytes: 4,
+                mtime_ms: 0,
+                content_hash: hash.into(),
+                container: "flac".into(),
+                codec: "flac".into(),
+                lossless: true,
+                sample_rate: Some(44100),
+                channels: Some(2),
+                duration_ms: 200_000,
+                title: title.into(),
+                album_id: Some(album),
+                disc_no: None,
+                track_no: None,
+                year: None,
+                identity: Identity::Inferred,
+                identity_conf: 0.9,
+                unknown_reason: None,
+                artists: vec![kino],
+            },
+        )
+        .unwrap()
+    }
+
+    fn play(conn: &rusqlite::Connection, key: &str, track: i64, ts: i64) {
+        let ctx = transfer::PlayContext {
+            local_minute: 600,
+            weekday: 1,
+            daypart: 2,
+            season_w: [64, 64, 64, 63],
+            weather: None,
+        };
+        transfer::apply_play(conn, key, track, ts, 1000, 2000, "finished", "album", &ctx).unwrap();
+    }
+
+    /// D-152: the phone gets only what it lacks — music, plays, playlists — and a repeat with
+    /// nothing new sends nothing; a choice narrows the music further.
+    #[test]
+    fn narrow_sends_only_what_the_phone_lacks() {
+        let base = std::env::temp_dir().join(format!("sirtone-narrow-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let open = |d: &str| {
+            sirtone_library::open(
+                &base.join(d).join(".sirtone").join("library.db"),
+                sirtone_library::Medium::Fixed,
+            )
+            .unwrap()
+        };
+        let (mut pc, mut phone) = (open("pc"), open("phone"));
+        let a = song(&mut pc, "Кино/1.flac", "Звезда по имени Солнце", "h1");
+        let b = song(&mut pc, "Кино/2.flac", "Кукушка", "h2");
+        let c = song(&mut pc, "Кино/3.flac", "Группа крови", "h3");
+        let road = sirtone_library::playlists::create(&pc, "Дорога").unwrap();
+        sirtone_library::playlists::add(&mut pc, road, &[a, b]).unwrap();
+        play(&pc, "other:play:1", a, 1_000);
+        // The phone has the first two songs and «Дорога» with the first only.
+        let pa = song(&mut phone, "Кино/1.flac", "Звезда по имени Солнце", "h1");
+        let pb = song(&mut phone, "Кино/2.flac", "Кукушка", "h2");
+        let proad = sirtone_library::playlists::create(&phone, "Дорога").unwrap();
+        sirtone_library::playlists::add(&mut phone, proad, &[pa]).unwrap();
+
+        let all = Parts {
+            music: true,
+            playlists: true,
+            taste: true,
+            settings: false,
+        };
+        let uid = transfer::library_uid(&pc).unwrap();
+        let export = |out: &Path| {
+            let _ = std::fs::remove_dir_all(out);
+            export_with(
+                &pc,
+                &base.join("pc"),
+                out,
+                Platform::Windows,
+                "t",
+                all,
+                false,
+            )
+            .unwrap();
+        };
+        let out = base.join("out");
+        export(&out);
+        let n = narrow(&out, Some(&phone), None, None).unwrap();
+        assert_eq!(n.send, vec![format!("{MUSIC_DIR}/Кино/3.flac")]);
+        assert_eq!((n.plays_and_marks, n.playlists), (1, 1));
+        let m = Manifest::read(&out).unwrap();
+        let mut keys: Vec<&str> = m.tracks.iter().map(|t| t.key.as_str()).collect();
+        keys.sort_unstable();
+        let mut want = [
+            format!("{uid}:{a}"),
+            format!("{uid}:{b}"),
+            format!("{uid}:{c}"),
+        ];
+        want.sort_unstable();
+        assert_eq!(
+            keys, want,
+            "the sent song plus those the play and «Дорога» point at"
+        );
+        // Idempotent: a resumed transfer narrows the narrowed package to the same.
+        assert_eq!(narrow(&out, Some(&phone), None, None).unwrap(), n);
+
+        // A choice: only «Кукушка» and «Группа крови» chosen — the phone has the first.
+        export(&out);
+        let chosen: HashSet<String> = [b, c].iter().map(|id| format!("{uid}:{id}")).collect();
+        let n = narrow(&out, Some(&phone), Some(&chosen), Some(&HashSet::new())).unwrap();
+        assert_eq!(n.send, vec![format!("{MUSIC_DIR}/Кино/3.flac")]);
+        assert_eq!(n.playlists, 0, "no playlist was chosen");
+
+        // No phone database (the app never opened): everything chosen goes.
+        export(&out);
+        let n = narrow(&out, None, None, None).unwrap();
+        assert_eq!((n.send.len(), n.plays_and_marks, n.playlists), (3, 1, 1));
+
+        // The phone catches up — the play came back under its own key (an echo), «Дорога» and
+        // «Группа крови» are there: a repeat sends nothing.
+        play(&phone, "phone:play:9", pa, 1_000);
+        let pc3 = song(&mut phone, "Кино/3.flac", "Группа крови", "h3");
+        sirtone_library::playlists::add(&mut phone, proad, &[pb]).unwrap();
+        let _ = pc3;
+        export(&out);
+        let n = narrow(&out, Some(&phone), None, None).unwrap();
+        assert!(n.is_empty(), "nothing new: {n:?}");
         let _ = std::fs::remove_dir_all(&base);
     }
 }

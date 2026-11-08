@@ -9,6 +9,7 @@ import { TracksScreen } from "@/app/library/TracksScreen";
 import { UnknownScreen } from "@/app/library/UnknownScreen";
 import { useLibrary } from "@/app/library/useLibrary";
 import { PhonesScreen } from "@/app/phones/PhonesScreen";
+import { ToPhoneHost } from "@/app/phones/ToPhoneDialog";
 import { events } from "@/shared/ipc/bindings";
 import { bootstrap } from "@/shared/ipc/bootstrap";
 import { onDuplicatesFound } from "@/shared/ipc/duplicates";
@@ -601,6 +602,7 @@ export function App() {
             {t("proto")}
           </div>
           <ExportHost />
+          <ToPhoneHost />
           <HelpHost />
           <DropOverlay />
           <PlayerBar

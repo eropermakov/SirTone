@@ -1,25 +1,32 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ErrorCode, LibraryStatus, SendParts } from "@/shared/ipc/bindings";
+import type { ErrorCode, LibraryStatus, SelectionSize, SendParts } from "@/shared/ipc/bindings";
 import { getStatus } from "@/shared/ipc/library";
 import {
   answerTwoFactor,
   appleLogin,
   errorCode,
   installOnPhone,
+  NO_SELECTION,
   type PhoneInfo,
+  type PhoneSelection,
   phoneAccount,
   type Quality,
+  selectionCount,
+  selectionSize,
   sendToPhone,
   type TwoFactorRequest,
 } from "@/shared/ipc/phones";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/Button";
 import { Skeleton } from "@/shared/ui/Skeleton";
+import { MusicPicker } from "./MusicPicker";
 
 type Choice = "all" | "pick" | "app";
 const CHOICES: Choice[] = ["all", "pick", "app"];
 const QUALITIES: Quality[] = ["original", "economy", "max"];
+/** «Музыка: Вся / Выбранная» (D-152). */
+const WHICH = ["all", "chosen"] as const;
 const READY: ReadonlySet<Choice> = new Set(CHOICES);
 type Part = keyof SendParts;
 /** «Выбрать» (MR §6.1 step 5): what can go; «Настройки и тема» do not travel yet. */
@@ -27,6 +34,12 @@ const PARTS: Part[] = ["music", "playlists", "taste"];
 const ALL: SendParts = { music: true, playlists: true, taste: true };
 /** Opus copy rates (D-146), kbit/s — the size estimate before sending. */
 const KBPS: Record<Quality, number | null> = { original: null, economy: 128, max: 64 };
+
+/** The chosen music's size on the phone in the chosen quality, bytes (before «только новое»). */
+function sizeOf(s: SelectionSize, quality: Quality): number {
+  const kbps = KBPS[quality];
+  return kbps === null ? (s.bytes ?? 0) : ((s.durationSec ?? 0) * kbps * 1000) / 8;
+}
 
 /** The music's size on the phone in the chosen quality, bytes. */
 function musicBytes(status: LibraryStatus, quality: Quality): number {
@@ -43,7 +56,7 @@ type Step =
   | { k: "code"; ask: TwoFactorRequest; sent: boolean }
   | { k: "install"; fraction: number }
   | { k: "transfer"; fraction: number }
-  | { k: "sent" }
+  | { k: "sent"; already: boolean; tracks: number }
   | { k: "failed"; error: ErrorCode }
   | { k: "devMode" }
   | { k: "trust" }
@@ -77,7 +90,25 @@ export function PhoneWizard({
   const [quality, setQuality] = useState<Quality>("original");
   const [picked, setPicked] = useState<SendParts>(ALL);
   const [library, setLibrary] = useState<LibraryStatus | null>(null);
+  // «Музыка: Вся / Выбранная» (D-152).
+  const [whichMusic, setWhichMusic] = useState<"all" | "chosen">("all");
+  const [selection, setSelection] = useState<PhoneSelection>(NO_SELECTION);
+  const [chosenSize, setChosenSize] = useState<SelectionSize | null>(null);
   const parts = choice === "pick" ? picked : ALL;
+  const chosenMusic = choice === "pick" && parts.music && whichMusic === "chosen";
+  useEffect(() => {
+    if (!chosenMusic || selectionCount(selection) === 0) {
+      setChosenSize(null);
+      return;
+    }
+    let live = true;
+    selectionSize(selection)
+      .then((s) => live && setChosenSize(s))
+      .catch(() => live && setChosenSize(null));
+    return () => {
+      live = false;
+    };
+  }, [chosenMusic, selection]);
   const sends = choice !== "app" && (parts.music || parts.playlists || parts.taste);
   const [appleId, setAppleId] = useState("");
   const [password, setPassword] = useState("");
@@ -125,8 +156,9 @@ export function PhoneWizard({
       quality,
       parts,
       (f) => alive.current && setStep({ k: "transfer", fraction: f }),
+      chosenMusic ? selection : null,
     )
-      .then(() => alive.current && setStep({ k: "sent" }))
+      .then((d) => alive.current && setStep({ k: "sent", already: d.already, tracks: d.tracks }))
       .catch((e) => alive.current && setStep({ k: "failed", error: errorCode(e) }))
       .finally(() => onBusy(false));
   };
@@ -222,13 +254,39 @@ export function PhoneWizard({
                     className="size-4 accent-(--accent-fill)"
                   />
                   <span className="t-body text-text-primary">{t(`phones.parts.${part}`)}</span>
-                  {part === "music" && library !== null && (
+                  {part === "music" && library !== null && !chosenMusic && (
                     <span className="t-caption text-text-secondary">
                       <Size bytes={musicBytes(library, quality)} />
                     </span>
                   )}
+                  {part === "music" && chosenMusic && chosenSize !== null && (
+                    <span className="t-caption text-text-secondary">
+                      <Size bytes={sizeOf(chosenSize, quality)} />
+                    </span>
+                  )}
                 </label>
               ))}
+              {picked.music && (
+                <fieldset aria-label={t("phones.pick.which")} className="flex flex-col gap-2 pl-7">
+                  <div className="flex flex-wrap gap-4">
+                    {WHICH.map((w) => (
+                      <label key={w} className="flex cursor-pointer items-center gap-2">
+                        <input
+                          type="radio"
+                          name={`phone-music-${phone.id}`}
+                          checked={whichMusic === w}
+                          onChange={() => setWhichMusic(w)}
+                          className="size-4 accent-(--accent-fill)"
+                        />
+                        <span className="t-body text-text-primary">{t(`phones.pick.${w}`)}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {whichMusic === "chosen" && (
+                    <MusicPicker value={selection} onChange={setSelection} />
+                  )}
+                </fieldset>
+              )}
               <span className="t-caption text-text-secondary">
                 {t("phones.parts.settingsLater")}
               </span>
@@ -266,7 +324,9 @@ export function PhoneWizard({
             primary={t("phones.choose.next")}
             onPrimary={next}
             onCancel={onClose}
-            disabled={choice === "pick" && !sends}
+            disabled={
+              (choice === "pick" && !sends) || (chosenMusic && selectionCount(selection) === 0)
+            }
           />
         </>
       )}
@@ -446,7 +506,11 @@ export function PhoneWizard({
       {step.k === "sent" && (
         <>
           <p role="status" className="t-body text-text-secondary">
-            {t("phones.send.done")}
+            {step.already
+              ? t("phones.send.already")
+              : step.tracks > 0
+                ? t("phones.send.doneCount", { count: step.tracks })
+                : t("phones.send.done")}
           </p>
           <div>
             <Button variant="primary" onClick={onClose}>
@@ -501,7 +565,7 @@ export function PhoneWizard({
 }
 
 /** «540 МБ» / «1.2 ГБ» (the collection's own format). */
-function Size({ bytes }: { bytes: number }) {
+export function Size({ bytes }: { bytes: number }) {
   const { t } = useTranslation("shell");
   const gb = bytes / 1024 ** 3;
   return gb >= 1

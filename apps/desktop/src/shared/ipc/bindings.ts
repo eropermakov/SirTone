@@ -95,7 +95,14 @@ export const commands = {
 	 *  the app's cache folder, the music sent straight from the library — into the app's inbox on
 	 *  the phone (cable, else Wi-Fi). The app applies it when opened. A repeat resumes.
 	 */
-	phoneSend: (udid: string, quality: string, parts: SendParts, progress: Channel<TransferProgress>) => typedError<TransferDone, AppError>(__TAURI_INVOKE("phone_send", { udid, quality, parts, progress })),
+	phoneSend: (udid: string, quality: string, parts: SendParts, selection: {
+	artists: number[],
+	albums: number[],
+	/**  Genre keys, as the genre pages address them. */
+	genres: string[],
+	playlists: number[],
+	tracks: number[],
+} | null, progress: Channel<TransferProgress>) => typedError<TransferDone, AppError>(__TAURI_INVOKE("phone_send", { udid, quality, parts, selection, progress })),
 	/**
 	 *  «Забрать с телефона» (MR §6.2, FR-HUB-003): the phone's library database is read over the
 	 *  cable or Wi-Fi, its package is written on the PC, only the music this PC does not have is
@@ -110,6 +117,10 @@ export const commands = {
 	 *  restart its 7-day count. Its renewal date stays unknown until the hub installs or renews it.
 	 */
 	phoneHasApp: (udid: string) => __TAURI_INVOKE<boolean>("phone_has_app", { udid }),
+	/**  The picker's lists: artists, albums, genres and playlists of the PC library (D-152). */
+	phonePickLists: () => typedError<PickLists, AppError>(__TAURI_INVOKE("phone_pick_lists")),
+	/**  How much the chosen music is (before the phone says what it has already). */
+	phoneSelectionSize: (selection: PhoneSelection) => typedError<SelectionSize, AppError>(__TAURI_INVOKE("phone_selection_size", { selection })),
 	/**
 	 *  Logs in with the Apple ID of this phone's owner (wizard step 6). Each 2FA request goes to
 	 *  `asks`; the form answers with [`phone_apple_2fa`]. The password is dropped when this returns.
@@ -796,12 +807,40 @@ export type PhoneInfo = {
 
 export type PhonePlatform = "ios" | "android";
 
+/**  «Выбранная» музыка (D-152): groups of the PC library; `None` in `phone_send` — all of it. */
+export type PhoneSelection = {
+	artists: number[],
+	albums: number[],
+	/**  Genre keys, as the genre pages address them. */
+	genres: string[],
+	playlists: number[],
+	tracks: number[],
+};
+
 export type PhoneState = "ready" | "needsTrust" | "notSupportedYet";
 
 export type PhonesStatus = {
 	phones: PhoneInfo[],
 	/**  Windows sees iPhones only with Apple's component (wizard step 2). */
 	appleService: boolean,
+};
+
+/**  One row of the «Выбранная» picker. */
+export type PickItem = {
+	id: number,
+	/**  Genres only: the key to choose them by. */
+	key: string | null,
+	name: string,
+	/**  Albums: the artist. */
+	detail: string | null,
+	tracks: number,
+};
+
+export type PickLists = {
+	artists: PickItem[],
+	albums: PickItem[],
+	genres: PickItem[],
+	playlists: PickItem[],
 };
 
 /**  The screen a list was played from (`play_event.source`). */
@@ -948,6 +987,13 @@ export type SearchResults = {
 	suggestions: ArtistItem[],
 };
 
+/**  The chosen music before the phone is asked what it has (the size shown up front). */
+export type SelectionSize = {
+	tracks: number,
+	bytes: number | null,
+	durationSec: number | null,
+};
+
 /**
  *  What goes to the phone: «Перенести всё» is all three, «Выбрать» the ticked ones (MR §11).
  *  Settings and theme do not travel yet.
@@ -1079,9 +1125,12 @@ export type TrackPage = {
 };
 
 export type TransferDone = {
+	/**  Songs whose music went (new to the phone, D-152). */
 	tracks: number,
 	/**  Library files that could not be read (moved since the last scan); the rest went. */
 	missing: number,
+	/**  The phone had everything chosen: nothing was sent («На телефоне уже всё есть»). */
+	already: boolean,
 };
 
 export type TransferProgress = {
