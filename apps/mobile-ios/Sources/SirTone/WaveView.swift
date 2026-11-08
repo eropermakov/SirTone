@@ -104,7 +104,8 @@ struct WaveView: View {
             Slider(value: Binding(
                 get: { Double(playback.novelty) },
                 set: { playback.novelty = Float($0) }
-            ), in: 0...1) {
+            ), in: 0...1, step: 0.25) {
+                // Five detents 0/25/50/75/100, as on the PC (D-153); iOS 26+ draws the ticks itself.
                 Text(verbatim: L.t("wave.novelty"))
             } minimumValueLabel: {
                 Text(verbatim: L.t("wave.familiar")).font(.sirtone(Ty.caption, relativeTo: .caption))

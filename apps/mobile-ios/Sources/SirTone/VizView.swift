@@ -19,6 +19,9 @@ struct VizView: View {
     @Environment(\.scenePhase) private var phase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("vizMode") private var mode = "waves"
+    /// «Когда менять пресет» (D-153): `track` or `never`; `never` stays on the last preset shown.
+    @AppStorage("vizPresetChange") private var presetChange = "track"
+    @AppStorage("vizPresetLast") private var presetLast = ""
     @State private var controls = true
     @StateObject private var bridge = VizBridge()
 
@@ -40,6 +43,8 @@ struct VizView: View {
         .statusBarHidden(!controls)
         .onAppear { configure() }
         .onChange(of: mode) { _, _ in configure() }
+        .onChange(of: presetChange) { _, now in bridge.setPresetChange(now) }
+        .onChange(of: bridge.presetName) { _, now in if let now { presetLast = now } }
         .onChange(of: playback.current?.track.id) { _, _ in bridge.sendColors() }
         // A transition swapped the decks: the feed follows the one now playing.
         .onChange(of: playback.deckGen) { _, _ in bridge.halt(); bridge.run() }
@@ -56,7 +61,8 @@ struct VizView: View {
         let low = ProcessInfo.processInfo.isLowPowerModeEnabled
         bridge.configure(
             mode: mode, accent: p.accent.fill.hex, reduced: reduceMotion, level: low ? 1 : 3,
-            playback: playback, library: app.library)
+            playback: playback, library: app.library,
+            presetChange: presetChange, locked: presetLast)
     }
 
     private var overlay: some View {
@@ -86,7 +92,19 @@ struct VizView: View {
                 .background(Color.white.opacity(0.18), in: Capsule())
                 .accessibilityLabel(L.t("viz.mode"))
                 Spacer()
-                Color.clear.frame(width: 44, height: 44)
+                if mode == "milkdrop" {
+                    Menu {
+                        Picker(L.t("viz.presetChange"), selection: $presetChange) {
+                            Text(verbatim: L.t("viz.presetChange.track")).tag("track")
+                            Text(verbatim: L.t("viz.presetChange.never")).tag("never")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle").frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel(L.t("viz.presetChange"))
+                } else {
+                    Color.clear.frame(width: 44, height: 44)
+                }
             }
             Spacer()
             if bridge.failed {
@@ -97,6 +115,10 @@ struct VizView: View {
                     .font(.sirtone(Ty.cardTitle)).lineLimit(1)
                 Text(verbatim: playback.current?.track.artists ?? "")
                     .font(.sirtone(Ty.body)).opacity(0.7).lineLimit(1)
+                if mode == "milkdrop", let label = bridge.presetLabel {
+                    Text(verbatim: label)
+                        .font(.sirtone(Ty.caption, relativeTo: .caption)).opacity(0.7).lineLimit(1)
+                }
             }
             HStack(spacing: M.space8) {
                 Button { playback.previous() } label: {
@@ -133,6 +155,9 @@ struct VizView: View {
 @MainActor
 final class VizBridge: NSObject, ObservableObject, WKScriptMessageHandler {
     @Published private(set) var failed = false
+    /// The MilkDrop preset on screen: its own name and the words for what it looks like.
+    @Published private(set) var presetName: String?
+    @Published private(set) var presetLabel: String?
     let web: WKWebView
     private var feed: VizFeed?
     private var link: CADisplayLink?
@@ -154,7 +179,7 @@ final class VizBridge: NSObject, ObservableObject, WKScriptMessageHandler {
         web.scrollView.isScrollEnabled = false
         web.isUserInteractionEnabled = false
         super.init()
-        for name in ["ready", "stats", "failed"] {
+        for name in ["ready", "stats", "failed", "preset"] {
             cfg.userContentController.add(WeakHandler(self), name: name)
         }
         if let page = Bundle.module.url(forResource: "index", withExtension: "html", subdirectory: "viz") {
@@ -165,13 +190,15 @@ final class VizBridge: NSObject, ObservableObject, WKScriptMessageHandler {
     }
 
     func configure(mode: String, accent: String, reduced: Bool, level: Int,
-                   playback: Playback, library: Library?, role: String = "full") {
+                   playback: Playback, library: Library?, role: String = "full",
+                   presetChange: String = "track", locked: String = "") {
         self.playback = playback
         self.library = library
         self.mode = mode
         self.role = role
         start = ["mode": mode, "accent": accent, "reduced": reduced, "level": level, "role": role,
-                 "lowPower": ProcessInfo.processInfo.isLowPowerModeEnabled]
+                 "lowPower": ProcessInfo.processInfo.isLowPowerModeEnabled,
+                 "presetChange": presetChange, "locked": locked]
         failed = false
         if ready { begin() }
         run()
@@ -187,6 +214,13 @@ final class VizBridge: NSObject, ObservableObject, WKScriptMessageHandler {
     /// Fire-and-forget into the page (the async overload would throw inside tasks).
     private func js(_ code: String) {
         web.evaluateJavaScript(code, completionHandler: nil)
+    }
+
+    /// «Когда менять пресет» changed: the preset on screen stays.
+    func setPresetChange(_ v: String) {
+        start["presetChange"] = v
+        start["locked"] = presetName ?? ""
+        if ready { js("sirtoneViz.presetChange('\(v == "never" ? "never" : "track")')") }
     }
 
     func sendColors() {
@@ -244,6 +278,11 @@ final class VizBridge: NSObject, ObservableObject, WKScriptMessageHandler {
         case "ready":
             ready = true
             begin()
+        case "preset":
+            if let d = m.body as? [String: Any] {
+                presetName = d["name"] as? String
+                presetLabel = d["label"] as? String
+            }
         case "failed":
             failed = true
             stats["error"] = m.body

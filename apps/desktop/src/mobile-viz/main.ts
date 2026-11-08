@@ -8,6 +8,7 @@ import type { VizColors } from "@/shared/ipc/bindings";
 import { parseFrame, type VizFrame } from "@/shared/ipc/viz";
 import { MilkDropEngine, milkdropStats } from "@/shared/viz/milkdrop";
 import { lookOf, WAVES } from "@/shared/viz/palette";
+import { presetLabel } from "@/shared/viz/presetNames";
 import { MILKDROP, type PresetDesc, pick, rank, targetOf } from "@/shared/viz/presetPick";
 import { WavesEngine, wavesMood, wavesStats } from "@/shared/viz/waves";
 import index from "../../../../assets/viz/milkdrop/index.json";
@@ -21,6 +22,10 @@ type Start = {
   /** `full` — the full-screen visualiser, `bg` — behind the player (the numbers are kept apart). */
   role?: string;
   lowPower?: boolean;
+  /** «Когда менять пресет» (D-153): with every new track, or never. */
+  presetChange?: "track" | "never";
+  /** «Никогда»: the preset to stay on. */
+  locked?: string;
 };
 type Engine = { kind: Mode; waves?: WavesEngine; milk?: MilkDropEngine };
 
@@ -44,8 +49,21 @@ const post = (name: string, body: unknown) =>
 let opts: Start = { mode: "waves", accent: "#7ab800", reduced: false, level: 3 };
 let colors: VizColors | null = null;
 let engine: Engine | null = null;
-let rotate = 0;
+/** The MilkDrop preset on screen. */
+let shown: string | null = null;
 const recent: string[] = [];
+
+/** Shows a preset and tells the app its name; `false` — it did not compile. */
+function showPreset(e: MilkDropEngine, name: string): boolean {
+  try {
+    e.show(name);
+  } catch {
+    return false;
+  }
+  shown = name;
+  post("preset", { name, label: presetLabel(name) });
+  return true;
+}
 
 function nextPreset(e: MilkDropEngine) {
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -53,12 +71,8 @@ function nextPreset(e: MilkDropEngine) {
     if (!name) return;
     recent.push(name);
     if (recent.length > MILKDROP.recent) recent.shift();
-    try {
-      e.show(name);
-      return;
-    } catch {
-      // A preset that fails to compile is skipped, as on the PC.
-    }
+    // A preset that fails to compile is skipped, as on the PC.
+    if (showPreset(e, name)) return;
   }
 }
 
@@ -71,11 +85,12 @@ function applyColors() {
       lookOf({ colors, accent: opts.accent, followAccent: false, minimal, themeViz: null }),
     );
   }
-  if (e.milk) nextPreset(e.milk);
+  // A new track's colours pick the next preset; «Никогда» keeps the one on screen (D-153).
+  if (e.milk && !(opts.presetChange === "never" && shown)) nextPreset(e.milk);
 }
 
 function stop() {
-  window.clearInterval(rotate);
+  shown = null;
   engine?.waves?.dispose();
   engine?.milk?.dispose();
   engine = null;
@@ -96,7 +111,7 @@ async function start(o: Start) {
     engine = { kind: "milkdrop", milk: m };
     m.resize();
     m.resume();
-    rotate = window.setInterval(() => nextPreset(m), MILKDROP.preset_s * 1000);
+    if (o.presetChange === "never" && o.locked) showPreset(m, o.locked);
   } else {
     // «Уменьшение движения» (owner, 2026-11-08): the visualiser still flows — at half speed,
     // with no pulses or flashes (the page never calls `pulse` then) — instead of one still frame.
@@ -230,6 +245,9 @@ window.setInterval(() => {
   },
   frame,
   bands,
+  presetChange: (v: "track" | "never") => {
+    opts = { ...opts, presetChange: v };
+  },
   pulse: () => {
     if (!opts.reduced) engine?.waves?.pulse("like");
   },
