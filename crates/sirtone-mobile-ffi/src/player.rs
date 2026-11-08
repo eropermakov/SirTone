@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use rtrb::{Consumer, Producer, RingBuffer};
 use sirtone_audio::decode::Source;
+use sirtone_audio::eq::{Eq, EqParams};
 use sirtone_audio::vizframe::{FRAME, FrameBuilder};
 
 use crate::CoreError;
@@ -38,7 +39,24 @@ struct Shared {
     /// The side ring of the current render handle, for the visualiser thread (never locked by
     /// the callback: a new one is put here when a track opens or seeks).
     viz_tap: Mutex<Option<VizTap>>,
+    /// The equalizer (D-148, the PC's `sirtone_audio::eq`): set by the app, picked up by the
+    /// decode thread at its next chunk (`eq_gen` changes).
+    eq: Mutex<EqParams>,
+    eq_gen: AtomicU32,
+    /// Normalization gain for the current track, dB as `f32` bits; `gain_gen` changes on set.
+    gain_db: AtomicU32,
+    gain_gen: AtomicU32,
+    /// The transition fade (`Player::fade_to`): target 0…1 as bits, its length, a counter the
+    /// callback watches; `fade_now` — where the callback is (a new handle starts there).
+    fade_target: AtomicU32,
+    fade_ms: AtomicU32,
+    fade_gen: AtomicU32,
+    fade_now: AtomicU32,
 }
+
+/// How far ahead the decode thread fills (a setting is heard after this at most). iOS's longest
+/// locked-screen buffer is ~0.1 s; 0.4 s covers it four times over (П2 is re-checked).
+const FILL_MS: usize = 400;
 
 /// The visualiser's end of the side ring, with the track's format.
 struct VizTap {
@@ -54,6 +72,12 @@ const VIZ_RING: usize = 48_000;
 pub struct RenderHandle {
     consumer: Consumer<f32>,
     shared: Arc<Shared>,
+    rate: u32,
+    /// The fade the callback applies now, its step per frame, its goal and the request seen.
+    fade: f32,
+    fade_step: f32,
+    fade_to: f32,
+    fade_seen: u32,
     /// Samples handed to the device, before the volume, for the visualiser (D-148).
     viz: Producer<f32>,
 }
@@ -87,13 +111,43 @@ fn err(code: &str) -> CoreError {
 
 fn decode_loop(mut src: Source, mut producer: Producer<f32>, shared: Arc<Shared>) {
     let mut buf: Vec<f32> = Vec::with_capacity(16_384);
+    let ch = src.channels.max(1);
+    let fill = (src.rate as usize * ch * FILL_MS / 1000).min(RING_SAMPLES / 2);
+    let mut eq = Eq::new(src.rate, ch);
+    let (mut eq_seen, mut eq_on) = (u32::MAX, false);
+    let mut gain_seen = u32::MAX;
     loop {
         if shared.stop.load(Ordering::Acquire) {
             return;
         }
+        let g = shared.gain_gen.load(Ordering::Acquire);
+        if g != gain_seen {
+            let db = f32::from_bits(shared.gain_db.load(Ordering::Acquire));
+            // The first value at once (nothing heard yet), later ones ramped — no click.
+            let ramp = if gain_seen == u32::MAX { 0 } else { 300 };
+            src.set_gain(sirtone_core::loudness::amplitude(db), ramp);
+            gain_seen = g;
+        }
+        let e = shared.eq_gen.load(Ordering::Acquire);
+        if e != eq_seen {
+            if let Ok(p) = shared.eq.lock() {
+                eq.set(&p);
+                eq_on = p.enabled;
+            }
+            eq_seen = e;
+        }
+        // Not further ahead than `fill`: settings are heard soon, the ring still rides out stalls.
+        if RING_SAMPLES - producer.slots() >= fill {
+            std::thread::sleep(Duration::from_millis(5));
+            continue;
+        }
         if buf.is_empty() {
             match src.next_into(&mut buf) {
-                Ok(true) => {}
+                Ok(true) => {
+                    if eq_on {
+                        eq.process(&mut buf);
+                    }
+                }
                 Ok(false) | Err(_) => {
                     // End or an unreadable file: the callback drains what is left, then «ended».
                     shared.decode_done.store(true, Ordering::Release);
@@ -165,9 +219,15 @@ impl Player {
             rate: format.sample_rate,
             channels: format.channels as usize,
         });
+        let fade = f32::from_bits(self.shared.fade_now.load(Ordering::Acquire));
         inner.handle = Some(Box::new(RenderHandle {
             consumer,
             shared: self.shared.clone(),
+            rate: format.sample_rate.max(1),
+            fade,
+            fade_step: 0.0,
+            fade_to: fade,
+            fade_seen: self.shared.fade_gen.load(Ordering::Acquire),
             viz,
         }));
         inner.base_ms = from_ms;
@@ -191,6 +251,14 @@ impl Player {
                 stop: AtomicBool::new(false),
                 viz_on: AtomicU32::new(0),
                 viz_tap: Mutex::new(None),
+                eq: Mutex::new(EqParams::default()),
+                eq_gen: AtomicU32::new(0),
+                gain_db: AtomicU32::new(0f32.to_bits()),
+                gain_gen: AtomicU32::new(0),
+                fade_target: AtomicU32::new(1f32.to_bits()),
+                fade_ms: AtomicU32::new(0),
+                fade_gen: AtomicU32::new(0),
+                fade_now: AtomicU32::new(1f32.to_bits()),
             }),
             inner: Mutex::new(Inner {
                 format: None,
@@ -269,6 +337,34 @@ impl Player {
     /// The track played to its end (the app moves on to the next one).
     pub fn ended(&self) -> bool {
         self.shared.ended.load(Ordering::Acquire)
+    }
+
+    /// The equalizer (D-148): heard within `FILL_MS`.
+    pub fn set_eq(&self, enabled: bool, preamp_db: f32, bands_db: Vec<f32>) {
+        if let Ok(mut p) = self.shared.eq.lock() {
+            *p = EqParams {
+                enabled,
+                preamp_db,
+                bands_db,
+            };
+        }
+        self.shared.eq_gen.fetch_add(1, Ordering::AcqRel);
+    }
+
+    /// Normalization gain for the open track, dB (`Library::norm_gain_db`; 0 — off).
+    pub fn set_gain_db(&self, db: f32) {
+        self.shared.gain_db.store(db.to_bits(), Ordering::Release);
+        self.shared.gain_gen.fetch_add(1, Ordering::AcqRel);
+    }
+
+    /// A transition fade (D-148): this player's level goes to `target` (0…1) over `ms`, smooth
+    /// per frame in the callback; `ms` 0 — at once.
+    pub fn fade_to(&self, target: f32, ms: u32) {
+        self.shared
+            .fade_target
+            .store(target.clamp(0.0, 1.0).to_bits(), Ordering::Release);
+        self.shared.fade_ms.store(ms, Ordering::Release);
+        self.shared.fade_gen.fetch_add(1, Ordering::AcqRel);
     }
 
     /// A visualiser feed (D-148): while it lives, the render callback copies what it plays
@@ -390,6 +486,19 @@ pub unsafe extern "C" fn sirtone_render(
         return 0;
     }
     let volume = f32::from_bits(h.shared.volume.load(Ordering::Acquire));
+    let fade_gen = h.shared.fade_gen.load(Ordering::Acquire);
+    if fade_gen != h.fade_seen {
+        h.fade_seen = fade_gen;
+        h.fade_to = f32::from_bits(h.shared.fade_target.load(Ordering::Acquire));
+        let ms = u64::from(h.shared.fade_ms.load(Ordering::Acquire));
+        let frames = ms * u64::from(h.rate) / 1000;
+        if frames == 0 {
+            h.fade = h.fade_to;
+            h.fade_step = 0.0;
+        } else {
+            h.fade_step = (h.fade_to - h.fade) / frames as f32;
+        }
+    }
     let n = h.consumer.slots().min(len) / channels as usize * channels as usize;
     if let Ok(chunk) = h.consumer.read_chunk(n) {
         let (a, b) = chunk.as_slices();
@@ -405,10 +514,24 @@ pub unsafe extern "C" fn sirtone_render(
                 unsafe { side.commit_all() };
             }
         }
-        for (d, s) in out.iter_mut().zip(a.iter().chain(b)) {
-            *d = *s * volume;
+        let ch = channels as usize;
+        for (i, (d, s)) in out.iter_mut().zip(a.iter().chain(b)).enumerate() {
+            if i % ch == 0 && h.fade_step != 0.0 {
+                h.fade += h.fade_step;
+                let done = if h.fade_step > 0.0 {
+                    h.fade >= h.fade_to
+                } else {
+                    h.fade <= h.fade_to
+                };
+                if done {
+                    h.fade = h.fade_to;
+                    h.fade_step = 0.0;
+                }
+            }
+            *d = *s * volume * h.fade;
         }
         chunk.commit_all();
+        h.shared.fade_now.store(h.fade.to_bits(), Ordering::Release);
     }
     out[n..].fill(0.0);
     let written = (n / channels as usize) as u32;
@@ -557,6 +680,56 @@ pub(crate) mod tests {
         assert!(l.iter().any(|&x| x > 165) && l.iter().any(|&x| x < 91));
         drop(feed);
         assert_eq!(p.shared.viz_on.load(Ordering::Relaxed), 0);
+        // SAFETY: done with it.
+        unsafe { sirtone_render_release(h) };
+        drop(p);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Transitions and settings (D-148): the decoder stays about `FILL_MS` ahead (not the 2 s
+    /// ring), `fade_to(0, 0)` silences at once, `fade_to(1, 100)` ramps per frame (one 256-frame
+    /// buffer ≈ 6 % of 100 ms at 44.1 kHz, not a jump), and sound with EQ and gain set plays.
+    #[test]
+    fn fades_are_smooth_and_settings_apply() {
+        let path =
+            std::env::temp_dir().join(format!("sirtone-player-fade-{}.wav", std::process::id()));
+        wav(&path);
+        let p = Player::new();
+        p.open(path.to_string_lossy().into_owned()).unwrap();
+        let h = p.take_render_handle();
+        p.set_eq(true, 0.0, vec![3.0; 10]);
+        p.set_gain_db(-6.0);
+        std::thread::sleep(Duration::from_millis(150));
+        // SAFETY: the handle is alive and only read here.
+        let ahead = unsafe { &*(h as usize as *const RenderHandle) }
+            .consumer
+            .slots();
+        let fill = 44_100 * 2 * FILL_MS / 1000;
+        assert!(ahead >= fill / 2 && ahead < RING_SAMPLES / 2, "{ahead}");
+
+        p.play();
+        let mut out = vec![1f32; 256 * 2];
+        p.fade_to(0.0, 0);
+        // SAFETY: the handle and buffer satisfy the contract.
+        unsafe { sirtone_render(h, out.as_mut_ptr(), 256, 2) };
+        assert!(out.iter().all(|x| *x == 0.0), "silent at once");
+        p.fade_to(1.0, 100);
+        // SAFETY: as above.
+        unsafe { sirtone_render(h, out.as_mut_ptr(), 256, 2) };
+        let first = f32::from_bits(p.shared.fade_now.load(Ordering::Relaxed));
+        assert!((0.04..0.08).contains(&first), "a ramp, not a jump: {first}");
+        let mut peak = 0f32;
+        for _ in 0..30 {
+            // SAFETY: as above.
+            unsafe { sirtone_render(h, out.as_mut_ptr(), 256, 2) };
+            peak = out.iter().fold(peak, |m, x| m.max(x.abs()));
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(
+            f32::from_bits(p.shared.fade_now.load(Ordering::Relaxed)),
+            1.0
+        );
+        assert!(peak > 0.05, "sound with EQ and gain: {peak}");
         // SAFETY: done with it.
         unsafe { sirtone_render_release(h) };
         drop(p);

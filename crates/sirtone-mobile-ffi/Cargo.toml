@@ -31,6 +31,7 @@ sirtone-wave = { workspace = true }
 sirtone-audio = { workspace = true }
 sirtone-recognize = { workspace = true }
 sirtone-sync = { workspace = true }
+sirtone-playback = { workspace = true }
 sirtone-transfer = { workspace = true }
 rtrb = { workspace = true }
 rusqlite = { workspace = true }

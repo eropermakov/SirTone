@@ -7345,6 +7345,7 @@ dependencies = [
  "sirtone-audio",
  "sirtone-core",
  "sirtone-library",
+ "sirtone-playback",
  "sirtone-recognize",
  "sirtone-sync",
  "sirtone-transfer",

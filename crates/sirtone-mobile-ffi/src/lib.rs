@@ -12,6 +12,7 @@ pub mod copies;
 pub mod import;
 pub mod library;
 pub mod player;
+pub mod sound;
 pub mod transfer;
 pub mod viz;
 pub mod wave;
