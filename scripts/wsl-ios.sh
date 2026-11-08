@@ -3,6 +3,8 @@
 # with the xtool SDK (Linux has no xcrun, so SDKROOT and clang are given); `app` — the SwiftUI app
 # by `xtool dev build` from a copy on ext4 (clang's module cache breaks on /mnt/d, spike-P-01);
 # `package` — copies the built SirTone.app to the hub's dev package folder (SIRTONE_IOS_APP).
+# Before `app`: the visualiser page (F22) is built on Windows — `pnpm --dir apps/desktop build:mobile-viz`;
+# without it the app builds without the visualiser.
 # Usage (from Windows): wsl -d Ubuntu-24.04 -- bash -lc "bash /mnt/d/SirVault/SirTone-mobile/scripts/wsl-ios.sh core|app|package"
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
