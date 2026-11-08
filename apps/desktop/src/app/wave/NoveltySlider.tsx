@@ -9,6 +9,9 @@ import { Slider } from "@/shared/ui/Slider";
  * familiar / forgotten / new tracks, the distance from the taste and the exploration; the
  * upcoming wave tracks follow at once. Saved in `wave.novelty`.
  */
+/** Five fixed positions: 0 / 25 / 50 / 75 / 100 (the quota table's anchors, docs/14 §9). */
+const STOPS = [0, 0.25, 0.5, 0.75, 1] as const;
+
 export function NoveltySlider({ disabled }: { disabled?: boolean } = {}) {
   const { t } = useTranslation("shell");
   const [value, setValue] = useState(0.5);
@@ -16,7 +19,8 @@ export function NoveltySlider({ disabled }: { disabled?: boolean } = {}) {
   useEffect(() => {
     getSettings().then((s) => {
       const w = s.wave as { novelty?: number } | undefined;
-      setValue((w?.novelty ?? 50) / 100);
+      const v = (w?.novelty ?? 50) / 100;
+      setValue(STOPS.reduce((b, x) => (Math.abs(x - v) < Math.abs(b - v) ? x : b), 0.5));
     });
   }, []);
   const commit = (v: number) => {
@@ -36,7 +40,7 @@ export function NoveltySlider({ disabled }: { disabled?: boolean } = {}) {
         onCommit={commit}
         label={t("wave.novelty")}
         valueText={String(Math.round(value * 100))}
-        step={0.05}
+        stops={STOPS}
         disabled={disabled ?? false}
         className="flex-1"
       />

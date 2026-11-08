@@ -5,6 +5,7 @@ import { getSettings, patchSettings } from "@/shared/ipc/settings";
 import { cn } from "@/shared/lib/utils";
 import { Dialog } from "@/shared/ui/Dialog";
 import { Switch } from "@/shared/ui/Switch";
+import { presetLabel } from "@/shared/viz/presetNames";
 import { milkdropControl, useMilkdropControl } from "./milkdropControl";
 
 /** How many rows are drawn at once (500 presets; the search narrows them). */
@@ -19,6 +20,8 @@ export function PresetsDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation("shell");
   const { t: tc } = useTranslation("common");
   const md = useMilkdropControl();
+  const [mode, setMode] = useState<"track" | "never">(md.locked ? "never" : "track");
+  useEffect(() => setMode(md.locked ? "never" : "track"), [md.locked]);
   const [list, setList] = useState(() => milkdropControl.list());
   const [q, setQ] = useState("");
   const [only, setOnly] = useState(false);
@@ -32,8 +35,16 @@ export function PresetsDialog({ onClose }: { onClose: () => void }) {
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return list
-      .filter((p) => p.rating >= 0 && (!needle || p.name.toLowerCase().includes(needle)))
-      .sort((a, b) => b.rating - a.rating);
+      .filter(
+        (p) =>
+          p.rating >= 0 &&
+          (!needle ||
+            p.name.toLowerCase().includes(needle) ||
+            presetLabel(p.name).toLowerCase().includes(needle)),
+      )
+      .sort(
+        (a, b) => b.rating - a.rating || presetLabel(a.name).localeCompare(presetLabel(b.name)),
+      );
   }, [list, q]);
   const like = (name: string, on: boolean) => {
     milkdropControl.rateName(name, on ? 1 : 0);
@@ -41,6 +52,32 @@ export function PresetsDialog({ onClose }: { onClose: () => void }) {
   };
   return (
     <Dialog title={t("viz.presets.title")} closeLabel={tc("errors.close")} onClose={onClose} wide>
+      <div className="flex flex-col gap-2">
+        <div className="t-body text-text-primary">{t("viz.presets.change")}</div>
+        <div className="flex gap-2">
+          {(["track", "never"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              aria-pressed={mode === m}
+              onClick={() => {
+                if (mode === m) return;
+                setMode(m);
+                milkdropControl.toggleLock();
+              }}
+              className={cn(
+                "t-body h-(--button-height) rounded-full border px-4",
+                mode === m
+                  ? "border-transparent bg-accent-fill text-accent-on"
+                  : "border-border text-text-primary hover:bg-bg-hover",
+              )}
+            >
+              {t(`viz.presets.change_${m}`)}
+            </button>
+          ))}
+        </div>
+        <div className="t-caption text-text-secondary">{t(`viz.presets.changeHint_${mode}`)}</div>
+      </div>
       <div className="flex items-center gap-4">
         <div className="min-w-0 flex-1">
           <div className="t-body text-text-primary">{t("viz.presets.onlyMine")}</div>
@@ -87,8 +124,11 @@ export function PresetsDialog({ onClose }: { onClose: () => void }) {
             >
               <Heart size={16} strokeWidth={1.5} fill={p.rating > 0 ? "currentColor" : "none"} />
             </button>
-            <span className="t-caption min-w-0 flex-1 truncate text-text-primary" title={p.name}>
-              {p.name}
+            <span className="min-w-0 flex-1" title={p.name}>
+              <span className="t-caption block truncate text-text-primary">
+                {presetLabel(p.name)}
+              </span>
+              <span className="t-badge block truncate text-text-tertiary">{p.name}</span>
             </span>
             <button
               type="button"

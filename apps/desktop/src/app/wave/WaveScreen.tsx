@@ -41,7 +41,6 @@ import { Button } from "@/shared/ui/Button";
 import { Cover } from "@/shared/ui/Cover";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
-import { PlayPauseIcon } from "@/shared/ui/TransportIcons";
 import { EventCard } from "./EventCard";
 import { FocusButton } from "./FocusButton";
 import { ForAllButton, type Gathering } from "./ForAllButton";
@@ -56,6 +55,21 @@ import { WaveChips } from "./WaveChips";
 import { WaveContextName } from "./WaveContextName";
 import { setupCount, WaveSetup } from "./WaveSetup";
 import { pulseWaves } from "./WavesBackground";
+
+/**
+ * The cover shrinks with the window so the column never touches the top edge (owner,
+ * 2026-11-08): what is under it takes ~470 px, the cover gets the rest, 140…280.
+ */
+const coverPxNow = () => Math.min(280, Math.max(140, window.innerHeight - 470));
+function useCoverPx(): number {
+  const [px, setPx] = useState(coverPxNow);
+  useEffect(() => {
+    const on = () => setPx(coverPxNow());
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  return px;
+}
 
 const NONE: TrackFeedback = { liked: false, neverTrack: false, neverArtist: false };
 
@@ -79,6 +93,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
   const toPlaylist = useAddToPlaylist();
   const tagsMenu = useTrackTags(id);
   const playing = snap.state === "playing";
+  const coverPx = useCoverPx();
 
   useEffect(() => {
     setFb(NONE);
@@ -324,7 +339,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
     <section
       data-theme="dark"
       data-viz-scope
-      className="relative flex h-full min-h-0 flex-col items-center justify-center gap-8 overflow-hidden rounded-(--radius-xl) text-text-primary"
+      className="relative flex h-full min-h-0 flex-col items-center justify-center gap-6 overflow-hidden rounded-(--radius-xl) px-4 py-10 text-text-primary"
     >
       {/* The visualisation is the screen's background (T4.2, DESIGN.md §9: alabaster text). */}
       {/* One visualiser at a time: the night vibe takes the feed while it is open. */}
@@ -355,7 +370,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       <Cover
         hash={snap.cover}
         art={snap.title ? snap.art : undefined}
-        px={280}
+        px={coverPx}
         rounded="md"
         className="relative rounded-(--radius-lg) shadow-(--shadow-artwork)"
       />
@@ -405,14 +420,6 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
           )}
         >
           <Heart size={24} strokeWidth={1.5} fill={fb.liked ? "currentColor" : "none"} />
-        </button>
-        <button
-          type="button"
-          onClick={togglePlay}
-          aria-label={playing ? t("player.pause") : t("player.play")}
-          className="flex size-16 items-center justify-center rounded-full bg-accent-fill text-accent-on transition-transform active:scale-95"
-        >
-          <PlayPauseIcon playing={playing} size={28} />
         </button>
         <button
           type="button"
