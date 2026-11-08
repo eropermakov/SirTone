@@ -141,6 +141,8 @@ final class VizBridge: NSObject, ObservableObject, WKScriptMessageHandler {
     private weak var playback: Playback?
     private var library: Library?
     private var stats: [String: Any] = [:]
+    private var mode = "waves"
+    private var role = "full"
 
     override init() {
         let cfg = WKWebViewConfiguration()
@@ -163,10 +165,13 @@ final class VizBridge: NSObject, ObservableObject, WKScriptMessageHandler {
     }
 
     func configure(mode: String, accent: String, reduced: Bool, level: Int,
-                   playback: Playback, library: Library?) {
+                   playback: Playback, library: Library?, role: String = "full") {
         self.playback = playback
         self.library = library
-        start = ["mode": mode, "accent": accent, "reduced": reduced, "level": level]
+        self.mode = mode
+        self.role = role
+        start = ["mode": mode, "accent": accent, "reduced": reduced, "level": level, "role": role,
+                 "lowPower": ProcessInfo.processInfo.isLowPowerModeEnabled]
         failed = false
         if ready { begin() }
         run()
@@ -219,7 +224,19 @@ final class VizBridge: NSObject, ObservableObject, WKScriptMessageHandler {
         let s = AVAudioSession.sharedInstance()
         let latency = UInt32(max(0, (s.outputLatency + s.ioBufferDuration) * 1000))
         let frame = feed.frame(latencyMs: latency)
-        js("sirtoneViz.frame('\(frame.base64EncodedString())')")
+        // «Волны» read only the header (bands, beat): seven numbers instead of 4 KB of samples.
+        if mode == "waves", frame.count >= 30 {
+            let f = { (o: Int) in
+                Float(bitPattern: UInt32(frame[o]) | UInt32(frame[o + 1]) << 8
+                    | UInt32(frame[o + 2]) << 16 | UInt32(frame[o + 3]) << 24)
+            }
+            var t: UInt64 = 0
+            for i in 0..<8 { t |= UInt64(frame[2 + i]) << (8 * UInt64(i)) }
+            let playing = frame[1] & 1 == 1
+            js("sirtoneViz.bands(\(playing),\(t),\(f(10)),\(f(14)),\(f(18)),\(f(22)),\(f(26)))")
+        } else {
+            js("sirtoneViz.frame('\(frame.base64EncodedString())')")
+        }
     }
 
     func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) {
@@ -248,7 +265,7 @@ final class VizBridge: NSObject, ObservableObject, WKScriptMessageHandler {
               let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
               let data = try? JSONSerialization.data(withJSONObject: stats, options: [.prettyPrinted])
         else { return }
-        try? data.write(to: dir.appendingPathComponent("viz-stats.json"))
+        try? data.write(to: dir.appendingPathComponent("viz-stats-\(role).json"))
     }
 }
 
@@ -276,9 +293,9 @@ struct VizBackground: View {
     var body: some View {
         VizWeb(bridge: bridge)
             .onAppear {
+                // Under the scrim: the lightest level is enough.
                 bridge.configure(mode: "waves", accent: p.accent.fill.hex, reduced: reduceMotion,
-                                 level: ProcessInfo.processInfo.isLowPowerModeEnabled ? 1 : 2,
-                                 playback: playback, library: app.library)
+                                 level: 1, playback: playback, library: app.library, role: "bg")
                 if paused { bridge.halt() }
             }
             .onChange(of: playback.current?.track.id) { _, _ in bridge.sendColors() }
