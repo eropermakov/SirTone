@@ -122,6 +122,7 @@
 | geocoding-api.open-meteo.com | строка города | при ручном выборе | то же |
 | служба местоположения Windows (опция «Определить автоматически», D-54) | запрос идёт через Windows, не от Сиртона; координаты округляются до 0,01° перед сохранением | по явному нажатию | по умолчанию выкл.; разрешение — в настройках конфиденциальности Windows |
 | github.com (Releases) | версия/архитектура в URL, IP | раз в сутки + вручную | «Автопроверка обновлений» |
+| **3.0:** github.com (Releases), приложение для iPhone (D-154) | IP | при установке Сиртона на iPhone из хаба | мастер-тумблер офлайн |
 | **3.0:** серверы Apple (вход в Apple ID, Developer Services) | Apple ID, токены, данные телефона (UDID) для профиля | установка и продление iPhone в хабе (D-133) | офлайн-режим; «Отключить телефон» |
 | **3.0:** anisette-сервер (сторонний, несколько адресов, Q-26) | запрос данных anisette для входа в Apple ID | при входе в Apple ID | офлайн-режим |
 
@@ -155,6 +156,7 @@
 | БД | `rusqlite` 0.40.2 (bundled, FTS5) · `rusqlite_migration` 2.6.0 | MIT / Apache-2.0 | ✅ | `sqlx` — не берём |
 | ML-инференс | `tract-onnx` =0.23.9 · (`ort` 2.0.0-rc.14 не нужен) | MIT OR Apache-2.0 | ✅ S-07, T3.8 | чистый Rust, без нативных DLL; `cargo deny` чист |
 | Сеть | `reqwest` 0.13.5 (native-tls/SChannel) | MIT OR Apache-2.0 | ✅ | без OpenSSL/NASM |
+| Проверка приложения для iPhone (D-154) | `minisign-verify` 0.3 · `sha2` 0.10 · `base64` 0.22 | MIT · MIT OR Apache-2.0 · MIT OR Apache-2.0 | ✅ | те же проверки, что у обновлений ПК |
 | FS | `notify` 8.2.0 · `notify-debouncer-full` 0.7.0 · `jwalk` 0.9.0 · `trash` 5.2.9 · `blake3` 1.8.7 · `memmap2` 0.9.11 | CC0 / MIT OR Apache / MIT / MIT / CC0 OR Apache / MIT OR Apache | ✅ | |
 | Windows | `windows` 0.62.2 | MIT OR Apache-2.0 | ✅ | WinRT, Core Audio, Shell |
 | SMTC | `souvlaki` 0.8.3 | MIT | ✅ 🧪 S-10 | |

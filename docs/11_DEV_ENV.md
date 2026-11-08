@@ -96,6 +96,6 @@ wsl -d Ubuntu-24.04 -- bash -lc 'export USBMUXD_SOCKET_ADDRESS=172.19.160.1:2701
 
 Сборка iPhone в WSL одной командой — `scripts/wsl-ios.sh core` (ядро и Swift-обёртки с SDK из xtool: в Linux нет `xcrun`, поэтому скрипт задаёт `SDKROOT` и clang), `app` (`xtool dev build` из копии на ext4), `package` (копия `SirTone.app` в папку пакета хаба, прошлая — `.prev`).
 
-Мастер установки в ПК-Сиртоне («Телефоны», M2.1) берёт пакет приложения из переменной `SIRTONE_IOS_APP` — путь к неподписанному `SirTone.app` (или `.ipa`), собранному `xtool dev build` в WSL и скопированному на D:. Только для разработки: релизный путь — IPA из GitHub Releases (`ci/mobile.yml`, нужен scope `workflow`). Хаб сам делает временную копию (isideload удаляет подписанный пакет).
+Мастер установки в ПК-Сиртоне («Телефоны», M2.1) берёт пакет приложения из переменной `SIRTONE_IOS_APP` — путь к неподписанному `SirTone.app` (или `.ipa`), собранному `xtool dev build` в WSL и скопированному на D:. Только для разработки: без неё хаб берёт IPA из канала обновлений (D-154), публикует его `scripts/release-ios.ps1`; телефоны скрипт не трогает. Хаб сам делает временную копию (isideload удаляет подписанный пакет).
 
 Вход хаба в Apple ID — один раз (`sirtone-cli phone login <apple-id>` в консоли владельца или форма мастера); токен, ключ и состояние anisette — в Windows Credential Manager, служба `studio.serkov.sirtone.apple` (ключи с префиксом аккаунта). `sirtone-cli phone adopt <apple-id>` переносит личность спайка П4 (служба `sirtone-p4`), чтобы не создавать у Apple новый сертификат.

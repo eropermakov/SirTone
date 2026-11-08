@@ -37,6 +37,10 @@ sirtone-wave = { workspace = true }
 sirtone-devicelink = { workspace = true }
 sirtone-sync = { workspace = true }
 sirtone-transfer = { workspace = true }
+# The iPhone app from the update channel (D-154): the same checks as the PC updater's.
+base64 = "0.22"
+minisign-verify = "0.3"
+sha2 = "0.10"
 # Hub wizard (stage 8): the 2FA round trip waits on a channel; TLS provider for the Apple login.
 tokio = { workspace = true }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }

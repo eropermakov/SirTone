@@ -21,6 +21,7 @@ mod feedback;
 mod focus;
 mod hotkeys;
 mod i18n;
+mod ios_package;
 mod ipc;
 mod journal;
 mod legal;

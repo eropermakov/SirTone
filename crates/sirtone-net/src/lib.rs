@@ -22,6 +22,8 @@ pub enum Host {
     OpenMeteo,
     Geocoding,
     ListenBrainz,
+    /// The update channel's files in GitHub Releases (the iPhone app for the hub, D-154).
+    Releases,
 }
 
 /// How a host is called (`03` §11).
@@ -61,16 +63,24 @@ impl Host {
                 MB,
             ),
             Self::ListenBrainz => p("https://api.listenbrainz.org/1/", 1000, 30 * DAY, MB),
+            // Asked only on an install; verified and kept by the hub, never in the HTTP cache.
+            Self::Releases => p(
+                "https://github.com/eropermakov/SirTone/releases/download/",
+                1000,
+                0,
+                64 * MB,
+            ),
         }
     }
 
-    const ALL: [Host; 6] = [
+    const ALL: [Host; 7] = [
         Self::AcoustId,
         Self::MusicBrainz,
         Self::CoverArt,
         Self::OpenMeteo,
         Self::Geocoding,
         Self::ListenBrainz,
+        Self::Releases,
     ];
 }
 
@@ -225,7 +235,9 @@ impl Net {
             Ok(r) if (200..300).contains(&r.status) => {
                 self.fails.store(0, Ordering::Relaxed);
                 self.down_until.store(0, Ordering::Relaxed);
-                if let Some(c) = &self.cache {
+                if let Some(c) = &self.cache
+                    && p.cache_ttl_s > 0
+                {
                     c.put(&url, &r.body, (self.now)(), p.cache_ttl_s);
                 }
                 Ok(r.body)
@@ -411,6 +423,10 @@ impl Transport for Reqwest {
             .0
             .get(url)
             .header(reqwest::header::USER_AGENT, user_agent)
+            // A big answer on a slow line needs longer than the usual 20 s: 3 s per allowed MB.
+            .timeout(Duration::from_secs(
+                20.max(max_bytes as u64 / (1024 * 1024) * 3),
+            ))
             .send()
             .map_err(|e| NetError::Network(e.to_string()))?;
         let status = resp.status().as_u16();

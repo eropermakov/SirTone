@@ -103,7 +103,7 @@ pub async fn phones_list(app: AppHandle) -> PhonesStatus {
 
 /// How long the login waits for the person's 2FA answer before giving up.
 const TWO_FACTOR_WAIT: Duration = Duration::from_secs(300);
-/// Dev source of the app until GitHub Releases ships the unsigned IPA (`docs/11_DEV_ENV.md` §5).
+/// A local package instead of the channel's (development, `docs/11_DEV_ENV.md` §5).
 const PACKAGE_ENV: &str = "SIRTONE_IOS_APP";
 
 /// What the hub remembers per phone (not secret: the Apple ID's tokens live in Credential
@@ -358,7 +358,7 @@ pub struct PhoneAccount {
     pub package: bool,
 }
 
-fn package() -> Option<PathBuf> {
+fn dev_package() -> Option<PathBuf> {
     std::env::var_os(PACKAGE_ENV)
         .map(PathBuf::from)
         .filter(|p| p.exists())
@@ -366,7 +366,7 @@ fn package() -> Option<PathBuf> {
 
 #[tauri::command(async)]
 #[specta::specta]
-pub fn phone_account(hub: State<'_, PhoneHub>, udid: String) -> PhoneAccount {
+pub fn phone_account(app: AppHandle, hub: State<'_, PhoneHub>, udid: String) -> PhoneAccount {
     let r = hub.record(&udid);
     let s = r.as_ref().and_then(|r| apple::signed_in(&r.apple_id));
     PhoneAccount {
@@ -375,7 +375,8 @@ pub fn phone_account(hub: State<'_, PhoneHub>, udid: String) -> PhoneAccount {
         login_until_ms: s.map(|s| s.token_expiry_ms as f64),
         installed_at_ms: r.as_ref().and_then(|r| r.installed_at_ms).map(|t| t as f64),
         works_until_ms: r.and_then(|r| r.works_until()).map(|t| t as f64),
-        package: package().is_some(),
+        // Downloaded on install (D-154): reachable unless the PC is offline.
+        package: dev_package().is_some() || !crate::net::offline(&app),
     }
 }
 
@@ -473,6 +474,34 @@ pub struct InstallProgress {
     pub fraction: f32,
 }
 
+/// The app to install: a local development package, else the update channel's (D-154).
+async fn ios_package(app: &AppHandle) -> Result<PathBuf, AppError> {
+    use tauri::Manager as _;
+    if let Some(p) = dev_package() {
+        return Ok(p);
+    }
+    let internal = || AppError::new(ErrorCode::Internal);
+    let net = app.state::<crate::net::NetState>().0.clone();
+    let dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|_| internal())?
+        .join("ios-package");
+    // The key of the PC updates, from the one place it is written.
+    let pubkey = app
+        .config()
+        .plugins
+        .0
+        .get("updater")
+        .and_then(|u| u.get("pubkey"))
+        .and_then(|k| k.as_str())
+        .ok_or_else(internal)?
+        .to_owned();
+    tokio::task::spawn_blocking(move || crate::ios_package::fetch(&net, &dir, &pubkey))
+        .await
+        .map_err(|_| internal())?
+}
+
 /// Signs and installs Сиртон on the phone over the cable (wizard step 7); over an existing
 /// install it keeps the app's files (that is also how the hub renews until П3).
 #[tauri::command(async)]
@@ -489,9 +518,6 @@ pub async fn phone_install(
     let Some(record) = hub.record(&udid) else {
         return Err(AppError::new(ErrorCode::AppleSignedOut));
     };
-    let Some(pkg) = package() else {
-        return Err(AppError::new(ErrorCode::PhonePackageMissing));
-    };
     if !hub
         .installing
         .lock()
@@ -503,11 +529,16 @@ pub async fn phone_install(
         let _ = progress.send(InstallProgress { fraction: f });
     };
     report(0.0);
-    let r = apple::install(&record.apple_id, &udid, &pkg, &report).await;
+    let r = match ios_package(&app).await {
+        Ok(pkg) => apple::install(&record.apple_id, &udid, &pkg, &report)
+            .await
+            .map_err(|e| app_error(&e)),
+        Err(e) => Err(e),
+    };
     if let Ok(mut s) = hub.installing.lock() {
         s.remove(&udid);
     }
-    let took = r.map_err(|e| app_error(&e))?;
+    let took = r?;
     tracing::info!(target: "sirtone::phones", secs = took.as_secs_f32(), "installed");
     // Wizard step 10: Wi-Fi access while the phone is still on the trusted cable (П4б). Best
     // effort and detached — the install already succeeded and the wizard moves on at once; a

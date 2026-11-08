@@ -7191,7 +7191,7 @@ checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
 name = "sirtone-analysis"
-version = "0.1.41"
+version = "0.1.42"
 dependencies = [
  "ebur128",
  "rustfft",
@@ -7206,12 +7206,15 @@ dependencies = [
 
 [[package]]
 name = "sirtone-app"
-version = "0.1.41"
+version = "0.1.42"
 dependencies = [
+ "base64 0.22.1",
+ "minisign-verify",
  "rusqlite",
  "rustls",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "sirtone-analysis",
  "sirtone-audio",
  "sirtone-core",
@@ -7244,7 +7247,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-audio"
-version = "0.1.41"
+version = "0.1.42"
 dependencies = [
  "base64 0.22.1",
  "cc",
@@ -7265,7 +7268,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-cli"
-version = "0.1.41"
+version = "0.1.42"
 dependencies = [
  "rpassword",
  "rusqlite",
@@ -7286,7 +7289,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-core"
-version = "0.1.41"
+version = "0.1.42"
 dependencies = [
  "serde",
  "serde_json",
@@ -7297,7 +7300,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-devicelink"
-version = "0.1.41"
+version = "0.1.42"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -7313,7 +7316,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-library"
-version = "0.1.41"
+version = "0.1.42"
 dependencies = [
  "blake3",
  "image",
@@ -7336,7 +7339,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-mobile-ffi"
-version = "0.1.41"
+version = "0.1.42"
 dependencies = [
  "image",
  "rtrb",
@@ -7356,7 +7359,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-net"
-version = "0.1.41"
+version = "0.1.42"
 dependencies = [
  "reqwest 0.13.5",
  "serde_json",
@@ -7366,7 +7369,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-platform"
-version = "0.1.41"
+version = "0.1.42"
 dependencies = [
  "sirtone-core",
  "tracing",
@@ -7376,7 +7379,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-playback"
-version = "0.1.41"
+version = "0.1.42"
 dependencies = [
  "serde",
  "serde_json",
@@ -7385,7 +7388,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-recognize"
-version = "0.1.41"
+version = "0.1.42"
 dependencies = [
  "encoding_rs",
  "lofty",
@@ -7396,14 +7399,14 @@ dependencies = [
 
 [[package]]
 name = "sirtone-search"
-version = "0.1.41"
+version = "0.1.42"
 dependencies = [
  "sirtone-core",
 ]
 
 [[package]]
 name = "sirtone-sync"
-version = "0.1.41"
+version = "0.1.42"
 dependencies = [
  "rusqlite",
  "sirtone-core",
@@ -7414,7 +7417,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-transfer"
-version = "0.1.41"
+version = "0.1.42"
 dependencies = [
  "serde",
  "serde_json",
@@ -7424,7 +7427,7 @@ dependencies = [
 
 [[package]]
 name = "sirtone-wave"
-version = "0.1.41"
+version = "0.1.42"
 dependencies = [
  "serde",
  "serde_json",

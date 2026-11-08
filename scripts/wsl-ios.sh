@@ -2,7 +2,8 @@
 # iPhone builds in WSL (stage 8, docs/11_DEV_ENV.md): `core` — the Rust core and Swift bindings
 # with the xtool SDK (Linux has no xcrun, so SDKROOT and clang are given); `app` — the SwiftUI app
 # by `xtool dev build` from a copy on ext4 (clang's module cache breaks on /mnt/d, spike-P-01);
-# `package` — copies the built SirTone.app to the hub's dev package folder (SIRTONE_IOS_APP).
+# `package` — copies the built SirTone.app to the hub's dev package folder (SIRTONE_IOS_APP);
+# `ipa` — zips the built app as Payload/SirTone.app into $SIRTONE_IOS_IPA (scripts/release-ios.ps1).
 # Before `app`: the visualiser page (F22) is built on Windows — `pnpm --dir apps/desktop build:mobile-viz`;
 # without it the app builds without the visualiser.
 # Usage (from Windows): wsl -d Ubuntu-24.04 -- bash -lc "bash /mnt/d/SirVault/SirTone-mobile/scripts/wsl-ios.sh core|app|package"
@@ -31,5 +32,19 @@ case "${1:-}" in
     cp -r "$HOME/build/mobile-ios/xtool/SirTone.app" "$OUT/SirTone.app"
     echo "package: $OUT/SirTone.app"
     ;;
-  *) echo "usage: wsl-ios.sh core|app|package" >&2; exit 2 ;;
+  ipa)
+    OUT="${SIRTONE_IOS_IPA:?where to write the .ipa}"
+    T="$(mktemp -d)"
+    mkdir "$T/Payload"
+    cp -r "$HOME/build/mobile-ios/xtool/SirTone.app" "$T/Payload/SirTone.app"
+    # Published as it is (D-154): never with a signature or a profile of anybody's.
+    if [ -e "$T/Payload/SirTone.app/embedded.mobileprovision" ] || [ -d "$T/Payload/SirTone.app/_CodeSignature" ]; then
+      echo "refusing: the app is signed" >&2; rm -rf "$T"; exit 1
+    fi
+    rm -f "$OUT"
+    (cd "$T" && zip -qr -X "$OUT" Payload)
+    rm -rf "$T"
+    echo "ipa: $OUT"
+    ;;
+  *) echo "usage: wsl-ios.sh core|app|package|ipa" >&2; exit 2 ;;
 esac
