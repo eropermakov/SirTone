@@ -1,4 +1,4 @@
-# Publishes the iPhone app for the hub's install (D-154, FR-HUB-006): builds it in WSL, signs the
+﻿# Publishes the iPhone app for the hub's install (D-154, FR-HUB-006): builds it in WSL, signs the
 # unsigned .ipa with the updater key and puts it in a GitHub prerelease; `ios-latest.json` in the
 # update channel tells every PC-Сиртон which file to take and how to check it. It carries nobody's
 # Apple signature: the hub signs it with the Apple ID of the phone's owner.
