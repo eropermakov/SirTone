@@ -15,14 +15,14 @@ struct NowPlayingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var scrubbing: Double?
     @State private var showQueue = false
-    @State private var why: [String]?
+    @State private var why: WhyList?
 
     var body: some View {
         GeometryReader { geo in
             let side = min(geo.size.width - M.space8 * 2, geo.size.height * 0.45)
-            ZStack {
-                background
-                VStack(spacing: M.space6) {
+            // The blurred cover lies in `.background`: a filled picture there cannot widen the
+            // layout (in a ZStack it pushed the player off-screen on non-square covers).
+            VStack(spacing: M.space6) {
                     Capsule().fill(Color.white.opacity(0.4)).frame(width: 40, height: 5)
                         .padding(.top, M.space2)
                         .accessibilityHidden(true)
@@ -36,25 +36,27 @@ struct NowPlayingView: View {
                 }
                 .padding(.horizontal, M.space8)
                 .padding(.bottom, M.space6)
-            }
+                .frame(width: geo.size.width, height: geo.size.height)
+                .background { background }
         }
         .foregroundStyle(Color.white)
         .gesture(DragGesture().onEnded { g in if g.translation.height > 120 { dismiss() } })
         .sheet(isPresented: $showQueue) { QueueView().presentationDetents([.medium, .large]) }
-        .sheet(item: Binding(
-            get: { why.map { WhyList(codes: $0) } },
-            set: { if $0 == nil { why = nil } }
-        )) { w in WhySheet(codes: w.codes).presentationDetents([.fraction(0.3)]) }
+        // A stored item: one built inside a Binding got a new id on every redraw, and the sheet
+        // closed and opened again forever.
+        .sheet(item: $why) { w in WhySheet(codes: w.codes).presentationDetents([.fraction(0.3)]) }
     }
 
     private var background: some View {
         ZStack {
             p.bgBase
             if let img = playback.cover, !app.musicOnly {
-                Image(uiImage: img).resizable().scaledToFill()
+                // Color.clear takes the screen's size; the picture in its overlay cannot grow it.
+                Color.clear
+                    .overlay { Image(uiImage: img).resizable().scaledToFill() }
+                    .clipped()
                     .blur(radius: 100)
                     .opacity(0.9)
-                    .ignoresSafeArea()
             }
             p.artworkScrim.ignoresSafeArea()
         }
@@ -153,7 +155,7 @@ struct NowPlayingView: View {
                 }
                 .accessibilityLabel(L.t("player.not_now"))
                 Spacer()
-                Button { Task { why = await playback.why() } } label: {
+                Button { Task { why = WhyList(codes: await playback.why()) } } label: {
                     Image(systemName: "questionmark.circle").frame(width: 44, height: 44)
                 }
                 .accessibilityLabel(L.t("player.why"))
