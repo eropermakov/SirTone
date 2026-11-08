@@ -55,34 +55,34 @@ object SirToneText {
 }
 
 object SirToneDark {
-    val bgBase = Color(0xFF161111)
-    val bgLayer = Color(0xFF1C1616)
-    val bgRaised = Color(0xFF241D1D)
-    val bgFlyout = Color(0xFF2B2323)
-    val bgHover = Color(0x12F9F6F0)
-    val bgSelected = Color(0x1CF9F6F0)
-    val inactive = Color(0xFF3D3535)
-    val border = Color(0x1AF9F6F0)
-    val separator = Color(0x1AF9F6F0)
-    val textPrimary = Color(0xFFF9F6F0)
-    val textSecondary = Color(0xFFC4BBB5)
-    val textTertiary = Color(0xFFA39994)
-    val icon = Color(0xFFC4BBB5)
-    val focusRing = Color(0xFFF9F6F0)
-    val artworkPlaceholder = Color(0xFF2B2323)
+    val bgBase = Color(0xFF110D0C)
+    val bgLayer = Color(0xFF171211)
+    val bgRaised = Color(0xFF201918)
+    val bgFlyout = Color(0xFF272020)
+    val bgHover = Color(0x12F3ECE2)
+    val bgSelected = Color(0x1CF3ECE2)
+    val inactive = Color(0xFF3A302E)
+    val border = Color(0x1AF3ECE2)
+    val separator = Color(0x14F3ECE2)
+    val textPrimary = Color(0xFFF3ECE2)
+    val textSecondary = Color(0xFFB8AEA6)
+    val textTertiary = Color(0xFF9C918B)
+    val icon = Color(0xFFB8AEA6)
+    val focusRing = Color(0xFFF3ECE2)
+    val artworkPlaceholder = Color(0xFF272020)
     val artworkScrim = Color(0x73000000)
     val danger = Color(0xFFFF6B6B)
-    val onPrimary = Color(0xFFF9F6F0)
+    val onPrimary = Color(0xFFF3ECE2)
 }
 
 object SirToneLight {
-    val bgBase = Color(0xFFF2EEE6)
-    val bgLayer = Color(0xFFF9F6F0)
-    val bgRaised = Color(0xFFFDFCF9)
-    val bgFlyout = Color(0xFFFDFCF9)
+    val bgBase = Color(0xFFEFE9DF)
+    val bgLayer = Color(0xFFF7F2EA)
+    val bgRaised = Color(0xFFFFFDF9)
+    val bgFlyout = Color(0xFFFFFDF9)
     val bgHover = Color(0x0D1C1616)
     val bgSelected = Color(0x141C1616)
-    val inactive = Color(0xFFC2BCB2)
+    val inactive = Color(0xFFCFC7BA)
     val border = Color(0x1A1C1616)
     val separator = Color(0x171C1616)
     val textPrimary = Color(0xFF1C1616)
@@ -90,7 +90,7 @@ object SirToneLight {
     val textTertiary = Color(0xFF6F6563)
     val icon = Color(0xFF5C5351)
     val focusRing = Color(0xFF1C1616)
-    val artworkPlaceholder = Color(0xFFE8E3DA)
+    val artworkPlaceholder = Color(0xFFE6DFD3)
     val artworkScrim = Color(0x73000000)
     val danger = Color(0xFFC62828)
     val onPrimary = Color(0xFFF9F6F0)
@@ -100,22 +100,22 @@ data class SirToneAccent(val fill: Color, val text: Color, val on: Color, val pr
 
 object SirToneAccents {
     val all: Map<String, Pair<SirToneAccent, SirToneAccent>> = mapOf(
-        "sirkov" to Pair(SirToneAccent(Color(0xFFCCFF00), Color(0xFFCCFF00), Color(0xFF1C1616), Color(0xFF590212), Color(0xFFCE7273)), SirToneAccent(Color(0xFF66BB00), Color(0xFF407A00), Color(0xFF1C1616), Color(0xFF8C031C), Color(0xFF8C031C))),
-        "lilac" to Pair(SirToneAccent(Color(0xFFB98CF0), Color(0xFFB98CF0), Color(0xFF1C1616), Color(0xFF381B5B), Color(0xFF9A7FC8)), SirToneAccent(Color(0xFF8A4FD6), Color(0xFF874CD3), Color(0xFFF9F6F0), Color(0xFF5B3291), Color(0xFF5B3291))),
-        "coral" to Pair(SirToneAccent(Color(0xFFFF8A73), Color(0xFFFF8A73), Color(0xFF1C1616), Color(0xFF590C03), Color(0xFFCA7565)), SirToneAccent(Color(0xFFE5533D), Color(0xFFC5341F), Color(0xFF1C1616), Color(0xFF8D1C0D), Color(0xFF8D1C0D))),
-        "blue" to Pair(SirToneAccent(Color(0xFF6FA0FF), Color(0xFF6FA0FF), Color(0xFF1C1616), Color(0xFF0D2964), Color(0xFF688CCF)), SirToneAccent(Color(0xFF2C68E7), Color(0xFF2662E0), Color(0xFFF9F6F0), Color(0xFF1D469D), Color(0xFF1D469D))),
-        "gray" to Pair(SirToneAccent(Color(0xFFA3A3A3), Color(0xFFA3A3A3), Color(0xFF1C1616), Color(0xFF342B2B), Color(0xFFF9F6F0)), SirToneAccent(Color(0xFF6B6B6B), Color(0xFF6B6B6B), Color(0xFFF9F6F0), Color(0xFF534B4B), Color(0xFF1C1616))),
+        "sirkov" to Pair(SirToneAccent(Color(0xFFCCFF00), Color(0xFFCCFF00), Color(0xFF110D0C), Color(0xFF5E0A18), Color(0xFFE39A8F)), SirToneAccent(Color(0xFF4E9700), Color(0xFF3D7400), Color(0xFF1C1616), Color(0xFF7E0A1E), Color(0xFF7E0A1E))),
+        "lilac" to Pair(SirToneAccent(Color(0xFFB98CF0), Color(0xFFB98CF0), Color(0xFF1C1616), Color(0xFF381B5B), Color(0xFF9A7FC8)), SirToneAccent(Color(0xFF8A4FD6), Color(0xFF844ACF), Color(0xFFF9F6F0), Color(0xFF5B3291), Color(0xFF5B3291))),
+        "coral" to Pair(SirToneAccent(Color(0xFFFF8A73), Color(0xFFFF8A73), Color(0xFF1C1616), Color(0xFF590C03), Color(0xFFCA7565)), SirToneAccent(Color(0xFFE5533D), Color(0xFFC4341F), Color(0xFF1C1616), Color(0xFF8D1C0D), Color(0xFF8D1C0D))),
+        "blue" to Pair(SirToneAccent(Color(0xFF6FA0FF), Color(0xFF6FA0FF), Color(0xFF1C1616), Color(0xFF0D2964), Color(0xFF688CCF)), SirToneAccent(Color(0xFF2C68E7), Color(0xFF2661DF), Color(0xFFF9F6F0), Color(0xFF1D469D), Color(0xFF1D469D))),
+        "gray" to Pair(SirToneAccent(Color(0xFFA3A3A3), Color(0xFFA3A3A3), Color(0xFF1C1616), Color(0xFF342B2B), Color(0xFFF9F6F0)), SirToneAccent(Color(0xFF6B6B6B), Color(0xFF696969), Color(0xFFF9F6F0), Color(0xFF534B4B), Color(0xFF1C1616))),
         "black" to Pair(SirToneAccent(Color(0xFFF9F6F0), Color(0xFFF9F6F0), Color(0xFF1C1616), Color(0xFF342B2B), Color(0xFFF9F6F0)), SirToneAccent(Color(0xFF1C1616), Color(0xFF1C1616), Color(0xFFF9F6F0), Color(0xFF534B4B), Color(0xFF1C1616))),
-        "red" to Pair(SirToneAccent(Color(0xFFFF5A5A), Color(0xFFFF5A5A), Color(0xFF1C1616), Color(0xFF590B0A), Color(0xFFCA746A)), SirToneAccent(Color(0xFFDC1E20), Color(0xFFD50F18), Color(0xFFF9F6F0), Color(0xFF8D1B18), Color(0xFF8D1B18))),
+        "red" to Pair(SirToneAccent(Color(0xFFFF5A5A), Color(0xFFFF5A5A), Color(0xFF1C1616), Color(0xFF590B0A), Color(0xFFCA746A)), SirToneAccent(Color(0xFFDC1E20), Color(0xFFD30F18), Color(0xFFF9F6F0), Color(0xFF8D1B18), Color(0xFF8D1B18))),
         "brick" to Pair(SirToneAccent(Color(0xFFD9765A), Color(0xFFD9765A), Color(0xFF1C1616), Color(0xFF561100), Color(0xFFC67762)), SirToneAccent(Color(0xFFB0482C), Color(0xFFB0482C), Color(0xFFF9F6F0), Color(0xFF8A2302), Color(0xFF8A2302))),
         "violet" to Pair(SirToneAccent(Color(0xFF9B7BFF), Color(0xFF9B7BFF), Color(0xFF1C1616), Color(0xFF2C2061), Color(0xFF8A85CF)), SirToneAccent(Color(0xFF6A3DF0), Color(0xFF6A3DF0), Color(0xFFF9F6F0), Color(0xFF4A3999), Color(0xFF4A3999))),
-        "lavender" to Pair(SirToneAccent(Color(0xFFD4A8F0), Color(0xFFD4A8F0), Color(0xFF1C1616), Color(0xFF3F1855), Color(0xFFA57CC0)), SirToneAccent(Color(0xFFA86CCF), Color(0xFF8C51B1), Color(0xFF1C1616), Color(0xFF662D88), Color(0xFF662D88))),
-        "orange" to Pair(SirToneAccent(Color(0xFFFF9A3D), Color(0xFFFF9A3D), Color(0xFF1C1616), Color(0xFF4B2000), Color(0xFFB68263)), SirToneAccent(Color(0xFFD76B09), Color(0xFFAC5300), Color(0xFF1C1616), Color(0xFF783904), Color(0xFF783904))),
-        "yellow" to Pair(SirToneAccent(Color(0xFFF5C842), Color(0xFFF5C842), Color(0xFF1C1616), Color(0xFF3C2B00), Color(0xFF9E8A61)), SirToneAccent(Color(0xFFAD8103), Color(0xFF88650D), Color(0xFF1C1616), Color(0xFF624802), Color(0xFF624802))),
-        "ginger" to Pair(SirToneAccent(Color(0xFFF08A45), Color(0xFFF08A45), Color(0xFF1C1616), Color(0xFF501A00), Color(0xFFBD7D63)), SirToneAccent(Color(0xFFBF4D09), Color(0xFFB54A0D), Color(0xFFF9F6F0), Color(0xFF813001), Color(0xFF813001))),
-        "darkred" to Pair(SirToneAccent(Color(0xFFBD2E30), Color(0xFFEB5B56), Color(0xFFF9F6F0), Color(0xFF590A0E), Color(0xFFCA736D)), SirToneAccent(Color(0xFFA8121E), Color(0xFFA8121E), Color(0xFFF9F6F0), Color(0xFF8D1A1E), Color(0xFF8D1A1E))),
-        "lightred" to Pair(SirToneAccent(Color(0xFFFF8A8A), Color(0xFFFF8A8A), Color(0xFF1C1616), Color(0xFF590A0F), Color(0xFFCA736E)), SirToneAccent(Color(0xFFF05252), Color(0xFFCC2D35), Color(0xFF1C1616), Color(0xFF8D1A20), Color(0xFF8D1A20))),
-        "burgundy" to Pair(SirToneAccent(Color(0xFFAC3A61), Color(0xFFDC668A), Color(0xFFF9F6F0), Color(0xFF560929), Color(0xFFCA748C)), SirToneAccent(Color(0xFF8F1D4A), Color(0xFF8F1D4A), Color(0xFFF9F6F0), Color(0xFF891846), Color(0xFF891846))),
-        "bordeaux" to Pair(SirToneAccent(Color(0xFFA64641), Color(0xFFD57069), Color(0xFFF9F6F0), Color(0xFF590A0D), Color(0xFFCA736C)), SirToneAccent(Color(0xFF7A1C1C), Color(0xFF7A1C1C), Color(0xFFF9F6F0), Color(0xFF852725), Color(0xFF852725))),
+        "lavender" to Pair(SirToneAccent(Color(0xFFD4A8F0), Color(0xFFD4A8F0), Color(0xFF1C1616), Color(0xFF3F1855), Color(0xFFA57CC0)), SirToneAccent(Color(0xFFA86CCF), Color(0xFF8B50AF), Color(0xFF1C1616), Color(0xFF662D88), Color(0xFF662D88))),
+        "orange" to Pair(SirToneAccent(Color(0xFFFF9A3D), Color(0xFFFF9A3D), Color(0xFF1C1616), Color(0xFF4B2000), Color(0xFFB68263)), SirToneAccent(Color(0xFFD36909), Color(0xFFA95100), Color(0xFF1C1616), Color(0xFF783904), Color(0xFF783904))),
+        "yellow" to Pair(SirToneAccent(Color(0xFFF5C842), Color(0xFFF5C842), Color(0xFF1C1616), Color(0xFF3C2B00), Color(0xFF9E8A61)), SirToneAccent(Color(0xFFAB7F03), Color(0xFF87640D), Color(0xFF1C1616), Color(0xFF624802), Color(0xFF624802))),
+        "ginger" to Pair(SirToneAccent(Color(0xFFF08A45), Color(0xFFF08A45), Color(0xFF1C1616), Color(0xFF501A00), Color(0xFFBD7D63)), SirToneAccent(Color(0xFFBF4D09), Color(0xFFB2490D), Color(0xFFF9F6F0), Color(0xFF813001), Color(0xFF813001))),
+        "darkred" to Pair(SirToneAccent(Color(0xFFC53637), Color(0xFFEB5B56), Color(0xFFF9F6F0), Color(0xFF590A0E), Color(0xFFCA736D)), SirToneAccent(Color(0xFFA8121E), Color(0xFFA8121E), Color(0xFFF9F6F0), Color(0xFF8D1A1E), Color(0xFF8D1A1E))),
+        "lightred" to Pair(SirToneAccent(Color(0xFFFF8A8A), Color(0xFFFF8A8A), Color(0xFF1C1616), Color(0xFF590A0F), Color(0xFFCA736E)), SirToneAccent(Color(0xFFEB5050), Color(0xFFC72C34), Color(0xFF1C1616), Color(0xFF8D1A20), Color(0xFF8D1A20))),
+        "burgundy" to Pair(SirToneAccent(Color(0xFFB54369), Color(0xFFDC668A), Color(0xFFF9F6F0), Color(0xFF560929), Color(0xFFCA748C)), SirToneAccent(Color(0xFF8F1D4A), Color(0xFF8F1D4A), Color(0xFFF9F6F0), Color(0xFF891846), Color(0xFF891846))),
+        "bordeaux" to Pair(SirToneAccent(Color(0xFFAE4D47), Color(0xFFD57069), Color(0xFFF9F6F0), Color(0xFF590A0D), Color(0xFFCA736C)), SirToneAccent(Color(0xFF7A1C1C), Color(0xFF7A1C1C), Color(0xFFF9F6F0), Color(0xFF852725), Color(0xFF852725))),
     )
 }
