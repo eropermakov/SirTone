@@ -52,10 +52,12 @@ struct Shared {
     fade_ms: AtomicU32,
     fade_gen: AtomicU32,
     fade_now: AtomicU32,
+    /// How far ahead the decode thread fills, ms (`Player::set_fill_ms`).
+    fill_ms: AtomicU32,
 }
 
-/// How far ahead the decode thread fills (a setting is heard after this at most). iOS's longest
-/// locked-screen buffer is ~0.1 s; 0.4 s covers it four times over (П2 is re-checked).
+/// The fill on screen: a setting is heard within this. Off screen or locked the app asks for
+/// more (`set_fill_ms`), as П2 held with 2 s.
 const FILL_MS: usize = 400;
 
 /// The visualiser's end of the side ring, with the track's format.
@@ -112,7 +114,8 @@ fn err(code: &str) -> CoreError {
 fn decode_loop(mut src: Source, mut producer: Producer<f32>, shared: Arc<Shared>) {
     let mut buf: Vec<f32> = Vec::with_capacity(16_384);
     let ch = src.channels.max(1);
-    let fill = (src.rate as usize * ch * FILL_MS / 1000).min(RING_SAMPLES / 2);
+    let rate = src.rate as usize;
+    let fill_of = |ms: u32| (rate * ch * ms as usize / 1000).min(RING_SAMPLES * 3 / 4);
     let mut eq = Eq::new(src.rate, ch);
     let (mut eq_seen, mut eq_on) = (u32::MAX, false);
     let mut gain_seen = u32::MAX;
@@ -136,8 +139,8 @@ fn decode_loop(mut src: Source, mut producer: Producer<f32>, shared: Arc<Shared>
             }
             eq_seen = e;
         }
-        // Not further ahead than `fill`: settings are heard soon, the ring still rides out stalls.
-        if RING_SAMPLES - producer.slots() >= fill {
+        // Not further ahead than the fill: settings are heard soon, the ring rides out stalls.
+        if RING_SAMPLES - producer.slots() >= fill_of(shared.fill_ms.load(Ordering::Relaxed)) {
             std::thread::sleep(Duration::from_millis(5));
             continue;
         }
@@ -259,6 +262,7 @@ impl Player {
                 fade_ms: AtomicU32::new(0),
                 fade_gen: AtomicU32::new(0),
                 fade_now: AtomicU32::new(1f32.to_bits()),
+                fill_ms: AtomicU32::new(FILL_MS as u32),
             }),
             inner: Mutex::new(Inner {
                 format: None,
@@ -349,6 +353,14 @@ impl Player {
             };
         }
         self.shared.eq_gen.fetch_add(1, Ordering::AcqRel);
+    }
+
+    /// How far ahead to decode: ~400 ms on screen (settings heard at once), more off screen or
+    /// locked (nothing to hear quickly there, and a deeper buffer rides out a throttled thread).
+    pub fn set_fill_ms(&self, ms: u32) {
+        self.shared
+            .fill_ms
+            .store(ms.clamp(100, 1_500), Ordering::Relaxed);
     }
 
     /// Normalization gain for the open track, dB (`Library::norm_gain_db`; 0 — off).

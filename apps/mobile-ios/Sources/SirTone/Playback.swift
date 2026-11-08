@@ -108,7 +108,7 @@ final class Playback: ObservableObject {
     func playNext(_ t: TrackItem) {
         let at = (index ?? -1) + 1
         queue.insert(Item(track: t, fromWave: false), at: min(at, queue.count))
-        if index == nil { open(at: 0) }
+        if index == nil { open(at: 0) } else { planNext() }
     }
 
     func remove(at offsets: IndexSet) {
@@ -116,11 +116,13 @@ final class Playback: ObservableObject {
         guard let i = index else { return }
         let absolute = IndexSet(offsets.map { $0 + i + 1 })
         queue.remove(atOffsets: absolute)
+        planNext()
     }
 
     func move(from: IndexSet, to: Int) {
         guard let i = index else { return }
         queue.move(fromOffsets: IndexSet(from.map { $0 + i + 1 }), toOffset: to + i + 1)
+        planNext()
     }
 
     // MARK: Transport
@@ -288,9 +290,10 @@ final class Playback: ObservableObject {
             defer { if index == i { opening = false } }
             let gainTarget = SoundPrefs.normTarget
             let opened = await Task.detached { () -> (TrackFormat, UInt64, Bool, UIImage?)? in
+                // The gain before the open: the new decoder starts at it (no slide from the last).
+                core.setGainDb(db: gainTarget.map { lib.normGainDb(trackId: item.track.id, targetLufs: $0) } ?? 0)
                 guard let path = try? lib.trackPath(trackId: item.track.id),
                       let f = try? core.open(path: path) else { return nil }
-                core.setGainDb(db: gainTarget.map { lib.normGainDb(trackId: item.track.id, targetLufs: $0) } ?? 0)
                 core.fadeTo(target: 1, ms: 0)
                 let liked = (try? lib.isLiked(trackId: item.track.id)) ?? false
                 let art = lib.trackCover(trackId: item.track.id)
@@ -323,6 +326,7 @@ final class Playback: ObservableObject {
         guard waveOn else { return }
         let keep = (index ?? -1) + 1
         queue = queue.enumerated().filter { $0.offset < keep || !$0.element.fromWave }.map(\.element)
+        planNext()
         refill(thenPlay: false)
     }
 
@@ -339,7 +343,7 @@ final class Playback: ObservableObject {
             refilling = false
             let start = queue.count
             queue += picked.map { Item(track: $0, fromWave: true) }
-            if thenPlay, queue.count > start { open(at: start) } else if thenPlay { pause() }
+            if thenPlay, queue.count > start { open(at: start) } else if thenPlay { pause() } else { planNext() }
         }
     }
 
@@ -411,6 +415,12 @@ final class Playback: ObservableObject {
 
     // MARK: Transitions (D-148: «Мягко», «Умно», crossfade — the PC's planner, `Library.mixPlan`)
 
+    /// On screen the decoder stays ~0.4 s ahead (settings heard at once); off screen or locked
+    /// 1.5 s, as nothing needs a quick answer there and the thread may be throttled.
+    func setOnScreen(_ on: Bool) {
+        for d in [active, standby] { d.core.setFillMs(ms: on ? 400 : 1_500) }
+    }
+
     /// Both decks follow the sleep fade.
     private func setLevel(_ v: Float) {
         level = v
@@ -460,6 +470,7 @@ final class Playback: ObservableObject {
     /// one, fades (equal power in four steps, or B in whole under A's own fade), then swaps.
     private func handOver(to i: Int, mix: MixPlan) {
         guard let lib = model?.library else { return }
+        plan = nil  // one attempt: a failed open falls back to the plain next
         let item = queue[i]
         let incoming = standby, outgoing = active
         let core = incoming.core
@@ -467,10 +478,10 @@ final class Playback: ObservableObject {
         let vol = level
         mixing = Task {
             let opened = await Task.detached { () -> (TrackFormat, UInt64, Bool, UIImage?)? in
+                core.setGainDb(db: gainTarget.map { lib.normGainDb(trackId: item.track.id, targetLufs: $0) } ?? 0)
                 guard let path = try? lib.trackPath(trackId: item.track.id),
                       let f = try? core.open(path: path) else { return nil }
                 if mix.bStartMs > 0 { try? core.seek(ms: mix.bStartMs) }
-                core.setGainDb(db: gainTarget.map { lib.normGainDb(trackId: item.track.id, targetLufs: $0) } ?? 0)
                 core.setVolume(volume: vol)
                 core.fadeTo(target: mix.equalPower ? 0 : 1, ms: 0)
                 let liked = (try? lib.isLiked(trackId: item.track.id)) ?? false
@@ -514,7 +525,7 @@ final class Playback: ObservableObject {
                     outgoing.core.fadeTo(target: cos(t), ms: step)
                     core.fadeTo(target: sin(t), ms: step)
                     try? await Task.sleep(for: .milliseconds(Int(step)))
-                    if Task.isCancelled { break }
+                    if Task.isCancelled { return }  // finishMix stopped the old deck already
                 }
             } else {
                 try? await Task.sleep(for: .milliseconds(overlap))

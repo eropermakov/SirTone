@@ -43,6 +43,18 @@ final class ContextService: NSObject, ObservableObject, CLLocationManagerDelegat
     var useWeather: Bool { enabled && (d.object(forKey: "ctxWeather") as? Bool ?? true) }
     var usePlaces: Bool { enabled && (d.object(forKey: "ctxPlaces") as? Bool ?? true) }
     var offline: Bool { d.bool(forKey: "offline") }
+    /// The system's questions (motion, location) come with the first wave start, not at launch.
+    private var prompted: Bool { d.bool(forKey: "ctxPrompted") }
+
+    /// What the card says: `road_long` after `long_drive_min` in a car, else the activity.
+    var shown: String? { activity == "road" && longDrive ? "road_long" : activity }
+
+    /// The first wave start: now the phone may ask for motion and location.
+    func promptOnce() {
+        guard !prompted else { return }
+        d.set(true, forKey: "ctxPrompted")
+        refresh()
+    }
 
     override init() {
         super.init()
@@ -64,9 +76,16 @@ final class ContextService: NSObject, ObservableObject, CLLocationManagerDelegat
             apply()
             return
         }
-        if useMotion { startMotion() } else { stopMotion() }
+        let mayAsk = prompted
+        // Without permission yet, Core Motion would ask: only after the first wave start.
+        if useMotion, mayAsk || CMMotionActivityManager.authorizationStatus() == .authorized {
+            startMotion()
+        } else if !useMotion {
+            stopMotion()
+        }
         routeChanged()
-        if (useWeather || usePlaces), CLLocationManager.locationServicesEnabled() {
+        if (useWeather || usePlaces), CLLocationManager.locationServicesEnabled(),
+           mayAsk || location.authorizationStatus != .notDetermined {
             switch location.authorizationStatus {
             case .notDetermined: location.requestWhenInUseAuthorization()
             case .authorizedWhenInUse, .authorizedAlways: location.requestLocation()

@@ -63,8 +63,8 @@ struct ContextCards: View {
                     Button(L.t("ctx.yes")) { ctx.answer(true) }.foregroundStyle(p.accent.text)
                 }
             }
-            if let a = ctx.activity {
-                card(icon: "location.north", text: L.t("ctx.now.\(a)")) {
+            if let a = ctx.shown {
+                card(icon: a == "road_long" ? "car" : "location.north", text: L.t("ctx.now.\(a)")) {
                     Button(L.t("ctx.undo")) { ctx.dismiss() }.foregroundStyle(p.accent.text)
                 }
             }

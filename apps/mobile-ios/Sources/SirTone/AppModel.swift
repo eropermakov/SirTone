@@ -204,6 +204,7 @@ final class AppModel: ObservableObject {
     /// The big start: «Моя волна» (back from «Засыпательная», if that was the last one).
     func startWave(profile: String = "my_wave") {
         guard let lib = library else { return }
+        context.promptOnce()
         if profile == waveProfile, wave != nil {
             playback.startWave()
             return

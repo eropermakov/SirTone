@@ -64,7 +64,10 @@ struct RootView: View {
             app.importURLs(urls, quality: q)
         }
         .onAppear { app.open() }
-        .onChange(of: phase) { _, now in if now == .active { app.becameActive() } }
+        .onChange(of: phase) { _, now in
+            app.playback.setOnScreen(now == .active)
+            if now == .active { app.becameActive() }
+        }
     }
 
     private func tab(_ content: some View, _ title: String, _ icon: String) -> some View {
