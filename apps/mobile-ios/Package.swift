@@ -10,12 +10,17 @@ import PackageDescription
 let here = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let hasCore = FileManager.default.fileExists(
     atPath: here.appendingPathComponent("Frameworks/SirToneCoreFFI.xcframework").path)
+// The visualiser page (F22), built from apps/desktop by `pnpm build:mobile-viz`.
+let hasViz = FileManager.default.fileExists(
+    atPath: here.appendingPathComponent("Sources/SirTone/Resources/viz/index.html").path)
 
 var targets: [Target] = [
     .target(name: "SirToneDesign", resources: [.copy("Resources/Geologica.ttf")]),
     .target(
         name: "SirTone",
-        dependencies: ["SirToneDesign"] + (hasCore ? ["SirToneCore"] : [])
+        dependencies: ["SirToneDesign"] + (hasCore ? ["SirToneCore"] : []),
+        exclude: hasViz ? [] : ["Resources"],
+        resources: hasViz ? [.copy("Resources/viz")] : []
     ),
     .target(name: "SirToneWidget", dependencies: ["SirToneDesign"]),
 ]

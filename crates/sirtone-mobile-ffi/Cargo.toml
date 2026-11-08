@@ -36,6 +36,7 @@ rtrb = { workspace = true }
 rusqlite = { workspace = true }
 uniffi = { workspace = true }
 thiserror = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 image = { workspace = true }

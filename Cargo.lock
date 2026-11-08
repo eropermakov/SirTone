@@ -7341,6 +7341,7 @@ dependencies = [
  "image",
  "rtrb",
  "rusqlite",
+ "serde_json",
  "sirtone-audio",
  "sirtone-core",
  "sirtone-library",

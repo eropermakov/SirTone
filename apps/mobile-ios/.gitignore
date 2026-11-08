@@ -5,3 +5,5 @@
 /xtool/
 *.xcodeproj
 /.bsp/
+# The visualiser page, built from apps/desktop (pnpm build:mobile-viz) — never committed.
+/Sources/SirTone/Resources/viz/

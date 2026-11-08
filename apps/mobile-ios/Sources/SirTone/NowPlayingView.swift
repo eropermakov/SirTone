@@ -16,6 +16,7 @@ struct NowPlayingView: View {
     @State private var scrubbing: Double?
     @State private var showQueue = false
     @State private var why: WhyList?
+    @State private var showViz = false
 
     var body: some View {
         GeometryReader { geo in
@@ -23,9 +24,24 @@ struct NowPlayingView: View {
             // The blurred cover lies in `.background`: a filled picture there cannot widen the
             // layout (in a ZStack it pushed the player off-screen on non-square covers).
             VStack(spacing: M.space6) {
-                    Capsule().fill(Color.white.opacity(0.4)).frame(width: 40, height: 5)
-                        .padding(.top, M.space2)
-                        .accessibilityHidden(true)
+                    ZStack {
+                        Capsule().fill(Color.white.opacity(0.4)).frame(width: 40, height: 5)
+                            .accessibilityHidden(true)
+                        // F22: the visualiser; not in «Только музыка» (D-147).
+                        if !app.musicOnly {
+                            HStack {
+                                Spacer()
+                                Button { showViz = true } label: {
+                                    Image(systemName: "waveform").font(.system(size: 20))
+                                        .frame(width: 44, height: 44)
+                                }
+                                .buttonStyle(.plain)
+                                .opacity(0.85)
+                                .accessibilityLabel(L.t("viz.open"))
+                            }
+                        }
+                    }
+                    .padding(.top, M.space2)
                     Spacer(minLength: 0)
                     cover(side)
                     titles
@@ -41,6 +57,7 @@ struct NowPlayingView: View {
         }
         .foregroundStyle(Color.white)
         .gesture(DragGesture().onEnded { g in if g.translation.height > 120 { dismiss() } })
+        .fullScreenCover(isPresented: $showViz) { VizView() }
         .sheet(isPresented: $showQueue) { QueueView().presentationDetents([.medium, .large]) }
         // A stored item: one built inside a Binding got a new id on every redraw, and the sheet
         // closed and opened again forever.

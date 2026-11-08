@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use rtrb::{Consumer, Producer, RingBuffer};
 use sirtone_audio::decode::Source;
+use sirtone_audio::vizframe::{FRAME, FrameBuilder};
 
 use crate::CoreError;
 
@@ -32,12 +33,29 @@ struct Shared {
     ended: AtomicBool,
     decode_done: AtomicBool,
     stop: AtomicBool,
+    /// Open visualisers ([`VizFeed`]); the callback copies samples aside only while > 0.
+    viz_on: AtomicU32,
+    /// The side ring of the current render handle, for the visualiser thread (never locked by
+    /// the callback: a new one is put here when a track opens or seeks).
+    viz_tap: Mutex<Option<VizTap>>,
 }
+
+/// The visualiser's end of the side ring, with the track's format.
+struct VizTap {
+    consumer: Consumer<f32>,
+    rate: u32,
+    channels: usize,
+}
+
+/// Side ring: half a second at 48 kHz stereo.
+const VIZ_RING: usize = 48_000;
 
 /// What the render callback owns. Handed to the app once as an opaque pointer.
 pub struct RenderHandle {
     consumer: Consumer<f32>,
     shared: Arc<Shared>,
+    /// Samples handed to the device, before the volume, for the visualiser (D-148).
+    viz: Producer<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -137,9 +155,20 @@ impl Player {
                 .spawn(move || decode_loop(src, producer, shared))
                 .map_err(|_| err("player.thread"))?,
         );
+        let (viz, viz_consumer) = RingBuffer::<f32>::new(VIZ_RING);
+        *self
+            .shared
+            .viz_tap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(VizTap {
+            consumer: viz_consumer,
+            rate: format.sample_rate,
+            channels: format.channels as usize,
+        });
         inner.handle = Some(Box::new(RenderHandle {
             consumer,
             shared: self.shared.clone(),
+            viz,
         }));
         inner.base_ms = from_ms;
         inner.path = Some(path);
@@ -160,6 +189,8 @@ impl Player {
                 ended: AtomicBool::new(false),
                 decode_done: AtomicBool::new(false),
                 stop: AtomicBool::new(false),
+                viz_on: AtomicU32::new(0),
+                viz_tap: Mutex::new(None),
             }),
             inner: Mutex::new(Inner {
                 format: None,
@@ -239,6 +270,84 @@ impl Player {
     pub fn ended(&self) -> bool {
         self.shared.ended.load(Ordering::Acquire)
     }
+
+    /// A visualiser feed (D-148): while it lives, the render callback copies what it plays
+    /// aside. Drop it when the visualiser closes or the app leaves the screen.
+    pub fn viz(self: Arc<Self>) -> Arc<VizFeed> {
+        self.shared.viz_on.fetch_add(1, Ordering::AcqRel);
+        Arc::new(VizFeed {
+            player: self,
+            state: Mutex::new(FeedState {
+                tap: None,
+                builder: FrameBuilder::new(),
+                out: vec![0; FRAME],
+            }),
+        })
+    }
+}
+
+/// Frames for the visualiser page — the PC's S-04 bytes (`sirtone_audio::vizframe`).
+#[derive(uniffi::Object)]
+pub struct VizFeed {
+    player: Arc<Player>,
+    state: Mutex<FeedState>,
+}
+
+struct FeedState {
+    tap: Option<VizTap>,
+    builder: FrameBuilder,
+    out: Vec<u8>,
+}
+
+#[uniffi::export]
+impl VizFeed {
+    /// The next frame. `latency_ms` — what the system still holds before the sound is heard
+    /// (`outputLatency + ioBufferDuration`; AirPods ≈ 200 ms), so picture and sound agree.
+    pub fn frame(&self, latency_ms: u32) -> Vec<u8> {
+        let shared = &self.player.shared;
+        let mut st = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let st = &mut *st;
+        if let Some(t) = shared
+            .viz_tap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+        {
+            st.builder.set_rate(t.rate);
+            st.tap = Some(t);
+        }
+        let mut rate = 48_000;
+        if let Some(t) = st.tap.as_mut() {
+            rate = t.rate;
+            let n = t.consumer.slots() / t.channels.max(1) * t.channels.max(1);
+            if let Ok(chunk) = t.consumer.read_chunk(n) {
+                let (a, b) = chunk.as_slices();
+                st.builder.push(a, t.channels);
+                st.builder.push(b, t.channels);
+                chunk.commit_all();
+            }
+        }
+        let playing = !shared.paused.load(Ordering::Acquire);
+        let latency = u64::from(latency_ms) * u64::from(rate) / 1000;
+        st.builder.frame(
+            &mut st.out,
+            playing,
+            self.player.position_ms(),
+            0.0,
+            0.0,
+            latency,
+        );
+        st.out.clone()
+    }
+}
+
+impl Drop for VizFeed {
+    fn drop(&mut self) {
+        self.player.shared.viz_on.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 impl Drop for Player {
@@ -284,6 +393,18 @@ pub unsafe extern "C" fn sirtone_render(
     let n = h.consumer.slots().min(len) / channels as usize * channels as usize;
     if let Ok(chunk) = h.consumer.read_chunk(n) {
         let (a, b) = chunk.as_slices();
+        // The visualiser's copy: only copying, whole frames, what fits (no wait, no allocation).
+        if h.shared.viz_on.load(Ordering::Relaxed) > 0 {
+            let room = h.viz.slots().min(n) / channels as usize * channels as usize;
+            if let Ok(mut side) = h.viz.write_chunk_uninit(room) {
+                let (x, y) = side.as_mut_slices();
+                for (d, s) in x.iter_mut().chain(y.iter_mut()).zip(a.iter().chain(b)) {
+                    d.write(*s);
+                }
+                // SAFETY: `room` ≤ `n` samples were available and all were written above.
+                unsafe { side.commit_all() };
+            }
+        }
         for (d, s) in out.iter_mut().zip(a.iter().chain(b)) {
             *d = *s * volume;
         }
@@ -400,6 +521,44 @@ pub(crate) mod tests {
         assert!((11_000..=11_100).contains(&got), "{got}");
         // SAFETY: done with it.
         unsafe { sirtone_render_release(h2) };
+        drop(p);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The visualiser sees what plays (D-148): the 440 Hz tone at full scale in the frames even
+    /// at volume 0.1 (the copy is taken before the volume); closed, nothing is copied.
+    #[test]
+    fn the_visualiser_gets_what_plays() {
+        let path =
+            std::env::temp_dir().join(format!("sirtone-player-viz-{}.wav", std::process::id()));
+        wav(&path);
+        let p = Player::new();
+        p.open(path.to_string_lossy().into_owned()).unwrap();
+        let h = p.take_render_handle();
+        p.set_volume(0.1);
+        p.play();
+        let feed = p.clone().viz();
+        assert_eq!(p.shared.viz_on.load(Ordering::Relaxed), 1);
+        let mut out = vec![0f32; 512 * 2];
+        let mut rendered = 0u32;
+        for _ in 0..2_000 {
+            // SAFETY: the handle and buffer satisfy the contract.
+            rendered += unsafe { sirtone_render(h, out.as_mut_ptr(), 512, 2) };
+            if rendered >= 4_096 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let f = feed.frame(0);
+        assert_eq!(f.len(), sirtone_audio::vizframe::FRAME);
+        assert_eq!(f[1], sirtone_audio::vizframe::FLAG_PLAYING);
+        let l = &f[32 + 1024..32 + 2048];
+        // 12 000 / 32 768 ≈ 0.37 → 128 ± 47; at volume 0.1 it would be ± 5.
+        assert!(l.iter().any(|&x| x > 165) && l.iter().any(|&x| x < 91));
+        drop(feed);
+        assert_eq!(p.shared.viz_on.load(Ordering::Relaxed), 0);
+        // SAFETY: done with it.
+        unsafe { sirtone_render_release(h) };
         drop(p);
         let _ = std::fs::remove_file(&path);
     }

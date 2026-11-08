@@ -54,6 +54,9 @@ final class Playback: ObservableObject {
 
     func attach(model: AppModel) { self.model = model }
 
+    /// The visualiser's feed (F22): while it lives, the core copies what plays aside.
+    func vizFeed() -> VizFeed { core.viz() }
+
     private var offsetMin: Int32 { Int32(TimeZone.current.secondsFromGMT() / 60) }
 
     // MARK: Starting

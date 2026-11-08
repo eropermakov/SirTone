@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b",
+    "build:mobile-viz": "vite build -c vite.mobile-viz.config.ts",
     "tauri": "tauri",
     "e2e": "playwright test"
   },

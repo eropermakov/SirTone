@@ -28,6 +28,7 @@ pub mod stretch;
 mod swap;
 #[cfg(windows)]
 pub mod viz;
+pub mod vizframe;
 pub mod warm;
 
 #[cfg(windows)]
