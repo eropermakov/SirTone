@@ -276,152 +276,6 @@ fn echo(
     Ok(found)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::db::open_in_memory;
-    use crate::repo::{
-        Identity, NewTrack, album_get_or_create, artist_get_or_create, track_insert,
-    };
-
-    #[test]
-    fn tracks_and_journal_for_a_package() {
-        let mut c = open_in_memory().unwrap();
-        let kino = artist_get_or_create(&c, "Кино").unwrap();
-        let album = album_get_or_create(&c, "Группа крови", kino, Some(1988)).unwrap();
-        let id = track_insert(
-            &mut c,
-            &NewTrack {
-                rel_path: "Кино/Группа крови/01 Группа крови.flac".into(),
-                size_bytes: 30_000_000,
-                mtime_ms: 0,
-                content_hash: "h".into(),
-                container: "flac".into(),
-                codec: "flac".into(),
-                lossless: true,
-                sample_rate: Some(44100),
-                channels: Some(2),
-                duration_ms: 287_000,
-                title: "Группа крови".into(),
-                album_id: Some(album),
-                disc_no: None,
-                track_no: Some(1),
-                year: Some(1988),
-                identity: Identity::Inferred,
-                identity_conf: 0.9,
-                unknown_reason: None,
-                artists: vec![kino],
-            },
-        )
-        .unwrap();
-        assert!(!library_uid(&c).unwrap().is_empty());
-        let t = tracks(&c).unwrap();
-        assert_eq!(t.len(), 1);
-        assert_eq!(t[0].artist.as_deref(), Some("Кино"));
-        assert_eq!(t[0].album.as_deref(), Some("Группа крови"));
-        assert_eq!((t[0].size, t[0].duration_ms), (30_000_000, 287_000));
-
-        crate::feedback::set_like(&c, id, true).unwrap();
-        let j = journal(&c).unwrap();
-        assert!(
-            j.iter()
-                .any(|r| matches!(r, JournalRow::Mark { kind, track_id, .. } if kind == "like" && *track_id == id)),
-            "{j:?}"
-        );
-
-        // A play applied twice lands once and counts in the statistics once.
-        let ctx = PlayContext {
-            local_minute: 600,
-            weekday: 2,
-            daypart: 1,
-            season_w: [0, 0, 0, 255],
-            weather: None,
-        };
-        assert!(
-            apply_play(
-                &c,
-                "phone:play:1",
-                id,
-                1_000,
-                200_000,
-                287_000,
-                "finished",
-                "wave",
-                &ctx
-            )
-            .unwrap()
-        );
-        assert!(
-            !apply_play(
-                &c,
-                "phone:play:1",
-                id,
-                1_000,
-                200_000,
-                287_000,
-                "finished",
-                "wave",
-                &ctx
-            )
-            .unwrap()
-        );
-        let plays: i64 = c
-            .query_row(
-                "SELECT count(*) FROM play_event WHERE track_id = ?1",
-                [id],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(plays, 1);
-        let j = journal(&c).unwrap();
-        assert!(
-            j.iter()
-                .any(|r| matches!(r, JournalRow::Play { context, .. } if *context == ctx))
-        );
-        assert!(seen_keys(&c).unwrap().contains("phone:play:1"));
-
-        // «Не нравится» from the phone wins when the merge says so; «никогда» switches the wave off.
-        assert!(apply_mark(&c, "phone:mark:1", id, 2_000, "unlike", true).unwrap());
-        assert!(!crate::feedback::track_state(&c, id).unwrap().liked);
-        assert!(apply_mark(&c, "phone:mark:2", id, 3_000, "never", false).unwrap());
-        assert!(crate::feedback::track_state(&c, id).unwrap().never_track);
-        assert!(!apply_mark(&c, "phone:mark:2", id, 3_000, "never", false).unwrap());
-
-        // Out and back: the same play and mark under the other device's own keys land nowhere.
-        assert!(
-            !apply_play(
-                &c,
-                "pc:play:77",
-                id,
-                1_000,
-                200_000,
-                287_000,
-                "finished",
-                "wave",
-                &ctx
-            )
-            .unwrap()
-        );
-        assert!(!apply_mark(&c, "pc:mark:9", id, 3_000, "never", false).unwrap());
-        let plays: i64 = c
-            .query_row(
-                "SELECT count(*) FROM play_event WHERE track_id = ?1",
-                [id],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(plays, 1, "an echo is not a second play");
-        let marks: i64 = c
-            .query_row(
-                "SELECT count(*) FROM feedback WHERE track_id = ?1 AND kind = 'never'",
-                [id],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(marks, 1);
-    }
-}
-
 /// The analysis columns a package carries (D-148): a white list, as every dynamic SQL here.
 /// Fingerprints travel separately (`TrackEntry::fingerprint`); play statistics never travel.
 const ANALYSIS: [&str; 28] = [
@@ -595,4 +449,150 @@ pub fn apply_analysis(
         )?;
     }
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::open_in_memory;
+    use crate::repo::{
+        Identity, NewTrack, album_get_or_create, artist_get_or_create, track_insert,
+    };
+
+    #[test]
+    fn tracks_and_journal_for_a_package() {
+        let mut c = open_in_memory().unwrap();
+        let kino = artist_get_or_create(&c, "Кино").unwrap();
+        let album = album_get_or_create(&c, "Группа крови", kino, Some(1988)).unwrap();
+        let id = track_insert(
+            &mut c,
+            &NewTrack {
+                rel_path: "Кино/Группа крови/01 Группа крови.flac".into(),
+                size_bytes: 30_000_000,
+                mtime_ms: 0,
+                content_hash: "h".into(),
+                container: "flac".into(),
+                codec: "flac".into(),
+                lossless: true,
+                sample_rate: Some(44100),
+                channels: Some(2),
+                duration_ms: 287_000,
+                title: "Группа крови".into(),
+                album_id: Some(album),
+                disc_no: None,
+                track_no: Some(1),
+                year: Some(1988),
+                identity: Identity::Inferred,
+                identity_conf: 0.9,
+                unknown_reason: None,
+                artists: vec![kino],
+            },
+        )
+        .unwrap();
+        assert!(!library_uid(&c).unwrap().is_empty());
+        let t = tracks(&c).unwrap();
+        assert_eq!(t.len(), 1);
+        assert_eq!(t[0].artist.as_deref(), Some("Кино"));
+        assert_eq!(t[0].album.as_deref(), Some("Группа крови"));
+        assert_eq!((t[0].size, t[0].duration_ms), (30_000_000, 287_000));
+
+        crate::feedback::set_like(&c, id, true).unwrap();
+        let j = journal(&c).unwrap();
+        assert!(
+            j.iter()
+                .any(|r| matches!(r, JournalRow::Mark { kind, track_id, .. } if kind == "like" && *track_id == id)),
+            "{j:?}"
+        );
+
+        // A play applied twice lands once and counts in the statistics once.
+        let ctx = PlayContext {
+            local_minute: 600,
+            weekday: 2,
+            daypart: 1,
+            season_w: [0, 0, 0, 255],
+            weather: None,
+        };
+        assert!(
+            apply_play(
+                &c,
+                "phone:play:1",
+                id,
+                1_000,
+                200_000,
+                287_000,
+                "finished",
+                "wave",
+                &ctx
+            )
+            .unwrap()
+        );
+        assert!(
+            !apply_play(
+                &c,
+                "phone:play:1",
+                id,
+                1_000,
+                200_000,
+                287_000,
+                "finished",
+                "wave",
+                &ctx
+            )
+            .unwrap()
+        );
+        let plays: i64 = c
+            .query_row(
+                "SELECT count(*) FROM play_event WHERE track_id = ?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(plays, 1);
+        let j = journal(&c).unwrap();
+        assert!(
+            j.iter()
+                .any(|r| matches!(r, JournalRow::Play { context, .. } if *context == ctx))
+        );
+        assert!(seen_keys(&c).unwrap().contains("phone:play:1"));
+
+        // «Не нравится» from the phone wins when the merge says so; «никогда» switches the wave off.
+        assert!(apply_mark(&c, "phone:mark:1", id, 2_000, "unlike", true).unwrap());
+        assert!(!crate::feedback::track_state(&c, id).unwrap().liked);
+        assert!(apply_mark(&c, "phone:mark:2", id, 3_000, "never", false).unwrap());
+        assert!(crate::feedback::track_state(&c, id).unwrap().never_track);
+        assert!(!apply_mark(&c, "phone:mark:2", id, 3_000, "never", false).unwrap());
+
+        // Out and back: the same play and mark under the other device's own keys land nowhere.
+        assert!(
+            !apply_play(
+                &c,
+                "pc:play:77",
+                id,
+                1_000,
+                200_000,
+                287_000,
+                "finished",
+                "wave",
+                &ctx
+            )
+            .unwrap()
+        );
+        assert!(!apply_mark(&c, "pc:mark:9", id, 3_000, "never", false).unwrap());
+        let plays: i64 = c
+            .query_row(
+                "SELECT count(*) FROM play_event WHERE track_id = ?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(plays, 1, "an echo is not a second play");
+        let marks: i64 = c
+            .query_row(
+                "SELECT count(*) FROM feedback WHERE track_id = ?1 AND kind = 'never'",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(marks, 1);
+    }
 }
