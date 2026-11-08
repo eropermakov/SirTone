@@ -421,3 +421,178 @@ mod tests {
         assert_eq!(marks, 1);
     }
 }
+
+/// The analysis columns a package carries (D-148): a white list, as every dynamic SQL here.
+/// Fingerprints travel separately (`TrackEntry::fingerprint`); play statistics never travel.
+const ANALYSIS: [&str; 28] = [
+    "lufs_i",
+    "true_peak_db",
+    "lra",
+    "peaks",
+    "lead_silence_ms",
+    "tail_silence_ms",
+    "env_head",
+    "env_tail",
+    "bpm",
+    "bpm_conf",
+    "beat_grid",
+    "grid_stability",
+    "key_camelot",
+    "key_conf",
+    "valence",
+    "arousal",
+    "aggression",
+    "energy",
+    "danceability",
+    "acousticness",
+    "vocal",
+    "lang",
+    "lang_conf",
+    "mood_bits",
+    "activity_json",
+    "embedding",
+    "analysis_version",
+    "analyzed_at",
+];
+/// The wave's feature row (`track_features`), under these keys in the same map.
+const FEATURES: [&str; 5] = ["version", "vec", "conf", "season_aff", "kw_bits"];
+
+fn to_json(v: rusqlite::types::Value) -> serde_json::Value {
+    use rusqlite::types::Value as V;
+    match v {
+        V::Null => serde_json::Value::Null,
+        V::Integer(i) => i.into(),
+        V::Real(f) => serde_json::Number::from_f64(f).map_or(serde_json::Value::Null, Into::into),
+        V::Text(s) => s.into(),
+        V::Blob(b) => serde_json::json!({ "b": sirtone_core::fingerprint::base64url(&b) }),
+    }
+}
+
+fn from_json(v: &serde_json::Value) -> rusqlite::types::Value {
+    use rusqlite::types::Value as V;
+    match v {
+        serde_json::Value::Number(n) => n
+            .as_i64()
+            .map(V::Integer)
+            .or_else(|| n.as_f64().map(V::Real))
+            .unwrap_or(V::Null),
+        serde_json::Value::String(s) => V::Text(s.clone()),
+        serde_json::Value::Object(o) => o
+            .get("b")
+            .and_then(serde_json::Value::as_str)
+            .and_then(sirtone_core::fingerprint::unbase64url)
+            .map_or(V::Null, V::Blob),
+        _ => V::Null,
+    }
+}
+
+/// A track's analysis for the package; `None` — not analysed.
+pub fn analysis_of(
+    conn: &Connection,
+    track_id: i64,
+) -> Result<Option<serde_json::Map<String, serde_json::Value>>, LibraryError> {
+    let sql = format!(
+        "SELECT {} FROM track WHERE id = ?1 AND analysis_version > 0",
+        ANALYSIS.join(", ")
+    );
+    let Some(mut m) = conn
+        .query_row(&sql, [track_id], |r| {
+            let mut m = serde_json::Map::new();
+            for (i, c) in ANALYSIS.iter().enumerate() {
+                let v = to_json(r.get(i)?);
+                if !v.is_null() {
+                    m.insert((*c).to_owned(), v);
+                }
+            }
+            Ok(m)
+        })
+        .optional()?
+    else {
+        return Ok(None);
+    };
+    let f = conn
+        .query_row(
+            &format!(
+                "SELECT {} FROM track_features WHERE track_id = ?1",
+                FEATURES.join(", ")
+            ),
+            [track_id],
+            |r| {
+                let mut f = serde_json::Map::new();
+                for (i, c) in FEATURES.iter().enumerate() {
+                    let v = to_json(r.get(i)?);
+                    if !v.is_null() {
+                        f.insert((*c).to_owned(), v);
+                    }
+                }
+                Ok(f)
+            },
+        )
+        .optional()?;
+    if let Some(f) = f {
+        m.insert("features".into(), f.into());
+    }
+    Ok(Some(m))
+}
+
+/// Writes a package's analysis over this library's track when it is newer (a higher
+/// `analysis_version`) or the track has none. Returns whether it was written.
+pub fn apply_analysis(
+    conn: &Connection,
+    track_id: i64,
+    a: &serde_json::Map<String, serde_json::Value>,
+) -> Result<bool, LibraryError> {
+    let theirs = a
+        .get("analysis_version")
+        .and_then(serde_json::Value::as_i64)
+        .unwrap_or(0);
+    let ours: i64 = conn
+        .query_row(
+            "SELECT analysis_version FROM track WHERE id = ?1",
+            [track_id],
+            |r| r.get(0),
+        )
+        .optional()?
+        .unwrap_or(i64::MAX);
+    if theirs <= ours {
+        return Ok(false);
+    }
+    let cols: Vec<&str> = ANALYSIS
+        .iter()
+        .copied()
+        .filter(|c| a.contains_key(*c))
+        .collect();
+    let set = cols
+        .iter()
+        .enumerate()
+        .map(|(i, c)| format!("{c} = ?{}", i + 2))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut vals: Vec<rusqlite::types::Value> = vec![track_id.into()];
+    vals.extend(cols.iter().map(|c| from_json(&a[*c])));
+    conn.execute(
+        &format!("UPDATE track SET {set} WHERE id = ?1"),
+        rusqlite::params_from_iter(vals),
+    )?;
+    if let Some(f) = a.get("features").and_then(serde_json::Value::as_object)
+        && f.contains_key("vec")
+    {
+        let g = |k: &str| f.get(k).map_or(rusqlite::types::Value::Null, from_json);
+        conn.execute(
+            "INSERT INTO track_features (track_id, version, vec, conf, season_aff, kw_bits, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, coalesce(?6, 0), strftime('%s','now') * 1000)
+             ON CONFLICT(track_id) DO UPDATE SET version = excluded.version, vec = excluded.vec,
+               conf = excluded.conf, season_aff = excluded.season_aff, kw_bits = excluded.kw_bits,
+               updated_at = excluded.updated_at",
+            rusqlite::params![
+                track_id,
+                g("version"),
+                g("vec"),
+                g("conf"),
+                g("season_aff"),
+                g("kw_bits")
+            ],
+        )?;
+    }
+    Ok(true)
+}

@@ -116,6 +116,7 @@ pub fn export_with(
                         .and_then(sirtone_core::fingerprint::decompress),
                     hash: Some(t.content_hash),
                     copy: t.copy,
+                    analysis: transfer::analysis_of(conn, t.id)?,
                 });
             }
             if parts.playlists {
@@ -338,6 +339,14 @@ pub fn apply(
         })
         .collect();
 
+    // 3a. The source's analysis over an older or missing one here (D-148): the phone gets the
+    //     PC's loudness, tempo, vibe and the wave's vector instead of hours of its own analysis.
+    for t in &manifest.tracks {
+        if let (Some(a), Some(&id)) = (t.analysis.as_ref(), ids.get(t.key.as_str())) {
+            transfer::apply_analysis(conn, id, a)?;
+        }
+    }
+
     // 3b. Music that came as an economy copy stays marked so (Q-34): only tracks this run
     //     imported — a track the library already had keeps its own file.
     for ((t, first), m) in manifest
@@ -483,31 +492,47 @@ mod tests {
             sirtone_library::Medium::Fixed,
         )
         .unwrap();
-        let kino = artist_get_or_create(&conn, "Кино").unwrap();
-        let album = album_get_or_create(&conn, "Ёлка", kino, None).unwrap();
-        track_insert(
-            &mut conn,
-            &NewTrack {
-                rel_path: "Кино/01 Ёлка.flac".into(),
-                size_bytes: 4,
-                mtime_ms: 0,
-                content_hash: "h1".into(),
-                container: "flac".into(),
-                codec: "flac".into(),
-                lossless: true,
-                sample_rate: Some(44100),
-                channels: Some(2),
-                duration_ms: 1_000,
-                title: "Ёлка".into(),
-                album_id: Some(album),
-                disc_no: None,
-                track_no: Some(1),
-                year: None,
-                identity: Identity::Inferred,
-                identity_conf: 0.9,
-                unknown_reason: None,
-                artists: vec![kino],
-            },
+        let insert = |conn: &mut rusqlite::Connection| {
+            let kino = artist_get_or_create(conn, "Кино").unwrap();
+            let album = album_get_or_create(conn, "Ёлка", kino, None).unwrap();
+            track_insert(
+                conn,
+                &NewTrack {
+                    rel_path: "Кино/01 Ёлка.flac".into(),
+                    size_bytes: 4,
+                    mtime_ms: 0,
+                    content_hash: "h1".into(),
+                    container: "flac".into(),
+                    codec: "flac".into(),
+                    lossless: true,
+                    sample_rate: Some(44100),
+                    channels: Some(2),
+                    duration_ms: 1_000,
+                    title: "Ёлка".into(),
+                    album_id: Some(album),
+                    disc_no: None,
+                    track_no: Some(1),
+                    year: None,
+                    identity: Identity::Inferred,
+                    identity_conf: 0.9,
+                    unknown_reason: None,
+                    artists: vec![kino],
+                },
+            )
+            .unwrap()
+        };
+        let id = insert(&mut conn);
+        // An analysed track (D-148): its analysis and the wave's vector go into the package.
+        conn.execute(
+            "UPDATE track SET valence = 0.7, bpm = 120.5, env_head = x'0102ff', lang = 'ru',
+                    analysis_version = 3 WHERE id = ?1",
+            [id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO track_features (track_id, version, vec, conf, updated_at)
+             VALUES (?1, 1, x'00000040', 0.9, 0)",
+            [id],
         )
         .unwrap();
         let parts = Parts {
@@ -537,6 +562,36 @@ mod tests {
         assert_eq!(
             needed(&empty, &out).unwrap(),
             vec![format!("{MUSIC_DIR}/Кино/01 Ёлка.flac")]
+        );
+
+        // The analysis survives the manifest and lands on a library without one, once.
+        let m = Manifest::read(&out).unwrap();
+        let a = m.tracks[0].analysis.clone().expect("analysis travels");
+        let mut empty = empty;
+        let there = insert(&mut empty);
+        assert!(transfer::apply_analysis(&empty, there, &a).unwrap());
+        let (v, bpm, env, lang, ver): (f64, f64, Vec<u8>, String, i64) = empty
+            .query_row(
+                "SELECT valence, bpm, env_head, lang, analysis_version FROM track WHERE id = ?1",
+                [there],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (v, bpm, env, lang.as_str(), ver),
+            (0.7, 120.5, vec![1, 2, 255], "ru", 3)
+        );
+        let vec: Vec<u8> = empty
+            .query_row(
+                "SELECT vec FROM track_features WHERE track_id = ?1",
+                [there],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(vec, vec![0, 0, 0, 0x40]);
+        assert!(
+            !transfer::apply_analysis(&empty, there, &a).unwrap(),
+            "not over an equal one"
         );
         let _ = std::fs::remove_dir_all(&base);
     }

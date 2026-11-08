@@ -163,6 +163,7 @@ mod tests {
             fingerprint: f,
             hash: None,
             copy: None,
+            analysis: None,
         }
     }
 

@@ -58,6 +58,11 @@ pub struct TrackEntry {
     /// marks the track so, and an original found there later replaces it (Q-34).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub copy: Option<String>,
+    /// The source's analysis of the track (loudness, silences and envelopes, tempo and key, vibe,
+    /// language, the wave's feature vector — D-148): the phone gets the PC's analysis instead of
+    /// redoing hours of it. Column → value, blobs in base64url; applied only over an older one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analysis: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 mod fp_codec {
@@ -225,6 +230,7 @@ mod tests {
                 fingerprint: None,
                 hash: None,
                 copy: None,
+                analysis: None,
             });
         }
         m

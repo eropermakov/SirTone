@@ -134,6 +134,30 @@ pub fn base64url(data: &[u8]) -> String {
     s
 }
 
+/// The reverse of [`base64url`]; `None` — not base64url.
+pub fn unbase64url(s: &str) -> Option<Vec<u8>> {
+    let val = |c: u8| match c {
+        b'A'..=b'Z' => Some(c - b'A'),
+        b'a'..=b'z' => Some(c - b'a' + 26),
+        b'0'..=b'9' => Some(c - b'0' + 52),
+        b'-' => Some(62),
+        b'_' => Some(63),
+        _ => None,
+    };
+    let mut out = Vec::with_capacity(s.len() * 3 / 4);
+    let (mut acc, mut bits) = (0u32, 0u32);
+    for c in s.bytes() {
+        acc = (acc << 6) | u32::from(val(c)?);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+            acc &= (1 << bits) - 1;
+        }
+    }
+    Some(out)
+}
+
 /// Similarity of two fingerprints: 1 − bit error rate at the best alignment within ±16 items
 /// (≈ ±2 s), over at least 64 overlapping items (S-06), with the overlap share of the shorter.
 pub fn similarity(a: &[u32], b: &[u32]) -> Option<(f32, f32)> {
