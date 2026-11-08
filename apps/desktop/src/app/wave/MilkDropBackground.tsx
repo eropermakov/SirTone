@@ -11,8 +11,8 @@ const RANKED = rank((index as { presets: PresetDesc[] }).presets);
 
 /**
  * The «MilkDrop» background (T4.3, FR-VIZ-004, `06` §7.3): Butterchurn behind the player, a
- * preset chosen by the vibe on every track change, the next one every `preset_s` (3 s blend)
- * unless locked; ♥/✕ rate the preset on screen (Kodi Lock/Rate). Fed by the visualiser frames;
+ * preset chosen by the vibe on every track change (never on its own in between, owner
+ * 2026-11-08) unless locked; ♥/✕ rate the preset on screen (Kodi Lock/Rate). Fed by the visualiser frames;
  * paused when unseen (T4.6). Failing (no WebGL2, lost context) — `onFail`, the caller falls back
  * to «Волны».
  */
@@ -203,15 +203,6 @@ export function MilkDropBackground({
       alive = false;
     };
   }, [trackId, cover, ready, next]);
-
-  // Rotation: the next preset every `preset_s` unless locked.
-  useEffect(() => {
-    if (!ready) return;
-    const id = window.setInterval(() => {
-      if (!lockRef.current && !power.paused) next();
-    }, MILKDROP.preset_s * 1000);
-    return () => window.clearInterval(id);
-  }, [ready, power.paused, next]);
 
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">

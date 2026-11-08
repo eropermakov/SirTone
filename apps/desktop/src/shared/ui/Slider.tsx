@@ -15,7 +15,14 @@ type Props = {
   className?: string;
   /** Lets the owner drive the fill (e.g. smooth playback progress) without re-rendering. */
   fillRef?: RefObject<HTMLDivElement | null>;
+  /** Detents, 0…1 ascending: the value snaps to the nearest one, ticks mark them, the thumb stays. */
+  stops?: readonly number[];
 };
+
+const snapTo = (v: number, stops?: readonly number[]) =>
+  stops && stops.length > 0
+    ? stops.reduce((best, s) => (Math.abs(s - v) < Math.abs(best - v) ? s : best), stops[0] ?? v)
+    : v;
 
 /**
  * Progress/volume in the owner's reference shape (D-75, replaces the 4 px bar of DESIGN.md §9): a
@@ -33,6 +40,7 @@ export function Slider({
   disabled,
   className,
   fillRef,
+  stops,
 }: Props) {
   const track = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<number | null>(null);
@@ -41,7 +49,7 @@ export function Slider({
   const at = (e: PointerEvent) => {
     const r = track.current?.getBoundingClientRect();
     if (!r || r.width === 0) return 0;
-    return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    return snapTo(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), stops);
   };
   const down = (e: PointerEvent<HTMLDivElement>) => {
     if (disabled) return;
@@ -63,6 +71,20 @@ export function Slider({
     onCommit(v);
   };
   const key = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (stops && stops.length > 0 && !disabled) {
+      const i = stops.indexOf(snapTo(value, stops));
+      const j =
+        e.key === "ArrowRight" || e.key === "ArrowUp"
+          ? i + 1
+          : e.key === "ArrowLeft" || e.key === "ArrowDown"
+            ? i - 1
+            : i;
+      if (j !== i) {
+        e.preventDefault();
+        onCommit(stops[Math.min(stops.length - 1, Math.max(0, j))] ?? value);
+      }
+      return;
+    }
     const delta =
       e.key === "ArrowRight" || e.key === "ArrowUp"
         ? step
@@ -104,11 +126,19 @@ export function Slider({
           style={{ transform: `scaleX(${shown})` }}
         />
       </div>
+      {stops?.map((s) => (
+        <div
+          key={s}
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-text-primary/60"
+          style={{ left: `${s * 100}%` }}
+        />
+      ))}
       {!disabled && (
         <div
           className={cn(
             "pointer-events-none absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent-text opacity-0 transition-opacity group-focus-visible:opacity-100",
-            drag !== null && "opacity-100",
+            (drag !== null || stops) && "opacity-100",
           )}
           style={{ left: `${shown * 100}%` }}
         />
