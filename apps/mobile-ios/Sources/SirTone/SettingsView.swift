@@ -23,6 +23,19 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                // The PC's sections (D-148): sound, the wave, the context.
+                Section {
+                    NavigationLink { SoundSettingsView() } label: {
+                        Label(L.t("sound.title"), systemImage: "slider.vertical.3")
+                    }
+                    NavigationLink { WaveSettingsView() } label: {
+                        Label(L.t("wavecfg.title"), systemImage: "waveform")
+                    }
+                    NavigationLink { ContextSettingsView(ctx: app.context) } label: {
+                        Label(L.t("ctx.title"), systemImage: "location")
+                    }
+                }
+                .listRowBackground(p.bgRaised)
                 Section(L.t("settings.appearance")) {
                     Picker(L.t("settings.theme"), selection: $app.theme) {
                         Text(verbatim: L.t("settings.theme.system")).tag("system")

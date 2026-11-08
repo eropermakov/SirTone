@@ -113,6 +113,10 @@ struct TrackRowView: View {
             Button { playback.playNext(track) } label: {
                 Label(L.t("menu.play_next"), systemImage: "text.insert")
             }
+            // «Никогда в волне» (PC `settingsNever`); back from «Настройки → Волна».
+            Button(role: .destructive) { playback.never(track) } label: {
+                Label(L.t("player.never"), systemImage: "nosign")
+            }
         }
     }
 }

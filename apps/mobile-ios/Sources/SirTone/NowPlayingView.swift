@@ -239,7 +239,10 @@ private struct WhySheet: View {
     @Environment(\.palette) private var p
 
     private func text(_ code: String) -> String {
-        let base = code.split(separator: ":").first.map(String.init) ?? code
+        let parts = code.split(separator: ":").map(String.init)
+        let base = parts.first ?? code
+        // The phone's context names itself (D-149): «Вы в пути».
+        if base == "auto", parts.count > 1 { return L.t("why.auto.\(parts[1])") }
         return L.t("why.\(base)")
     }
 

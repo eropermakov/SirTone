@@ -8,6 +8,10 @@
     <array>
         <string>audio</string>
     </array>
+    <key>NSMotionUsageDescription</key>
+    <string>Сиртон подстраивает волну под то, идёте вы, бежите или едете. Данные движения остаются на телефоне.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Для погоды за окном и для «Дом» и «Работа» в волне. Место остаётся на телефоне; для погоды уходит только примерный район.</string>
     <key>UIFileSharingEnabled</key>
     <true/>
     <key>LSSupportsOpeningDocumentsInPlace</key>

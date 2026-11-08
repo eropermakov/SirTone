@@ -12,7 +12,11 @@ import UIKit
 @MainActor
 final class AppModel: ObservableObject {
     @Published private(set) var library: Library?
-    @Published private(set) var wave: Wave?
+    @Published private(set) var wave: Wave? {
+        didSet { if wave !== oldValue { configureWave() } }
+    }
+    /// «Обстановка» (D-149): motion, car, places, weather — steering «Моя волна».
+    let context = ContextService()
     /// The running wave's profile: `my_wave` or `sleep` («Засыпательная волна»).
     @Published private(set) var waveProfile = "my_wave"
     @Published private(set) var counts: LibraryCounts?
@@ -54,6 +58,7 @@ final class AppModel: ObservableObject {
 
     init() {
         playback.attach(model: self)
+        context.attach(model: self)
         // «Только музыка» follows Low Power Mode as it flips (D-147).
         powerObserver = NotificationCenter.default.addObserver(
             forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main
@@ -95,6 +100,7 @@ final class AppModel: ObservableObject {
             guard let (lib, wave) = made else { return }
             library = lib
             self.wave = wave
+            context.refresh()
             await refresh()
             await pickUp()
         }
@@ -103,6 +109,7 @@ final class AppModel: ObservableObject {
     /// On every return to the app: packages from the PC and files dropped into «Входящие».
     func becameActive() {
         guard library != nil else { return }
+        context.refresh()
         Task { await pickUp() }
     }
 
@@ -213,6 +220,29 @@ final class AppModel: ObservableObject {
             waveProfile = profile
             playback.startWave()
         }
+    }
+
+    /// «Сила влияний» (S07): season, context, events, 0…2 (1 — as the profile says).
+    var influence: [Float] {
+        ["infSeason", "infContext", "infEvents"].map {
+            Float(UserDefaults.standard.object(forKey: $0) as? Double ?? 1)
+        }
+    }
+
+    func setInfluence(_ v: [Float]) {
+        for (k, x) in zip(["infSeason", "infContext", "infEvents"], v) {
+            UserDefaults.standard.set(Double(x), forKey: k)
+        }
+        configureWave()
+        playback.retune()
+    }
+
+    /// A new wave gets the influences and the phone's context again.
+    private func configureWave() {
+        guard let w = wave else { return }
+        let i = influence
+        Task.detached { w.setInfluence(season: i[0], context: i[1], events: i[2]) }
+        context.reapply()
     }
 
     /// «Засыпательная волна» (as on the PC): 30 minutes of the sleep timer, then quiet.

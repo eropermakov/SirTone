@@ -37,6 +37,8 @@ struct VizView: View {
         .onAppear { configure() }
         .onChange(of: mode) { _, _ in configure() }
         .onChange(of: playback.current?.track.id) { _, _ in bridge.sendColors() }
+        // A transition swapped the decks: the feed follows the one now playing.
+        .onChange(of: playback.deckGen) { _, _ in bridge.halt(); bridge.run() }
         .onChange(of: phase) { _, now in now == .active ? bridge.run() : bridge.halt() }
         .onDisappear { bridge.halt() }
         .task {

@@ -29,7 +29,9 @@ struct WaveView: View {
                     if (app.counts?.tracks ?? 0) == 0 {
                         EmptyState(title: L.t("wave.empty"))
                     } else {
+                        ContextCards(ctx: app.context)
                         start
+                        MyWaves()
                         novelty
                         if let item = playback.current, !playback.playing {
                             resume(item)

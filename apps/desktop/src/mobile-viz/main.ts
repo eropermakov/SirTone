@@ -121,14 +121,30 @@ window.addEventListener("resize", () => {
   engine?.milk?.resize();
 });
 
-// What the app measures for the spike (D-148): FPS and the worst frame, every 2 s.
+/** Seconds in a row below 45 FPS: after 4 the page steps one quality level down by itself, so a
+ * weak WebView degrades instead of stuttering (D-148, no reinstall needed for that). */
+let slow = 0;
+
+function adapt() {
+  if (!engine || opts.level <= 1) return;
+  const fps = engine.kind === "waves" ? wavesStats.fps : milkdropStats.fps;
+  slow = fps > 0 && fps < 45 ? slow + 2 : 0;
+  if (slow < 4) return;
+  slow = 0;
+  opts = { ...opts, level: (opts.level - 1) as Start["level"] };
+  engine.waves?.setQuality(WAVES.quality[String(opts.level) as "1"]);
+  engine.milk?.setQuality(MILKDROP.quality[String(opts.level) as "1"]);
+}
+
+// What the app measures for the spike (D-148): FPS, the worst frame and the level, every 2 s.
 window.setInterval(() => {
   if (!engine) return;
+  adapt();
   post(
     "stats",
     engine.kind === "waves"
-      ? { mode: "waves", ...wavesStats }
-      : { mode: "milkdrop", ...milkdropStats },
+      ? { mode: "waves", level: opts.level, fps: wavesStats.fps, drawn: wavesStats.drawn }
+      : { mode: "milkdrop", level: opts.level, ...milkdropStats },
   );
 }, 2000);
 

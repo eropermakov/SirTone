@@ -37,10 +37,25 @@ final class Playback: ObservableObject {
     var current: Item? { index.flatMap { queue.indices.contains($0) ? queue[$0] : nil } }
     var upNext: ArraySlice<Item> { index.map { queue.dropFirst($0 + 1) } ?? queue[...] }
 
-    private let core = Player()
+    /// Two decks (D-148): one plays; over a transition the other comes in, then they swap.
+    /// With transitions off only `active` is ever used — the path П2 checked.
+    private final class Deck {
+        let core = Player()
+        var node: AVAudioSourceNode?
+        var handle: UInt64 = 0
+    }
+    private var active = Deck()
+    private var standby = Deck()
+    private var core: Player { active.core }
     private let engine = AVAudioEngine()
-    private var node: AVAudioSourceNode?
-    private var handle: UInt64 = 0
+    /// Bumped when the decks swap: the visualiser takes the new deck's feed.
+    @Published private(set) var deckGen = 0
+    /// The handover planned for the track after the current one.
+    private var plan: (next: Item.ID, mix: MixPlan)?
+    private var mixing: Task<Void, Never>?
+    private var fadingOut: Deck?
+    /// The sleep fade's level (both decks follow it).
+    private var level: Float = 1
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
     private var failures = 0
@@ -50,12 +65,13 @@ final class Playback: ObservableObject {
     init() {
         setUpCommands()
         observeSession()
+        applyEq()
     }
 
     func attach(model: AppModel) { self.model = model }
 
     /// The visualiser's feed (F22): while it lives, the core copies what plays aside.
-    func vizFeed() -> VizFeed { core.viz() }
+    func vizFeed() -> VizFeed { active.core.viz() }
 
     private var offsetMin: Int32 { Int32(TimeZone.current.secondsFromGMT() / 60) }
 
@@ -63,6 +79,7 @@ final class Playback: ObservableObject {
 
     func play(_ tracks: [TrackItem], at start: Int = 0, shuffled: Bool = false) {
         guard !tracks.isEmpty else { return }
+        finishMix()
         logCurrent(skipped: true)
         waveOn = false
         var list = tracks
@@ -122,6 +139,7 @@ final class Playback: ObservableObject {
     }
 
     func pause() {
+        finishMix()
         core.pause()
         playing = false
         updateNowPlaying()
@@ -155,6 +173,7 @@ final class Playback: ObservableObject {
 
     func seek(to ms: UInt64) {
         guard index != nil else { return }
+        finishMix()
         let core = self.core
         Task {
             let h = await Task.detached { () -> UInt64? in
@@ -174,19 +193,19 @@ final class Playback: ObservableObject {
 
     func sleep(minutes: Int) {
         sleepAt = Date().addingTimeInterval(TimeInterval(minutes * 60))
-        core.setVolume(volume: 1)
+        setLevel(1)
     }
 
     /// «+15 мин»: later, and the volume comes back at once.
     func sleepLater() {
         guard let at = sleepAt else { return }
         sleepAt = max(at, Date()).addingTimeInterval(15 * 60)
-        core.setVolume(volume: 1)
+        setLevel(1)
     }
 
     func sleepCancel() {
         sleepAt = nil
-        core.setVolume(volume: 1)
+        setLevel(1)
     }
 
     private func sleepTick() {
@@ -195,14 +214,14 @@ final class Playback: ObservableObject {
         if left <= 0 {
             pause()
             sleepAt = nil
-            core.setVolume(volume: 1)
+            setLevel(1)
             return
         }
         guard left < Self.fadeSpan else { return }
         // Linear in dB from 0 to the floor over the last 10 minutes; the final 30 s at the floor.
         let t = Float(max(0, left - 30) / (Self.fadeSpan - 30))
         let db = Self.fadeFloorDb * (1 - t)
-        core.setVolume(volume: powf(10, db / 20))
+        setLevel(powf(10, db / 20))
     }
 
     // MARK: Marks
@@ -217,6 +236,18 @@ final class Playback: ObservableObject {
             let ok = await Task.detached { (try? lib.setLike(trackId: t.id, on: on)) != nil }.value
             if !ok, current?.track.id == t.id { liked = !on }
         }
+    }
+
+    /// «Никогда в волне»: the wave never picks it; it leaves the wave's queue at once.
+    func never(_ t: TrackItem) {
+        guard let lib = model?.library else { return }
+        Task.detached { try? lib.setNever(trackId: t.id, on: true) }
+        let keep = (index ?? -1) + 1
+        queue = queue.enumerated()
+            .filter { $0.offset < keep || !($0.element.fromWave && $0.element.track.id == t.id) }
+            .map(\.element)
+        if current?.track.id == t.id, current?.fromWave == true { next(user: false) }
+        notice = L.t("never.done")
     }
 
     /// «Не сейчас»: a minus for this moment only, then the next track.
@@ -243,6 +274,8 @@ final class Playback: ObservableObject {
 
     private func open(at i: Int) {
         guard queue.indices.contains(i), let lib = model?.library else { return }
+        finishMix()
+        plan = nil
         index = i
         let item = queue[i]
         positionMs = 0
@@ -253,9 +286,12 @@ final class Playback: ObservableObject {
         let core = self.core
         Task {
             defer { if index == i { opening = false } }
+            let gainTarget = SoundPrefs.normTarget
             let opened = await Task.detached { () -> (TrackFormat, UInt64, Bool, UIImage?)? in
                 guard let path = try? lib.trackPath(trackId: item.track.id),
                       let f = try? core.open(path: path) else { return nil }
+                core.setGainDb(db: gainTarget.map { lib.normGainDb(trackId: item.track.id, targetLufs: $0) } ?? 0)
+                core.fadeTo(target: 1, ms: 0)
                 let liked = (try? lib.isLiked(trackId: item.track.id)) ?? false
                 let art = lib.trackCover(trackId: item.track.id)
                     .flatMap { lib.coverPath(hash: $0, size: 512) }
@@ -278,6 +314,7 @@ final class Playback: ObservableObject {
             resume()
             Haptics.tap()
             if waveOn, queue.count - i <= 2 { refill(thenPlay: false) }
+            planNext()
         }
     }
 
@@ -323,14 +360,15 @@ final class Playback: ObservableObject {
 
     /// A fresh source node per open/seek: the track's own rate and channel count (the mixer
     /// converts to the hardware); the old node is detached before its handle is freed.
-    private func attachNode(handle h: UInt64, format f: TrackFormat) {
+    private func attachNode(handle h: UInt64, format f: TrackFormat, to deck: Deck? = nil) {
+        let d = deck ?? active
         guard let n = Self.makeNode(handle: h, format: f) else { return }
-        let old = node
-        let oldHandle = handle
+        let old = d.node
+        let oldHandle = d.handle
         engine.attach(n)
         engine.connect(n, to: engine.mainMixerNode, format: n.outputFormat(forBus: 0))
-        node = n
-        handle = h
+        d.node = n
+        d.handle = h
         if let old { engine.detach(old) }
         if oldHandle != 0 { sirtone_render_release(oldHandle) }
     }
@@ -362,7 +400,151 @@ final class Playback: ObservableObject {
         sleepTick()
         guard index != nil, !opening else { return }
         positionMs = core.positionMs()
-        if playing && core.ended() { next(user: false) }
+        if let (nextId, mix) = plan, mixing == nil, playing,
+           positionMs + 1_500 >= mix.aOutMs,
+           let i = index, queue.indices.contains(i + 1), queue[i + 1].id == nextId {
+            handOver(to: i + 1, mix: mix)
+            return
+        }
+        if playing && mixing == nil && core.ended() { next(user: false) }
+    }
+
+    // MARK: Transitions (D-148: «Мягко», «Умно», crossfade — the PC's planner, `Library.mixPlan`)
+
+    /// Both decks follow the sleep fade.
+    private func setLevel(_ v: Float) {
+        level = v
+        active.core.setVolume(volume: v)
+        standby.core.setVolume(volume: v)
+    }
+
+    /// The equalizer from the settings, on both decks (heard within 0.4 s).
+    func applyEq() {
+        let eq = SoundPrefs.eq
+        for d in [active, standby] {
+            d.core.setEq(enabled: eq.on, preampDb: eq.preamp, bandsDb: eq.bands)
+        }
+    }
+
+    /// Normalization or transitions changed: the open track's gain again, the next handover again.
+    func applySound() {
+        applyEq()
+        if let t = current?.track, let lib = model?.library {
+            let target = SoundPrefs.normTarget
+            let core = self.core
+            Task.detached {
+                core.setGainDb(db: target.map { lib.normGainDb(trackId: t.id, targetLufs: $0) } ?? 0)
+            }
+        }
+        planNext()
+    }
+
+    /// Asks the planner how the current track hands over to the next one.
+    private func planNext() {
+        plan = nil
+        guard let mode = SoundPrefs.transition, let i = index, queue.indices.contains(i + 1),
+              let lib = model?.library else { return }
+        let a = queue[i], b = queue[i + 1]
+        let sleeping = sleepAt != nil
+        Task {
+            let mix = await Task.detached {
+                lib.mixPlan(aId: a.track.id, bId: b.track.id, mode: mode,
+                            albumInOrder: false, sleep: sleeping)
+            }.value
+            guard let mix, index == i, current?.id == a.id else { return }
+            plan = (b.id, mix)
+        }
+    }
+
+    /// Opens the next track on the other deck, starts it at the plan's moment under the current
+    /// one, fades (equal power in four steps, or B in whole under A's own fade), then swaps.
+    private func handOver(to i: Int, mix: MixPlan) {
+        guard let lib = model?.library else { return }
+        let item = queue[i]
+        let incoming = standby, outgoing = active
+        let core = incoming.core
+        let gainTarget = SoundPrefs.normTarget
+        let vol = level
+        mixing = Task {
+            let opened = await Task.detached { () -> (TrackFormat, UInt64, Bool, UIImage?)? in
+                guard let path = try? lib.trackPath(trackId: item.track.id),
+                      let f = try? core.open(path: path) else { return nil }
+                if mix.bStartMs > 0 { try? core.seek(ms: mix.bStartMs) }
+                core.setGainDb(db: gainTarget.map { lib.normGainDb(trackId: item.track.id, targetLufs: $0) } ?? 0)
+                core.setVolume(volume: vol)
+                core.fadeTo(target: mix.equalPower ? 0 : 1, ms: 0)
+                let liked = (try? lib.isLiked(trackId: item.track.id)) ?? false
+                let art = lib.trackCover(trackId: item.track.id)
+                    .flatMap { lib.coverPath(hash: $0, size: 512) }
+                    .flatMap { UIImage(contentsOfFile: $0) }
+                return (f, core.takeRenderHandle(), liked, art)
+            }.value
+            guard !Task.isCancelled, let (f, h, liked, art) = opened, index == i - 1 else {
+                if let opened { sirtone_render_release(opened.1) }
+                mixing = nil
+                return
+            }
+            attachNode(handle: h, format: f, to: incoming)
+            // Wait for the moment B starts sounding.
+            let wait = Int64(mix.aOutMs) - Int64(outgoing.core.positionMs())
+            if wait > 0 { try? await Task.sleep(for: .milliseconds(wait)) }
+            guard !Task.isCancelled else { mixing = nil; return }
+            core.play()
+            // The new track is the current one from here (A's journal row up to this moment).
+            positionMs = outgoing.core.positionMs()
+            logCurrent(skipped: false)
+            active = incoming
+            standby = outgoing
+            fadingOut = outgoing
+            deckGen += 1
+            index = i
+            lastFormat = f
+            positionMs = core.positionMs()
+            heardFrom = positionMs
+            durationMs = f.durationMs.flatMap { $0 > 0 ? $0 : nil } ?? item.track.durationMs
+            self.liked = liked
+            self.cover = art
+            updateNowPlaying()
+            if waveOn, queue.count - i <= 2 { refill(thenPlay: false) }
+            let overlap = max(200, Int(mix.aStopMs) - Int(mix.aOutMs))
+            if mix.equalPower {
+                let step = UInt32(overlap / 4)
+                for k in 1...4 {
+                    let t = Float(k) / 4 * .pi / 2
+                    outgoing.core.fadeTo(target: cos(t), ms: step)
+                    core.fadeTo(target: sin(t), ms: step)
+                    try? await Task.sleep(for: .milliseconds(Int(step)))
+                    if Task.isCancelled { break }
+                }
+            } else {
+                try? await Task.sleep(for: .milliseconds(overlap))
+            }
+            core.fadeTo(target: 1, ms: 0)
+            stop(outgoing)
+            fadingOut = nil
+            mixing = nil
+            planNext()
+        }
+    }
+
+    /// A transition in progress ends at once: the old deck stops, the new one is at full level.
+    private func finishMix() {
+        guard mixing != nil || fadingOut != nil else { return }
+        mixing?.cancel()
+        mixing = nil
+        if let o = fadingOut { stop(o) }
+        fadingOut = nil
+        if standby.node != nil { stop(standby) }
+        active.core.fadeTo(target: 1, ms: 0)
+    }
+
+    private func stop(_ d: Deck) {
+        d.core.pause()
+        if let n = d.node { engine.detach(n) }
+        if d.handle != 0 { sirtone_render_release(d.handle) }
+        d.node = nil
+        d.handle = 0
+        d.core.fadeTo(target: 1, ms: 0)
     }
 
     // MARK: Session, lock screen, buttons
