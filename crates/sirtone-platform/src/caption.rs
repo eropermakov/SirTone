@@ -18,20 +18,14 @@ pub struct CaptionColors {
 }
 
 pub const DARK: CaptionColors = CaptionColors {
-    background: 0x333333,
-    text: 0xf5f5f5,
+    background: 0x110d0c,
+    text: 0xf3ece2,
 };
-/// Owner palettes (D-74): «Оранжевая» and «Чёрно-белая».
-pub const EMBER: CaptionColors = CaptionColors {
-    background: 0x333333,
-    text: 0xf5f5f5,
-};
-pub const MONO: CaptionColors = CaptionColors {
-    background: 0x333333,
-    text: 0xf5f5f5,
-};
+/// Owner palettes (D-74): «Оранжевая» and «Чёрно-белая» — on the dark neutrals (D-144).
+pub const EMBER: CaptionColors = DARK;
+pub const MONO: CaptionColors = DARK;
 pub const LIGHT: CaptionColors = CaptionColors {
-    background: 0xf2eee6,
+    background: 0xefe9df,
     text: 0x1c1616,
 };
 
@@ -77,6 +71,6 @@ mod tests {
     #[test]
     fn colorref_swaps_red_and_blue() {
         assert_eq!(colorref(0x161111), 0x111116);
-        assert_eq!(colorref(0xf2eee6), 0xe6eef2);
+        assert_eq!(colorref(0xefe9df), 0xdfe9ef);
     }
 }
