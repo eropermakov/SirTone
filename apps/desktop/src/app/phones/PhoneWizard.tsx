@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ErrorCode, LibraryStatus, SelectionSize, SendParts } from "@/shared/ipc/bindings";
 import { getStatus } from "@/shared/ipc/library";
@@ -243,50 +243,54 @@ export function PhoneWizard({
           {choice === "pick" && (
             <fieldset aria-label={t("phones.parts.title")} className="flex flex-col gap-2">
               {PARTS.map((part) => (
-                <label
-                  key={part}
-                  className="flex cursor-pointer items-center gap-3 has-focus-visible:outline-2 has-focus-visible:outline-focus-ring"
-                >
-                  <input
-                    type="checkbox"
-                    checked={picked[part]}
-                    onChange={(e) => setPicked({ ...picked, [part]: e.target.checked })}
-                    className="size-4 accent-(--accent-fill)"
-                  />
-                  <span className="t-body text-text-primary">{t(`phones.parts.${part}`)}</span>
-                  {part === "music" && library !== null && !chosenMusic && (
-                    <span className="t-caption text-text-secondary">
-                      <Size bytes={musicBytes(library, quality)} />
-                    </span>
+                <Fragment key={part}>
+                  <label className="flex cursor-pointer items-center gap-3 has-focus-visible:outline-2 has-focus-visible:outline-focus-ring">
+                    <input
+                      type="checkbox"
+                      checked={picked[part]}
+                      onChange={(e) => setPicked({ ...picked, [part]: e.target.checked })}
+                      className="size-4 accent-(--accent-fill)"
+                    />
+                    <span className="t-body text-text-primary">{t(`phones.parts.${part}`)}</span>
+                    {part === "music" && library !== null && !chosenMusic && (
+                      <span className="t-caption text-text-secondary">
+                        <Size bytes={musicBytes(library, quality)} />
+                      </span>
+                    )}
+                    {part === "music" && chosenMusic && chosenSize !== null && (
+                      <span className="t-caption text-text-secondary">
+                        <Size bytes={sizeOf(chosenSize, quality)} />
+                      </span>
+                    )}
+                  </label>
+                  {part === "music" && picked.music && (
+                    <fieldset
+                      aria-label={t("phones.pick.which")}
+                      className="flex flex-col gap-2 pl-7"
+                    >
+                      <div className="flex flex-wrap gap-4">
+                        {WHICH.map((w) => (
+                          <label key={w} className="flex cursor-pointer items-center gap-2">
+                            <input
+                              type="radio"
+                              name={`phone-music-${phone.id}`}
+                              checked={whichMusic === w}
+                              onChange={() => setWhichMusic(w)}
+                              className="size-4 accent-(--accent-fill)"
+                            />
+                            <span className="t-body text-text-primary">
+                              {t(`phones.pick.${w}`)}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                      {whichMusic === "chosen" && (
+                        <MusicPicker value={selection} onChange={setSelection} />
+                      )}
+                    </fieldset>
                   )}
-                  {part === "music" && chosenMusic && chosenSize !== null && (
-                    <span className="t-caption text-text-secondary">
-                      <Size bytes={sizeOf(chosenSize, quality)} />
-                    </span>
-                  )}
-                </label>
+                </Fragment>
               ))}
-              {picked.music && (
-                <fieldset aria-label={t("phones.pick.which")} className="flex flex-col gap-2 pl-7">
-                  <div className="flex flex-wrap gap-4">
-                    {WHICH.map((w) => (
-                      <label key={w} className="flex cursor-pointer items-center gap-2">
-                        <input
-                          type="radio"
-                          name={`phone-music-${phone.id}`}
-                          checked={whichMusic === w}
-                          onChange={() => setWhichMusic(w)}
-                          className="size-4 accent-(--accent-fill)"
-                        />
-                        <span className="t-body text-text-primary">{t(`phones.pick.${w}`)}</span>
-                      </label>
-                    ))}
-                  </div>
-                  {whichMusic === "chosen" && (
-                    <MusicPicker value={selection} onChange={setSelection} />
-                  )}
-                </fieldset>
-              )}
               <span className="t-caption text-text-secondary">
                 {t("phones.parts.settingsLater")}
               </span>
