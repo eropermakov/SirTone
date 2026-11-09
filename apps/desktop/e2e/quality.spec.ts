@@ -50,7 +50,7 @@ for (const theme of ["dark", "light"] as const) {
   });
 }
 
-const ACCENTS = ["sirkov", "black", "yellow", "bordeaux"];
+const ACCENTS = ["sirkov", "gray", "yellow", "lightblue"];
 const WIDTHS = [1440, 1024, 860];
 
 for (const theme of ["dark", "light"] as const) {

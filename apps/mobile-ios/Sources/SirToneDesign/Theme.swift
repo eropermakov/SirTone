@@ -58,10 +58,9 @@ public struct Palette: Sendable {
             danger: T.danger, onPrimary: T.onPrimary, accent: pair.light)
     }
 
-    /// The picker's order (DESIGN.md §9 AccentPicker): Sir.kov, cold → neutral → warm → reds.
+    /// The picker's order (D-158): Sirtone red, then the ten macOS-style colours.
     public static let accentOrder = [
-        "sirkov", "blue", "violet", "lilac", "lavender", "gray", "black", "yellow", "orange",
-        "ginger", "brick", "coral", "lightred", "red", "darkred", "burgundy", "bordeaux",
+        "sirkov", "blue", "violet", "pink", "red", "orange", "yellow", "green", "gray", "lightblue",
     ]
 }
 

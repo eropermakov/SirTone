@@ -346,6 +346,8 @@ export const commands = {
 	 */
 	libraryOrganize: (all: boolean) => typedError<number, AppError>(__TAURI_INVOKE("library_organize", { all })),
 	netStatus: () => __TAURI_INVOKE<NetStatus>("net_status"),
+	/**  «Найти обложки» (D-162): asks every album without a cover again, now. `false` — offline. */
+	coversFindOnline: () => __TAURI_INVOKE<boolean>("covers_find_online"),
 	importReport: (batch: number) => typedError<ImportReport, AppError>(__TAURI_INVOKE("import_report", { batch })),
 	artistSuggestions: () => typedError<ArtistSuggestion[], AppError>(__TAURI_INVOKE("artist_suggestions")),
 	/**  «Не предлагать». */

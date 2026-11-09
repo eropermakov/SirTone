@@ -170,124 +170,16 @@ export const ACCENT_SETS: Record<
       "accentOn": "#FFFFFF"
     }
   },
-  "lilac": {
+  "pink": {
     "dark": {
-      "accentFill": "#b98cf0",
-      "accentText": "#b98cf0",
+      "accentFill": "#ff6b9d",
+      "accentText": "#ff6b9d",
       "accentOn": "#1A1A1A"
     },
     "light": {
-      "accentFill": "#8a4fd6",
-      "accentText": "#8a4fd6",
+      "accentFill": "#d6336c",
+      "accentText": "#cf2b66",
       "accentOn": "#FFFFFF"
-    }
-  },
-  "lavender": {
-    "dark": {
-      "accentFill": "#d4a8f0",
-      "accentText": "#d4a8f0",
-      "accentOn": "#1A1A1A"
-    },
-    "light": {
-      "accentFill": "#a86ccf",
-      "accentText": "#8f54b5",
-      "accentOn": "#1A1A1A"
-    }
-  },
-  "gray": {
-    "dark": {
-      "accentFill": "#a3a3a3",
-      "accentText": "#a3a3a3",
-      "accentOn": "#1A1A1A"
-    },
-    "light": {
-      "accentFill": "#6b6b6b",
-      "accentText": "#6b6b6b",
-      "accentOn": "#FFFFFF"
-    }
-  },
-  "black": {
-    "dark": {
-      "accentFill": "#f2f2f2",
-      "accentText": "#f2f2f2",
-      "accentOn": "#1A1A1A"
-    },
-    "light": {
-      "accentFill": "#1a1a1a",
-      "accentText": "#1a1a1a",
-      "accentOn": "#FFFFFF"
-    }
-  },
-  "yellow": {
-    "dark": {
-      "accentFill": "#f5c842",
-      "accentText": "#f5c842",
-      "accentOn": "#1A1A1A"
-    },
-    "light": {
-      "accentFill": "#ab7f03",
-      "accentText": "#8c6917",
-      "accentOn": "#1A1A1A"
-    }
-  },
-  "orange": {
-    "dark": {
-      "accentFill": "#ff9a3d",
-      "accentText": "#ff9a3d",
-      "accentOn": "#1A1A1A"
-    },
-    "light": {
-      "accentFill": "#d36909",
-      "accentText": "#ac5a1a",
-      "accentOn": "#1A1A1A"
-    }
-  },
-  "ginger": {
-    "dark": {
-      "accentFill": "#f08a45",
-      "accentText": "#f08a45",
-      "accentOn": "#1A1A1A"
-    },
-    "light": {
-      "accentFill": "#bf4d09",
-      "accentText": "#bc4a02",
-      "accentOn": "#FFFFFF"
-    }
-  },
-  "coral": {
-    "dark": {
-      "accentFill": "#ff8a73",
-      "accentText": "#ff8a73",
-      "accentOn": "#1A1A1A"
-    },
-    "light": {
-      "accentFill": "#e5533d",
-      "accentText": "#cc3b26",
-      "accentOn": "#1A1A1A"
-    }
-  },
-  "brick": {
-    "dark": {
-      "accentFill": "#d9765a",
-      "accentText": "#d9765a",
-      "accentOn": "#1A1A1A"
-    },
-    "light": {
-      "accentFill": "#b0482c",
-      "accentText": "#b0482c",
-      "accentOn": "#FFFFFF"
-    }
-  },
-  "lightred": {
-    "dark": {
-      "accentFill": "#ff8a8a",
-      "accentText": "#ff8a8a",
-      "accentOn": "#1A1A1A"
-    },
-    "light": {
-      "accentFill": "#eb5050",
-      "accentText": "#ce3339",
-      "accentOn": "#1A1A1A"
     }
   },
   "red": {
@@ -302,39 +194,63 @@ export const ACCENT_SETS: Record<
       "accentOn": "#FFFFFF"
     }
   },
-  "darkred": {
+  "orange": {
     "dark": {
-      "accentFill": "#c53637",
-      "accentText": "#e55551",
-      "accentOn": "#FFFFFF"
+      "accentFill": "#ff9a3d",
+      "accentText": "#ff9a3d",
+      "accentOn": "#1A1A1A"
     },
     "light": {
-      "accentFill": "#a8121e",
-      "accentText": "#a8121e",
+      "accentFill": "#d36909",
+      "accentText": "#ac5a1a",
+      "accentOn": "#1A1A1A"
+    }
+  },
+  "yellow": {
+    "dark": {
+      "accentFill": "#f5c842",
+      "accentText": "#f5c842",
+      "accentOn": "#1A1A1A"
+    },
+    "light": {
+      "accentFill": "#ab7f03",
+      "accentText": "#8c6917",
+      "accentOn": "#1A1A1A"
+    }
+  },
+  "green": {
+    "dark": {
+      "accentFill": "#4cd964",
+      "accentText": "#4cd964",
+      "accentOn": "#1A1A1A"
+    },
+    "light": {
+      "accentFill": "#20873a",
+      "accentText": "#168134",
       "accentOn": "#FFFFFF"
     }
   },
-  "burgundy": {
+  "gray": {
     "dark": {
-      "accentFill": "#b54369",
-      "accentText": "#d45f83",
-      "accentOn": "#FFFFFF"
+      "accentFill": "#a3a3a3",
+      "accentText": "#a3a3a3",
+      "accentOn": "#1A1A1A"
     },
     "light": {
-      "accentFill": "#8f1d4a",
-      "accentText": "#8f1d4a",
+      "accentFill": "#6b6b6b",
+      "accentText": "#6b6b6b",
       "accentOn": "#FFFFFF"
     }
   },
-  "bordeaux": {
+  "lightblue": {
     "dark": {
-      "accentFill": "#ae4d47",
-      "accentText": "#cc6861",
-      "accentOn": "#FFFFFF"
+      "accentFill": "#64d2ff",
+      "accentText": "#64d2ff",
+      "accentOn": "#1A1A1A"
     },
     "light": {
-      "accentFill": "#7a1c1c",
-      "accentText": "#7a1c1c",
+      "accentFill": "#017cb2",
+      "accentText": "#1876a6",
       "accentOn": "#FFFFFF"
     }
   }

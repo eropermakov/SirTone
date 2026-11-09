@@ -197,11 +197,13 @@ pub fn parse_file_name(file_name: &str, known_artist: impl Fn(&str) -> bool) -> 
             NameGuess {
                 track,
                 artist: clean(&artist),
-                // After an artist a number is a title («Дельта - 1000»), not a track number — from
-                // three digits on (owner beta, T7.6).
+                // After an artist a number is a title («Дельта - 1000», «Jubilee – 30»), not a track
+                // number: any length when the name has no leading track number, from three digits
+                // on when it has one (owner beta T7.6; owner fix after proto 43).
                 title: clean(&title).or_else(|| {
                     let t = title.trim();
-                    (t.len() >= 3 && t.chars().all(|c| c.is_ascii_digit())).then(|| t.to_string())
+                    let min = if track.is_some() { 3 } else { 1 };
+                    (t.len() >= min && t.chars().all(|c| c.is_ascii_digit())).then(|| t.to_string())
                 }),
                 confidence: if track.is_some() { 0.9 } else { 0.8 },
             }
@@ -258,6 +260,19 @@ pub fn parse_folder(name: &str) -> FolderGuess {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn short_number_after_the_artist_is_a_title() {
+        let g =
+            super::parse_file_name("масло чёрного тмина – 25.mp3", |_| false);
+        assert_eq!(g.artist.as_deref(), Some("масло чёрного тмина"));
+        assert_eq!(g.title.as_deref(), Some("25"));
+        let g = super::parse_file_name("Jubilee – 30.mp3", |_| false);
+        assert_eq!(
+            (g.artist.as_deref(), g.title.as_deref()),
+            (Some("Jubilee"), Some("30"))
+        );
+    }
+
     use super::*;
 
     fn p(name: &str) -> (Option<u32>, Option<String>, Option<String>) {

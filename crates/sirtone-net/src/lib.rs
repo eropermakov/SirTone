@@ -24,6 +24,14 @@ pub enum Host {
     ListenBrainz,
     /// The update channel's files in GitHub Releases (the iPhone app for the hub, D-154).
     Releases,
+    /// Album search for covers (D-162).
+    Deezer,
+    /// Deezer cover images (host `cdn-images.dzcdn.net`).
+    DeezerImages,
+    /// iTunes Search for covers (D-162).
+    Itunes,
+    /// Apple cover images (host `is1-ssl.mzstatic.com`).
+    AppleImages,
 }
 
 /// How a host is called (`03` §11).
@@ -70,10 +78,16 @@ impl Host {
                 0,
                 64 * MB,
             ),
+            // D-162: ≤ 2 req/s (the service allows ≈ 10/s); a miss is cached too.
+            Self::Deezer => p("https://api.deezer.com/", 500, 30 * DAY, MB),
+            Self::DeezerImages => p("https://cdn-images.dzcdn.net/", 250, 90 * DAY, 10 * MB),
+            // ≈ 20 req/min allowed: one every 3 s.
+            Self::Itunes => p("https://itunes.apple.com/", 3000, 30 * DAY, MB),
+            Self::AppleImages => p("https://is1-ssl.mzstatic.com/", 250, 90 * DAY, 10 * MB),
         }
     }
 
-    const ALL: [Host; 7] = [
+    const ALL: [Host; 11] = [
         Self::AcoustId,
         Self::MusicBrainz,
         Self::CoverArt,
@@ -81,6 +95,10 @@ impl Host {
         Self::Geocoding,
         Self::ListenBrainz,
         Self::Releases,
+        Self::Deezer,
+        Self::DeezerImages,
+        Self::Itunes,
+        Self::AppleImages,
     ];
 }
 

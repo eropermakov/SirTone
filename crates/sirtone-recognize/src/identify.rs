@@ -309,6 +309,11 @@ impl Identify for TagIdentify {
                     d.album = folder_album.clone().filter(|a| similarity(a, fa) < AGREE);
                     d
                 }
+                // A clear «Artist - Title» name (pattern 1/2, no folder disagreeing) names the track
+                // by itself (owner fix after proto 43: «Jubilee – 30», «масло чёрного тмина – 25»).
+                (Some(fa), Some(ft), None) if f.confidence >= 0.8 => {
+                    base(ft.clone(), split_artists_keeping(fa, &keep), 0.7, None)
+                }
                 // «Исполнитель/Альбом/03 Название» with no tags: the name carries no artist, so
                 // nothing agrees with the folders (row 3) — CD1/genre/year folders would put it in
                 // a wrong place. It goes to «Неизвестные»; the folder guess is only a hint.
@@ -418,7 +423,8 @@ mod tests {
         );
         assert_eq!(d.unknown, None);
         // Owner beta (T7.6): a title tag repeating the file name, no artist tag → still unknown
-        // (the folder says nothing), but named as the file name means: «1000» by Дельта, track 8.
+        // (the folder says nothing); since the owner fix after proto 43 a clear «Artist - Title» name is
+        // enough: «1000» by Дельта, track 8, not unknown.
         let echo = Tags {
             title: Some("8. Дельта - 1000".into()),
             ..Tags::default()
@@ -436,12 +442,7 @@ mod tests {
                 d.artists.as_slice(),
                 d.track_no
             ),
-            (
-                Some(UnknownReason::NoMetadata),
-                "1000",
-                &["Дельта".to_string()][..],
-                Some(8)
-            )
+            (None, "1000", &["Дельта".to_string()][..], Some(8))
         );
         // D-126: a band named «… и …» stays one artist, the folder protects a name too.
         let d = TagIdentify.identify(

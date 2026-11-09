@@ -8,7 +8,7 @@ import {
   playTracks,
   type TrackItem,
 } from "@/shared/ipc/library";
-import { SectionTitle } from "@/shared/ui/SectionTitle";
+import { announceScroll, SectionTitle } from "@/shared/ui/SectionTitle";
 import { Skeleton } from "@/shared/ui/Skeleton";
 import { type GoTo, TrackList } from "./TrackList";
 
@@ -120,7 +120,8 @@ export function GenresScreen({
       ) : (
         <ul
           aria-label={t("genres.title")}
-          className="m-0 flex list-none flex-wrap gap-3 overflow-auto p-0"
+          className="m-0 flex list-none flex-wrap gap-3 overflow-auto overscroll-contain p-0"
+          onScroll={(e) => announceScroll(e.currentTarget.scrollTop)}
         >
           {genres.map((g) => (
             <li key={g.key} className="group relative">

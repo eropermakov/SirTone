@@ -42,9 +42,9 @@ describe("«Авто» from the cover (DESIGN.md §4)", () => {
     expect(pickSlug(image([90, 180, 20]), FILLS)).toBe("sirkov");
   });
 
-  it("greys: grey, or black when dark", () => {
+  it("greys: grey", () => {
     expect(pickSlug(image([128, 128, 128]), FILLS)).toBe("gray");
-    expect(pickSlug(image([30, 30, 32]), FILLS)).toBe("black");
+    expect(pickSlug(image([30, 30, 32]), FILLS)).toBe("gray");
   });
 
   it("ignores near-black and near-white pixels", () => {

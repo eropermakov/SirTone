@@ -18,6 +18,8 @@ export type SettingsDoc = {
     seasonal_theme?: boolean;
     /** «Стекло» (D-156): 55 / 78 / 97 %. */
     glass?: "transparent" | "medium" | "matte";
+    /** Interface scale, % (D-159). */
+    zoom?: number;
     /** «Ручной акцент» per seasonal/event theme (Q-15); `null` — the theme's own colour. */
     theme_accents?: Record<
       string,
@@ -33,6 +35,7 @@ export type SettingsPatch = {
     accent?: Record<string, unknown>;
     seasonal_theme?: boolean;
     glass?: string;
+    zoom?: number;
     theme_accents?: Record<string, Record<string, unknown> | null>;
   };
   hotkeys?: Record<string, string | null>;

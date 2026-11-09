@@ -100,6 +100,23 @@ pub fn albums_for_caa(conn: &Connection, limit: u32) -> Result<Vec<CaaAlbum>, Li
     Ok(rows)
 }
 
+/// Albums without a cover (not locked by the user): id, title, album artist — for the web search
+/// (D-162). `limit` per run.
+pub fn albums_for_web_cover(
+    conn: &Connection,
+    limit: u32,
+) -> Result<Vec<(i64, String, String)>, LibraryError> {
+    let mut st = conn.prepare_cached(
+        "SELECT a.id, a.title, ar.name FROM album a JOIN artist ar ON ar.id = a.album_artist_id
+         WHERE a.cover_id IS NULL AND a.cover_locked = 0 AND a.kind != 'unknown'
+         ORDER BY a.id LIMIT ?1",
+    )?;
+    let rows = st
+        .query_map([limit], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
 /// Hints for «Неизвестные» (`None` clears them); an unchanged value is not written again.
 pub fn set_candidates(
     conn: &Connection,

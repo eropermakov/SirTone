@@ -114,7 +114,7 @@ export function PlayerBar({
         : t("player.repeat");
 
   return (
-    <footer className="glass relative z-10 flex h-(--player-height) shrink-0 items-center gap-4 border-t border-separator px-4">
+    <footer className="glass relative z-10 flex h-(--player-height) shrink-0 items-center gap-4 rounded-(--radius-xl) border border-separator px-4">
       <div className="flex w-72 min-w-0 items-center gap-3">
         <Cover hash={snap.cover} px={56} art={snap.title ? snap.art : undefined} />
         <div className="min-w-0">

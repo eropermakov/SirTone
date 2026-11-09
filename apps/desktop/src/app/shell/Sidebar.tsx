@@ -146,7 +146,7 @@ export function Sidebar({
     <nav
       aria-label={t("collection")}
       className={cn(
-        "glass relative z-10 flex h-full shrink-0 flex-col gap-1 p-3",
+        "glass relative z-10 flex h-full shrink-0 flex-col gap-1 rounded-(--radius-xl) p-3",
         collapsed ? "w-(--sidebar-collapsed)" : "w-(--sidebar-width)",
       )}
     >

@@ -226,8 +226,8 @@ export function CollectionScreen({
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-2">
-      <div className="flex items-center justify-between gap-4">
-        <SectionTitle>{t(`empty.${kind}.title`)}</SectionTitle>
+      <SectionTitle>{t(`empty.${kind}.title`)}</SectionTitle>
+      <div className="flex items-center justify-end gap-4">
         <Button
           variant="ghost"
           onClick={(e) => {

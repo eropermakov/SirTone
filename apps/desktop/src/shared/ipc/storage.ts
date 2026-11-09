@@ -7,6 +7,10 @@ export type { StorageInfo };
 export const storageInfo = async (): Promise<StorageInfo | null> =>
   isTauri() ? commands.storageInfo() : null;
 
+/** «Найти обложки» (D-162): `false` — offline, nothing was started. */
+export const findCoversOnline = async (): Promise<boolean> =>
+  isTauri() ? commands.coversFindOnline() : false;
+
 export const clearOldLogs = async (): Promise<number> => {
   if (!isTauri()) return 0;
   const r = await commands.storageClearLogs();

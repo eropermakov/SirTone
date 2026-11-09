@@ -35,6 +35,10 @@ async function mockTauri(page: Page) {
       convertFileSrc: (p: string) => p,
       invoke: async (cmd: string, args: Record<string, unknown> = {}) => {
         calls.push({ cmd, args });
+        const over = (w.__mockOverride as Record<string, (a: unknown) => unknown> | undefined)?.[
+          cmd
+        ];
+        if (over) return over(args);
         switch (cmd) {
           case "plugin:event|listen": {
             const ids = listeners.get(args.event as string) ?? [];
@@ -1533,4 +1537,65 @@ test("«Телефоны»: without the app package the wizard says it is not re
     card.getByText("пакет Сиртона для iPhone ещё не готов", { exact: false }),
   ).toBeVisible();
   expect(await calls(page, "phone_install")).toHaveLength(0);
+});
+
+test("«Исполнители»: the wheel scrolls over an artist card; the big title leaves (owner, proto 43)", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__mockLibrary = {
+      root: "D:/Music",
+      defaultRoot: "D:/Music",
+      tracks: 2053,
+      artists: 400,
+      albums: 300,
+      unknown: 0,
+      durationSec: 300000,
+      bytes: 1,
+      importing: false,
+      offline: false,
+      goneQuestion: null,
+    };
+    w.__mockOverride = {
+      collection_artists: () => ({
+        rows: Array.from({ length: 200 }, (_, i) => ({
+          id: i + 1,
+          name: `Исполнитель ${String(i + 1).padStart(3, "0")}`,
+          tracks: 5,
+          cover: null,
+          addedAt: i,
+        })),
+        next: null,
+      }),
+    };
+  });
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Исполнители" }).click();
+  const grid = page.getByRole("list", { name: "Исполнители" });
+  await expect(grid.getByRole("button", { name: "Исполнитель 001" })).toBeVisible();
+  const scroller = grid.locator("xpath=..");
+  const title = page.getByRole("heading", { level: 1, name: "Исполнители" });
+  const before = await title.boundingBox();
+  // The pointer sits on a card: the wheel still scrolls the list.
+  const box = await grid.getByRole("button", { name: "Исполнитель 001" }).boundingBox();
+  const spots = {
+    inGap: [(box?.x ?? 0) + (box?.width ?? 0) + 3, (box?.y ?? 0) + 40],
+    onCard: [(box?.x ?? 0) + 40, (box?.y ?? 0) + 40],
+  } as const;
+  const got: Record<string, number> = {};
+  for (const [name, [x, y]] of Object.entries(spots)) {
+    await scroller.evaluate((e) => {
+      e.scrollTop = 0;
+    });
+    await page.mouse.move(x, y);
+    for (let i = 0; i < 5; i++) await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(300);
+    got[name] = await scroller.evaluate((e) => e.scrollTop);
+  }
+  expect(got.inGap).toBeGreaterThan(500);
+  expect(got.onCard).toBeGreaterThan(500);
+  const after = await title.boundingBox();
+  expect((after?.y ?? 0) < (before?.y ?? 0) - 20).toBe(true);
 });

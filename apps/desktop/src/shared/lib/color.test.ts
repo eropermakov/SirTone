@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { ACCENT_SETS } from "../ui/tokens/tokens.generated";
 import { BACKGROUNDS, contrast, generateAccentSet, type Theme } from "./color";
 
-describe("the 17 colour sets against the 2.1 surfaces (T9.3, Q-30)", () => {
-  it("has 17 sets for each theme", () => {
-    expect(Object.keys(ACCENT_SETS)).toHaveLength(17);
+describe("the 10 colour sets (D-158) against the 2.1 surfaces (T9.3, Q-30)", () => {
+  it("has 10 sets for each theme", () => {
+    expect(Object.keys(ACCENT_SETS)).toHaveLength(10);
   });
 
   for (const [slug, themes] of Object.entries(ACCENT_SETS)) {
