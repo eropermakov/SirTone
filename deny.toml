@@ -14,6 +14,12 @@ allow-wildcard-paths = true           # path deps between workspace crates are n
 [advisories]
 yanked = "deny"
 ignore = [
+    # RUSTSEC-2026-0459 (bundled SQLite < 3.54): a crafted database + sibling -wal file with a
+    # different page size can leak stale memory when OPENED. The fix is libsqlite3-sys >= 0.39
+    # (rusqlite 0.41), but rusqlite_migration 2.6 (latest) still needs rusqlite 0.40 and Cargo
+    # allows one `links = "sqlite3"`. SirTone opens only its own library database in the app data
+    # folder, never a file received from someone else. Revisit when rusqlite_migration supports 0.41.
+    { id = "RUSTSEC-2026-0459", reason = "needs a crafted db+wal pair; we open only our own DB; blocked by rusqlite_migration 2.6 on rusqlite 0.40" },
     # `paste` is unmaintained (no vulnerability); compile-time macro pulled by specta/tauri-specta
     # for IPC codegen (D-09). Revisit when specta 2.0 final drops it. docs/08 §3, D-09.
     { id = "RUSTSEC-2024-0436", reason = "unmaintained proc-macro, build-time only, via specta (D-09)" },
