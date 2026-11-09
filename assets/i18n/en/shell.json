@@ -71,10 +71,7 @@
     "previewButton": "",
     "about": "",
     "version": "",
-    "badge": "",
-    "themeEmber": "Orange",
-    "themeMono": "Black & white",
-    "accentByTheme": "The colour comes with this theme — choose Dark, Light or System to change it"
+    "badge": ""
   },
   "accent": {
     "sirkov": "",

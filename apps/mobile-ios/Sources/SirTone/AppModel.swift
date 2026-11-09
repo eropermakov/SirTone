@@ -319,9 +319,9 @@ final class AppModel: ObservableObject {
 
     // MARK: Theme
 
-    func palette(system: ColorScheme) -> Palette {
+    func palette(system: ColorScheme, contrast: ColorSchemeContrast = .standard) -> Palette {
         let dark = theme == "dark" || (theme == "system" && system == .dark)
-        return Palette.make(dark: dark, accent: accent)
+        return Palette.make(dark: dark, accent: accent, highContrast: contrast == .increased)
     }
 
     var preferredScheme: ColorScheme? {

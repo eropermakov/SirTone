@@ -34,12 +34,13 @@ struct RootView: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var playback: Playback
     @Environment(\.colorScheme) private var system
+    @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.scenePhase) private var phase
     @State private var expanded = false
     @AppStorage("onboarded") private var onboarded = false
 
     var body: some View {
-        let p = app.palette(system: system)
+        let p = app.palette(system: system, contrast: contrast)
         TabView {
             tab(WaveView(), L.t("tab.wave"), "water.waves")
             tab(LibraryView(), L.t("tab.library"), "square.stack")

@@ -1,5 +1,6 @@
 // The phone's theme over the generated tokens (DESIGN.md §2–§6, `docs/mobile/README.md` §4):
-// the neutral set of the current scheme plus the six active tokens of the person's colour.
+// the neutral set of the current scheme plus the three active tokens of the person's colour
+// (`primary*` are neutral since design 2.1, D-155).
 // Components read only `Palette`; nothing outside the tokens (DESIGN.md §12).
 
 import CoreText
@@ -14,8 +15,29 @@ public struct Palette: Sendable {
     /// `accent-fill`, `accent-text`, `accent-on`, `primary`, `primary-text`.
     public let accent: SirToneTokens.Accent
 
-    public static func make(dark: Bool, accent slug: String) -> Palette {
+    /// `highContrast` — the system setting «Увеличить контрастность» (`lightHC` / `darkHC`, FR-LOOK-001).
+    public static func make(dark: Bool, accent slug: String, highContrast: Bool = false) -> Palette {
         let pair = SirToneTokens.accents[slug] ?? SirToneTokens.accents["sirkov"]!
+        if dark && highContrast {
+            typealias T = SirToneTokens.DarkHC
+            return Palette(
+                dark: true, bgBase: T.bgBase, bgLayer: T.bgLayer, bgRaised: T.bgRaised,
+                bgFlyout: T.bgFlyout, bgSelected: T.bgSelected, inactive: T.inactive,
+                border: T.border, separator: T.separator, textPrimary: T.textPrimary,
+                textSecondary: T.textSecondary, textTertiary: T.textTertiary, icon: T.icon,
+                artworkPlaceholder: T.artworkPlaceholder, artworkScrim: T.artworkScrim,
+                danger: T.danger, onPrimary: T.onPrimary, accent: pair.dark)
+        }
+        if !dark && highContrast {
+            typealias T = SirToneTokens.LightHC
+            return Palette(
+                dark: false, bgBase: T.bgBase, bgLayer: T.bgLayer, bgRaised: T.bgRaised,
+                bgFlyout: T.bgFlyout, bgSelected: T.bgSelected, inactive: T.inactive,
+                border: T.border, separator: T.separator, textPrimary: T.textPrimary,
+                textSecondary: T.textSecondary, textTertiary: T.textTertiary, icon: T.icon,
+                artworkPlaceholder: T.artworkPlaceholder, artworkScrim: T.artworkScrim,
+                danger: T.danger, onPrimary: T.onPrimary, accent: pair.light)
+        }
         if dark {
             typealias T = SirToneTokens.Dark
             return Palette(

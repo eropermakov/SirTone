@@ -20,7 +20,7 @@ export function parseTokens(md) {
 }
 
 /** token name → CSS variable (names kept from the earlier sirtone.css: DESIGN.md §4 «Имя в Fabric»). */
-const NEUTRAL_VARS = [
+export const NEUTRAL_VARS = [
   ["bg-base", "bg"],
   ["bg-layer", "surface"],
   ["bg-raised", "raised"],

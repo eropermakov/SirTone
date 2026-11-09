@@ -149,13 +149,7 @@ struct AccentPicker: View {
                     withAnimation(.easeInOut(duration: 0.4)) { selected = slug }
                 } label: {
                     ZStack {
-                        if slug == "sirkov" {
-                            Circle().fill(a.primary)
-                                .overlay(Circle().trim(from: 0, to: 0.5).fill(a.fill).rotationEffect(.degrees(-45)))
-                                .frame(width: 32, height: 32)
-                        } else {
-                            Circle().fill(a.fill).frame(width: 32, height: 32)
-                        }
+                        Circle().fill(a.fill).frame(width: 32, height: 32)
                         if selected == slug {
                             Circle().stroke(p.textPrimary, lineWidth: 2).frame(width: 42, height: 42)
                             Image(systemName: "checkmark").font(.system(size: 12, weight: .bold))
