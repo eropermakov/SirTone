@@ -1,5 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ExportHost } from "@/app/export/ExportDialog";
 import { CollectionScreen } from "@/app/library/CollectionScreen";

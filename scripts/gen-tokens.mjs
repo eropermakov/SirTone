@@ -40,11 +40,6 @@ const NEUTRAL_VARS = [
   ["primary-text", "primaryText"],
   ["on-primary", "onPrimary"],
 ];
-const ACCENT_VARS = [
-  ["accent-fill", "accent"],
-  ["accent-text", "accentText"],
-  ["accent-on", "onAccent"],
-];
 
 /** Derived from tokens only (no new hex): hover/selected/inactive/placeholder (Q-32, docs/06 §12). */
 const DERIVED = `  --bg-hover: color-mix(in srgb, var(--text-primary) 6%, transparent);

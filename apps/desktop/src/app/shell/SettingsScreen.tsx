@@ -102,12 +102,7 @@ export function SettingsScreen({
 
         <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
           <span className="t-card-title text-text-primary">{t("settings.color")}</span>
-          <AccentSwatches
-            theme={theme}
-            accent={accent}
-            seasonSeed={seasonSeed}
-            onAccent={onAccent}
-          />
+          <AccentSwatches accent={accent} seasonSeed={seasonSeed} onAccent={onAccent} />
           <SeasonSwitch />
 
           <div className="mt-2 flex items-center gap-4 border-t border-separator pt-4">
@@ -681,12 +676,10 @@ export function ThemeChips({
 
 /** AccentPicker swatches (DESIGN.md §9): Sir.kov, 16 colours, «Свой». */
 export function AccentSwatches({
-  theme,
   accent,
   seasonSeed,
   onAccent,
 }: {
-  theme: ThemePref;
   /** `null` — the seasonal theme's own colour is chosen. */
   accent: AccentSource | null;
   /** «Тема по сезону» on (T4.18, FR-UI-003): the season swatch comes first; a pick is the

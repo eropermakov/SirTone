@@ -90,12 +90,7 @@ export function Onboarding({
         )}
         {step === 1 && (
           <div className="flex flex-col gap-4">
-            <AccentSwatches
-              theme={theme}
-              accent={accent}
-              seasonSeed={seasonSeed}
-              onAccent={onAccent}
-            />
+            <AccentSwatches accent={accent} seasonSeed={seasonSeed} onAccent={onAccent} />
             <SeasonSwitch />
           </div>
         )}

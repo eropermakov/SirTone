@@ -10,6 +10,7 @@ import { milkdropControl, useMilkdropControl } from "./milkdropControl";
 
 /** How many rows are drawn at once (500 presets; the search narrows them). */
 const SHOWN = 120;
+const CHANGE_MODES = ["track", "never"] as const;
 
 /**
  * «Мои пресеты» (owner, 2026-10-20, D-105): every MilkDrop preset with ♥ and «показать сейчас»,
@@ -55,7 +56,7 @@ export function PresetsDialog({ onClose }: { onClose: () => void }) {
       <div className="flex flex-col gap-2">
         <div className="t-body text-text-primary">{t("viz.presets.change")}</div>
         <div className="flex gap-2">
-          {(["track", "never"] as const).map((m) => (
+          {CHANGE_MODES.map((m) => (
             <button
               key={m}
               type="button"
