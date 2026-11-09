@@ -108,77 +108,81 @@ export function SettingsScreen({
       <SectionTitle>{t("settings.title")}</SectionTitle>
 
       <div className="flex flex-col gap-4">
-        <h2 className="t-shelf-title text-primary-text">{t("settings.appearance")}</h2>
+        <h2 className="t-body-strong text-text-primary">{t("settings.appearance")}</h2>
 
-        <div className="flex flex-col gap-3 rounded-(--radius-md) border border-border bg-bg-raised p-6">
-          <span className="t-card-title text-text-primary">{t("settings.theme")}</span>
-          <ThemeChips theme={theme} onTheme={onTheme} />
-        </div>
+        <div className="flex flex-col divide-y divide-separator rounded-(--radius-md) border border-border bg-bg-raised px-6">
+          <div className="flex flex-col gap-3 py-4">
+            <span className="t-card-title text-text-primary">{t("settings.theme")}</span>
+            <ThemeChips theme={theme} onTheme={onTheme} />
+          </div>
 
-        <div className="flex flex-col gap-3 rounded-(--radius-md) border border-border bg-bg-raised p-6">
-          <span className="t-card-title text-text-primary">{t("settings.glass")}</span>
-          <span className="t-caption text-text-secondary">{t("settings.glassHint")}</span>
-          <fieldset
-            className="m-0 flex flex-wrap gap-2 border-0 p-0"
-            aria-label={t("settings.glass")}
-          >
-            {GLASS_LEVELS.map((g) => (
-              <button
-                key={g}
-                type="button"
-                aria-pressed={glass === g}
-                onClick={() => onGlass(g)}
-                className={cn(
-                  "t-menu h-(--chip-height) rounded-(--radius-sm) px-3",
-                  glass === g
-                    ? "bg-primary text-on-primary"
-                    : "border border-border text-text-primary hover:bg-bg-hover",
-                )}
-              >
-                {t(`settings.glass_${g}`)}
-              </button>
-            ))}
-          </fieldset>
-        </div>
-
-        <div className="flex min-h-12 items-center justify-between gap-4 rounded-(--radius-md) border border-border bg-bg-raised px-6 py-3">
-          <span className="flex min-w-0 flex-col">
-            <span className="t-card-title text-text-primary">{t("settings.zoom")}</span>
-            <span className="t-caption text-text-secondary">{t("settings.zoomHint")}</span>
-          </span>
-          <span className="flex shrink-0 items-center gap-3">
-            <input
-              type="range"
-              min={80}
-              max={150}
-              step={5}
-              value={zoom}
-              aria-label={t("settings.zoom")}
-              onChange={(e) => onZoom(Number(e.target.value))}
-              className="w-48 accent-(--accent-text)"
-            />
-            <span className="t-body tabular w-12 text-right text-text-primary">{zoom} %</span>
-          </span>
-        </div>
-
-        <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
-          <span className="t-card-title text-text-primary">{t("settings.color")}</span>
-          <AccentSwatches accent={accent} seasonSeed={seasonSeed} onAccent={onAccent} />
-          <SeasonSwitch />
-
-          <div className="mt-2 flex items-center gap-4 border-t border-separator pt-4">
-            <span className="t-caption text-text-tertiary">{t("settings.preview")}</span>
-            <span className="t-badge rounded-(--radius-xs) bg-primary px-2 py-0.5 text-on-primary">
-              {t("settings.badge")}
+          <div className="flex min-h-12 items-center justify-between gap-4 py-3">
+            <span className="flex min-w-0 flex-col">
+              <span className="t-card-title text-text-primary">{t("settings.glass")}</span>
+              <span className="t-caption text-text-secondary">{t("settings.glassHint")}</span>
             </span>
-            <button
-              type="button"
-              className="t-body-strong h-(--button-height) rounded-full bg-accent-fill px-5 text-accent-on"
+            <fieldset
+              className="m-0 flex shrink-0 flex-wrap justify-end gap-2 border-0 p-0"
+              aria-label={t("settings.glass")}
             >
-              {t("settings.previewButton")}
-            </button>
-            <div className="h-1 w-40 rounded-full bg-inactive">
-              <div className="h-1 w-2/3 rounded-full bg-accent-text" />
+              {GLASS_LEVELS.map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  aria-pressed={glass === g}
+                  onClick={() => onGlass(g)}
+                  className={cn(
+                    "t-menu h-(--chip-height) rounded-(--radius-sm) px-3",
+                    glass === g
+                      ? "bg-primary text-on-primary"
+                      : "border border-border text-text-primary hover:bg-bg-hover",
+                  )}
+                >
+                  {t(`settings.glass_${g}`)}
+                </button>
+              ))}
+            </fieldset>
+          </div>
+
+          <div className="flex min-h-12 items-center justify-between gap-4 py-3">
+            <span className="flex min-w-0 flex-col">
+              <span className="t-card-title text-text-primary">{t("settings.zoom")}</span>
+              <span className="t-caption text-text-secondary">{t("settings.zoomHint")}</span>
+            </span>
+            <span className="flex shrink-0 items-center gap-3">
+              <input
+                type="range"
+                min={80}
+                max={150}
+                step={5}
+                value={zoom}
+                aria-label={t("settings.zoom")}
+                onChange={(e) => onZoom(Number(e.target.value))}
+                className="w-48 accent-(--accent-text)"
+              />
+              <span className="t-body tabular w-14 whitespace-nowrap text-right text-text-primary">{zoom} %</span>
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-4 py-4">
+            <span className="t-card-title text-text-primary">{t("settings.color")}</span>
+            <AccentSwatches accent={accent} seasonSeed={seasonSeed} onAccent={onAccent} />
+            <SeasonSwitch />
+
+            <div className="mt-2 flex items-center gap-4 border-t border-separator pt-4">
+              <span className="t-caption text-text-tertiary">{t("settings.preview")}</span>
+              <span className="t-badge rounded-(--radius-xs) bg-primary px-2 py-0.5 text-on-primary">
+                {t("settings.badge")}
+              </span>
+              <button
+                type="button"
+                className="t-body-strong h-(--button-height) rounded-full bg-accent-fill px-5 text-accent-on"
+              >
+                {t("settings.previewButton")}
+              </button>
+              <div className="h-1 w-40 rounded-full bg-inactive">
+                <div className="h-1 w-2/3 rounded-full bg-accent-text" />
+              </div>
             </div>
           </div>
         </div>
@@ -186,7 +190,7 @@ export function SettingsScreen({
 
       {library && (
         <div className="flex flex-col gap-2">
-          <h2 className="t-shelf-title text-primary-text">{t("settingsStorage.title")}</h2>
+          <h2 className="t-body-strong text-text-primary">{t("settingsStorage.title")}</h2>
           <div className="flex flex-col gap-3 rounded-(--radius-md) border border-border bg-bg-raised p-6">
             <span className="t-body-strong text-text-primary">{t("settingsStorage.folder")}</span>
             <span className="t-body break-all text-text-secondary">
@@ -256,7 +260,7 @@ export function SettingsScreen({
       <NeverSection />
 
       <div className="flex flex-col gap-2">
-        <h2 className="t-shelf-title text-primary-text">{t("settings.about")}</h2>
+        <h2 className="t-body-strong text-text-primary">{t("settings.about")}</h2>
         <p className="t-body text-text-secondary">
           {t("settings.version", { version: __APP_VERSION__ })}
         </p>
@@ -305,7 +309,7 @@ function LanguageSection() {
   };
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsLanguage.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsLanguage.title")}</h2>
       <div className="flex flex-col gap-3 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <fieldset
           className="m-0 flex flex-wrap gap-2 border-0 p-0"
@@ -347,7 +351,7 @@ function StartupSection() {
 
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsStartup.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsStartup.title")}</h2>
       <div className="flex items-center gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="t-body-strong text-text-primary">{t("settingsStartup.autostart")}</span>
@@ -433,7 +437,7 @@ function HotkeysSection() {
 
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsHotkeys.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsHotkeys.title")}</h2>
       <p className="t-caption text-text-secondary">{t("settingsHotkeys.hint")}</p>
       <div className="flex flex-col divide-y divide-border rounded-(--radius-md) border border-border bg-bg-raised">
         {HOTKEYS.map((h) => {
@@ -566,7 +570,7 @@ export function PerformanceSection() {
   ];
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsPerf.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsPerf.title")}</h2>
       <p className="t-caption text-text-secondary">{t("settingsPerf.hint")}</p>
       <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <fieldset
@@ -629,7 +633,7 @@ function NeverSection() {
   };
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsNever.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsNever.title")}</h2>
       <p className="t-caption text-text-secondary">{t("settingsNever.hint")}</p>
       <div className="flex flex-col divide-y divide-border rounded-(--radius-md) border border-border bg-bg-raised px-6">
         {items.length === 0 ? (
@@ -1059,7 +1063,7 @@ function SoundSection() {
   };
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsSound.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsSound.title")}</h2>
       <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <SignalLine />
         <OutputPicker />
@@ -1167,7 +1171,7 @@ function EqSection() {
   const db = (v: number) => t("settingsEq.db", { v: v > 0 ? `+${v}` : String(v) });
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsEq.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsEq.title")}</h2>
       <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex items-center gap-4">
           <div className="min-w-0 flex-1">
@@ -1284,7 +1288,7 @@ function SfxSection() {
   };
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsSfx.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsSfx.title")}</h2>
       <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex items-center gap-4">
           <div className="min-w-0 flex-1">
@@ -1385,7 +1389,7 @@ function DuckSection() {
   };
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsDuck.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsDuck.title")}</h2>
       <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex items-center gap-4">
           <div className="min-w-0 flex-1">
@@ -1531,7 +1535,7 @@ function TransitionsSection() {
   };
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsMix.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsMix.title")}</h2>
       <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <fieldset
           className="m-0 flex flex-wrap gap-2 border-0 p-0"
@@ -1623,7 +1627,7 @@ function VizSection() {
   ] as const;
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsViz.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsViz.title")}</h2>
       <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         {rows.map((r) => (
           <div key={r.key} className="flex items-center gap-4">
@@ -1688,7 +1692,7 @@ function PlaceSection() {
   const cityName = city ? city.name || t("settingsPlace.here") : t("settingsPlace.none");
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsPlace.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsPlace.title")}</h2>
       <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1">
@@ -1815,7 +1819,7 @@ function WidgetSection() {
   const pct = Math.round(w.scale * 100);
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsWidget.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsWidget.title")}</h2>
       <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex items-center gap-4">
           <div className="min-w-0 flex-1">
@@ -1924,7 +1928,7 @@ function FocusSection() {
   ] as const;
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsFocus.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsFocus.title")}</h2>
       <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         {rows.map((r) => (
           <div key={r.key} className="flex items-center gap-4">
@@ -2014,7 +2018,7 @@ function SleepSection() {
   const choices = SLEEP_AFTER.filter((a) => a !== "hibernate" || caps.hibernate);
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsSleep.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsSleep.title")}</h2>
       <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex items-center gap-4">
           <span className="t-caption w-28 shrink-0 text-text-secondary">
@@ -2091,7 +2095,7 @@ function FxSection() {
   };
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsFx.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsFx.title")}</h2>
       <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <fieldset
           className="m-0 flex flex-wrap gap-2 border-0 p-0"
@@ -2194,7 +2198,7 @@ function EventsSection() {
   );
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsEvents.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsEvents.title")}</h2>
       <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         {row(t("settingsEvents.suggest"), t("settingsEvents.suggestHint"), ev.suggest, (v) =>
           save({ ...ev, suggest: v }),
@@ -2252,7 +2256,7 @@ function WaveLearningSection() {
   }, []);
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsWave.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsWave.title")}</h2>
       <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex items-center gap-4">
           <div className="min-w-0 flex-1">
@@ -2443,7 +2447,7 @@ function NetworkSection() {
   }, []);
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="t-shelf-title text-primary-text">{t("settingsNet.title")}</h2>
+      <h2 className="t-body-strong text-text-primary">{t("settingsNet.title")}</h2>
       <div className="flex items-center gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="t-body text-text-primary">{t("settingsNet.offline")}</span>
