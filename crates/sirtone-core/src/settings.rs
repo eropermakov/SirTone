@@ -692,7 +692,7 @@ pub const FX_TYPES: [&str; 9] = [
 ];
 
 fn validate(s: &Settings) -> Result<(), SettingsError> {
-    if !(80..=150).contains(&s.appearance.zoom) || s.appearance.zoom % 5 != 0 {
+    if !(80..=150).contains(&s.appearance.zoom) || !s.appearance.zoom.is_multiple_of(5) {
         return Err(SettingsError::Invalid(
             "zoom must be 80–150 in steps of 5".into(),
         ));
