@@ -110,16 +110,16 @@ export function UnknownScreen({
   return (
     <section className="flex h-full min-h-0 gap-6">
       <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <SectionTitle>{t("empty.unknown.title")}</SectionTitle>
         <div className="flex items-center justify-between gap-4">
-          <SectionTitle>{t("empty.unknown.title")}</SectionTitle>
-          <Button variant="secondary" onClick={() => void retry()}>
+          <p className="t-caption min-w-0 text-text-secondary">
+            {tc("count.tracks", { count: items.length })} · {t("unknownScreen.hint")}
+          </p>
+          <Button variant="secondary" className="shrink-0" onClick={() => void retry()}>
             <RefreshCw size={16} strokeWidth={1.5} />
             {t("unknownScreen.retry")}
           </Button>
         </div>
-        <p className="t-caption text-text-secondary">
-          {tc("count.tracks", { count: items.length })} · {t("unknownScreen.hint")}
-        </p>
         <div className="flex flex-wrap gap-2 py-2">
           <Chip active={reason === null} onClick={() => setReason(null)}>
             {t("unknownScreen.all")} {items.length}
