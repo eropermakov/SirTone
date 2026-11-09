@@ -49,7 +49,7 @@ import {
   type AccentSlug,
   type AccentSource,
   applyAppearance,
-  isPalette,
+  normalizeTheme,
   onSystemThemeChange,
   resolveTheme,
   type ThemePref,
@@ -117,7 +117,8 @@ function fromDoc(doc: SettingsDoc): Appearance {
     if (a) themeAccents[id] = parseAccent(a);
   }
   return {
-    theme: doc.appearance.theme,
+    // Removed themes (ember, mono, …) open as «Авто» (D-155).
+    theme: normalizeTheme(doc.appearance.theme),
     accent: parseAccent(doc.appearance.accent),
     seasonal: Boolean(doc.appearance.seasonal_theme),
     themeAccents,
@@ -392,7 +393,7 @@ export function App() {
       window.clearTimeout(done);
     };
   }, [season]);
-  const seasonOn = appearance.seasonal && !!shownSeason && !isPalette(appearance.theme);
+  const seasonOn = appearance.seasonal && !!shownSeason;
   const themeAccent = seasonOn ? appearance.themeAccents[shownSeason.id] : undefined;
   // What the interface wears: the theme's own accent for this theme, else the theme's seed.
   const seasonSeed = seasonOn ? (shownSeason?.seed ?? null) : null;
@@ -428,10 +429,7 @@ export function App() {
   useEffect(() => {
     const apply = () => {
       applyAppearance(appearance.theme, effAccent, coverSlug);
-      setWindowTheme(
-        resolveTheme(appearance.theme),
-        isPalette(appearance.theme) ? appearance.theme : null,
-      );
+      setWindowTheme(resolveTheme(appearance.theme));
     };
     apply();
     if (appearance.theme !== "system") return;

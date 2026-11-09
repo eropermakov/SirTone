@@ -73,12 +73,12 @@ pub struct Onboarding {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemePref {
+    /// «Авто» — as in the system. The removed owner palettes of D-74 (`ember`, `mono`) and the
+    /// earlier fabric theme open as «Авто» (D-155, migration).
+    #[serde(alias = "ember", alias = "mono", alias = "fabric")]
     System,
     Dark,
     Light,
-    /// Owner palettes (D-74): dark with an orange accent / black & white.
-    Ember,
-    Mono,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -928,6 +928,16 @@ mod tests {
         assert_eq!(doc["future_feature"]["x"], 1);
         assert_eq!(typed.appearance.theme, ThemePref::Light);
         assert_eq!(typed.appearance.accent.preset, "sirkov");
+    }
+
+    #[test]
+    fn removed_themes_open_as_auto() {
+        // D-155: «Оранжевая» / «Чёрно-белая» (and fabric) are gone; their stored ids mean «Авто».
+        for old in ["ember", "mono", "fabric"] {
+            let stored = json!({ "appearance": { "theme": old } });
+            let (_, typed) = normalize(&stored).unwrap();
+            assert_eq!(typed.appearance.theme, ThemePref::System, "{old}");
+        }
     }
 
     #[test]

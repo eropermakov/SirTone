@@ -21,6 +21,8 @@
   --color-focus-ring: var(--focus-ring);
   --color-artwork-placeholder: var(--artwork-placeholder);
   --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-accent-fill: var(--accent-fill);
   --color-accent-text: var(--accent-text);
   --color-accent-on: var(--accent-on);

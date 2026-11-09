@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "tauri": "tauri",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "gen:tokens": "node ../../scripts/gen-tokens.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "6.3.1",

@@ -5,7 +5,6 @@ import {
   contrast,
   generateAccentSet,
   hexToOklch,
-  ON_PRIMARY,
   oklchToHex,
   type Theme,
 } from "../lib/color";
@@ -41,14 +40,12 @@ describe("seasonal themes keep the contrast (T4.18, FR-THEME-004)", () => {
     for (const [name, seed] of seeds) {
       it(`${name} ${seed} on ${theme}`, () => {
         const s = generateAccentSet(seed, theme);
-        const bgs = Object.values(BACKGROUNDS[theme]);
+        const bgs = BACKGROUNDS[theme];
         for (const bg of bgs) {
           expect(contrast(s.accentFill, bg)).toBeGreaterThanOrEqual(3);
           expect(contrast(s.accentText, bg)).toBeGreaterThanOrEqual(4.5);
-          expect(contrast(s.primaryText, bg)).toBeGreaterThanOrEqual(4.5);
         }
         expect(contrast(s.accentOn, s.accentFill)).toBeGreaterThanOrEqual(4.5);
-        expect(contrast(ON_PRIMARY[theme], s.primary)).toBeGreaterThanOrEqual(7);
         // Only the lightness is fitted: the hue of the seed survives (±12° after gamut clipping).
         const dh = Math.abs(hexToOklch(s.accentText).h - hexToOklch(seed).h) % 360;
         expect(Math.min(dh, 360 - dh)).toBeLessThan(12);

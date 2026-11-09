@@ -9,61 +9,33 @@
   --z-menu: 40;
   --skeleton-pulse: 1.6s;
   --playing-bars: 0.9s;
-}
-
-/* Owner palettes «Оранжевая» and «Чёрно-белая» (2026-10-17, D-74): a fixed accent on the dark
-   neutrals of DESIGN.md §3 (palette 2.0, D-144). Weight 0,3,0 beats the accent sets of sirtone.css. */
-:root[data-theme="dark"][data-palette="ember"] {
-  --accent-fill: #fb5b3b;
-  --accent-text: #fd9075;
-  --accent-on: #141414;
-  --primary: #3f241b;
-  --primary-text: #fa9575;
-  --on-primary: #f2f0ee;
-}
-:root[data-theme="dark"][data-palette="mono"] {
-  --accent-fill: #f5f5f5;
-  --accent-text: #fafafa;
-  --accent-on: #0a0a0a;
-  --primary: #2a2a2a;
-  --primary-text: #d4d4d4;
-  --on-primary: #fafafa;
+  /* Not in DESIGN.md 2.1 tokens — temporary values (docs/10 §7, T9.2): */
+  --dur-instant: 100ms;
+  --item-height: 40px;
 }
 
 /* Smooth theme/colour change: registered colour properties animate (docs/06 §4.4). */
 @property --accent-fill {
   syntax: "<color>";
   inherits: true;
-  initial-value: #ccff00;
+  initial-value: #650a12;
 }
 @property --accent-text {
   syntax: "<color>";
   inherits: true;
-  initial-value: #ccff00;
+  initial-value: #f2f2f2;
 }
 @property --accent-on {
   syntax: "<color>";
   inherits: true;
-  initial-value: #110d0c;
-}
-@property --primary {
-  syntax: "<color>";
-  inherits: true;
-  initial-value: #5e0a18;
-}
-@property --primary-text {
-  syntax: "<color>";
-  inherits: true;
-  initial-value: #e39a8f;
+  initial-value: #ffffff;
 }
 
 :root {
   transition:
     --accent-fill var(--dur-theme) var(--ease-out),
     --accent-text var(--dur-theme) var(--ease-out),
-    --accent-on var(--dur-theme) var(--ease-out),
-    --primary var(--dur-theme) var(--ease-out),
-    --primary-text var(--dur-theme) var(--ease-out);
+    --accent-on var(--dur-theme) var(--ease-out);
 }
 
 /* The daily seasonal drift (T4.18, `14` §12): one slower fade, only while it is applied. Reduced
@@ -187,4 +159,32 @@
     transition-duration: 150ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Text styles DESIGN.md §2 `type.styles` does not list — temporary (docs/10 §7, T9.2). */
+.t-card-title {
+  font: 600 16px / 22px var(--font-sans);
+}
+.t-body-strong {
+  font: 600 15px / 22px var(--font-sans);
+}
+.t-menu {
+  font: 400 14px / 20px var(--font-sans);
+}
+.t-caption {
+  font: 400 13px / 18px var(--font-sans);
+}
+.t-group-label {
+  font: 600 13px / 18px var(--font-sans);
+}
+.t-timecode,
+.t-shortcut {
+  font: 400 12px / 16px var(--font-sans);
+}
+.t-lyrics {
+  font: 700 32px / 40px var(--font-sans);
+}
+.t-timecode,
+.t-shortcut {
+  font-variant-numeric: tabular-nums;
 }
