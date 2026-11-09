@@ -394,36 +394,16 @@ export function App() {
     };
   }, [season]);
   const seasonOn = appearance.seasonal && !!shownSeason;
-  const themeAccent = seasonOn ? appearance.themeAccents[shownSeason.id] : undefined;
-  // What the interface wears: the theme's own accent for this theme, else the theme's seed.
-  const seasonSeed = seasonOn ? (shownSeason?.seed ?? null) : null;
-  // Stable between renders (the playback ticks must not re-apply the theme).
-  const effAccent: AccentSource = useMemo(
-    () => themeAccent ?? (seasonSeed ? { kind: "custom", hex: seasonSeed } : appearance.accent),
-    [themeAccent, seasonSeed, appearance.accent],
-  );
+  // Q-31 (D-155, T9.4): seasonal and event themes paint only the visualiser palette and the event
+  // cards; the interface accent is always the person's own.
+  const effAccent: AccentSource = appearance.accent;
   useEffect(
-    () => setThemeViz(seasonOn && !themeAccent ? (shownSeason?.viz ?? null) : null),
-    [seasonOn, themeAccent, shownSeason],
+    () => setThemeViz(seasonOn ? (shownSeason?.viz ?? null) : null),
+    [seasonOn, shownSeason],
   );
-  // What AccentPicker marks: `null` — the theme's colour (the season swatch).
-  const pickedAccent: AccentSource | null = seasonOn ? (themeAccent ?? null) : appearance.accent;
+  const pickedAccent: AccentSource | null = appearance.accent;
   const pickAccent = (a: AccentSource | null) => {
-    if (seasonOn && shownSeason) {
-      // Q-15: with «Тема по сезону» on a pick is this theme's own accent.
-      const id = shownSeason.id;
-      setAppearance(
-        (p) => {
-          const themeAccents = { ...p.themeAccents };
-          if (a) themeAccents[id] = a;
-          else delete themeAccents[id];
-          return { ...p, themeAccents };
-        },
-        { appearance: { theme_accents: { [id]: a ? accentDoc(a) : null } } },
-      );
-    } else if (a) {
-      setAppearance((p) => ({ ...p, accent: a }));
-    }
+    if (a) setAppearance((p) => ({ ...p, accent: a }));
   };
 
   useEffect(() => {
@@ -514,7 +494,6 @@ export function App() {
                 <SettingsScreen
                   theme={appearance.theme}
                   accent={pickedAccent}
-                  seasonSeed={seasonSeed}
                   onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
                   onAccent={pickAccent}
                   library={lib.status}
@@ -741,7 +720,6 @@ export function App() {
             <Onboarding
               theme={appearance.theme}
               accent={pickedAccent}
-              seasonSeed={seasonSeed}
               onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
               onAccent={pickAccent}
               status={lib.status}
