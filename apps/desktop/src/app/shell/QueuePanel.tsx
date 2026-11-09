@@ -50,7 +50,7 @@ export function QueuePanel({ onClose, trackKey }: { onClose: () => void; trackKe
   return (
     <aside
       aria-label={t("queue.title")}
-      className="flex w-90 shrink-0 flex-col gap-2 rounded-(--radius-xl) border border-border bg-bg-raised p-4"
+      className="flex w-90 shrink-0 flex-col gap-2 rounded-(--radius-md) border border-border bg-bg-raised p-4"
     >
       <div className="flex items-center justify-between">
         <h2 className="t-card-title text-text-primary">{t("queue.title")}</h2>

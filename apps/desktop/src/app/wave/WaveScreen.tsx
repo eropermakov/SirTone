@@ -151,7 +151,7 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
       <SlidersHorizontal size={16} strokeWidth={1.5} />
       {t("wave.setup.button")}
       {setupCount(setup) > 0 && (
-        <span className="t-badge rounded-full bg-primary px-1.5 text-on-primary">
+        <span className="t-badge rounded-(--radius-xs) bg-primary px-1.5 text-on-primary">
           {setupCount(setup)}
         </span>
       )}

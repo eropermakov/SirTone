@@ -35,7 +35,7 @@ export function EmptyScreen({
             {t("empty.action")}
           </button>
           {!onAdd && (
-            <span className="t-badge rounded-full border border-inactive px-2 py-0.5 text-text-secondary">
+            <span className="t-badge rounded-(--radius-xs) border border-inactive px-2 py-0.5 text-text-secondary">
               {t("empty.soon")}
             </span>
           )}

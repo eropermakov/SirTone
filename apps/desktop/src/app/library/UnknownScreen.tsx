@@ -192,7 +192,7 @@ function AssignPanel({
   const { t } = useTranslation("shell");
   if (!item) {
     return (
-      <aside className="flex w-80 shrink-0 items-center justify-center rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <aside className="flex w-80 shrink-0 items-center justify-center rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <p className="t-body text-center text-text-secondary">{t("unknownScreen.pick")}</p>
       </aside>
     );
@@ -202,7 +202,7 @@ function AssignPanel({
     return (
       <aside
         aria-label={t("unknownScreen.reason.quarantined")}
-        className="flex w-80 shrink-0 flex-col gap-3 self-start rounded-(--radius-xl) border border-border bg-bg-raised p-6"
+        className="flex w-80 shrink-0 flex-col gap-3 self-start rounded-(--radius-md) border border-border bg-bg-raised p-6"
       >
         <h2 className="t-card-title text-text-primary">{track.title}</h2>
         <p className="t-body text-text-secondary">{t("unknownScreen.quarantineHint")}</p>
@@ -235,7 +235,7 @@ function AssignPanel({
   return (
     <aside
       aria-label={t("unknownScreen.assignTitle")}
-      className="flex w-80 shrink-0 flex-col gap-3 self-start rounded-(--radius-xl) border border-border bg-bg-raised p-6"
+      className="flex w-80 shrink-0 flex-col gap-3 self-start rounded-(--radius-md) border border-border bg-bg-raised p-6"
     >
       {item.reason === "possible_non_track" && (
         <>

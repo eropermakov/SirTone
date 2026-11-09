@@ -39,7 +39,7 @@ export function Badge({ quiet, children }: { quiet?: boolean; children: ReactNod
   return (
     <span
       className={cn(
-        "t-badge inline-flex h-5 items-center rounded-full px-2 uppercase",
+        "t-badge inline-flex h-5 items-center rounded-(--radius-xs) px-2 uppercase",
         quiet ? "border border-inactive text-text-secondary" : "bg-primary text-on-primary",
       )}
     >

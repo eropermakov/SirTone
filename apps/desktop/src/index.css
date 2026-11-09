@@ -3,6 +3,11 @@
 @import "./shared/ui/tokens/extra.css";
 
 /* Tailwind utilities read only DESIGN.md tokens (no raw values in components). */
+/* DESIGN.md §9: one curve for every transition (motion.ease) */
+@theme {
+  --default-transition-timing-function: cubic-bezier(0, 0, 0, 1);
+}
+
 @theme inline {
   --font-sans: var(--font-sans);
   --color-bg-base: var(--bg-base);

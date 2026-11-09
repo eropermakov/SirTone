@@ -61,7 +61,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`flyout-in flex max-h-[90vh] ${wide ? "w-[760px]" : "w-[520px]"} max-w-[92vw] flex-col gap-4 overflow-auto rounded-(--radius-xl) border border-border bg-bg-raised p-6 shadow-(--shadow-flyout)`}
+        className={`flyout-in flex max-h-[90vh] ${wide ? "w-[760px]" : "w-[520px]"} max-w-[92vw] flex-col gap-4 overflow-auto rounded-(--radius-lg) border border-border bg-bg-raised p-6 shadow-(--shadow-flyout)`}
       >
         <div className="flex items-start justify-between gap-4">
           <h2 className="t-card-title min-w-0 text-text-primary">{title}</h2>

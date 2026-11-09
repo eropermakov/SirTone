@@ -369,7 +369,7 @@ function BestCard({
       type="button"
       onClick={onOpen}
       aria-label={title}
-      className="group flex flex-col gap-4 rounded-(--radius-xl) bg-bg-raised p-5 text-left hover:bg-bg-hover"
+      className="group flex flex-col gap-4 rounded-(--radius-md) bg-bg-raised p-5 text-left hover:bg-bg-hover"
     >
       {best.kind === "artist" ? (
         <span className="t-hero flex size-24 items-center justify-center rounded-full bg-artwork-placeholder text-text-tertiary">

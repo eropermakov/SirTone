@@ -36,7 +36,7 @@ export function DropOverlay() {
     >
       <div
         role="status"
-        className="flex flex-col items-center gap-2 rounded-(--radius-xl) border border-border bg-bg-raised p-6"
+        className="flex flex-col items-center gap-2 rounded-(--radius-md) border border-border bg-bg-raised p-6"
       >
         <FolderDown size={32} strokeWidth={1.5} className="text-accent-text" />
         <span className="t-card-title text-text-primary">{t("drop.title")}</span>
