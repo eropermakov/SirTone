@@ -242,7 +242,7 @@
 Генератор (`scripts/gen-tokens.mjs`) берёт всё из блока `sirkov-tokens`; чего там нет — временные значения в `extra.css`, ждут слова владельца (как и «чего нет в `DESIGN.md`» в `CLAUDE.md`):
 
 - имена переменных — по колонке «Имя в Fabric» §4 (`--bg-base`, `--accent-fill`, …), `text` → `--text-primary`, `textMuted` → `--text-secondary` и `--text-tertiary` (Q-32), `line` → `--border` и `--separator`, `--icon` = `textMuted`, `--focus-ring` = `text`, выбранная строка `--bg-selected` = `primary`;
-- `--bg-hover` = 6 % `text` на прозрачном, `--inactive` = смесь 60 % `textMuted` и `bg` (Q-32, без нового hex), `--artwork-scrim` — прежний чёрный 45 %;
+- `--bg-hover` = 6 % `text` на прозрачном, `--inactive` = смесь 60 % `textMuted` и `bg` (Q-32, без нового hex; контраст дорожки к поверхностям 2,4–2,7:1 в обеих темах — это не текст, порог 4,5 не применяется), `--artwork-scrim` — прежний чёрный 45 %;
 - смещения теней (`0 8px` / `0 2px`), `--dur-instant` 100 мс, `--item-height` 40, стили текста `card-title`, `body-strong`, `menu`, `caption`, `group-label`, `timecode`, `shortcut`, `lyrics`;
 - 16 из 17 цветов взяты от прежних семян владельца (`accentSeeds.json`), пересчитаны под новые поверхности (4,5 / 3 / содержимое 4,5:1). «Sir.kov» = `#650A12` из токенов; на тёмной это только заливка (1,6:1), тест её не требует 3:1;
 - Fabric (`color.fabric`, `glass.fabricOnly`) читается, но не выводится (D-155);

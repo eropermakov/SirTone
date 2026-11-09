@@ -7,7 +7,7 @@ test("shell renders with DESIGN.md tokens and Russian UI", async ({ page }) => {
     "page",
   );
   await expect(page.locator("footer")).toHaveCSS("height", "84px");
-  await expect(page.locator("nav")).toHaveCSS("width", "260px");
+  await expect(page.locator("nav")).toHaveCSS("width", "280px");
   const fontOk = await page.evaluate(async () => {
     await document.fonts.ready;
     return [...document.fonts].some((f) => f.family === "Geologica" && f.status === "loaded");
@@ -20,7 +20,7 @@ test("navigation, theme and colour switch apply instantly", async ({ page }) => 
   await page.getByRole("button", { name: "Настройки" }).click();
   await page.getByRole("button", { name: "Светлая" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(239, 233, 223)");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(244, 244, 244)");
   await page.getByRole("button", { name: "Бордовый" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-accent", "bordeaux");
 });
