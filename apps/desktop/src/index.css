@@ -47,7 +47,11 @@ html,
 body {
   overscroll-behavior: none;
 }
-* {
+/* Only boxes that really scroll contain the bounce: `contain` on an `overflow-hidden` box (a card
+   button) would swallow the wheel there and the list would not scroll over it (owner, proto 43). */
+.overflow-auto,
+.overflow-y-auto,
+.overflow-x-auto {
   overscroll-behavior: contain;
 }
 body {
