@@ -51,9 +51,11 @@ import {
   type AccentSource,
   applyAppearance,
   applyGlass,
+  applyZoom,
   type GlassPref,
   normalizeGlass,
   normalizeTheme,
+  normalizeZoom,
   onSystemThemeChange,
   resolveTheme,
   type ThemePref,
@@ -107,6 +109,7 @@ type Appearance = {
   seasonal: boolean;
   themeAccents: Record<string, AccentSource>;
   glass: GlassPref;
+  zoom: number;
 };
 const DEFAULT: Appearance = {
   theme: "system",
@@ -114,6 +117,7 @@ const DEFAULT: Appearance = {
   seasonal: false,
   themeAccents: {},
   glass: "medium",
+  zoom: 100,
 };
 
 type AccentDoc = { source: string; preset: string; custom: string | null };
@@ -130,6 +134,7 @@ function fromDoc(doc: SettingsDoc): Appearance {
     seasonal: Boolean(doc.appearance.seasonal_theme),
     themeAccents,
     glass: normalizeGlass(doc.appearance.glass),
+    zoom: normalizeZoom(doc.appearance.zoom),
   };
 }
 
@@ -155,7 +160,9 @@ function accentDoc(a: AccentSource): Record<string, unknown> {
 }
 
 function toPatch(a: Appearance): SettingsPatch {
-  return { appearance: { theme: a.theme, accent: accentDoc(a.accent), glass: a.glass } };
+  return {
+    appearance: { theme: a.theme, accent: accentDoc(a.accent), glass: a.glass, zoom: a.zoom },
+  };
 }
 
 const NARROW = "(max-width: 899px)";
@@ -431,6 +438,24 @@ export function App() {
   };
 
   useEffect(() => applyGlass(appearance.glass), [appearance.glass]);
+  useEffect(() => applyZoom(appearance.zoom), [appearance.zoom]);
+  // Ctrl + «+» / «−» / 0 (D-159).
+  const setAppearanceRef = useRef(setAppearance);
+  setAppearanceRef.current = setAppearance;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.altKey) return;
+      const step = e.key === "+" || e.key === "=" ? 5 : e.key === "-" || e.key === "_" ? -5 : 0;
+      if (e.key !== "0" && step === 0) return;
+      e.preventDefault();
+      setAppearanceRef.current((a) => ({
+        ...a,
+        zoom: e.key === "0" ? 100 : normalizeZoom(a.zoom + step),
+      }));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     const apply = () => {
@@ -495,8 +520,8 @@ export function App() {
   return (
     <PlaybackPaused value={snap.state !== "playing"}>
       <DndRoot onNavigate={setScreen}>
-        <div className="flex h-full flex-col">
-          <div className="flex min-h-0 flex-1">
+        <div className="flex h-full flex-col gap-2 p-2">
+          <div className="flex min-h-0 flex-1 gap-2">
             <Sidebar
               current={screen}
               collapsed={narrow || manualCollapsed}
@@ -514,7 +539,7 @@ export function App() {
               onNewPlaylist={lib.status.tracks > 0 ? newPlaylist : undefined}
               onNewSmart={lib.status.tracks > 0 ? newSmart : undefined}
             />
-            <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-(--radius-xl)">
               <TopBar
                 title={barTitle}
                 canBack={stack.length > 1}
@@ -524,7 +549,7 @@ export function App() {
               />
               <main
                 className={cn(
-                  "flex min-w-0 flex-1 flex-col overflow-auto rounded-tl-(--radius-xl) p-6 [container-type:inline-size]",
+                  "flex min-w-0 flex-1 flex-col overflow-auto p-6 [container-type:inline-size]",
                   screen === "wave" && hasMusic ? "bg-transparent" : "bg-bg-layer",
                 )}
               >
@@ -536,6 +561,8 @@ export function App() {
                     onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
                     glass={appearance.glass}
                     onGlass={(glass) => setAppearance((a) => ({ ...a, glass }))}
+                    zoom={appearance.zoom}
+                    onZoom={(zoom) => setAppearance((a) => ({ ...a, zoom: normalizeZoom(zoom) }))}
                     onAccent={pickAccent}
                     library={lib.status}
                     onChooseLibrary={() => lib.setRootNeeded(true)}

@@ -99,16 +99,35 @@ pub enum AccentSource {
     Seasonal,
 }
 
-/// The 17 owner colour sets (DESIGN.md §4).
-pub const ACCENT_PRESETS: [&str; 17] = [
-    "sirkov", "blue", "violet", "lilac", "lavender", "gray", "black", "yellow", "orange", "ginger",
-    "coral", "brick", "lightred", "red", "darkred", "burgundy", "bordeaux",
+/// Accent colours (D-158): Sirkov red plus the ten macOS-style ones («Авто» is a source, not a preset).
+pub const ACCENT_PRESETS: [&str; 10] = [
+    "sirkov",
+    "blue",
+    "violet",
+    "pink",
+    "red",
+    "orange",
+    "yellow",
+    "green",
+    "gray",
+    "lightblue",
 ];
+
+/// A colour removed by D-158 opens as the Sirkov red.
+fn migrate_preset<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let p = String::deserialize(d)?;
+    Ok(if ACCENT_PRESETS.contains(&p.as_str()) {
+        p
+    } else {
+        "sirkov".into()
+    })
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Accent {
     pub source: AccentSource,
+    #[serde(deserialize_with = "migrate_preset")]
     pub preset: String,
     /// «Свой» — only one colour is stored (FR-UI-003).
     pub custom: Option<String>,
@@ -136,6 +155,8 @@ pub struct Appearance {
     /// theme id → its own accent; `null` — the theme's colour again.
     pub theme_accents: BTreeMap<String, Option<Accent>>,
     pub glass: GlassLevel,
+    /// Interface scale, percent, 80–150 in steps of 5 (D-159).
+    pub zoom: u16,
 }
 
 impl Default for Appearance {
@@ -148,6 +169,7 @@ impl Default for Appearance {
             event_themes_auto: false,
             theme_accents: BTreeMap::new(),
             glass: GlassLevel::Medium,
+            zoom: 100,
         }
     }
 }
@@ -670,6 +692,11 @@ pub const FX_TYPES: [&str; 9] = [
 ];
 
 fn validate(s: &Settings) -> Result<(), SettingsError> {
+    if !(80..=150).contains(&s.appearance.zoom) || s.appearance.zoom % 5 != 0 {
+        return Err(SettingsError::Invalid(
+            "zoom must be 80–150 in steps of 5".into(),
+        ));
+    }
     validate_accent(&s.appearance.accent)?;
     for (id, a) in &s.appearance.theme_accents {
         if id.is_empty()
@@ -969,13 +996,13 @@ mod tests {
         .unwrap();
         assert_eq!(changed, vec!["appearance".to_string()]);
         assert_eq!(typed.appearance.accent.custom.as_deref(), Some("#22aa66"));
-        assert!(
-            apply_patch(
-                &doc,
-                &json!({ "appearance": { "accent": { "preset": "pink" } } })
-            )
-            .is_err()
-        );
+        // A colour removed by D-158 opens as Sirkov red instead of failing.
+        let (_, typed, _) = apply_patch(
+            &doc,
+            &json!({ "appearance": { "accent": { "preset": "lavender" } } }),
+        )
+        .unwrap();
+        assert_eq!(typed.appearance.accent.preset, "sirkov");
         assert!(apply_patch(&doc, &json!({ "performance": { "level": 9 } })).is_err());
         assert!(apply_patch(&doc, &json!({ "appearance": { "theme": "neon" } })).is_err());
         assert!(apply_patch(&doc, &json!({ "settings_version": 7 })).is_err());

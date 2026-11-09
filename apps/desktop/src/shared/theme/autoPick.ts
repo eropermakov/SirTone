@@ -77,11 +77,11 @@ export function pickSlug(rgba: Uint8ClampedArray, fills: Record<string, string>)
     }
   }
   const d = centers[dom] as Lab;
-  if (chroma(d) < 0.04) return d[0] < 0.3 || d[0] > 0.85 ? "black" : "gray";
+  if (chroma(d) < 0.04) return "gray";
   let bestSlug: AccentSlug = "sirkov";
   let bestD = Number.POSITIVE_INFINITY;
   for (const slug of ACCENT_SLUGS) {
-    if (slug === "gray" || slug === "black") continue;
+    if (slug === "gray") continue;
     const fill = fills[slug];
     if (!fill) continue;
     const dd = dist2(d, hexToLab(fill));

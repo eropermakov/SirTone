@@ -21,8 +21,8 @@ test("navigation, theme and colour switch apply instantly", async ({ page }) => 
   await page.getByRole("button", { name: "Светлая" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await expect(page.locator("body")).toHaveCSS("background-color", "rgb(244, 244, 244)");
-  await page.getByRole("button", { name: "Бордовый" }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-accent", "bordeaux");
+  await page.getByRole("button", { name: "Зелёный" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-accent", "green");
 });
 
 test("sidebar collapses below 900 px (DESIGN.md §7)", async ({ page }) => {

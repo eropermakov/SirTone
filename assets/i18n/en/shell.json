@@ -56,6 +56,8 @@
     "shuffleOn": "Shuffled"
   },
   "settings": {
+    "zoom": "Interface scale",
+    "zoomHint": "80–150 %. Ctrl + plus, minus, 0 for quick changes.",
     "title": "",
     "appearance": "",
     "theme": "",
@@ -82,20 +84,13 @@
     "sirkov": "",
     "blue": "",
     "violet": "",
-    "lilac": "",
-    "lavender": "",
-    "gray": "",
-    "black": "",
-    "yellow": "",
-    "orange": "",
-    "ginger": "",
-    "coral": "",
-    "brick": "",
-    "lightred": "",
+    "pink": "",
     "red": "",
-    "darkred": "",
-    "burgundy": "",
-    "bordeaux": ""
+    "orange": "",
+    "yellow": "",
+    "green": "",
+    "gray": "",
+    "lightblue": ""
   },
   "tray": {
     "open": "",

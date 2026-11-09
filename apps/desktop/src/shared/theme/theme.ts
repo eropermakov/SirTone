@@ -11,28 +11,29 @@ export type GlassPref = (typeof GLASS_LEVELS)[number];
 export const normalizeGlass = (v: unknown): GlassPref =>
   (GLASS_LEVELS as readonly unknown[]).includes(v) ? (v as GlassPref) : "medium";
 /** One write to <html>; the CSS picks the opacity (raised by the contrast rule when needed). */
+/** Interface scale in percent: 80–150, step 5 (D-159). */
+export function normalizeZoom(v: unknown): number {
+  const n = typeof v === "number" && Number.isFinite(v) ? v : 100;
+  return Math.min(150, Math.max(80, Math.round(n / 5) * 5));
+}
+export function applyZoom(z: number): void {
+  document.documentElement.style.zoom = String(z / 100);
+}
 export function applyGlass(g: GlassPref): void {
   document.documentElement.dataset.glass = g;
 }
-/** 17 owner sets (DESIGN.md §4) in AccentPicker order: cold → neutral → warm → red. */
+/** Sirkov red + ten macOS-style colours (D-158). */
 export const ACCENT_SLUGS = [
   "sirkov",
   "blue",
   "violet",
-  "lilac",
-  "lavender",
-  "gray",
-  "black",
-  "yellow",
-  "orange",
-  "ginger",
-  "coral",
-  "brick",
-  "lightred",
+  "pink",
   "red",
-  "darkred",
-  "burgundy",
-  "bordeaux",
+  "orange",
+  "yellow",
+  "green",
+  "gray",
+  "lightblue",
 ] as const;
 export type AccentSlug = (typeof ACCENT_SLUGS)[number];
 export type AccentSource =

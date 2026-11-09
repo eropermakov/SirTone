@@ -64,6 +64,8 @@ type Props = {
   onTheme: (t: ThemePref) => void;
   glass: GlassPref;
   onGlass: (g: GlassPref) => void;
+  zoom: number;
+  onZoom: (z: number) => void;
   onAccent: (a: AccentSource | null) => void;
   /** «Хранилище» (FR-DATA-004, FR-ONB-003): library folder and counters. */
   library?: LibraryStatus;
@@ -89,6 +91,8 @@ export function SettingsScreen({
   onTheme,
   glass,
   onGlass,
+  zoom,
+  onZoom,
   onAccent,
   library,
   onChooseLibrary,
@@ -135,6 +139,26 @@ export function SettingsScreen({
               </button>
             ))}
           </fieldset>
+        </div>
+
+        <div className="flex min-h-12 items-center justify-between gap-4 rounded-(--radius-md) border border-border bg-bg-raised px-6 py-3">
+          <span className="flex min-w-0 flex-col">
+            <span className="t-card-title text-text-primary">{t("settings.zoom")}</span>
+            <span className="t-caption text-text-secondary">{t("settings.zoomHint")}</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-3">
+            <input
+              type="range"
+              min={80}
+              max={150}
+              step={5}
+              value={zoom}
+              aria-label={t("settings.zoom")}
+              onChange={(e) => onZoom(Number(e.target.value))}
+              className="w-48 accent-(--accent-text)"
+            />
+            <span className="t-body tabular w-12 text-right text-text-primary">{zoom} %</span>
+          </span>
         </div>
 
         <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
