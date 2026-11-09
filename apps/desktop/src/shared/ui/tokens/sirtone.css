@@ -437,6 +437,55 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+
+/* Glass (D-156): panels over the background; `.glass` = bg at the level's opacity + blur */
+:root {
+  --glass-blur: 26px;
+}
+:root,
+[data-theme="dark"] {
+  --glass-alpha: 78%;
+}
+[data-theme="dark"][data-glass="transparent"],
+:root:not([data-theme])[data-glass="transparent"] {
+  --glass-alpha: 57%;
+}
+[data-theme="dark"][data-glass="medium"],
+:root:not([data-theme])[data-glass="medium"] {
+  --glass-alpha: 78%;
+}
+[data-theme="dark"][data-glass="matte"],
+:root:not([data-theme])[data-glass="matte"] {
+  --glass-alpha: 97%;
+}
+[data-theme="light"] {
+  --glass-alpha: 78%;
+}
+[data-theme="light"][data-glass="transparent"] {
+  --glass-alpha: 55%;
+}
+[data-theme="light"][data-glass="medium"] {
+  --glass-alpha: 78%;
+}
+[data-theme="light"][data-glass="matte"] {
+  --glass-alpha: 97%;
+}
+.glass {
+  background: color-mix(in srgb, var(--bg-base) var(--glass-alpha), transparent);
+  backdrop-filter: blur(var(--glass-blur));
+}
+/* The dense fallback: auto-degrade / weak presets (data-blur="off"), high contrast, reduced transparency */
+:root[data-blur="off"] .glass,
+:root[data-contrast="more"] .glass {
+  background: var(--bg-base);
+  backdrop-filter: none;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background: var(--bg-base);
+    backdrop-filter: none;
+  }
+}
 .tabular {
   font-variant-numeric: tabular-nums;
 }

@@ -36,6 +36,7 @@ import {
 import { sfx } from "@/shared/ipc/sfx";
 import { type UpdateStatus, updateStatus } from "@/shared/ipc/updates";
 import { setWindowTheme } from "@/shared/ipc/window";
+import { cn } from "@/shared/lib/utils";
 import { autoSlug } from "@/shared/theme/autoAccent";
 import {
   type SeasonTheme,
@@ -49,6 +50,9 @@ import {
   type AccentSlug,
   type AccentSource,
   applyAppearance,
+  applyGlass,
+  type GlassPref,
+  normalizeGlass,
   normalizeTheme,
   onSystemThemeChange,
   resolveTheme,
@@ -101,12 +105,14 @@ type Appearance = {
   /** «Тема по сезону» (T4.18) and the manual accents of its themes (Q-15). */
   seasonal: boolean;
   themeAccents: Record<string, AccentSource>;
+  glass: GlassPref;
 };
 const DEFAULT: Appearance = {
   theme: "system",
   accent: { kind: "preset", slug: "sirkov" },
   seasonal: false,
   themeAccents: {},
+  glass: "medium",
 };
 
 type AccentDoc = { source: string; preset: string; custom: string | null };
@@ -122,6 +128,7 @@ function fromDoc(doc: SettingsDoc): Appearance {
     accent: parseAccent(doc.appearance.accent),
     seasonal: Boolean(doc.appearance.seasonal_theme),
     themeAccents,
+    glass: normalizeGlass(doc.appearance.glass),
   };
 }
 
@@ -147,7 +154,7 @@ function accentDoc(a: AccentSource): Record<string, unknown> {
 }
 
 function toPatch(a: Appearance): SettingsPatch {
-  return { appearance: { theme: a.theme, accent: accentDoc(a.accent) } };
+  return { appearance: { theme: a.theme, accent: accentDoc(a.accent), glass: a.glass } };
 }
 
 const NARROW = "(max-width: 899px)";
@@ -406,6 +413,8 @@ export function App() {
     if (a) setAppearance((p) => ({ ...p, accent: a }));
   };
 
+  useEffect(() => applyGlass(appearance.glass), [appearance.glass]);
+
   useEffect(() => {
     const apply = () => {
       applyAppearance(appearance.theme, effAccent, coverSlug);
@@ -488,13 +497,20 @@ export function App() {
               onNewPlaylist={lib.status.tracks > 0 ? newPlaylist : undefined}
               onNewSmart={lib.status.tracks > 0 ? newSmart : undefined}
             />
-            <main className="flex min-w-0 flex-1 flex-col overflow-auto rounded-tl-(--radius-xl) bg-bg-layer p-6">
+            <main
+              className={cn(
+                "flex min-w-0 flex-1 flex-col overflow-auto rounded-tl-(--radius-xl) p-6",
+                screen === "wave" && hasMusic ? "bg-transparent" : "bg-bg-layer",
+              )}
+            >
               {lib.rootNeeded && <RootPanel status={lib.status} onDone={rootChosen} />}
               {screen === "settings" ? (
                 <SettingsScreen
                   theme={appearance.theme}
                   accent={pickedAccent}
                   onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
+                  glass={appearance.glass}
+                  onGlass={(glass) => setAppearance((a) => ({ ...a, glass }))}
                   onAccent={pickAccent}
                   library={lib.status}
                   onChooseLibrary={() => lib.setRootNeeded(true)}

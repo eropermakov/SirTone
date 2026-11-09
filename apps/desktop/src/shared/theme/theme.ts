@@ -5,6 +5,15 @@ export type ThemePref = "system" | Theme;
 /** Stored values of removed themes (ember, mono, …) and anything unknown become «Авто» (D-155). */
 export const normalizeTheme = (v: unknown): ThemePref =>
   v === "dark" || v === "light" || v === "system" ? v : "system";
+/** «Стекло» (D-156, FR-LOOK-007): the opacity of the panels, 55 / 78 / 97 % (DESIGN.md §8). */
+export const GLASS_LEVELS = ["transparent", "medium", "matte"] as const;
+export type GlassPref = (typeof GLASS_LEVELS)[number];
+export const normalizeGlass = (v: unknown): GlassPref =>
+  (GLASS_LEVELS as readonly unknown[]).includes(v) ? (v as GlassPref) : "medium";
+/** One write to <html>; the CSS picks the opacity (raised by the contrast rule when needed). */
+export function applyGlass(g: GlassPref): void {
+  document.documentElement.dataset.glass = g;
+}
 /** 17 owner sets (DESIGN.md §4) in AccentPicker order: cold → neutral → warm → red. */
 export const ACCENT_SLUGS = [
   "sirkov",

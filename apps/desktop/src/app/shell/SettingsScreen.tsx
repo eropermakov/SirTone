@@ -36,7 +36,13 @@ import { accelFromEvent } from "@/shared/lib/hotkeys";
 import { cn } from "@/shared/lib/utils";
 import { benchmark, score } from "@/shared/theme/autodetect";
 import { applyPerformance, profile } from "@/shared/theme/performance";
-import { ACCENT_SLUGS, type AccentSource, type ThemePref } from "@/shared/theme/theme";
+import {
+  ACCENT_SLUGS,
+  type AccentSource,
+  GLASS_LEVELS,
+  type GlassPref,
+  type ThemePref,
+} from "@/shared/theme/theme";
 import { Button } from "@/shared/ui/Button";
 import { Chip } from "@/shared/ui/Chip";
 import { Dialog } from "@/shared/ui/Dialog";
@@ -55,6 +61,8 @@ type Props = {
   /** «Тема по сезону» is on: today's seed for the season swatch. */
   seasonSeed?: string | null;
   onTheme: (t: ThemePref) => void;
+  glass: GlassPref;
+  onGlass: (g: GlassPref) => void;
   onAccent: (a: AccentSource | null) => void;
   /** «Хранилище» (FR-DATA-004, FR-ONB-003): library folder and counters. */
   library?: LibraryStatus;
@@ -78,6 +86,8 @@ export function SettingsScreen({
   accent,
   seasonSeed,
   onTheme,
+  glass,
+  onGlass,
   onAccent,
   library,
   onChooseLibrary,
@@ -98,6 +108,32 @@ export function SettingsScreen({
         <div className="flex flex-col gap-3 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
           <span className="t-card-title text-text-primary">{t("settings.theme")}</span>
           <ThemeChips theme={theme} onTheme={onTheme} />
+        </div>
+
+        <div className="flex flex-col gap-3 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+          <span className="t-card-title text-text-primary">{t("settings.glass")}</span>
+          <span className="t-caption text-text-secondary">{t("settings.glassHint")}</span>
+          <fieldset
+            className="m-0 flex flex-wrap gap-2 border-0 p-0"
+            aria-label={t("settings.glass")}
+          >
+            {GLASS_LEVELS.map((g) => (
+              <button
+                key={g}
+                type="button"
+                aria-pressed={glass === g}
+                onClick={() => onGlass(g)}
+                className={cn(
+                  "t-menu h-(--chip-height) rounded-full px-3",
+                  glass === g
+                    ? "bg-primary text-on-primary"
+                    : "border border-border text-text-primary hover:bg-bg-hover",
+                )}
+              >
+                {t(`settings.glass_${g}`)}
+              </button>
+            ))}
+          </fieldset>
         </div>
 
         <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">

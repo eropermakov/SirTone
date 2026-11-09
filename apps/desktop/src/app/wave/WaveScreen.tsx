@@ -364,7 +364,10 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
           }
         />
       ) : (
-        <VizBackground trackId={id} cover={snap.cover} />
+        // The background continues under the glass panels (DESIGN.md §8): the whole window, not the screen.
+        <div aria-hidden className="pointer-events-none fixed inset-0">
+          <VizBackground trackId={id} cover={snap.cover} />
+        </div>
       )}
       {!night && <VizToolbar />}
       <Cover

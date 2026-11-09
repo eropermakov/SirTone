@@ -5,6 +5,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { generateAccentSetWith } from "../apps/desktop/src/shared/lib/colorMath.ts";
+import { glassCss, glassLevels } from "./gen-glass.mjs";
 
 const root = new URL("../", import.meta.url);
 const DESIGN = new URL("DESIGN.md", root);
@@ -197,6 +198,7 @@ ${sp.map(([s, v]) => `  --space-${spaceName(s)}: ${px(v)};`).join("\n")}
     style("shelfTitle", "t-shelf-title");
   css += style("body", "t-body") + style("badge", "t-badge");
   css += `.t-badge {\n  text-transform: uppercase;\n  letter-spacing: 0.06em;\n}\n`;
+  css += glassCss(t);
   css += `.tabular {\n  font-variant-numeric: tabular-nums;\n}\n`;
   css += `html {\n  font-family: var(--font-sans);\n  font-variation-settings:\n    "CRSV" 0,\n    "SHRP" 0;\n}\n`;
 
@@ -211,6 +213,9 @@ export const COLOR = ${JSON.stringify(
 export const BACKGROUNDS = ${JSON.stringify(ctx.backgrounds, null, 2)} as const;
 export const INK_DARK = ${JSON.stringify(ctx.inkDark)};
 export const INK_LIGHT = ${JSON.stringify(ctx.inkLight)};
+
+/** Glass: DESIGN.md opacity (set) and the one in use after the contrast rule (effective). */
+export const GLASS = ${JSON.stringify({ blur: t.glass.blur, levels: glassLevels(t) }, null, 2)} as const;
 
 /** The 17 colour sets × 2 themes (sirkov = #650A12 from the tokens). */
 export const ACCENT_SETS: Record<

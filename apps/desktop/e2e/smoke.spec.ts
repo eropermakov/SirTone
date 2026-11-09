@@ -61,3 +61,19 @@ test("performance presets switch motion at once (T2.3)", async ({ page }) => {
   await page.getByRole("switch", { name: "Анимации интерфейса" }).click();
   await expect(html).toHaveAttribute("data-motion", "0");
 });
+
+test("glass: three levels, panels follow the level (D-156, FR-LOOK-007)", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки" }).click();
+  const html = page.locator("html");
+  for (const [name, level] of [
+    ["Матовое", "matte"],
+    ["Прозрачное", "transparent"],
+    ["Среднее", "medium"],
+  ] as const) {
+    await page.getByRole("group", { name: "Стекло" }).getByRole("button", { name }).click();
+    await expect(html).toHaveAttribute("data-glass", level);
+  }
+  await expect(page.locator("nav")).toHaveClass(/glass/);
+  await expect(page.locator("footer")).toHaveClass(/glass/);
+});

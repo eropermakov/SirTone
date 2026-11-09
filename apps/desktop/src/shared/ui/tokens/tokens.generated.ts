@@ -92,6 +92,43 @@ export const BACKGROUNDS = {
 export const INK_DARK = "#1A1A1A";
 export const INK_LIGHT = "#FFFFFF";
 
+/** Glass: DESIGN.md opacity (set) and the one in use after the contrast rule (effective). */
+export const GLASS = {
+  "blur": 26,
+  "levels": {
+    "transparent": {
+      "dark": {
+        "set": 55,
+        "effective": 57
+      },
+      "light": {
+        "set": 55,
+        "effective": 55
+      }
+    },
+    "medium": {
+      "dark": {
+        "set": 78,
+        "effective": 78
+      },
+      "light": {
+        "set": 78,
+        "effective": 78
+      }
+    },
+    "matte": {
+      "dark": {
+        "set": 97,
+        "effective": 97
+      },
+      "light": {
+        "set": 97,
+        "effective": 97
+      }
+    }
+  }
+} as const;
+
 /** The 17 colour sets × 2 themes (sirkov = #650A12 from the tokens). */
 export const ACCENT_SETS: Record<
   string,
