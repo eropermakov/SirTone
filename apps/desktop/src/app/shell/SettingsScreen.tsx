@@ -36,11 +36,18 @@ import { accelFromEvent } from "@/shared/lib/hotkeys";
 import { cn } from "@/shared/lib/utils";
 import { benchmark, score } from "@/shared/theme/autodetect";
 import { applyPerformance, profile } from "@/shared/theme/performance";
-import { ACCENT_SLUGS, type AccentSource, type ThemePref } from "@/shared/theme/theme";
+import {
+  ACCENT_SLUGS,
+  type AccentSource,
+  GLASS_LEVELS,
+  type GlassPref,
+  type ThemePref,
+} from "@/shared/theme/theme";
 import { Button } from "@/shared/ui/Button";
 import { Chip } from "@/shared/ui/Chip";
 import { Dialog } from "@/shared/ui/Dialog";
 import { notify } from "@/shared/ui/notify";
+import { SectionTitle } from "@/shared/ui/SectionTitle";
 import { Slider } from "@/shared/ui/Slider";
 import { Switch } from "@/shared/ui/Switch";
 import { FX_TYPES, type FxType, isFxType } from "@/shared/viz/fxPlan";
@@ -55,6 +62,8 @@ type Props = {
   /** «Тема по сезону» is on: today's seed for the season swatch. */
   seasonSeed?: string | null;
   onTheme: (t: ThemePref) => void;
+  glass: GlassPref;
+  onGlass: (g: GlassPref) => void;
   onAccent: (a: AccentSource | null) => void;
   /** «Хранилище» (FR-DATA-004, FR-ONB-003): library folder and counters. */
   library?: LibraryStatus;
@@ -78,6 +87,8 @@ export function SettingsScreen({
   accent,
   seasonSeed,
   onTheme,
+  glass,
+  onGlass,
   onAccent,
   library,
   onChooseLibrary,
@@ -89,30 +100,51 @@ export function SettingsScreen({
   const [licenses, setLicenses] = useState(false);
 
   return (
-    <section className="flex max-w-3xl flex-col gap-12">
-      <h1 className="t-page-title text-primary-text">{t("settings.title")}</h1>
+    <section className="flex flex-col gap-12 [&>:not(h1)]:max-w-3xl">
+      <SectionTitle>{t("settings.title")}</SectionTitle>
 
       <div className="flex flex-col gap-4">
         <h2 className="t-shelf-title text-primary-text">{t("settings.appearance")}</h2>
 
-        <div className="flex flex-col gap-3 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex flex-col gap-3 rounded-(--radius-md) border border-border bg-bg-raised p-6">
           <span className="t-card-title text-text-primary">{t("settings.theme")}</span>
           <ThemeChips theme={theme} onTheme={onTheme} />
         </div>
 
-        <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <div className="flex flex-col gap-3 rounded-(--radius-md) border border-border bg-bg-raised p-6">
+          <span className="t-card-title text-text-primary">{t("settings.glass")}</span>
+          <span className="t-caption text-text-secondary">{t("settings.glassHint")}</span>
+          <fieldset
+            className="m-0 flex flex-wrap gap-2 border-0 p-0"
+            aria-label={t("settings.glass")}
+          >
+            {GLASS_LEVELS.map((g) => (
+              <button
+                key={g}
+                type="button"
+                aria-pressed={glass === g}
+                onClick={() => onGlass(g)}
+                className={cn(
+                  "t-menu h-(--chip-height) rounded-(--radius-sm) px-3",
+                  glass === g
+                    ? "bg-primary text-on-primary"
+                    : "border border-border text-text-primary hover:bg-bg-hover",
+                )}
+              >
+                {t(`settings.glass_${g}`)}
+              </button>
+            ))}
+          </fieldset>
+        </div>
+
+        <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
           <span className="t-card-title text-text-primary">{t("settings.color")}</span>
-          <AccentSwatches
-            theme={theme}
-            accent={accent}
-            seasonSeed={seasonSeed}
-            onAccent={onAccent}
-          />
+          <AccentSwatches accent={accent} seasonSeed={seasonSeed} onAccent={onAccent} />
           <SeasonSwitch />
 
           <div className="mt-2 flex items-center gap-4 border-t border-separator pt-4">
             <span className="t-caption text-text-tertiary">{t("settings.preview")}</span>
-            <span className="t-badge rounded-full bg-primary px-2 py-0.5 text-on-primary">
+            <span className="t-badge rounded-(--radius-xs) bg-primary px-2 py-0.5 text-on-primary">
               {t("settings.badge")}
             </span>
             <button
@@ -131,7 +163,7 @@ export function SettingsScreen({
       {library && (
         <div className="flex flex-col gap-2">
           <h2 className="t-shelf-title text-primary-text">{t("settingsStorage.title")}</h2>
-          <div className="flex flex-col gap-3 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+          <div className="flex flex-col gap-3 rounded-(--radius-md) border border-border bg-bg-raised p-6">
             <span className="t-body-strong text-text-primary">{t("settingsStorage.folder")}</span>
             <span className="t-body break-all text-text-secondary">
               {library.root ?? t("settingsStorage.notChosen")}
@@ -250,7 +282,7 @@ function LanguageSection() {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsLanguage.title")}</h2>
-      <div className="flex flex-col gap-3 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex flex-col gap-3 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <fieldset
           className="m-0 flex flex-wrap gap-2 border-0 p-0"
           aria-label={t("settingsLanguage.title")}
@@ -292,7 +324,7 @@ function StartupSection() {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsStartup.title")}</h2>
-      <div className="flex items-center gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex items-center gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="t-body-strong text-text-primary">{t("settingsStartup.autostart")}</span>
           <span className="t-caption text-text-secondary">
@@ -379,7 +411,7 @@ function HotkeysSection() {
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsHotkeys.title")}</h2>
       <p className="t-caption text-text-secondary">{t("settingsHotkeys.hint")}</p>
-      <div className="flex flex-col divide-y divide-border rounded-(--radius-xl) border border-border bg-bg-raised">
+      <div className="flex flex-col divide-y divide-border rounded-(--radius-md) border border-border bg-bg-raised">
         {HOTKEYS.map((h) => {
           const st = status.find((s) => s.action === h.action);
           const label = t(`settingsHotkeys.action.${h.action}`);
@@ -512,7 +544,7 @@ export function PerformanceSection() {
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsPerf.title")}</h2>
       <p className="t-caption text-text-secondary">{t("settingsPerf.hint")}</p>
-      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <fieldset
           className="m-0 flex flex-wrap gap-2 border-0 p-0"
           aria-label={t("settingsPerf.title")}
@@ -575,7 +607,7 @@ function NeverSection() {
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsNever.title")}</h2>
       <p className="t-caption text-text-secondary">{t("settingsNever.hint")}</p>
-      <div className="flex flex-col divide-y divide-border rounded-(--radius-xl) border border-border bg-bg-raised px-6">
+      <div className="flex flex-col divide-y divide-border rounded-(--radius-md) border border-border bg-bg-raised px-6">
         {items.length === 0 ? (
           <p className="t-body py-4 text-text-secondary">{t("settingsNever.empty")}</p>
         ) : (
@@ -648,7 +680,21 @@ function ServiceData() {
   );
 }
 
-/** Theme chips (Settings and the first-start setup, FR-ONB-003). */
+/** A flat miniature of the window in one theme: the subtree re-declares the neutrals (DESIGN.md §13). */
+function Mini({ theme }: { theme: "dark" | "light" }) {
+  return (
+    <span data-theme={theme} aria-hidden className="flex h-full w-full bg-bg-base">
+      <span className="w-1/4 bg-bg-layer" />
+      <span className="flex flex-1 flex-col gap-1 p-1.5">
+        <span className="h-1.5 w-2/3 rounded-(--radius-xs) bg-text-primary" />
+        <span className="h-1.5 w-1/2 rounded-(--radius-xs) bg-bg-raised" />
+        <span className="mt-auto h-2 rounded-(--radius-xs) bg-primary" />
+      </span>
+    </span>
+  );
+}
+
+/** Theme thumbnails: Авто / Тёмная / Светлая, the chosen one outlined in `text` (DESIGN.md §13). */
 export function ThemeChips({
   theme,
   onTheme,
@@ -658,21 +704,35 @@ export function ThemeChips({
 }) {
   const { t } = useTranslation("shell");
   return (
-    <fieldset className="m-0 border-0 p-0 flex flex-wrap gap-2" aria-label={t("settings.theme")}>
+    <fieldset className="m-0 flex flex-wrap gap-4 border-0 p-0" aria-label={t("settings.theme")}>
       {THEMES.map((it) => (
         <button
           key={it.id}
           type="button"
           aria-pressed={theme === it.id}
           onClick={() => onTheme(it.id)}
-          className={cn(
-            "t-menu h-(--chip-height) rounded-full px-3",
-            theme === it.id
-              ? "bg-primary text-on-primary"
-              : "border border-border text-text-primary hover:bg-bg-hover",
-          )}
+          className="group relative flex flex-col items-center gap-2"
         >
-          {t(it.key)}
+          <span
+            className={cn(
+              "relative block h-16 w-24 overflow-hidden rounded-(--radius-sm) border border-border",
+              theme === it.id && "outline-2 outline-offset-2 outline-text-primary",
+            )}
+          >
+            {it.id === "system" ? (
+              <>
+                <span className="absolute inset-0">
+                  <Mini theme="dark" />
+                </span>
+                <span className="absolute inset-0 [clip-path:polygon(100%_0,100%_100%,0_100%)]">
+                  <Mini theme="light" />
+                </span>
+              </>
+            ) : (
+              <Mini theme={it.id} />
+            )}
+          </span>
+          <span className="t-caption text-text-primary">{t(it.key)}</span>
         </button>
       ))}
     </fieldset>
@@ -681,12 +741,10 @@ export function ThemeChips({
 
 /** AccentPicker swatches (DESIGN.md §9): Sir.kov, 16 colours, «Свой». */
 export function AccentSwatches({
-  theme,
   accent,
   seasonSeed,
   onAccent,
 }: {
-  theme: ThemePref;
   /** `null` — the seasonal theme's own colour is chosen. */
   accent: AccentSource | null;
   /** «Тема по сезону» on (T4.18, FR-UI-003): the season swatch comes first; a pick is the
@@ -978,7 +1036,7 @@ function SoundSection() {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsSound.title")}</h2>
-      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <SignalLine />
         <OutputPicker />
         <div className="flex items-center gap-4">
@@ -1086,7 +1144,7 @@ function EqSection() {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsEq.title")}</h2>
-      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex items-center gap-4">
           <div className="min-w-0 flex-1">
             <div className="t-body text-text-primary">{t("settingsEq.enable")}</div>
@@ -1203,7 +1261,7 @@ function SfxSection() {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsSfx.title")}</h2>
-      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex items-center gap-4">
           <div className="min-w-0 flex-1">
             <div className="t-body text-text-primary">{t("settingsSfx.enable")}</div>
@@ -1304,7 +1362,7 @@ function DuckSection() {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsDuck.title")}</h2>
-      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex items-center gap-4">
           <div className="min-w-0 flex-1">
             <div className="t-body text-text-primary">{t("settingsDuck.enable")}</div>
@@ -1450,7 +1508,7 @@ function TransitionsSection() {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsMix.title")}</h2>
-      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <fieldset
           className="m-0 flex flex-wrap gap-2 border-0 p-0"
           aria-label={t("settingsMix.title")}
@@ -1542,7 +1600,7 @@ function VizSection() {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsViz.title")}</h2>
-      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         {rows.map((r) => (
           <div key={r.key} className="flex items-center gap-4">
             <div className="min-w-0 flex-1">
@@ -1607,7 +1665,7 @@ function PlaceSection() {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsPlace.title")}</h2>
-      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1">
             <div className="t-body text-text-primary" data-testid="place-city">
@@ -1632,7 +1690,7 @@ function PlaceSection() {
             onChange={(e) => setQ(e.target.value)}
             placeholder={t("settingsPlace.search")}
             aria-label={t("settingsPlace.search")}
-            className="t-body h-(--button-height) min-w-0 flex-1 rounded-full border border-border bg-bg-layer px-4 text-text-primary"
+            className="t-body h-(--button-height) min-w-0 flex-1 rounded-(--radius-sm) border border-border bg-bg-layer px-4 text-text-primary"
           />
           <Button
             variant="secondary"
@@ -1734,7 +1792,7 @@ function WidgetSection() {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsWidget.title")}</h2>
-      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex items-center gap-4">
           <div className="min-w-0 flex-1">
             <div className="t-body text-text-primary">{t("settingsWidget.enabled")}</div>
@@ -1843,7 +1901,7 @@ function FocusSection() {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsFocus.title")}</h2>
-      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         {rows.map((r) => (
           <div key={r.key} className="flex items-center gap-4">
             <span className="t-caption w-28 shrink-0 text-text-secondary">{t(r.label)}</span>
@@ -1933,7 +1991,7 @@ function SleepSection() {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsSleep.title")}</h2>
-      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex items-center gap-4">
           <span className="t-caption w-28 shrink-0 text-text-secondary">
             {t("settingsSleep.fade")}
@@ -2010,7 +2068,7 @@ function FxSection() {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsFx.title")}</h2>
-      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <fieldset
           className="m-0 flex flex-wrap gap-2 border-0 p-0"
           aria-label={t("settingsFx.title")}
@@ -2113,7 +2171,7 @@ function EventsSection() {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsEvents.title")}</h2>
-      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         {row(t("settingsEvents.suggest"), t("settingsEvents.suggestHint"), ev.suggest, (v) =>
           save({ ...ev, suggest: v }),
         )}
@@ -2171,7 +2229,7 @@ function WaveLearningSection() {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsWave.title")}</h2>
-      <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex items-center gap-4">
           <div className="min-w-0 flex-1">
             <div className="t-body text-text-primary">{t("settingsWave.learning")}</div>
@@ -2362,7 +2420,7 @@ function NetworkSection() {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-shelf-title text-primary-text">{t("settingsNet.title")}</h2>
-      <div className="flex items-center gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <div className="flex items-center gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="t-body text-text-primary">{t("settingsNet.offline")}</span>
           <span className="t-caption text-text-secondary">{t("settingsNet.offlineHint")}</span>

@@ -1,5 +1,6 @@
 import { useDroppable } from "@dnd-kit/core";
 import {
+  AudioLines,
   ChevronDown,
   CircleHelp,
   Disc3,
@@ -38,7 +39,11 @@ export type Screen =
 type Item = { id: Screen; icon: ComponentType<{ size?: number; strokeWidth?: number }> };
 
 /** Sidebar items — composition from the TZ (FR-SHELL-002), look from DESIGN.md §9 (Q-20). */
-const TOP: Item[] = [{ id: "wave", icon: Waves }];
+// «Поиск» is the first row of the menu (DESIGN.md §13 «Меню как у Apple»).
+const TOP: Item[] = [
+  { id: "search", icon: Search },
+  { id: "wave", icon: Waves },
+];
 const COLLECTION: Item[] = [
   { id: "artists", icon: Mic2 },
   { id: "albums", icon: Disc3 },
@@ -110,16 +115,16 @@ export function Sidebar({
         aria-current={active ? "page" : undefined}
         title={collapsed ? t(it.id) : undefined}
         className={cn(
-          "flex h-(--item-height) w-full items-center gap-3 rounded-(--radius-md) px-3 text-left",
+          "flex h-(--nav-row-height) w-full items-center gap-3 rounded-full px-4 text-left",
           "transition-colors duration-(--dur-fast)",
           active
             ? "bg-primary text-on-primary"
-            : "text-text-primary hover:bg-bg-hover [&_svg]:text-icon",
+            : "text-text-secondary hover:bg-bg-hover hover:text-text-primary",
           collapsed && "justify-center px-0",
         )}
       >
         <span className="relative flex">
-          <Icon size={20} strokeWidth={1.5} />
+          <Icon size={24} strokeWidth={2} />
           {collapsed && (badges?.[it.id] ?? 0) > 0 && (
             <span
               aria-hidden
@@ -127,7 +132,7 @@ export function Sidebar({
             />
           )}
         </span>
-        {!collapsed && <span className="t-body min-w-0 flex-1 truncate">{t(it.id)}</span>}
+        {!collapsed && <span className="t-nav min-w-0 flex-1 truncate">{t(it.id)}</span>}
         {!collapsed && (badges?.[it.id] ?? 0) > 0 && (
           <span className="t-badge flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-fill px-1.5 text-accent-on">
             {badges?.[it.id]}
@@ -141,36 +146,38 @@ export function Sidebar({
     <nav
       aria-label={t("collection")}
       className={cn(
-        "flex h-full shrink-0 flex-col gap-1 bg-bg-base p-3",
-        collapsed ? "w-16" : "w-(--sidebar-width)",
+        "glass relative z-10 flex h-full shrink-0 flex-col gap-1 p-3",
+        collapsed ? "w-(--sidebar-collapsed)" : "w-(--sidebar-width)",
       )}
     >
-      <div
-        className={cn("mb-2 flex items-center", collapsed ? "justify-center" : "justify-between")}
-      >
+      {/* Menu header (DESIGN.md §13): accent circle 48 with the white mark, «Sir.kov» and the product. */}
+      <div className={cn("mb-3 flex items-center gap-3", collapsed ? "justify-center" : "px-1")}>
+        <span
+          aria-hidden
+          className="flex size-12 shrink-0 items-center justify-center rounded-full bg-accent-fill text-accent-on"
+        >
+          <AudioLines size={24} strokeWidth={2} />
+        </span>
         {!collapsed && (
-          <span className="t-shelf-title px-2 text-text-primary">{t("common:app.name")}</span>
-        )}
-        <div className="flex">
-          <button
-            type="button"
-            onClick={() => onNavigate("search")}
-            aria-label={t("search")}
-            className="flex size-9 items-center justify-center rounded-full text-icon hover:bg-bg-hover"
-          >
-            <Search size={20} strokeWidth={1.5} />
-          </button>
-          {!collapsed && (
+          <>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="t-caption-brand truncate text-text-secondary">
+                {t("common:app.brand")}
+              </span>
+              <span className="t-product truncate text-text-primary">{t("common:app.name")}</span>
+            </span>
             <button
               type="button"
               onClick={onToggle}
               aria-label={t("collapse")}
-              className="flex size-9 items-center justify-center rounded-full text-icon hover:bg-bg-hover"
+              className="flex size-11 shrink-0 items-center justify-center"
             >
-              <PanelLeftClose size={20} strokeWidth={1.5} />
+              <span className="flex h-[34px] w-[22px] items-center justify-center rounded-(--radius-sm) bg-bg-hover text-icon">
+                <PanelLeftClose size={16} strokeWidth={1.5} />
+              </span>
             </button>
-          )}
-        </div>
+          </>
+        )}
       </div>
       {/* DESIGN.md §9: «Новый плейлист» first, then the main items. */}
       {onNewPlaylist && (

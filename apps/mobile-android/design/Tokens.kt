@@ -39,6 +39,7 @@ object SirToneMetric {
     const val durFastMs = 150
     const val durBaseMs = 250
     const val durThemeMs = 400
+    val glassBlur = 26.dp
     const val durInstantMs = 100
     val itemHeight = 40.dp
 }
@@ -59,6 +60,9 @@ object SirToneText {
     val timecode = SirToneTextStyle(400, 12.sp, 16.sp)
     val shortcut = SirToneTextStyle(400, 12.sp, 16.sp)
     val lyrics = SirToneTextStyle(700, 32.sp, 40.sp)
+    val nav = SirToneTextStyle(500, 16.sp, 22.sp)
+    val captionBrand = SirToneTextStyle(400, 15.sp, 18.sp)
+    val product = SirToneTextStyle(800, 30.sp, 32.sp)
 }
 
 object SirToneDark {

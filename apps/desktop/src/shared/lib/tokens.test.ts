@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 // @ts-expect-error — plain .mjs generator (T9.1), no types
 import { build, parseTokens, slugs } from "../../../../../scripts/gen-tokens.mjs";
 import { ACCENT_SLUGS } from "../theme/theme";
+import { GLASS } from "../ui/tokens/tokens.generated";
 import { BACKGROUNDS, contrast, ON_PRIMARY } from "./color";
 
 const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), "utf8");
@@ -59,5 +60,34 @@ describe("contrast of the new neutrals (DESIGN.md §4, Q-32)", () => {
   it("exported backgrounds follow the tokens", () => {
     expect(BACKGROUNDS.dark[0]).toBe(tokens.color.dark.bg);
     expect(ON_PRIMARY.light).toBe(tokens.color.light.onPrimary);
+  });
+});
+
+describe("glass levels (D-156, T9.5)", () => {
+  it("DESIGN.md sets 55 / 78 / 97 % and 26 px; the CSS never goes below the set level", () => {
+    expect(tokens.glass).toMatchObject({ transparent: 55, medium: 78, matte: 97, blur: 26 });
+    expect(out.css).toContain("--glass-blur: 26px;");
+    expect(GLASS.blur).toBe(26);
+    for (const level of ["transparent", "medium", "matte"] as const) {
+      for (const theme of ["dark", "light"] as const) {
+        const l = GLASS.levels[level][theme];
+        expect(l.effective).toBeGreaterThanOrEqual(l.set);
+        // `text` on the panel over the worst backdrop stays ≥ 4.5:1 at the level in use.
+        const c = tokens.color[theme];
+        const worst = theme === "dark" ? "#ffffff" : "#000000";
+        const mix = (a: string, b: string, t: number) =>
+          `#${[1, 3, 5]
+            .map((i) =>
+              Math.round(
+                Number.parseInt(a.slice(i, i + 2), 16) * t +
+                  Number.parseInt(b.slice(i, i + 2), 16) * (1 - t),
+              )
+                .toString(16)
+                .padStart(2, "0"),
+            )
+            .join("")}`;
+        expect(contrast(c.text, mix(c.bg, worst, l.effective / 100))).toBeGreaterThanOrEqual(4.45);
+      }
+    }
   });
 });

@@ -36,6 +36,7 @@ public enum SirToneTokens {
         public static let durFast: CGFloat = 150
         public static let durBase: CGFloat = 250
         public static let durTheme: CGFloat = 400
+        public static let glassBlur: CGFloat = 26
         public static let durInstant: CGFloat = 100
         public static let itemHeight: CGFloat = 40
     }
@@ -54,6 +55,9 @@ public enum SirToneTokens {
         public static let timecode = TextStyle(weight: 400, size: 12, line: 16)
         public static let shortcut = TextStyle(weight: 400, size: 12, line: 16)
         public static let lyrics = TextStyle(weight: 700, size: 32, line: 40)
+        public static let nav = TextStyle(weight: 500, size: 16, line: 22)
+        public static let captionBrand = TextStyle(weight: 400, size: 15, line: 18)
+        public static let product = TextStyle(weight: 800, size: 30, line: 32)
     }
     public enum Dark {
         public static let bgBase = Color(.sRGB, red: 0.0000, green: 0.0000, blue: 0.0000, opacity: 1)

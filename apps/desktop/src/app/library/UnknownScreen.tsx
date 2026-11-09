@@ -16,6 +16,7 @@ import {
 import { Button } from "@/shared/ui/Button";
 import { Chip } from "@/shared/ui/Chip";
 import { notify } from "@/shared/ui/notify";
+import { SectionTitle } from "@/shared/ui/SectionTitle";
 import { TrackForm } from "./TrackForm";
 import { type GoTo, TrackList } from "./TrackList";
 
@@ -110,7 +111,7 @@ export function UnknownScreen({
     <section className="flex h-full min-h-0 gap-6">
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <div className="flex items-center justify-between gap-4">
-          <h1 className="t-page-title text-primary-text">{t("empty.unknown.title")}</h1>
+          <SectionTitle>{t("empty.unknown.title")}</SectionTitle>
           <Button variant="secondary" onClick={() => void retry()}>
             <RefreshCw size={16} strokeWidth={1.5} />
             {t("unknownScreen.retry")}
@@ -191,7 +192,7 @@ function AssignPanel({
   const { t } = useTranslation("shell");
   if (!item) {
     return (
-      <aside className="flex w-80 shrink-0 items-center justify-center rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+      <aside className="flex w-80 shrink-0 items-center justify-center rounded-(--radius-md) border border-border bg-bg-raised p-6">
         <p className="t-body text-center text-text-secondary">{t("unknownScreen.pick")}</p>
       </aside>
     );
@@ -201,7 +202,7 @@ function AssignPanel({
     return (
       <aside
         aria-label={t("unknownScreen.reason.quarantined")}
-        className="flex w-80 shrink-0 flex-col gap-3 self-start rounded-(--radius-xl) border border-border bg-bg-raised p-6"
+        className="flex w-80 shrink-0 flex-col gap-3 self-start rounded-(--radius-md) border border-border bg-bg-raised p-6"
       >
         <h2 className="t-card-title text-text-primary">{track.title}</h2>
         <p className="t-body text-text-secondary">{t("unknownScreen.quarantineHint")}</p>
@@ -234,7 +235,7 @@ function AssignPanel({
   return (
     <aside
       aria-label={t("unknownScreen.assignTitle")}
-      className="flex w-80 shrink-0 flex-col gap-3 self-start rounded-(--radius-xl) border border-border bg-bg-raised p-6"
+      className="flex w-80 shrink-0 flex-col gap-3 self-start rounded-(--radius-md) border border-border bg-bg-raised p-6"
     >
       {item.reason === "possible_non_track" && (
         <>

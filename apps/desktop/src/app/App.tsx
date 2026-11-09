@@ -1,5 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ExportHost } from "@/app/export/ExportDialog";
 import { CollectionScreen } from "@/app/library/CollectionScreen";
@@ -38,6 +38,7 @@ import {
 import { sfx } from "@/shared/ipc/sfx";
 import { type UpdateStatus, updateStatus } from "@/shared/ipc/updates";
 import { setWindowTheme } from "@/shared/ipc/window";
+import { cn } from "@/shared/lib/utils";
 import { autoSlug } from "@/shared/theme/autoAccent";
 import {
   type SeasonTheme,
@@ -51,6 +52,9 @@ import {
   type AccentSlug,
   type AccentSource,
   applyAppearance,
+  applyGlass,
+  type GlassPref,
+  normalizeGlass,
   normalizeTheme,
   onSystemThemeChange,
   resolveTheme,
@@ -78,6 +82,7 @@ import { QueuePanel } from "./shell/QueuePanel";
 import { SettingsScreen } from "./shell/SettingsScreen";
 import { type Screen, Sidebar } from "./shell/Sidebar";
 import { SleepBanner } from "./shell/SleepBanner";
+import { TopBar } from "./shell/TopBar";
 import { useAutoDegrade } from "./shell/useAutoDegrade";
 import { usePerformance } from "./shell/usePerformance";
 import { usePlayback } from "./shell/usePlayback";
@@ -103,12 +108,14 @@ type Appearance = {
   /** «Тема по сезону» (T4.18) and the manual accents of its themes (Q-15). */
   seasonal: boolean;
   themeAccents: Record<string, AccentSource>;
+  glass: GlassPref;
 };
 const DEFAULT: Appearance = {
   theme: "system",
   accent: { kind: "preset", slug: "sirkov" },
   seasonal: false,
   themeAccents: {},
+  glass: "medium",
 };
 
 type AccentDoc = { source: string; preset: string; custom: string | null };
@@ -124,6 +131,7 @@ function fromDoc(doc: SettingsDoc): Appearance {
     accent: parseAccent(doc.appearance.accent),
     seasonal: Boolean(doc.appearance.seasonal_theme),
     themeAccents,
+    glass: normalizeGlass(doc.appearance.glass),
   };
 }
 
@@ -149,7 +157,7 @@ function accentDoc(a: AccentSource): Record<string, unknown> {
 }
 
 function toPatch(a: Appearance): SettingsPatch {
-  return { appearance: { theme: a.theme, accent: accentDoc(a.accent) } };
+  return { appearance: { theme: a.theme, accent: accentDoc(a.accent), glass: a.glass } };
 }
 
 const NARROW = "(max-width: 899px)";
@@ -159,7 +167,10 @@ export function App() {
   const { t: tc } = useTranslation("common");
   const { snap, receivedAt, error, clearError, hydrate } = usePlayback();
   // Navigation stack (T2.1): sidebar sections and opened albums/artists; «назад» pops.
+  const { t: tn } = useTranslation("nav");
   const [stack, setStack] = useState<NavEntry[]>([{ screen: "wave", open: null }]);
+  // «Вперёд» of the top bar: what «назад» popped, until a new step is taken.
+  const [forward, setForward] = useState<NavEntry[]>([]);
   const here = stack[stack.length - 1] ?? { screen: "wave" as Screen, open: null };
   const screen = here.screen;
   const push = (e: NavEntry) =>
@@ -175,10 +186,22 @@ export function App() {
       ) {
         return s;
       }
+      setForward([]);
       return [...s.slice(-49), e];
     });
   const setScreen = (sc: Screen) => push({ screen: sc, open: null });
-  const back = () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
+  const back = () => {
+    const top = stack[stack.length - 1];
+    if (stack.length < 2 || !top) return;
+    setForward((f) => [...f, top]);
+    setStack((s) => s.slice(0, -1));
+  };
+  const goForward = () => {
+    const next = forward[forward.length - 1];
+    if (!next) return;
+    setForward((f) => f.slice(0, -1));
+    setStack((s) => [...s.slice(-49), next]);
+  };
   const [bootLibrary, setBootLibrary] = useState<LibraryStatus | null>(null);
   const lib = useLibrary(bootLibrary);
   // The question about vanished files is answered optimistically: the toast goes at once.
@@ -395,38 +418,21 @@ export function App() {
       window.clearTimeout(done);
     };
   }, [season]);
+  const barTitle = here.open?.title || tn(screen);
   const seasonOn = appearance.seasonal && !!shownSeason;
-  const themeAccent = seasonOn ? appearance.themeAccents[shownSeason.id] : undefined;
-  // What the interface wears: the theme's own accent for this theme, else the theme's seed.
-  const seasonSeed = seasonOn ? (shownSeason?.seed ?? null) : null;
-  // Stable between renders (the playback ticks must not re-apply the theme).
-  const effAccent: AccentSource = useMemo(
-    () => themeAccent ?? (seasonSeed ? { kind: "custom", hex: seasonSeed } : appearance.accent),
-    [themeAccent, seasonSeed, appearance.accent],
-  );
+  // Q-31 (D-155, T9.4): seasonal and event themes paint only the visualiser palette and the event
+  // cards; the interface accent is always the person's own.
+  const effAccent: AccentSource = appearance.accent;
   useEffect(
-    () => setThemeViz(seasonOn && !themeAccent ? (shownSeason?.viz ?? null) : null),
-    [seasonOn, themeAccent, shownSeason],
+    () => setThemeViz(seasonOn ? (shownSeason?.viz ?? null) : null),
+    [seasonOn, shownSeason],
   );
-  // What AccentPicker marks: `null` — the theme's colour (the season swatch).
-  const pickedAccent: AccentSource | null = seasonOn ? (themeAccent ?? null) : appearance.accent;
+  const pickedAccent: AccentSource | null = appearance.accent;
   const pickAccent = (a: AccentSource | null) => {
-    if (seasonOn && shownSeason) {
-      // Q-15: with «Тема по сезону» on a pick is this theme's own accent.
-      const id = shownSeason.id;
-      setAppearance(
-        (p) => {
-          const themeAccents = { ...p.themeAccents };
-          if (a) themeAccents[id] = a;
-          else delete themeAccents[id];
-          return { ...p, themeAccents };
-        },
-        { appearance: { theme_accents: { [id]: a ? accentDoc(a) : null } } },
-      );
-    } else if (a) {
-      setAppearance((p) => ({ ...p, accent: a }));
-    }
+    if (a) setAppearance((p) => ({ ...p, accent: a }));
   };
+
+  useEffect(() => applyGlass(appearance.glass), [appearance.glass]);
 
   useEffect(() => {
     const apply = () => {
@@ -510,81 +516,98 @@ export function App() {
               onNewPlaylist={lib.status.tracks > 0 ? newPlaylist : undefined}
               onNewSmart={lib.status.tracks > 0 ? newSmart : undefined}
             />
-            <main className="flex min-w-0 flex-1 flex-col overflow-auto rounded-tl-(--radius-xl) bg-bg-layer p-6">
-              {lib.rootNeeded && <RootPanel status={lib.status} onDone={rootChosen} />}
-              {screen === "settings" ? (
-                <SettingsScreen
-                  theme={appearance.theme}
-                  accent={pickedAccent}
-                  seasonSeed={seasonSeed}
-                  onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
-                  onAccent={pickAccent}
-                  library={lib.status}
-                  onChooseLibrary={() => lib.setRootNeeded(true)}
-                  onReplaySetup={() => setOnboard("setup")}
-                  onReplayTips={() => setOnboard("tips")}
-                  onShowDuplicates={() => setDupsOpen(true)}
-                />
-              ) : screen === "wave" && hasMusic ? (
-                <WaveScreen snap={snap} onGo={goTo} />
-              ) : screen === "search" && hasMusic ? (
-                <SearchScreen
-                  playingId={snap.trackId}
-                  version={lib.version}
-                  onGo={goTo}
-                  onOpenPlaylist={(id) => openPlaylist(id)}
-                />
-              ) : screen === "genres" && hasMusic ? (
-                <GenresScreen
-                  version={lib.version}
-                  playingId={snap.trackId}
-                  open={here.genre ?? null}
-                  onOpen={(g) => push({ screen: "genres", open: null, genre: g })}
-                  onBack={back}
-                  onGo={goTo}
-                />
-              ) : screen === "playlists" && here.playlist != null ? (
-                <PlaylistScreen
-                  key={here.playlist}
-                  id={here.playlist}
-                  version={lib.version}
-                  playingId={snap.trackId}
-                  editName={here.fresh ?? false}
-                  onGo={goTo}
-                  onOpen={(id) => openPlaylist(id)}
-                  onDeleted={() => leavePlaylist(here.playlist)}
-                />
-              ) : hasMusic && screen === "unknown" && lib.status.unknown > 0 ? (
-                <UnknownScreen version={lib.version} playingId={snap.trackId} onGo={goTo} />
-              ) : screen === "phones" ? (
-                <PhonesScreen />
-              ) : screen === "tracks" && hasMusic ? (
-                <TracksScreen
-                  status={lib.status}
-                  version={lib.version}
-                  playingId={snap.trackId}
-                  onGo={goTo}
-                />
-              ) : hasMusic && (screen === "albums" || screen === "artists") ? (
-                <CollectionScreen
-                  key={screen}
-                  kind={screen}
-                  status={lib.status}
-                  version={lib.version}
-                  playingId={snap.trackId}
-                  open={here.open}
-                  onOpen={(o) => push({ screen, open: o })}
-                  onBack={back}
-                />
-              ) : (
-                <EmptyScreen
-                  screen={screen}
-                  onAdd={
-                    ["wave", "albums", "artists", "tracks"].includes(screen) ? addMusic : undefined
-                  }
-                />
-              )}
-            </main>
+            <div className="flex min-w-0 flex-1 flex-col">
+              <TopBar
+                title={barTitle}
+                canBack={stack.length > 1}
+                canForward={forward.length > 0}
+                onBack={back}
+                onForward={goForward}
+              />
+              <main
+                className={cn(
+                  "flex min-w-0 flex-1 flex-col overflow-auto rounded-tl-(--radius-xl) p-6 [container-type:inline-size]",
+                  screen === "wave" && hasMusic ? "bg-transparent" : "bg-bg-layer",
+                )}
+              >
+                {lib.rootNeeded && <RootPanel status={lib.status} onDone={rootChosen} />}
+                {screen === "settings" ? (
+                  <SettingsScreen
+                    theme={appearance.theme}
+                    accent={pickedAccent}
+                    onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
+                    glass={appearance.glass}
+                    onGlass={(glass) => setAppearance((a) => ({ ...a, glass }))}
+                    onAccent={pickAccent}
+                    library={lib.status}
+                    onChooseLibrary={() => lib.setRootNeeded(true)}
+                    onReplaySetup={() => setOnboard("setup")}
+                    onReplayTips={() => setOnboard("tips")}
+                    onShowDuplicates={() => setDupsOpen(true)}
+                  />
+                ) : screen === "wave" && hasMusic ? (
+                  <WaveScreen snap={snap} onGo={goTo} />
+                ) : screen === "search" && hasMusic ? (
+                  <SearchScreen
+                    playingId={snap.trackId}
+                    version={lib.version}
+                    onGo={goTo}
+                    onOpenPlaylist={(id) => openPlaylist(id)}
+                  />
+                ) : screen === "genres" && hasMusic ? (
+                  <GenresScreen
+                    version={lib.version}
+                    playingId={snap.trackId}
+                    open={here.genre ?? null}
+                    onOpen={(g) => push({ screen: "genres", open: null, genre: g })}
+                    onBack={back}
+                    onGo={goTo}
+                  />
+                ) : screen === "playlists" && here.playlist != null ? (
+                  <PlaylistScreen
+                    key={here.playlist}
+                    id={here.playlist}
+                    version={lib.version}
+                    playingId={snap.trackId}
+                    editName={here.fresh ?? false}
+                    onGo={goTo}
+                    onOpen={(id) => openPlaylist(id)}
+                    onDeleted={() => leavePlaylist(here.playlist)}
+                  />
+                ) : hasMusic && screen === "unknown" && lib.status.unknown > 0 ? (
+                  <UnknownScreen version={lib.version} playingId={snap.trackId} onGo={goTo} />
+                ) : screen === "phones" ? (
+                  <PhonesScreen />
+                ) : screen === "tracks" && hasMusic ? (
+                  <TracksScreen
+                    status={lib.status}
+                    version={lib.version}
+                    playingId={snap.trackId}
+                    onGo={goTo}
+                  />
+                ) : hasMusic && (screen === "albums" || screen === "artists") ? (
+                  <CollectionScreen
+                    key={screen}
+                    kind={screen}
+                    status={lib.status}
+                    version={lib.version}
+                    playingId={snap.trackId}
+                    open={here.open}
+                    onOpen={(o) => push({ screen, open: o })}
+                    onBack={back}
+                  />
+                ) : (
+                  <EmptyScreen
+                    screen={screen}
+                    onAdd={
+                      ["wave", "albums", "artists", "tracks"].includes(screen)
+                        ? addMusic
+                        : undefined
+                    }
+                  />
+                )}
+              </main>
+            </div>
             {queueOpen && (
               <div className="flex shrink-0 bg-bg-layer p-3 pl-0">
                 <QueuePanel
@@ -746,7 +769,6 @@ export function App() {
             <Onboarding
               theme={appearance.theme}
               accent={pickedAccent}
-              seasonSeed={seasonSeed}
               onTheme={(theme) => setAppearance((a) => ({ ...a, theme }))}
               onAccent={pickAccent}
               status={lib.status}

@@ -16,6 +16,8 @@ export type SettingsDoc = {
       custom: string | null;
     };
     seasonal_theme?: boolean;
+    /** «Стекло» (D-156): 55 / 78 / 97 %. */
+    glass?: "transparent" | "medium" | "matte";
     /** «Ручной акцент» per seasonal/event theme (Q-15); `null` — the theme's own colour. */
     theme_accents?: Record<
       string,
@@ -30,6 +32,7 @@ export type SettingsPatch = {
     theme?: string;
     accent?: Record<string, unknown>;
     seasonal_theme?: boolean;
+    glass?: string;
     theme_accents?: Record<string, Record<string, unknown> | null>;
   };
   hotkeys?: Record<string, string | null>;

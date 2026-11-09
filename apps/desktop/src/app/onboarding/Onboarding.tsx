@@ -60,7 +60,7 @@ export function Onboarding({
         role="dialog"
         aria-modal="true"
         aria-label={t("onboarding.title")}
-        className="flyout-in flex max-h-[92vh] w-[640px] max-w-[94vw] flex-col gap-5 overflow-auto rounded-(--radius-xl) border border-border bg-bg-raised p-6"
+        className="flyout-in flex max-h-[92vh] w-[640px] max-w-[94vw] flex-col gap-5 overflow-auto rounded-(--radius-lg) border border-border bg-bg-raised p-6"
       >
         <div className="flex items-baseline justify-between gap-4">
           <h1 className="t-card-title text-text-primary">{t("onboarding.title")}</h1>
@@ -90,12 +90,7 @@ export function Onboarding({
         )}
         {step === 1 && (
           <div className="flex flex-col gap-4">
-            <AccentSwatches
-              theme={theme}
-              accent={accent}
-              seasonSeed={seasonSeed}
-              onAccent={onAccent}
-            />
+            <AccentSwatches accent={accent} seasonSeed={seasonSeed} onAccent={onAccent} />
             <SeasonSwitch />
           </div>
         )}

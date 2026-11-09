@@ -81,6 +81,15 @@ pub enum ThemePref {
     Light,
 }
 
+/// «Стекло» (D-156, DESIGN.md §8): the opacity of the panels — 55 / 78 / 97 %.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GlassLevel {
+    Transparent,
+    Medium,
+    Matte,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AccentSource {
@@ -126,6 +135,7 @@ pub struct Appearance {
     /// «Ручной акцент» of a seasonal/event theme while «Тема по сезону» is on (Q-15, D-50):
     /// theme id → its own accent; `null` — the theme's colour again.
     pub theme_accents: BTreeMap<String, Option<Accent>>,
+    pub glass: GlassLevel,
 }
 
 impl Default for Appearance {
@@ -137,6 +147,7 @@ impl Default for Appearance {
             seasonal_theme: false,
             event_themes_auto: false,
             theme_accents: BTreeMap::new(),
+            glass: GlassLevel::Medium,
         }
     }
 }
@@ -928,6 +939,14 @@ mod tests {
         assert_eq!(doc["future_feature"]["x"], 1);
         assert_eq!(typed.appearance.theme, ThemePref::Light);
         assert_eq!(typed.appearance.accent.preset, "sirkov");
+    }
+
+    #[test]
+    fn glass_defaults_to_medium_and_reads_a_level() {
+        let (_, typed) = normalize(&json!({})).unwrap();
+        assert_eq!(typed.appearance.glass, GlassLevel::Medium);
+        let (_, typed) = normalize(&json!({ "appearance": { "glass": "matte" } })).unwrap();
+        assert_eq!(typed.appearance.glass, GlassLevel::Matte);
     }
 
     #[test]

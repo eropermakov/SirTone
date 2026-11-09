@@ -46,7 +46,7 @@ export function RootPanel({
       className={
         bare
           ? "flex flex-col gap-4"
-          : "mx-auto mt-6 flex max-w-xl flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6"
+          : "mx-auto mt-6 flex max-w-xl flex-col gap-4 rounded-(--radius-md) border border-border bg-bg-raised p-6"
       }
     >
       <h2 id="root-panel-title" className="t-card-title text-text-primary">

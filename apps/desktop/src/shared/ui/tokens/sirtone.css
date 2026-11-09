@@ -437,6 +437,73 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+
+/* Glass (D-156): panels over the background; `.glass` = bg at the level's opacity + blur */
+:root {
+  --glass-blur: 26px;
+}
+:root,
+[data-theme="dark"] {
+  --glass-alpha: 78%;
+}
+[data-theme="dark"][data-glass="transparent"],
+:root:not([data-theme])[data-glass="transparent"] {
+  --glass-alpha: 57%;
+}
+[data-theme="dark"][data-glass="medium"],
+:root:not([data-theme])[data-glass="medium"] {
+  --glass-alpha: 78%;
+}
+[data-theme="dark"][data-glass="matte"],
+:root:not([data-theme])[data-glass="matte"] {
+  --glass-alpha: 97%;
+}
+[data-theme="light"] {
+  --glass-alpha: 78%;
+}
+[data-theme="light"][data-glass="transparent"] {
+  --glass-alpha: 55%;
+}
+[data-theme="light"][data-glass="medium"] {
+  --glass-alpha: 78%;
+}
+[data-theme="light"][data-glass="matte"] {
+  --glass-alpha: 97%;
+}
+.glass {
+  background: color-mix(in srgb, var(--bg-base) var(--glass-alpha), transparent);
+  backdrop-filter: blur(var(--glass-blur));
+}
+/* The dense fallback: auto-degrade / weak presets (data-blur="off"), high contrast, reduced transparency */
+:root[data-blur="off"] .glass,
+:root[data-contrast="more"] .glass {
+  background: var(--bg-base);
+  backdrop-filter: none;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background: var(--bg-base);
+    backdrop-filter: none;
+  }
+}
+
+/* «Большая надпись раздела» (DESIGN.md §13): width ratio, line, weight, tracking from type.sectionTitle */
+.section-title {
+  margin: 0;
+  overflow: hidden;
+  padding-bottom: 0.08em;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  --section-title-size: 14.5cqw;
+  font-size: min(var(--section-title-size), var(--section-title-fit, 100cqw));
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  color: transparent;
+  background-image: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--text-primary) 90%, transparent));
+  -webkit-background-clip: text;
+  background-clip: text;
+}
 .tabular {
   font-variant-numeric: tabular-nums;
 }

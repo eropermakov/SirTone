@@ -145,7 +145,7 @@ export function Menu({ items, at, label, onClose, onChosen, up }: Props) {
               onClick={() => choose(n)}
               onKeyDown={() => {}}
               className={cn(
-                "t-menu flex h-(--item-height) shrink-0 cursor-default items-center gap-3 rounded-(--radius-md) px-3",
+                "t-menu flex h-(--item-height) shrink-0 cursor-default items-center gap-3 rounded-(--radius-sm) px-3",
                 n === active && "bg-bg-hover",
                 it.danger ? "text-danger" : "text-text-primary",
                 it.disabled && "opacity-40",

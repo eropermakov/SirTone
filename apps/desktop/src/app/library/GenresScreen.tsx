@@ -8,6 +8,7 @@ import {
   playTracks,
   type TrackItem,
 } from "@/shared/ipc/library";
+import { SectionTitle } from "@/shared/ui/SectionTitle";
 import { Skeleton } from "@/shared/ui/Skeleton";
 import { type GoTo, TrackList } from "./TrackList";
 
@@ -106,7 +107,7 @@ export function GenresScreen({
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-4">
-      <h1 className="t-page-title text-primary-text">{t("genres.title")}</h1>
+      <SectionTitle>{t("genres.title")}</SectionTitle>
       {genres === null ? (
         <div className="flex flex-wrap gap-3">
           {Array.from({ length: 8 }, (_, i) => (

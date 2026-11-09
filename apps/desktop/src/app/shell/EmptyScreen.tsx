@@ -1,5 +1,6 @@
 import { FolderPlus } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { SectionTitle } from "@/shared/ui/SectionTitle";
 
 /**
  * Empty state per DESIGN.md §9: primitives illustration + one line + one Primary button.
@@ -15,7 +16,7 @@ export function EmptyScreen({
   const { t } = useTranslation("shell");
   return (
     <section className="flex h-full flex-col">
-      <h1 className="t-page-title text-primary-text">{t(`empty.${screen}.title`)}</h1>
+      <SectionTitle>{t(`empty.${screen}.title`)}</SectionTitle>
       <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
         <div aria-hidden className="relative h-28 w-40">
           <div className="absolute top-2 left-4 size-20 rounded-full bg-artwork-placeholder" />
@@ -34,7 +35,7 @@ export function EmptyScreen({
             {t("empty.action")}
           </button>
           {!onAdd && (
-            <span className="t-badge rounded-full border border-inactive px-2 py-0.5 text-text-secondary">
+            <span className="t-badge rounded-(--radius-xs) border border-inactive px-2 py-0.5 text-text-secondary">
               {t("empty.soon")}
             </span>
           )}

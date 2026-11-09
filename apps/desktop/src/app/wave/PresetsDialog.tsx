@@ -68,7 +68,7 @@ export function PresetsDialog({ onClose }: { onClose: () => void }) {
                 milkdropControl.toggleLock();
               }}
               className={cn(
-                "t-body h-(--button-height) rounded-full border px-4",
+                "t-body h-(--button-height) rounded-(--radius-sm) border px-4",
                 mode === m
                   ? "border-transparent bg-accent-fill text-accent-on"
                   : "border-border text-text-primary hover:bg-bg-hover",
@@ -102,7 +102,7 @@ export function PresetsDialog({ onClose }: { onClose: () => void }) {
         onChange={(e) => setQ(e.target.value)}
         placeholder={t("viz.presets.search")}
         aria-label={t("viz.presets.search")}
-        className="t-body h-(--button-height) rounded-full border border-border bg-bg-layer px-4 text-text-primary"
+        className="t-body h-(--button-height) rounded-(--radius-sm) border border-border bg-bg-layer px-4 text-text-primary"
       />
       <ul className="m-0 flex max-h-96 list-none flex-col overflow-auto p-0">
         {shown.slice(0, SHOWN).map((p) => (

@@ -360,7 +360,6 @@ export class WavesEngine {
     const c = this.c;
     const m = look.motion;
     const reduced = this.opts.reducedMotion;
-    const f = this.frame;
     // The shape follows only the track's character (eased over a track change), not the beat.
     const target = m.warpBase;
     const dt = this.warpAt ? Math.min(0.1, (now - this.warpAt) / 1000) : 0;

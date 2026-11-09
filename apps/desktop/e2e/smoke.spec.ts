@@ -28,7 +28,7 @@ test("navigation, theme and colour switch apply instantly", async ({ page }) => 
 test("sidebar collapses below 900 px (DESIGN.md §7)", async ({ page }) => {
   await page.setViewportSize({ width: 860, height: 700 });
   await page.goto("/");
-  await expect(page.locator("nav")).toHaveCSS("width", "64px");
+  await expect(page.locator("nav")).toHaveCSS("width", "84px");
 });
 
 test("two themes, monochrome with the #650A12 accent (D-155, FR-LOOK-001/002)", async ({
@@ -60,4 +60,46 @@ test("performance presets switch motion at once (T2.3)", async ({ page }) => {
   await expect(html).toHaveAttribute("data-motion", "1.5");
   await page.getByRole("switch", { name: "Анимации интерфейса" }).click();
   await expect(html).toHaveAttribute("data-motion", "0");
+});
+
+test("glass: three levels, panels follow the level (D-156, FR-LOOK-007)", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки" }).click();
+  const html = page.locator("html");
+  for (const [name, level] of [
+    ["Матовое", "matte"],
+    ["Прозрачное", "transparent"],
+    ["Среднее", "medium"],
+  ] as const) {
+    await page.getByRole("group", { name: "Стекло" }).getByRole("button", { name }).click();
+    await expect(html).toHaveAttribute("data-glass", level);
+  }
+  await expect(page.locator("nav")).toHaveClass(/glass/);
+  await expect(page.locator("footer")).toHaveClass(/glass/);
+});
+
+test("motion: one curve, and «уменьшить движение» leaves only opacity (DESIGN.md §9, FR-LOOK-010)", async ({
+  browser,
+}) => {
+  const normal = await browser.newPage();
+  await normal.goto("/");
+  const nav = normal.locator("nav button", { hasText: "Исполнители" });
+  const curve = await nav.evaluate((el) => getComputedStyle(el).transitionTimingFunction);
+  expect(curve).toBe("cubic-bezier(0, 0, 0, 1)");
+  // The duration is the token of the performance level (--dur-fast), never a literal.
+  const [ms, token] = await nav.evaluate((el) => {
+    const toMs = (v: string) =>
+      v.trim().endsWith("ms") ? Number.parseFloat(v) : Number.parseFloat(v) * 1000;
+    return [
+      toMs(getComputedStyle(el).transitionDuration),
+      toMs(getComputedStyle(document.documentElement).getPropertyValue("--dur-fast")),
+    ];
+  });
+  expect(ms).toBeCloseTo(token as number, 0);
+  await normal.close();
+  const calm = await browser.newPage({ reducedMotion: "reduce" });
+  await calm.goto("/");
+  const cn = calm.locator("nav button", { hasText: "Исполнители" });
+  expect(await cn.evaluate((el) => getComputedStyle(el).transitionProperty)).toBe("opacity");
+  await calm.close();
 });
