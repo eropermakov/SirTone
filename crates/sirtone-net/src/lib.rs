@@ -22,6 +22,14 @@ pub enum Host {
     OpenMeteo,
     Geocoding,
     ListenBrainz,
+    /// Album search for covers (D-162).
+    Deezer,
+    /// Deezer cover images (host `cdn-images.dzcdn.net`).
+    DeezerImages,
+    /// iTunes Search for covers (D-162).
+    Itunes,
+    /// Apple cover images (host `is1-ssl.mzstatic.com`).
+    AppleImages,
 }
 
 /// How a host is called (`03` §11).
@@ -61,16 +69,26 @@ impl Host {
                 MB,
             ),
             Self::ListenBrainz => p("https://api.listenbrainz.org/1/", 1000, 30 * DAY, MB),
+            // D-162: ≤ 2 req/s (the service allows ≈ 10/s); a miss is cached too.
+            Self::Deezer => p("https://api.deezer.com/", 500, 30 * DAY, MB),
+            Self::DeezerImages => p("https://cdn-images.dzcdn.net/", 250, 90 * DAY, 10 * MB),
+            // ≈ 20 req/min allowed: one every 3 s.
+            Self::Itunes => p("https://itunes.apple.com/", 3000, 30 * DAY, MB),
+            Self::AppleImages => p("https://is1-ssl.mzstatic.com/", 250, 90 * DAY, 10 * MB),
         }
     }
 
-    const ALL: [Host; 6] = [
+    const ALL: [Host; 10] = [
         Self::AcoustId,
         Self::MusicBrainz,
         Self::CoverArt,
         Self::OpenMeteo,
         Self::Geocoding,
         Self::ListenBrainz,
+        Self::Deezer,
+        Self::DeezerImages,
+        Self::Itunes,
+        Self::AppleImages,
     ];
 }
 

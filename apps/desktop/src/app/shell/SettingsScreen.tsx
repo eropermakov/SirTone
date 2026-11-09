@@ -23,7 +23,12 @@ import { getSnapshot, onSnapshot } from "@/shared/ipc/playback";
 import { getSettings, onSettingsChanged, patchSettings } from "@/shared/ipc/settings";
 import { sfx } from "@/shared/ipc/sfx";
 import { sleepCaps } from "@/shared/ipc/sleep";
-import { clearOldLogs, type StorageInfo, storageInfo } from "@/shared/ipc/storage";
+import {
+  clearOldLogs,
+  findCoversOnline,
+  type StorageInfo,
+  storageInfo,
+} from "@/shared/ipc/storage";
 import {
   autostartAvailable,
   type HotkeyAction,
@@ -160,7 +165,9 @@ export function SettingsScreen({
                 onChange={(e) => onZoom(Number(e.target.value))}
                 className="w-48 accent-(--accent-text)"
               />
-              <span className="t-body tabular w-14 whitespace-nowrap text-right text-text-primary">{zoom} %</span>
+              <span className="t-body tabular w-14 whitespace-nowrap text-right text-text-primary">
+                {zoom} %
+              </span>
             </span>
           </div>
 
@@ -688,6 +695,25 @@ function ServiceData() {
         <dt>{t("settingsStorage.logs")}</dt>
         <dd className="text-text-primary">{t("trackCard.mb", { value: mbOf(info.logsBytes) })}</dd>
       </dl>
+      <Button
+        variant="secondary"
+        className="self-start"
+        onClick={() =>
+          findCoversOnline()
+            .then((started) =>
+              notify(
+                t(
+                  started
+                    ? "settingsStorage.findCoversStarted"
+                    : "settingsStorage.findCoversOffline",
+                ),
+              ),
+            )
+            .catch(() => notify(t("wave.failed")))
+        }
+      >
+        {t("settingsStorage.findCovers")}
+      </Button>
       {info.oldLogs > 0 && (
         <Button
           variant="secondary"

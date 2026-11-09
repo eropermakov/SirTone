@@ -5,6 +5,7 @@ pub mod identify;
 pub mod name;
 pub mod online;
 pub mod tags;
+pub mod web_covers;
 
 pub use covers::LoftyCovers;
 pub use identify::{TagIdentify, similarity, split_artists};

@@ -169,6 +169,9 @@
     "covers": "Кэш обложек",
     "coversValue": "{value} МБ · {count, plural, one {# файл} few {# файла} many {# файлов} other {# файла}}",
     "logs": "Журналы диагностики",
+    "findCovers": "Найти обложки в интернете",
+    "findCoversStarted": "Ищу обложки: Cover Art Archive, Deezer, iTunes. Найденные появятся сами",
+    "findCoversOffline": "Работа офлайн — поиск обложек недоступен",
     "clearLogs": "Удалить старые журналы ({count})",
     "logsCleared": "{count, plural, one {Удалён # журнал} few {Удалено # журнала} many {Удалено # журналов} other {Удалено # журнала}}"
   },
