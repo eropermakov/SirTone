@@ -13,6 +13,8 @@
       "!**/src-tauri/gen",
       "!DESIGN.md",
       "!**/shared/ipc/bindings.ts",
+      "!**/tokens/tokens.generated.ts",
+      "!**/tokens/sirtone.css",
       "!crates/*/tests/data",
       "!assets/viz/milkdrop",
       "!assets/legal"

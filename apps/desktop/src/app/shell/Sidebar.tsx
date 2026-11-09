@@ -123,7 +123,7 @@ export function Sidebar({
           {collapsed && (badges?.[it.id] ?? 0) > 0 && (
             <span
               aria-hidden
-              className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-accent-fill"
+              className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-accent-text"
             />
           )}
         </span>

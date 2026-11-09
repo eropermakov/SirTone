@@ -1,11 +1,10 @@
 import { generateAccentSet, type Theme } from "../lib/color";
 
-/** Owner palettes (D-74): complete dark themes with their own accent. */
-export const PALETTES = ["ember", "mono"] as const;
-export type Palette = (typeof PALETTES)[number];
-export type ThemePref = "system" | Theme | Palette;
-export const isPalette = (p: ThemePref): p is Palette =>
-  (PALETTES as readonly string[]).includes(p);
+/** Themes (DESIGN.md 2.1, FR-LOOK-001): «Авто» follows the system. The old owner palettes (D-74) are gone (D-155). */
+export type ThemePref = "system" | Theme;
+/** Stored values of removed themes (ember, mono, …) and anything unknown become «Авто» (D-155). */
+export const normalizeTheme = (v: unknown): ThemePref =>
+  v === "dark" || v === "light" || v === "system" ? v : "system";
 /** 17 owner sets (DESIGN.md §4) in AccentPicker order: cold → neutral → warm → red. */
 export const ACCENT_SLUGS = [
   "sirkov",
@@ -34,14 +33,14 @@ export type AccentSource =
   | { kind: "auto" };
 
 const media = () => window.matchMedia("(prefers-color-scheme: light)");
+const contrastMedia = () => window.matchMedia("(prefers-contrast: more)");
 
 export function resolveTheme(pref: ThemePref): Theme {
-  if (isPalette(pref)) return "dark";
   if (pref !== "system") return pref;
   return media().matches ? "light" : "dark";
 }
 
-const CUSTOM_VARS = ["accent-fill", "accent-text", "accent-on", "primary", "primary-text"] as const;
+const CUSTOM_VARS = ["accent-fill", "accent-text", "accent-on"] as const;
 
 /** Applies theme + accent to <html> with one write per change (docs/06 §4.2, D-58). */
 export function applyAppearance(
@@ -55,29 +54,27 @@ export function applyAppearance(
   const root = document.documentElement;
   const theme = resolveTheme(pref);
   root.dataset.theme = theme;
-  if (isPalette(pref)) {
-    // The palette brings its own accent: the user's colour waits until another theme is chosen.
-    root.dataset.palette = pref;
-    for (const v of CUSTOM_VARS) root.style.removeProperty(`--${v}`);
-    return;
-  }
-  delete root.dataset.palette;
+  // High contrast follows the system setting (lightHC / darkHC, FR-LOOK-001).
+  if (contrastMedia().matches) root.dataset.contrast = "more";
+  else delete root.dataset.contrast;
   if (accent.kind === "preset") {
     root.dataset.accent = accent.slug;
     for (const v of CUSTOM_VARS) root.style.removeProperty(`--${v}`);
   } else {
     root.dataset.accent = "custom";
     const s = generateAccentSet(accent.hex, theme);
-    const values = [s.accentFill, s.accentText, s.accentOn, s.primary, s.primaryText];
+    const values = [s.accentFill, s.accentText, s.accentOn];
     for (const [i, v] of CUSTOM_VARS.entries()) {
       root.style.setProperty(`--${v}`, values[i] ?? null);
     }
   }
 }
 
-/** Calls back when the OS switches light/dark (used while pref = "system"). */
+/** Calls back when the OS switches light/dark or high contrast. */
 export function onSystemThemeChange(cb: () => void): () => void {
-  const m = media();
-  m.addEventListener("change", cb);
-  return () => m.removeEventListener("change", cb);
+  const ms = [media(), contrastMedia()];
+  for (const m of ms) m.addEventListener("change", cb);
+  return () => {
+    for (const m of ms) m.removeEventListener("change", cb);
+  };
 }

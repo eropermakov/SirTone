@@ -10,7 +10,8 @@
     "typecheck": "tsc -b",
     "build:mobile-viz": "vite build -c vite.mobile-viz.config.ts",
     "tauri": "tauri",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "gen:tokens": "node ../../scripts/gen-tokens.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "6.3.1",

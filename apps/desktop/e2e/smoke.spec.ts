@@ -7,7 +7,7 @@ test("shell renders with DESIGN.md tokens and Russian UI", async ({ page }) => {
     "page",
   );
   await expect(page.locator("footer")).toHaveCSS("height", "84px");
-  await expect(page.locator("nav")).toHaveCSS("width", "260px");
+  await expect(page.locator("nav")).toHaveCSS("width", "280px");
   const fontOk = await page.evaluate(async () => {
     await document.fonts.ready;
     return [...document.fonts].some((f) => f.family === "Geologica" && f.status === "loaded");
@@ -20,7 +20,7 @@ test("navigation, theme and colour switch apply instantly", async ({ page }) => 
   await page.getByRole("button", { name: "Настройки" }).click();
   await page.getByRole("button", { name: "Светлая" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(239, 233, 223)");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(244, 244, 244)");
   await page.getByRole("button", { name: "Бордовый" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-accent", "bordeaux");
 });
@@ -31,21 +31,22 @@ test("sidebar collapses below 900 px (DESIGN.md §7)", async ({ page }) => {
   await expect(page.locator("nav")).toHaveCSS("width", "64px");
 });
 
-test("owner palettes: orange and black & white (D-74)", async ({ page }) => {
+test("two themes, monochrome with the #650A12 accent (D-155, FR-LOOK-001/002)", async ({
+  page,
+}) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Настройки" }).click();
-  await page.getByRole("button", { name: "Оранжевая" }).click();
   const html = page.locator("html");
-  await expect(html).toHaveAttribute("data-palette", "ember");
-  await expect(html).toHaveAttribute("data-theme", "dark");
-  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(17, 13, 12)");
-  await expect(page.getByRole("button", { name: "Синий" })).toBeDisabled();
-  await page.getByRole("button", { name: "Чёрно-белая" }).click();
-  await expect(html).toHaveAttribute("data-palette", "mono");
-  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(17, 13, 12)");
   await page.getByRole("button", { name: "Тёмная" }).click();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(0, 0, 0)");
+  await page.getByRole("button", { name: "Светлая" }).click();
+  await expect(html).toHaveAttribute("data-theme", "light");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(244, 244, 244)");
+  // The removed owner palettes and Fabric are gone (D-155).
+  await expect(page.getByRole("button", { name: "Оранжевая" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Чёрно-белая" })).toHaveCount(0);
   await expect(html).not.toHaveAttribute("data-palette", /./);
-  await expect(page.getByRole("button", { name: "Синий" })).toBeEnabled();
 });
 
 test("performance presets switch motion at once (T2.3)", async ({ page }) => {

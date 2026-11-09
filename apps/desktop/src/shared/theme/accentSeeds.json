@@ -1,0 +1,19 @@
+{
+  "_source": "The 17 owner colours (DESIGN.md 1.x §13, D-58): seeds per theme. Since 2.1 (D-155, Q-30) the sets are recomputed against the new backgrounds by scripts/gen-tokens.mjs (T9.3). «sirkov» is not here — it is color.*.accent of DESIGN.md.",
+  "blue": { "dark": "#6fa0ff", "light": "#2c68e7" },
+  "violet": { "dark": "#9b7bff", "light": "#6a3df0" },
+  "lilac": { "dark": "#b98cf0", "light": "#8a4fd6" },
+  "lavender": { "dark": "#d4a8f0", "light": "#a86ccf" },
+  "gray": { "dark": "#a3a3a3", "light": "#6b6b6b" },
+  "black": { "dark": "#f2f2f2", "light": "#1a1a1a" },
+  "yellow": { "dark": "#f5c842", "light": "#ab7f03" },
+  "orange": { "dark": "#ff9a3d", "light": "#d36909" },
+  "ginger": { "dark": "#f08a45", "light": "#bf4d09" },
+  "coral": { "dark": "#ff8a73", "light": "#e5533d" },
+  "brick": { "dark": "#d9765a", "light": "#b0482c" },
+  "lightred": { "dark": "#ff8a8a", "light": "#eb5050" },
+  "red": { "dark": "#ff5a5a", "light": "#dc1e20" },
+  "darkred": { "dark": "#c53637", "light": "#a8121e" },
+  "burgundy": { "dark": "#b54369", "light": "#8f1d4a" },
+  "bordeaux": { "dark": "#ae4d47", "light": "#7a1c1c" }
+}

@@ -18,15 +18,15 @@ pub struct CaptionColors {
 }
 
 pub const DARK: CaptionColors = CaptionColors {
-    background: 0x110d0c,
-    text: 0xf3ece2,
+    background: 0x000000,
+    text: 0xf2f2f2,
 };
-/// Owner palettes (D-74): «Оранжевая» and «Чёрно-белая» — on the dark neutrals (D-144).
+/// Owner palettes (D-74): removed by D-155 (kept until the Rust side is cleaned, T9.9).
 pub const EMBER: CaptionColors = DARK;
 pub const MONO: CaptionColors = DARK;
 pub const LIGHT: CaptionColors = CaptionColors {
-    background: 0xefe9df,
-    text: 0x1c1616,
+    background: 0xf4f4f4,
+    text: 0x1a1a1a,
 };
 
 /// 0xRRGGBB → COLORREF (0x00BBGGRR).
@@ -71,6 +71,6 @@ mod tests {
     #[test]
     fn colorref_swaps_red_and_blue() {
         assert_eq!(colorref(0x161111), 0x111116);
-        assert_eq!(colorref(0xefe9df), 0xdfe9ef);
+        assert_eq!(colorref(0xf4f4f4), 0xf4f4f4);
     }
 }

@@ -36,7 +36,7 @@ import { accelFromEvent } from "@/shared/lib/hotkeys";
 import { cn } from "@/shared/lib/utils";
 import { benchmark, score } from "@/shared/theme/autodetect";
 import { applyPerformance, profile } from "@/shared/theme/performance";
-import { ACCENT_SLUGS, type AccentSource, isPalette, type ThemePref } from "@/shared/theme/theme";
+import { ACCENT_SLUGS, type AccentSource, type ThemePref } from "@/shared/theme/theme";
 import { Button } from "@/shared/ui/Button";
 import { Chip } from "@/shared/ui/Chip";
 import { Dialog } from "@/shared/ui/Dialog";
@@ -70,8 +70,6 @@ const THEMES: { id: ThemePref; key: string }[] = [
   { id: "system", key: "settings.themeSystem" },
   { id: "dark", key: "settings.themeDark" },
   { id: "light", key: "settings.themeLight" },
-  { id: "ember", key: "settings.themeEmber" },
-  { id: "mono", key: "settings.themeMono" },
 ];
 
 /** Settings → Внешний вид: theme + AccentPicker (DESIGN.md §9), applied instantly, no «Сохранить». */
@@ -104,9 +102,6 @@ export function SettingsScreen({
 
         <div className="flex flex-col gap-4 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
           <span className="t-card-title text-text-primary">{t("settings.color")}</span>
-          {isPalette(theme) && (
-            <span className="t-caption text-text-secondary">{t("settings.accentByTheme")}</span>
-          )}
           <AccentSwatches
             theme={theme}
             accent={accent}
@@ -703,7 +698,6 @@ export function AccentSwatches({
   const customHex = accent?.kind === "custom" ? accent.hex : "#3b82f6";
   return (
     <fieldset
-      disabled={isPalette(theme)}
       className="m-0 border-0 p-0 flex flex-wrap gap-3 disabled:opacity-40"
       aria-label={t("settings.color")}
     >
@@ -754,13 +748,7 @@ export function AccentSwatches({
               "relative flex size-8 items-center justify-center rounded-full",
               selected && "ring-2 ring-text-primary ring-offset-[3px] ring-offset-bg-raised",
             )}
-            style={
-              slug === "sirkov"
-                ? {
-                    background: `linear-gradient(135deg, var(--accent-${slug}-primary) 50%, var(--accent-${slug}-fill) 50%)`,
-                  }
-                : { background: `var(--accent-${slug}-fill)` }
-            }
+            style={{ background: `var(--accent-${slug}-fill)` }}
           >
             {selected && (
               <Check size={16} strokeWidth={2} style={{ color: `var(--accent-${slug}-on)` }} />
