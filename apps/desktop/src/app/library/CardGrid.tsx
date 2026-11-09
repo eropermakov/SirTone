@@ -16,6 +16,7 @@ import { openExport } from "@/app/export/ExportDialog";
 import { cn } from "@/shared/lib/utils";
 import { Cover } from "@/shared/ui/Cover";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
+import { announceScroll } from "@/shared/ui/SectionTitle";
 import { Skeleton } from "@/shared/ui/Skeleton";
 
 /** DESIGN.md §6/§9: cards keep 184 px; the column count follows the width. */
@@ -127,7 +128,11 @@ export function CardGrid({
   ];
 
   return (
-    <div ref={scroller} className="min-h-0 flex-1 overflow-auto">
+    <div
+      ref={scroller}
+      className="min-h-0 flex-1 overflow-auto overscroll-contain"
+      onScroll={(e) => announceScroll(e.currentTarget.scrollTop)}
+    >
       <ul
         aria-label={label}
         className="relative m-0 list-none p-0"

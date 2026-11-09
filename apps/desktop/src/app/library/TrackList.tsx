@@ -26,6 +26,7 @@ import { cn } from "@/shared/lib/utils";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
 import { PlayingBars } from "@/shared/ui/PlayingBars";
+import { announceScroll } from "@/shared/ui/SectionTitle";
 import { TrackCard } from "./TrackCard";
 
 /** Fixed row height from DESIGN.md §13 `--row-height` (virtualisation needs the number). */
@@ -216,7 +217,11 @@ export function TrackList({
   const menuTrack = menu ? tracks[menu.index] : undefined;
 
   return (
-    <div ref={scroller} className="min-h-0 flex-1 overflow-auto">
+    <div
+      ref={scroller}
+      className="min-h-0 flex-1 overflow-auto overscroll-contain"
+      onScroll={(e) => announceScroll(e.currentTarget.scrollTop)}
+    >
       <ul
         aria-label={label}
         className="relative m-0 list-none p-0"
