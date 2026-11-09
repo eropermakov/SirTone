@@ -16,6 +16,7 @@ import {
 import { Button } from "@/shared/ui/Button";
 import { Chip } from "@/shared/ui/Chip";
 import { notify } from "@/shared/ui/notify";
+import { SectionTitle } from "@/shared/ui/SectionTitle";
 import { TrackForm } from "./TrackForm";
 import { type GoTo, TrackList } from "./TrackList";
 
@@ -110,7 +111,7 @@ export function UnknownScreen({
     <section className="flex h-full min-h-0 gap-6">
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <div className="flex items-center justify-between gap-4">
-          <h1 className="t-page-title text-primary-text">{t("empty.unknown.title")}</h1>
+          <SectionTitle>{t("empty.unknown.title")}</SectionTitle>
           <Button variant="secondary" onClick={() => void retry()}>
             <RefreshCw size={16} strokeWidth={1.5} />
             {t("unknownScreen.retry")}

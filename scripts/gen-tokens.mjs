@@ -199,6 +199,27 @@ ${sp.map(([s, v]) => `  --space-${spaceName(s)}: ${px(v)};`).join("\n")}
   css += style("body", "t-body") + style("badge", "t-badge");
   css += `.t-badge {\n  text-transform: uppercase;\n  letter-spacing: 0.06em;\n}\n`;
   css += glassCss(t);
+  const st = t.type.sectionTitle;
+  css += `
+/* «Большая надпись раздела» (DESIGN.md §13): width ratio, line, weight, tracking from type.sectionTitle */
+`;
+  css += `.section-title {
+  margin: 0;
+  overflow: hidden;
+  padding-bottom: 0.08em;
+  font-family: var(--font-sans);
+  font-weight: ${st.weight};
+  --section-title-size: ${(st.widthRatio * 100).toFixed(1)}cqw;
+  font-size: min(var(--section-title-size), var(--section-title-fit, 100cqw));
+  line-height: ${st.lineHeight};
+  letter-spacing: ${st.tracking}em;
+  white-space: nowrap;
+  color: transparent;
+  background-image: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--text-primary) 90%, transparent));
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+`;
   css += `.tabular {\n  font-variant-numeric: tabular-nums;\n}\n`;
   css += `html {\n  font-family: var(--font-sans);\n  font-variation-settings:\n    "CRSV" 0,\n    "SHRP" 0;\n}\n`;
 

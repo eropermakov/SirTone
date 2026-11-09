@@ -486,6 +486,24 @@
     backdrop-filter: none;
   }
 }
+
+/* «Большая надпись раздела» (DESIGN.md §13): width ratio, line, weight, tracking from type.sectionTitle */
+.section-title {
+  margin: 0;
+  overflow: hidden;
+  padding-bottom: 0.08em;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  --section-title-size: 14.5cqw;
+  font-size: min(var(--section-title-size), var(--section-title-fit, 100cqw));
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  color: transparent;
+  background-image: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--text-primary) 90%, transparent));
+  -webkit-background-clip: text;
+  background-clip: text;
+}
 .tabular {
   font-variant-numeric: tabular-nums;
 }

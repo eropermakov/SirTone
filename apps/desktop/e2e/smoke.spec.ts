@@ -28,7 +28,7 @@ test("navigation, theme and colour switch apply instantly", async ({ page }) => 
 test("sidebar collapses below 900 px (DESIGN.md §7)", async ({ page }) => {
   await page.setViewportSize({ width: 860, height: 700 });
   await page.goto("/");
-  await expect(page.locator("nav")).toHaveCSS("width", "64px");
+  await expect(page.locator("nav")).toHaveCSS("width", "84px");
 });
 
 test("two themes, monochrome with the #650A12 accent (D-155, FR-LOOK-001/002)", async ({

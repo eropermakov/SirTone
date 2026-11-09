@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { allTracks, type LibraryStatus, playTracks, type TrackItem } from "@/shared/ipc/library";
 import { Button } from "@/shared/ui/Button";
 import { Menu } from "@/shared/ui/Menu";
+import { SectionTitle } from "@/shared/ui/SectionTitle";
 import { SkeletonRows } from "@/shared/ui/Skeleton";
 import { CollectionSummary } from "./CollectionScreen";
 import { loadSort, next, saveSort, sortTracks, TRACK_SORTS } from "./sort";
@@ -49,7 +50,7 @@ export function TracksScreen({
   return (
     <section className="flex h-full min-h-0 flex-col gap-2">
       <div className="flex items-center justify-between gap-4">
-        <h1 className="t-page-title text-primary-text">{t("empty.tracks.title")}</h1>
+        <SectionTitle>{t("empty.tracks.title")}</SectionTitle>
         <Button
           variant="ghost"
           onClick={(e) => {

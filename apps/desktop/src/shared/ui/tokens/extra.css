@@ -188,3 +188,14 @@
 .t-shortcut {
   font-variant-numeric: tabular-nums;
 }
+
+/* Menu header and rows (DESIGN.md §13 «Меню как у Apple»): sizes from the file's text, not in its tokens. */
+.t-nav {
+  font: 500 16px / 22px var(--font-sans);
+}
+.t-caption-brand {
+  font: 400 15px / 18px var(--font-sans);
+}
+.t-product {
+  font: 800 30px / 32px var(--font-sans);
+}

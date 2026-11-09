@@ -47,6 +47,7 @@ import { Button } from "@/shared/ui/Button";
 import { Chip } from "@/shared/ui/Chip";
 import { Dialog } from "@/shared/ui/Dialog";
 import { notify } from "@/shared/ui/notify";
+import { SectionTitle } from "@/shared/ui/SectionTitle";
 import { Slider } from "@/shared/ui/Slider";
 import { Switch } from "@/shared/ui/Switch";
 import { FX_TYPES, type FxType, isFxType } from "@/shared/viz/fxPlan";
@@ -99,8 +100,8 @@ export function SettingsScreen({
   const [licenses, setLicenses] = useState(false);
 
   return (
-    <section className="flex max-w-3xl flex-col gap-12">
-      <h1 className="t-page-title text-primary-text">{t("settings.title")}</h1>
+    <section className="flex flex-col gap-12 [&>:not(h1)]:max-w-3xl">
+      <SectionTitle>{t("settings.title")}</SectionTitle>
 
       <div className="flex flex-col gap-4">
         <h2 className="t-shelf-title text-primary-text">{t("settings.appearance")}</h2>

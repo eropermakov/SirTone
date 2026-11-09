@@ -17,6 +17,7 @@ import { Button } from "@/shared/ui/Button";
 import { Cover } from "@/shared/ui/Cover";
 import { Menu } from "@/shared/ui/Menu";
 import { notify } from "@/shared/ui/notify";
+import { SectionTitle } from "@/shared/ui/SectionTitle";
 import { ArtistMerge } from "./ArtistMerge";
 import { ArtistRemove } from "./ArtistRemove";
 import { type Card, CardGrid } from "./CardGrid";
@@ -226,7 +227,7 @@ export function CollectionScreen({
   return (
     <section className="flex h-full min-h-0 flex-col gap-2">
       <div className="flex items-center justify-between gap-4">
-        <h1 className="t-page-title text-primary-text">{t(`empty.${kind}.title`)}</h1>
+        <SectionTitle>{t(`empty.${kind}.title`)}</SectionTitle>
         <Button
           variant="ghost"
           onClick={(e) => {
