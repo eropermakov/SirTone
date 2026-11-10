@@ -860,9 +860,14 @@ test("Bluetooth in the player: paired devices, connect, play through (T5.4)", as
   await page.goto("/");
   await page.getByRole("button", { name: "Bluetooth", exact: true }).click();
   // The menu grows up from the bottom bar and stays inside the window (owner, proto 32).
-  const box = await page.getByRole("menu", { name: "Bluetooth" }).boundingBox();
+  // The menu animates in: poll until it has settled inside the window.
   const vh = page.viewportSize()?.height ?? 0;
-  expect(box && box.y >= 0 && box.y + box.height <= vh).toBe(true);
+  await expect
+    .poll(async () => {
+      const box = await page.getByRole("menu", { name: "Bluetooth" }).boundingBox();
+      return Boolean(box && box.y >= 0 && box.y + box.height <= vh);
+    })
+    .toBe(true);
   await page.getByRole("menuitem", { name: "WH-1000XM4" }).click();
   await page.getByRole("menuitem", { name: "Подключить" }).click();
   await expect
