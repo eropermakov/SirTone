@@ -364,8 +364,8 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
           }
         />
       ) : (
-        // The background continues under the glass panels (DESIGN.md §8): the whole window, not the screen.
-        <div aria-hidden className="pointer-events-none fixed inset-0">
+        // The visualiser fills the one big rounded panel (as before the redesign, owner proto 44).
+        <div aria-hidden className="pointer-events-none absolute inset-0">
           <VizBackground trackId={id} cover={snap.cover} />
         </div>
       )}
