@@ -540,17 +540,22 @@ export function App() {
               onNewSmart={lib.status.tracks > 0 ? newSmart : undefined}
             />
             <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-(--radius-xl)">
-              <TopBar
-                title={barTitle}
-                canBack={stack.length > 1}
-                canForward={forward.length > 0}
-                onBack={back}
-                onForward={goForward}
-              />
+              {/* «Моя волна» is one big rounded panel of the visualiser, no bar over it (owner, proto 44). */}
+              {!(screen === "wave" && hasMusic) && (
+                <TopBar
+                  title={barTitle}
+                  canBack={stack.length > 1}
+                  canForward={forward.length > 0}
+                  onBack={back}
+                  onForward={goForward}
+                />
+              )}
               <main
                 className={cn(
-                  "flex min-w-0 flex-1 flex-col overflow-auto p-6 [container-type:inline-size]",
-                  screen === "wave" && hasMusic ? "bg-transparent" : "bg-bg-layer",
+                  "flex min-w-0 flex-1 flex-col [container-type:inline-size]",
+                  screen === "wave" && hasMusic
+                    ? "overflow-hidden bg-transparent p-0"
+                    : "overflow-auto bg-bg-layer p-6",
                 )}
               >
                 {lib.rootNeeded && <RootPanel status={lib.status} onDone={rootChosen} />}
