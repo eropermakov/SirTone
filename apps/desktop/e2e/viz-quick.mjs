@@ -46,7 +46,7 @@ await page.waitForSelector("footer");
 await invoke("import_paths", { paths: [join(root, "fixtures", "generated", "import500", "Air")] });
 await page.getByRole("button", { name: "Продолжить" }).click();
 await page.getByRole("status").filter({ hasText: "Музыка добавлена" }).waitFor({ timeout: 60000 });
-await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+await page.getByRole("navigation").getByRole("button", { name: "Мой поток" }).click();
 await invoke("wave_start", {});
 await sleep(1500);
 await invoke("settings_patch", { patch: { viz: { mode: "milkdrop" } } });

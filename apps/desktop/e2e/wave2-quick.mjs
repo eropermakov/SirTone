@@ -1,7 +1,7 @@
-// «Настроить волну» 2.0 and friends in the real app, isolated (T5.7, T5.11, T5.16):
+// «Настроить поток» 2.0 and friends in the real app, isolated (T5.7, T5.11, T5.16):
 // 1) the live counter «Подходит N треков» counts the library and narrows with a filter;
-// 2) «Волна по треку» plays the track, then keeps going past where a playlist would stop;
-// 3) «Состав волны»: the chips name the context, a pressed chip stays off for the session and a
+// 2) «Поток по треку» plays the track, then keeps going past where a playlist would stop;
+// 3) «Состав потока»: the chips name the context, a pressed chip stays off for the session and a
 //    new wave starts with all on; 4) the contextual name says when it changes next.
 // SMOKE_PORT=9362 node apps/desktop/e2e/wave2-quick.mjs
 
@@ -104,7 +104,7 @@ try {
   const s0 = await invoke("playback_snapshot", {});
   let q = await invoke("queue_get", {});
   check(
-    "«Волна по треку» plays the track first",
+    "«Поток по треку» plays the track first",
     s0.trackId === seed && q.items.length >= 2,
     `${s0.trackId}/${seed} queue ${q.items.length}`,
   );
@@ -131,7 +131,7 @@ try {
   await sleep(1500);
   const c2 = await invoke("wave_composition", {});
   check(
-    "«Состав волны»: season and time named; «Твой вкус» off for the session, on again in a new wave",
+    "«Состав потока»: season and time named; «Твой вкус» off for the session, on again in a new wave",
     !!c0.season && !!c0.daypart && c1.off.taste === true && c2.off.taste === false,
     `${c0.season}/${c0.daypart} ${c1.off.taste} ${c2.off.taste}`,
   );
@@ -142,12 +142,12 @@ try {
     !!name.daypart && name.nextAt > Date.now() && name.nextAt < Date.now() + 26 * 3_600_000,
     JSON.stringify(name),
   );
-  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await page.getByRole("button", { name: "Мой поток", exact: true }).first().click();
   const shown = await page
     .getByTestId("wave-context")
     .innerText()
     .catch(() => "");
-  check("the name is on «Моя волна»", /Обновится в/.test(shown), shown.replace(/\n/g, " · "));
+  check("the name is on «Мой поток»", /Обновится в/.test(shown), shown.replace(/\n/g, " · "));
 } catch (e) {
   failed = true;
   console.log("FAIL ", e);

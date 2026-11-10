@@ -1,5 +1,5 @@
 // Soak of the real app (T7.2, P-13 ≤ 1 underrun in 24 h, no leaks), isolated data dir, very quiet
-// but not silent. «Моя волна» with smart automix plays the whole time on a small library (24
+// but not silent. «Мой поток» with smart automix plays the whole time on a small library (24
 // tracks ≈ 1 h, +2 an hour) — so the repeat rule bends (D-119) many times over. The first
 // SHOWN_HOURS the window stays shown and the WebView must not grow; after that, every hour: a
 // small import, a trip to the tray long enough for the window to be destroyed (60 s) and built
@@ -232,7 +232,7 @@ try {
     log(
       `${((Date.now() - start) / HOUR_MS).toFixed(2)} h: underruns ${s.underruns - u0}, ${s.state}, «${s.title}», tracks seen ${titles.size}, ${mem().text}`,
     );
-    // «Моя волна» never ends: the first stop fails the run at once (a restart would hide it).
+    // «Мой поток» never ends: the first stop fails the run at once (a restart would hide it).
     const lost = lostInLog();
     if (s.state === "paused" && lost > deviceLost) {
       deviceLost = lost;

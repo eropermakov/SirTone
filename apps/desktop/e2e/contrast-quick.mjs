@@ -182,7 +182,7 @@ try {
     await invoke("settings_patch", { patch: { appearance: { theme } } });
     for (const mode of ["waves", "milkdrop", "titles"]) {
       await invoke("settings_patch", { patch: { viz: { mode } } });
-      await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+      await page.getByRole("button", { name: "Мой поток", exact: true }).first().click();
       await sleep(mode === "milkdrop" ? 6000 : 3000);
       const sels = await overCanvas();
       await measure(`${theme}/${mode}`, sels);

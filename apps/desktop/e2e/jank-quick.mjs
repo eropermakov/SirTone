@@ -45,7 +45,7 @@ await page.getByRole("status").filter({ hasText: "Музыка добавлен�
 await invoke("settings_patch", {
   patch: { appearance: { seasonal_theme: process.env.SEASONAL === "1" } },
 });
-await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+await page.getByRole("navigation").getByRole("button", { name: "Мой поток" }).click();
 await invoke("wave_start", {});
 await invoke("playback_set_repeat", { mode: "all" });
 await sleep(3000);

@@ -11,7 +11,7 @@ import { expect, type Page, test } from "@playwright/test";
  * Re-record baselines on purpose only: `pnpm e2e --update-snapshots`.
  */
 
-const SCREENS = ["Моя волна", "Альбомы", "Исполнители", "Неизвестные", "Настройки"];
+const SCREENS = ["Мой поток", "Альбомы", "Исполнители", "Неизвестные", "Настройки"];
 
 /** Waits for running CSS animations and transitions (a screen's fade-in) to finish. */
 export async function settle(page: Page) {
@@ -58,7 +58,7 @@ for (const theme of ["dark", "light"] as const) {
     test(`screens look as recorded: ${theme} / ${accent}`, async ({ page }) => {
       for (const width of WIDTHS) {
         await open(page, theme, accent, width);
-        for (const name of ["Моя волна", "Настройки"]) {
+        for (const name of ["Мой поток", "Настройки"]) {
           await page.getByRole("button", { name, exact: true }).first().click();
           await expect(page).toHaveScreenshot(`${theme}-${accent}-${width}-${name}.png`, {
             animations: "disabled",
