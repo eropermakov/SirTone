@@ -35,7 +35,11 @@ pub fn available() -> bool {
         return false;
     };
     // A portable copy writes nothing to the host: no Run entry, no updater (T6.4).
-    !isolated && !crate::portable::is_portable() && is_installed_path(&exe, Path::new(&local))
+    // NSIS also lets the user pick another folder: its uninstaller marks an install there too.
+    !isolated
+        && !crate::portable::is_portable()
+        && (is_installed_path(&exe, Path::new(&local))
+            || exe.with_file_name("uninstall.exe").is_file())
 }
 
 fn is_installed_path(exe: &Path, local_app_data: &Path) -> bool {

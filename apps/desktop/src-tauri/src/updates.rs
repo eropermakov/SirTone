@@ -18,6 +18,12 @@ use crate::settings_store::SettingsStore;
 
 const FIRST_CHECK: Duration = Duration::from_secs(30);
 const CHECK_EVERY: Duration = Duration::from_secs(30 * 60);
+/// A check that failed is tried again soon: a short session must not lose its only chance.
+const RETRY_AFTER: Duration = Duration::from_secs(2 * 60);
+/// No request may hang the only update thread (a stall after sleep or a Wi-Fi change would stop
+/// checks and installs until restart); the download's limit covers a slow line.
+const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 /// How often an idle moment for installing is looked for.
 const TICK: Duration = Duration::from_secs(20);
 /// Nobody touched keyboard or mouse for this long: installing interrupts no one.
@@ -78,6 +84,7 @@ fn note_version(app: &AppHandle) {
 pub fn start(app: &AppHandle) {
     note_version(app);
     if !crate::autostart::available() {
+        tracing::info!(target: "sirtone::update", "updater off: not an installed copy");
         return;
     }
     let app = app.clone();
@@ -85,20 +92,24 @@ pub fn start(app: &AppHandle) {
         .name("sirtone-updates".into())
         .spawn(move || {
             std::thread::sleep(FIRST_CHECK);
-            let mut last_check: Option<Instant> = None;
+            let mut next_check = Instant::now();
+            let mut said_offline = false;
             loop {
                 let auto = app
                     .try_state::<std::sync::Arc<SettingsStore>>()
                     .is_none_or(|s| s.get()["updates"]["auto_check"].as_bool().unwrap_or(true));
                 // «Работать полностью офлайн» (T3.1): no request goes out, the updater's either.
-                if auto
-                    && !crate::net::offline(&app)
-                    && last_check.is_none_or(|t| t.elapsed() >= CHECK_EVERY)
-                {
-                    last_check = Some(Instant::now());
-                    if let Err(e) = tauri::async_runtime::block_on(check_and_download(&app)) {
-                        tracing::info!(target: "sirtone::update", code = ?e.code, "update check skipped");
+                let offline = crate::net::offline(&app);
+                if auto && offline && !said_offline {
+                    tracing::info!(target: "sirtone::update", "update check waits: offline");
+                }
+                said_offline = offline;
+                if auto && !offline && Instant::now() >= next_check {
+                    let result = tauri::async_runtime::block_on(check_and_download(&app));
+                    if let Err(e) = &result {
+                        tracing::info!(target: "sirtone::update", code = ?e.code, details = ?e.details, "update check skipped");
                     }
+                    next_check = Instant::now() + if result.is_ok() { CHECK_EVERY } else { RETRY_AFTER };
                 }
                 if quiet_moment(&app) {
                     install_now(&app);
@@ -121,7 +132,7 @@ fn updater(app: &AppHandle, minimized: bool) -> Result<tauri_plugin_updater::Upd
         // After `/ARGS` these reach the restarted app: back to the tray, as it was.
         b = b.installer_arg(crate::autostart::MINIMIZED_ARG);
     }
-    b.build().map_err(err)
+    b.timeout(CHECK_TIMEOUT).build().map_err(err)
 }
 
 /// Asks the channel; a newer version is downloaded and kept until a quiet moment.
@@ -130,11 +141,12 @@ async fn check_and_download(app: &AppHandle) -> Result<(), AppError> {
     if lock(&state.pending).is_some() {
         return Ok(());
     }
-    let Some(update) = updater(app, false)?.check().await.map_err(err)? else {
+    let Some(mut update) = updater(app, false)?.check().await.map_err(err)? else {
         tracing::info!(target: "sirtone::update", "up to date");
         return Ok(());
     };
     tracing::info!(target: "sirtone::update", version = %update.version, "update found, downloading");
+    update.timeout = Some(DOWNLOAD_TIMEOUT);
     let bytes = update.download(|_, _| {}, || {}).await.map_err(err)?;
     if let Some(settings) = app.try_state::<std::sync::Arc<SettingsStore>>() {
         let _ = settings.patch_durable(&serde_json::json!({ "updates": { "notes": update.body } }));
@@ -144,7 +156,18 @@ async fn check_and_download(app: &AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Nothing would be interrupted: an update waits, no music, no import, nobody at the computer.
+fn window_hidden(app: &AppHandle) -> bool {
+    app.get_webview_window("main")
+        .is_none_or(|w| !w.is_visible().unwrap_or(false))
+}
+
+/// No music, no import, and nobody looking at the app: in the tray it interrupts no one, however
+/// busy the user is elsewhere; with the window open, only when nobody is at the computer.
+fn may_install(playing: bool, importing: bool, hidden: bool, idle_ms: u64) -> bool {
+    !playing && !importing && (hidden || idle_ms >= IDLE_FOR_INSTALL_MS)
+}
+
+/// Nothing would be interrupted and an update waits.
 fn quiet_moment(app: &AppHandle) -> bool {
     let waiting = app
         .try_state::<Updates>()
@@ -158,7 +181,12 @@ fn quiet_moment(app: &AppHandle) -> bool {
     let importing = app
         .try_state::<crate::library::Library>()
         .is_some_and(|l| l.status().importing);
-    !playing && !importing && sirtone_platform::idle::idle_ms() >= IDLE_FOR_INSTALL_MS
+    may_install(
+        playing,
+        importing,
+        window_hidden(app),
+        sirtone_platform::idle::idle_ms(),
+    )
 }
 
 /// Installs silently and restarts the new version in the same place (window or tray).
@@ -169,9 +197,7 @@ fn install_now(app: &AppHandle) {
     let Some((update, bytes)) = lock(&state.pending).take() else {
         return;
     };
-    let hidden = app
-        .get_webview_window("main")
-        .is_none_or(|w| !w.is_visible().unwrap_or(false));
+    let hidden = window_hidden(app);
     // The relaunch arguments live in the builder: ask again with them, install the same bytes.
     let update = if hidden {
         match updater(app, true).and_then(|u| {
@@ -213,5 +239,22 @@ pub fn update_status(app: AppHandle, updates: State<'_, Updates>) -> UpdateStatu
         current: app.package_info().version.to_string(),
         just_updated: just.as_ref().map(|(v, _)| v.clone()),
         notes: just.and_then(|(_, n)| n),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn installs_only_when_it_interrupts_no_one() {
+        let idle = IDLE_FOR_INSTALL_MS;
+        // In the tray the user may be busy elsewhere; with the window open they must be away.
+        assert!(may_install(false, false, true, 0));
+        assert!(may_install(false, false, false, idle));
+        assert!(!may_install(false, false, false, idle - 1));
+        // Music and an import are never interrupted.
+        assert!(!may_install(true, false, true, idle));
+        assert!(!may_install(false, true, true, idle));
     }
 }
