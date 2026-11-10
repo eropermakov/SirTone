@@ -187,9 +187,9 @@ try {
   await sleep(3000);
   const queue = await invoke("queue_get");
   out();
-  out("## «Моя волна» — первые треки");
+  out("## «Мой поток» — первые треки");
   for (const it of queue.items.slice(0, 12)) out(`- ${it.title} — ${it.artists ?? "?"}`);
-  for (const [i, name] of ["Моя волна", "Исполнители", "Альбомы", "Неизвестные"].entries()) {
+  for (const [i, name] of ["Мой поток", "Исполнители", "Альбомы", "Неизвестные"].entries()) {
     await page.getByRole("navigation").getByRole("button", { name }).first().click();
     await sleep(1500);
     await page.screenshot({ path: join(outDir, "shots", `0${i + 2}-${name}.png`) });

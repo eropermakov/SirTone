@@ -12,7 +12,7 @@ describe("i18n", () => {
 
   it("falls back to Russian for the empty English slot", async () => {
     const i18n = await createI18n("en");
-    expect(i18n.t("nav:wave")).toBe("Моя волна");
+    expect(i18n.t("nav:wave")).toBe("Мой поток");
   });
 
   it("the English slot has no key Russian lacks (T6.5)", () => {

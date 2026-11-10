@@ -164,10 +164,10 @@ try {
     o1.id === "halloween" && o1.daysToPeak === 5,
     JSON.stringify(o1),
   );
-  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await page.getByRole("button", { name: "Мой поток", exact: true }).first().click();
   const card = page.getByTestId("event-card");
   check(
-    "the card says «Скоро Хэллоуин» on «Моя волна»",
+    "the card says «Скоро Хэллоуин» on «Мой поток»",
     (await card.innerText().catch(() => "")).includes("Скоро Хэллоуин"),
   );
   await stop();

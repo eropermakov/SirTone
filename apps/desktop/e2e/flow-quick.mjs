@@ -72,7 +72,7 @@ try {
     .getByRole("status")
     .filter({ hasText: "Музыка добавлена" })
     .waitFor({ timeout: 60000 });
-  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Мой поток" }).click();
   await invoke("wave_start", {});
   await invoke("playback_set_repeat", { mode: "one" });
   await sleep(2000);

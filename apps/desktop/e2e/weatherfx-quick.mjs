@@ -98,7 +98,7 @@ try {
     .getByRole("status")
     .filter({ hasText: "Музыка добавлена" })
     .waitFor({ timeout: 60000 });
-  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Мой поток" }).click();
   await invoke("wave_start", {});
   await page.locator('canvas[data-testid="fx"]').waitFor({ timeout: 15000 });
   await sleep(1500);

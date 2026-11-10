@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("shell renders with DESIGN.md tokens and Russian UI", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Моя волна" })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "Мой поток" })).toHaveAttribute(
     "aria-current",
     "page",
   );

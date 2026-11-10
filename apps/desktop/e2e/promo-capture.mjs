@@ -226,13 +226,13 @@ try {
 
   // 2. My wave over the visualiser.
   await invoke("wave_start", { profile: null, query: null }).catch(() => {});
-  await nav("Моя волна");
+  await nav("Мой поток");
   await sleep(2500);
   await scene("wave", async () => {
     await sleep(6500);
   });
 
-  // 3. «Настроить волну».
+  // 3. «Настроить поток».
   await scene("tune", async () => {
     await sleep(500);
     await page.getByRole("button", { name: "Настроить", exact: true }).first().click();
@@ -301,7 +301,7 @@ try {
   await setLook("dark", "sirkov");
 
   // 6. Full-screen visualiser (the closing shot).
-  await nav("Моя волна");
+  await nav("Мой поток");
   await sleep(1500);
   await page.getByRole("button", { name: "Полный экран", exact: true }).first().click();
   await sleep(1500);
