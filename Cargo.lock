@@ -7409,6 +7409,8 @@ name = "sirtone-sync"
 version = "0.1.45"
 dependencies = [
  "rusqlite",
+ "serde",
+ "serde_json",
  "sirtone-core",
  "sirtone-library",
  "sirtone-transfer",

@@ -115,11 +115,11 @@ struct LibraryView: View {
         case .liked: TrackListView(title: L.t("library.liked")) { lib in try lib.likedTracks(limit: 5000) }
         case .unknown: TrackListView(title: L.t("library.unknown")) { lib in try lib.unknownTracks(limit: 5000) }
         case let .album(id, title, cover):
-            TrackListView(title: title, cover: cover, numbered: true) { lib in try lib.albumTracks(albumId: id) }
+            TrackListView(title: title, cover: cover, numbered: true, kind: .album) { lib in try lib.albumTracks(albumId: id) }
         case let .artist(id, name):
-            TrackListView(title: name) { lib in try lib.artistTracks(artistId: id) }
+            TrackListView(title: name, kind: .artist) { lib in try lib.artistTracks(artistId: id) }
         case let .playlist(id, name):
-            TrackListView(title: name) { lib in try lib.playlistTracks(playlistId: id) }
+            TrackListView(title: name, kind: .playlist(id)) { lib in try lib.playlistTracks(playlistId: id) }
         }
     }
 }
@@ -129,17 +129,25 @@ struct TrackListView: View {
     let title: String
     var cover: String?
     var numbered = false
+    /// What the page is, for its «⋯» (D-165); `nil` — lists like «Любимое».
+    var kind: CollectionMenu.Kind?
     let load: @Sendable (Library) throws -> [TrackItem]
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var playback: Playback
     @Environment(\.palette) private var p
     @State private var tracks: [TrackItem]?
 
-    init(title: String, cover: String? = nil, numbered: Bool = false,
+    private var playlistId: Int64? {
+        if case let .playlist(id) = kind { return id }
+        return nil
+    }
+
+    init(title: String, cover: String? = nil, numbered: Bool = false, kind: CollectionMenu.Kind? = nil,
          load: @escaping @Sendable (Library) throws -> [TrackItem]) {
         self.title = title
         self.cover = cover
         self.numbered = numbered
+        self.kind = kind
         self.load = load
     }
 
@@ -173,7 +181,9 @@ struct TrackListView: View {
                         .listRowBackground(Color.clear)
                 }
                 ForEach(Array(tracks.enumerated()), id: \.element.id) { i, t in
-                    TrackRowView(track: t, showArt: !numbered, number: i + 1) { playback.play(tracks, at: i) }
+                    TrackRowView(track: t, showArt: !numbered, number: i + 1, playlist: playlistId) {
+                        playback.play(tracks, at: i)
+                    }
                         .listRowBackground(p.bgLayer)
                 }
             } else {
@@ -184,6 +194,13 @@ struct TrackListView: View {
         .scrollContentBackground(.hidden)
         .background(p.bgLayer)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let kind {
+                ToolbarItem(placement: .topBarTrailing) {
+                    CollectionMenu(kind: kind, title: title, tracks: tracks ?? [])
+                }
+            }
+        }
         .task(id: app.revision) {
             guard let lib = app.library else { return }
             let load = self.load
@@ -545,9 +562,9 @@ struct SearchView: View {
             .navigationDestination(for: LibraryRoute.self) { r in
                 switch r {
                 case let .album(id, title, cover):
-                    TrackListView(title: title, cover: cover, numbered: true) { lib in try lib.albumTracks(albumId: id) }
+                    TrackListView(title: title, cover: cover, numbered: true, kind: .album) { lib in try lib.albumTracks(albumId: id) }
                 case let .artist(id, name):
-                    TrackListView(title: name) { lib in try lib.artistTracks(artistId: id) }
+                    TrackListView(title: name, kind: .artist) { lib in try lib.artistTracks(artistId: id) }
                 default: EmptyView()
                 }
             }

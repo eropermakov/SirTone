@@ -13,8 +13,8 @@ use crate::CoreError;
 use crate::library::Library;
 
 /// File operations on the phone's own storage (one volume, the app's sandbox).
-struct PhoneFiles {
-    root: PathBuf,
+pub(crate) struct PhoneFiles {
+    pub(crate) root: PathBuf,
 }
 
 impl FileOps for PhoneFiles {

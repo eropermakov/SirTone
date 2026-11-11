@@ -50,6 +50,7 @@ struct RootView: View {
         .environment(\.palette, p)
         .preferredColorScheme(app.preferredScheme)
         .modifier(Toast(text: $playback.notice))
+        .manageHost(active: !expanded)
         .fullScreenCover(isPresented: $expanded) {
             NowPlayingView().environment(\.palette, p)
         }

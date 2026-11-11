@@ -44,6 +44,9 @@ final class AppModel: ObservableObject {
     @AppStorage("musicOnlyWithLowPower") var musicOnlyWithLowPower = true
     /// Files waiting for the person to choose their quality («Поделиться», «Открыть в»).
     @Published var pendingImport: [URL] = []
+    /// «Добавить в плейлист» and «Удалить с телефона» waiting for an answer (D-165).
+    @Published var adding: AddRequest?
+    @Published var deleting: DeleteRequest?
     /// «Хранилище»: what the library keeps; making copies shows its progress here.
     @Published private(set) var storage: StorageInfo?
     @Published private(set) var copying: (done: Int, total: Int)?

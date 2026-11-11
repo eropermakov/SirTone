@@ -74,7 +74,10 @@ struct TrackRowView: View {
     let track: TrackItem
     var showArt = true
     var number: Int?
+    /// On a playlist's page: «Убрать из плейлиста» (D-165).
+    var playlist: Int64?
     let onPlay: () -> Void
+    @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var playback: Playback
     @Environment(\.palette) private var p
 
@@ -113,9 +116,20 @@ struct TrackRowView: View {
             Button { playback.playNext(track) } label: {
                 Label(L.t("menu.play_next"), systemImage: "text.insert")
             }
+            Button { app.askAdd([track.id]) } label: {
+                Label(L.t("menu.add_to_playlist"), systemImage: "text.badge.plus")
+            }
+            if let playlist {
+                Button { app.removeFromPlaylist(track.id, playlist: playlist) } label: {
+                    Label(L.t("menu.remove_from_playlist"), systemImage: "minus.circle")
+                }
+            }
             // «Никогда в волне» (PC `settingsNever`); back from «Настройки → Волна».
             Button(role: .destructive) { playback.never(track) } label: {
                 Label(L.t("player.never"), systemImage: "nosign")
+            }
+            Button(role: .destructive) { app.askDelete([track.id], title: track.title) } label: {
+                Label(L.t("menu.delete"), systemImage: "trash")
             }
         }
     }

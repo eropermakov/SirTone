@@ -12,6 +12,7 @@ pub mod context;
 pub mod copies;
 pub mod import;
 pub mod library;
+pub mod manage;
 pub mod player;
 pub mod sound;
 pub mod transfer;

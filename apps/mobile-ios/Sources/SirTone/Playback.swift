@@ -240,6 +240,20 @@ final class Playback: ObservableObject {
         }
     }
 
+    /// Deleted tracks (D-165) leave the queue; the playing one hands over to the next first.
+    func forget(_ ids: Set<Int64>) {
+        guard !ids.isEmpty else { return }
+        if let c = current, ids.contains(c.track.id) { next(user: false) }
+        guard let i = index, queue.indices.contains(i) else {
+            queue.removeAll { ids.contains($0.track.id) }
+            return
+        }
+        let now = queue[i]
+        queue.removeAll { ids.contains($0.track.id) && $0 != now }
+        index = queue.firstIndex(of: now)
+        planNext()
+    }
+
     /// «Никогда в волне»: the wave never picks it; it leaves the wave's queue at once.
     func never(_ t: TrackItem) {
         guard let lib = model?.library else { return }

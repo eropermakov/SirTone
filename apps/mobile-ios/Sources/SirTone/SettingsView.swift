@@ -10,6 +10,8 @@ struct SettingsView: View {
     @Environment(\.palette) private var p
     @Environment(\.dismiss) private var dismiss
     @State private var askLevel = false
+    @State private var confirmTrash = false
+    @State private var trash: UInt64 = 0
     @State private var confirmKeep = false
 
     private static func size(_ b: UInt64) -> String {
@@ -72,6 +74,12 @@ struct SettingsView: View {
                         Text(verbatim: L.t("storage.copies", Self.size(s.copyBytes)))
                             .listRowBackground(p.bgRaised)
                     }
+                    // Deleted music waits in the app's trash until emptied here (D-165).
+                    if trash > 0 {
+                        Text(verbatim: L.t("storage.trash", Self.size(trash))).listRowBackground(p.bgRaised)
+                        Button(L.t("storage.empty_trash"), role: .destructive) { confirmTrash = true }
+                            .listRowBackground(p.bgRaised)
+                    }
                     Picker(L.t("quality.setting"), selection: $app.addQuality) {
                         ForEach(["original", "economy", "max"], id: \.self) { q in
                             Text(verbatim: L.t("quality.short.\(q)")).tag(q)
@@ -114,6 +122,23 @@ struct SettingsView: View {
                 Button(L.t("quality.economy")) { app.makeCopies(level: "economy") }
                 Button(L.t("quality.max")) { app.makeCopies(level: "max") }
                 Button(L.t("library.cancel"), role: .cancel) {}
+            }
+            .confirmationDialog(L.t("storage.empty_trash"), isPresented: $confirmTrash, titleVisibility: .visible) {
+                Button(L.t("storage.empty_trash"), role: .destructive) {
+                    guard let lib = app.library else { return }
+                    Task {
+                        let n = await Task.detached { (try? lib.emptyTrash()) ?? 0 }.value
+                        app.playback.notice = L.t("storage.freed", Self.size(n))
+                        trash = 0
+                    }
+                }
+                Button(L.t("library.cancel"), role: .cancel) {}
+            } message: {
+                Text(verbatim: L.t("storage.empty_trash.confirm"))
+            }
+            .task(id: app.revision) {
+                guard let lib = app.library else { return }
+                trash = await Task.detached { lib.trashBytes() }.value
             }
             .confirmationDialog(L.t("storage.keep"), isPresented: $confirmKeep, titleVisibility: .visible) {
                 Button(L.t("storage.keep"), role: .destructive) { app.keepCopiesOnly() }

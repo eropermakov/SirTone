@@ -72,6 +72,7 @@ struct NowPlayingView: View {
         .foregroundStyle(Color.white)
         .gesture(DragGesture().onEnded { g in if g.translation.height > 120 { dismiss() } })
         .fullScreenCover(isPresented: $showViz) { VizView() }
+        .manageHost(active: !showViz)
         .sheet(isPresented: $showQueue) { QueueView().presentationDetents([.medium, .large]) }
         // A stored item: one built inside a Binding got a new id on every redraw, and the sheet
         // closed and opened again forever.
@@ -130,6 +131,25 @@ struct NowPlayingView: View {
                     .font(.sirtone(Ty.body)).opacity(0.7).lineLimit(1)
             }
             Spacer()
+            // The track's menu in the player too (D-165).
+            if let t = playback.current?.track {
+                Menu {
+                    Button { app.askAdd([t.id]) } label: {
+                        Label(L.t("menu.add_to_playlist"), systemImage: "text.badge.plus")
+                    }
+                    Button(role: .destructive) { playback.never(t) } label: {
+                        Label(L.t("player.never"), systemImage: "nosign")
+                    }
+                    Button(role: .destructive) { app.askDelete([t.id], title: t.title) } label: {
+                        Label(L.t("menu.delete"), systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle").font(.system(size: 22))
+                        .foregroundStyle(Color.white.opacity(0.8))
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel(L.t("menu.more"))
+            }
             Button { playback.toggleLike() } label: {
                 Image(systemName: playback.liked ? "heart.fill" : "heart")
                     .font(.system(size: 22))

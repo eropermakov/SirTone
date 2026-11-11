@@ -841,7 +841,11 @@ pub async fn phone_pull(
 
 /// The phone library's database files: the database and its write-ahead log (the app may be
 /// playing and writing; `-shm` is rebuilt by SQLite and never copied).
-const PHONE_DB: [&str; 2] = [".sirtone/library.db", ".sirtone/library.db-wal"];
+const PHONE_DB: [&str; 3] = [
+    ".sirtone/library.db",
+    ".sirtone/library.db-wal",
+    ".sirtone/deleted.json",
+];
 
 /// Copies the phone library's database into `phone_root/.sirtone`: the two files are read one
 /// after the other while the app may write, so it is checked and read once more if it came torn.
@@ -853,7 +857,12 @@ async fn phone_db_snapshot(
     use sirtone_devicelink::appfiles;
     let db = phone_root.join(".sirtone").join("library.db");
     for _ in 0..2 {
-        for name in ["library.db", "library.db-wal", "library.db-shm"] {
+        for name in [
+            "library.db",
+            "library.db-wal",
+            "library.db-shm",
+            "deleted.json",
+        ] {
             let _ = std::fs::remove_file(db.with_file_name(name));
         }
         let db_files = files
@@ -1070,7 +1079,9 @@ async fn send(
             Some((k, n)) => (Some(k), Some(n)),
             None => (None, None),
         };
-        sirtone_sync::narrow(&out2, other.as_ref(), keys, names)
+        // What the person deleted on the phone never goes back (D-165).
+        let gone = sirtone_sync::read_gone(&db.with_file_name(sirtone_sync::GONE_FILE));
+        sirtone_sync::narrow(&out2, other.as_ref(), keys, names, &gone)
             .map_err(|e| AppError::new(ErrorCode::PhoneTransfer).with_details(e.code()))
     })
     .await

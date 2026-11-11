@@ -223,6 +223,41 @@ pub fn export_with(
     Ok(sum)
 }
 
+/// A track the person deleted on the phone (D-165, Q-41): the hub never sends it back. Kept in
+/// [`GONE_FILE`] next to the phone's database (no migration in stage 8); matched as the merge
+/// matches — by the file's hash, else by artist, title and length.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Gone {
+    pub artist: Option<String>,
+    pub title: String,
+    pub duration_ms: u32,
+    pub hash: Option<String>,
+}
+
+/// The list of [`Gone`] tracks, in the library's service folder (`.sirtone/deleted.json`).
+pub const GONE_FILE: &str = "deleted.json";
+
+/// The tracks deleted on a phone; nothing (or an unreadable file) — none.
+pub fn read_gone(path: &Path) -> Vec<Gone> {
+    std::fs::read(path)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+/// Adds `more` to the list at `path` (each once); written whole through a temporary file.
+pub fn add_gone(path: &Path, more: &[Gone]) -> std::io::Result<()> {
+    let mut all = read_gone(path);
+    for g in more {
+        if !all.contains(g) {
+            all.push(g.clone());
+        }
+    }
+    let tmp = path.with_extension("json.part");
+    std::fs::write(&tmp, serde_json::to_vec(&all).unwrap_or_default())?;
+    std::fs::rename(&tmp, path)
+}
+
 /// What a package narrowed by [`narrow`] carries.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Narrowed {
@@ -251,6 +286,7 @@ pub fn narrow(
     other: Option<&Connection>,
     chosen: Option<&HashSet<String>>,
     chosen_playlists: Option<&HashSet<String>>,
+    gone: &[Gone],
 ) -> Result<Narrowed, SyncError> {
     let mut manifest = Manifest::read(out)?;
     let events = match std::fs::File::open(out.join(EVENTS_FILE)) {
@@ -274,19 +310,43 @@ pub fn narrow(
             .collect(),
         None => HashMap::new(),
     };
+    // Deleted on the other side by its owner (D-165): never sent back, nor its plays or marks.
+    let gone_local: Vec<merge::LocalTrack> = gone
+        .iter()
+        .enumerate()
+        .map(|(i, g)| merge::LocalTrack {
+            id: -1 - i as i64,
+            duration_ms: g.duration_ms,
+            artist: g.artist.clone(),
+            title: Some(g.title.clone()),
+            fingerprint: None,
+            hash: g.hash.clone(),
+        })
+        .collect();
+    let gone_keys: HashSet<String> = if gone_local.is_empty() {
+        HashSet::new()
+    } else {
+        manifest
+            .tracks
+            .iter()
+            .zip(merge::match_tracks(&manifest.tracks, &gone_local))
+            .filter(|(_, m)| matches!(m, merge::TrackMatch::Same(_)))
+            .map(|(e, _)| e.key.clone())
+            .collect()
+    };
     let send: HashSet<String> = if manifest.parts.music {
         manifest
             .tracks
             .iter()
             .filter(|t| chosen.is_none_or(|c| c.contains(&t.key)))
-            .filter(|t| !have.contains_key(&t.key))
+            .filter(|t| !have.contains_key(&t.key) && !gone_keys.contains(&t.key))
             .map(|t| t.key.clone())
             .collect()
     } else {
         HashSet::new()
     };
 
-    let fresh: Vec<Event> = match other {
+    let mut fresh: Vec<Event> = match other {
         Some(c) => {
             let seen = transfer::seen_keys(c)?;
             let theirs = format!("{}:", transfer::library_uid(c)?);
@@ -311,6 +371,7 @@ pub fn narrow(
         }
         None => events,
     };
+    fresh.retain(|e| !gone_keys.contains(&e.track_key));
 
     let existing = match other {
         Some(c) => sirtone_library::playlists::list(c)?
@@ -335,13 +396,18 @@ pub fn narrow(
         }
         // A playlist the other side has whole (every track it can resolve is in it) stays home.
         match existing.get(&p.name) {
-            Some(ids) => p.tracks.iter().any(|k| match have.get(k) {
-                Some(id) => !ids.contains(id),
-                None => send.contains(k),
-            }),
+            Some(ids) => p
+                .tracks
+                .iter()
+                .filter(|k| !gone_keys.contains(*k))
+                .any(|k| match have.get(k) {
+                    Some(id) => !ids.contains(id),
+                    None => send.contains(k),
+                }),
             None => p
                 .tracks
                 .iter()
+                .filter(|k| !gone_keys.contains(*k))
                 .any(|k| have.contains_key(k) || send.contains(k)),
         }
     });
@@ -832,7 +898,7 @@ mod tests {
         };
         let out = base.join("out");
         export(&out);
-        let n = narrow(&out, Some(&phone), None, None).unwrap();
+        let n = narrow(&out, Some(&phone), None, None, &[]).unwrap();
         assert_eq!(n.send, vec![format!("{MUSIC_DIR}/Кино/3.flac")]);
         assert_eq!((n.plays_and_marks, n.playlists), (1, 1));
         let m = Manifest::read(&out).unwrap();
@@ -849,18 +915,40 @@ mod tests {
             "the sent song plus those the play and «Дорога» point at"
         );
         // Idempotent: a resumed transfer narrows the narrowed package to the same.
-        assert_eq!(narrow(&out, Some(&phone), None, None).unwrap(), n);
+        assert_eq!(narrow(&out, Some(&phone), None, None, &[]).unwrap(), n);
 
         // A choice: only «Кукушка» and «Группа крови» chosen — the phone has the first.
         export(&out);
         let chosen: HashSet<String> = [b, c].iter().map(|id| format!("{uid}:{id}")).collect();
-        let n = narrow(&out, Some(&phone), Some(&chosen), Some(&HashSet::new())).unwrap();
+        let n = narrow(
+            &out,
+            Some(&phone),
+            Some(&chosen),
+            Some(&HashSet::new()),
+            &[],
+        )
+        .unwrap();
         assert_eq!(n.send, vec![format!("{MUSIC_DIR}/Кино/3.flac")]);
         assert_eq!(n.playlists, 0, "no playlist was chosen");
 
+        // «Группа крови» was deleted on the phone (D-165): it never goes back.
+        export(&out);
+        let gone = [Gone {
+            artist: Some("Кино".into()),
+            title: "Группа крови".into(),
+            duration_ms: 200_000,
+            hash: Some("h3".into()),
+        }];
+        let n = narrow(&out, Some(&phone), None, None, &gone).unwrap();
+        assert!(n.send.is_empty(), "deleted stays deleted: {n:?}");
+        let list = base.join("deleted.json");
+        add_gone(&list, &gone).unwrap();
+        add_gone(&list, &gone).unwrap();
+        assert_eq!(read_gone(&list), gone.to_vec(), "each once");
+
         // No phone database (the app never opened): everything chosen goes.
         export(&out);
-        let n = narrow(&out, None, None, None).unwrap();
+        let n = narrow(&out, None, None, None, &[]).unwrap();
         assert_eq!((n.send.len(), n.plays_and_marks, n.playlists), (3, 1, 1));
 
         // The phone catches up — the play came back under its own key (an echo), «Дорога» and
@@ -870,7 +958,7 @@ mod tests {
         sirtone_library::playlists::add(&mut phone, proad, &[pb]).unwrap();
         let _ = pc3;
         export(&out);
-        let n = narrow(&out, Some(&phone), None, None).unwrap();
+        let n = narrow(&out, Some(&phone), None, None, &[]).unwrap();
         assert!(n.is_empty(), "nothing new: {n:?}");
         let _ = std::fs::remove_dir_all(&base);
     }
