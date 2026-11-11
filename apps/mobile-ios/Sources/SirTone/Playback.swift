@@ -66,6 +66,14 @@ final class Playback: ObservableObject {
         setUpCommands()
         observeSession()
         applyEq()
+        // D-167: the decks know each other and the host clock — the next track starts on the
+        // outgoing one's cue, to the sample.
+        active.core.pair(other: standby.core)
+        var tb = mach_timebase_info_data_t()
+        mach_timebase_info(&tb)
+        let ticks = 1e9 * Double(tb.denom) / Double(max(tb.numer, 1))
+        active.core.setHostClock(ticksPerSecond: ticks)
+        standby.core.setHostClock(ticksPerSecond: ticks)
     }
 
     func attach(model: AppModel) { self.model = model }
@@ -398,10 +406,12 @@ final class Playback: ObservableObject {
             commonFormat: .pcmFormatFloat32, sampleRate: Double(f.sampleRate),
             channels: AVAudioChannelCount(channels), interleaved: true
         ) else { return nil }
-        return AVAudioSourceNode(format: fmt) { _, _, frames, abl -> OSStatus in
+        return AVAudioSourceNode(format: fmt) { _, ts, frames, abl -> OSStatus in
             let buffers = UnsafeMutableAudioBufferListPointer(abl)
             if let data = buffers.first?.mData?.assumingMemoryBound(to: Float.self) {
-                _ = sirtone_render(handle, data, frames, channels)
+                // The host time the block sounds at: a transition's start keys on it (D-167).
+                let host = ts.pointee.mFlags.contains(.hostTimeValid) ? ts.pointee.mHostTime : 0
+                _ = sirtone_render(handle, data, frames, channels, host)
             }
             return noErr
         }
@@ -466,6 +476,8 @@ final class Playback: ObservableObject {
     /// Asks the planner how the current track hands over to the next one.
     private func planNext() {
         plan = nil
+        // The outgoing curve is armed with the plan; never under a running transition.
+        if mixing == nil { core.clearMix() }
         guard let mode = SoundPrefs.transition, let i = index, queue.indices.contains(i + 1),
               let lib = model?.library else { return }
         let a = queue[i], b = queue[i + 1]
@@ -477,11 +489,18 @@ final class Playback: ObservableObject {
             }.value
             guard let mix, index == i, current?.id == a.id else { return }
             plan = (b.id, mix)
+            // A's side by its own frames, set now — long before the decoder gets there (D-167).
+            if mixing == nil {
+                core.setMix(outgoing: true, startMs: mix.aOutMs, lenMs: mix.overlapMs,
+                            equalPower: mix.aEqualPower, stopMs: mix.aStopMs,
+                            swapHz: mix.swapHz, swapAtMs: mix.swapAtMs)
+            }
         }
     }
 
-    /// Opens the next track on the other deck, starts it at the plan's moment under the current
-    /// one, fades (equal power in four steps, or B in whole under A's own fade), then swaps.
+    /// Opens the next track on the other deck and starts it on the current one's cue, to the
+    /// sample (D-167): the core plays both curves and the bass swap by frame, as the PC; the app
+    /// only swaps the decks when B has started and lets A go after the overlap.
     private func handOver(to i: Int, mix: MixPlan) {
         guard let lib = model?.library else { return }
         plan = nil  // one attempt: a failed open falls back to the plain next
@@ -497,7 +516,11 @@ final class Playback: ObservableObject {
                       let f = try? core.open(path: path) else { return nil }
                 if mix.bStartMs > 0 { try? core.seek(ms: mix.bStartMs) }
                 core.setVolume(volume: vol)
-                core.fadeTo(target: mix.equalPower ? 0 : 1, ms: 0)
+                core.fadeTo(target: 1, ms: 0)
+                core.setMix(outgoing: false, startMs: mix.bStartMs, lenMs: mix.overlapMs,
+                            equalPower: mix.bEqualPower, stopMs: nil,
+                            swapHz: mix.swapHz, swapAtMs: mix.swapAtMs)
+                core.waitForCue()
                 let liked = (try? lib.isLiked(trackId: item.track.id)) ?? false
                 let art = lib.trackCover(trackId: item.track.id)
                     .flatMap { lib.coverPath(hash: $0, size: 512) }
@@ -506,15 +529,18 @@ final class Playback: ObservableObject {
             }.value
             guard !Task.isCancelled, let (f, h, liked, art) = opened, index == i - 1 else {
                 if let opened { sirtone_render_release(opened.1) }
+                core.clearMix()
                 mixing = nil
                 return
             }
             attachNode(handle: h, format: f, to: incoming)
-            // Wait for the moment B starts sounding.
-            let wait = Int64(mix.aOutMs) - Int64(outgoing.core.positionMs())
-            if wait > 0 { try? await Task.sleep(for: .milliseconds(wait)) }
-            guard !Task.isCancelled else { mixing = nil; return }
+            // B renders silence until A's callback reaches the cue, then its first sample.
             core.play()
+            outgoing.core.cuePartnerAt(ms: mix.aOutMs)
+            while core.waiting() {
+                try? await Task.sleep(for: .milliseconds(20))
+                guard !Task.isCancelled else { return }
+            }
             // The new track is the current one from here (A's journal row up to this moment).
             positionMs = outgoing.core.positionMs()
             logCurrent(skipped: false)
@@ -531,21 +557,10 @@ final class Playback: ObservableObject {
             self.cover = art
             updateNowPlaying()
             if waveOn, queue.count - i <= 2 { refill(thenPlay: false) }
-            let overlap = max(200, Int(mix.aStopMs) - Int(mix.aOutMs))
-            if mix.equalPower {
-                let step = UInt32(overlap / 4)
-                for k in 1...4 {
-                    let t = Float(k) / 4 * .pi / 2
-                    outgoing.core.fadeTo(target: cos(t), ms: step)
-                    core.fadeTo(target: sin(t), ms: step)
-                    try? await Task.sleep(for: .milliseconds(Int(step)))
-                    if Task.isCancelled { return }  // finishMix stopped the old deck already
-                }
-            } else {
-                try? await Task.sleep(for: .milliseconds(overlap))
-            }
-            core.fadeTo(target: 1, ms: 0)
+            try? await Task.sleep(for: .milliseconds(Int(max(mix.overlapMs, 50))))
+            if Task.isCancelled { return }  // finishMix stopped the old deck already
             stop(outgoing)
+            outgoing.core.clearMix()
             fadingOut = nil
             mixing = nil
             planNext()
@@ -560,6 +575,9 @@ final class Playback: ObservableObject {
         if let o = fadingOut { stop(o) }
         fadingOut = nil
         if standby.node != nil { stop(standby) }
+        // The one playing on is whole from here; no cue is left behind.
+        active.core.clearMix()
+        standby.core.clearMix()
         active.core.fadeTo(target: 1, ms: 0)
     }
 

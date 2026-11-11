@@ -9,13 +9,14 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 use rtrb::{Consumer, Producer, RingBuffer};
 use sirtone_audio::decode::Source;
 use sirtone_audio::eq::{Eq, EqParams};
+use sirtone_audio::swap::SwapSide;
 use sirtone_audio::vizframe::{FRAME, FrameBuilder};
 
 use crate::CoreError;
@@ -54,6 +55,36 @@ struct Shared {
     fade_now: AtomicU32,
     /// How far ahead the decode thread fills, ms (`Player::set_fill_ms`).
     fill_ms: AtomicU32,
+    /// This deck's part of a transition (D-167), picked up by the decode thread when `mix_gen`
+    /// changes: the gain curve and the bass swap by the track's own frame index — sample-exact
+    /// however far ahead it decodes.
+    mix: Mutex<Option<MixSide>>,
+    mix_gen: AtomicU32,
+    /// The platform's host clock, ticks per second as `f64` bits (`Player::set_host_clock`).
+    ticks_per_s: AtomicU64,
+    /// Outgoing deck: the track position (ms) where the partner starts; `u64::MAX` — none.
+    cue_ms: AtomicU64,
+    /// Incoming deck: the host time its first sample sounds at; 0 — not waiting, `u64::MAX` —
+    /// waiting, time not known yet (silence until the partner tells).
+    wait_host: AtomicU64,
+    /// The other deck (`Player::pair`), read lock-free by the callback.
+    partner: OnceLock<Arc<Shared>>,
+}
+
+/// A deck's side of a transition: positions in the track's own time.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct MixSide {
+    /// The overlap starts here (A: where B comes in; B: where B starts) …
+    start_ms: u64,
+    /// … and lasts this long.
+    len_ms: u64,
+    /// `cos(πt/2)` out (A) or `sin(πt/2)` in (B); otherwise untouched.
+    equal_power: bool,
+    outgoing: bool,
+    /// A is silent from here (the plan's `a_stop`).
+    stop_ms: Option<u64>,
+    /// «Blend»: the bass hands over this far into the overlap.
+    swap: Option<(f32, u64)>,
 }
 
 /// The fill on screen: a setting is heard within this. Off screen or locked the app asks for
@@ -82,6 +113,8 @@ pub struct RenderHandle {
     fade_seen: u32,
     /// Samples handed to the device, before the volume, for the visualiser (D-148).
     viz: Producer<f32>,
+    /// The track frame the handle starts at (an open from 0 or a seek).
+    base_frames: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -111,10 +144,51 @@ fn err(code: &str) -> CoreError {
     CoreError::Failed { code: code.into() }
 }
 
-fn decode_loop(mut src: Source, mut producer: Producer<f32>, shared: Arc<Shared>) {
+/// Applies a deck's transition to `buf`, whose first frame is track frame `first`.
+fn mix_chunk(
+    m: &MixSide,
+    swap: &mut Option<SwapSide>,
+    rate: u64,
+    ch: usize,
+    first: u64,
+    buf: &mut [f32],
+) {
+    let f = |ms: u64| ms * rate / 1000;
+    let (start, len) = (f(m.start_ms), f(m.len_ms).max(1));
+    let stop = m.stop_ms.map(f);
+    for (i, frame) in buf.chunks_mut(ch).enumerate() {
+        let at = first + i as u64;
+        if stop.is_some_and(|s| at >= s) {
+            frame.fill(0.0);
+            continue;
+        }
+        if at < start {
+            continue;
+        }
+        let pos = at - start;
+        if let Some(sw) = swap.as_mut() {
+            for (c, x) in frame.iter_mut().enumerate() {
+                *x = sw.apply(c, pos, *x);
+            }
+        }
+        if m.equal_power {
+            let t = (pos as f64 / len as f64).min(1.0) * std::f64::consts::FRAC_PI_2;
+            let g = (if m.outgoing { t.cos() } else { t.sin() }) as f32;
+            for x in frame.iter_mut() {
+                *x *= g;
+            }
+        }
+    }
+}
+
+fn decode_loop(mut src: Source, mut producer: Producer<f32>, shared: Arc<Shared>, from_ms: u64) {
     let mut buf: Vec<f32> = Vec::with_capacity(16_384);
     let ch = src.channels.max(1);
     let rate = src.rate as usize;
+    // The track frame of the next decoded frame (D-167: the transition keys on it).
+    let mut decoded = from_ms * src.rate as u64 / 1000;
+    let (mut mix_seen, mut mix): (u32, Option<MixSide>) = (u32::MAX, None);
+    let mut swap: Option<SwapSide> = None;
     let fill_of = |ms: u32| (rate * ch * ms as usize / 1000).min(RING_SAMPLES * 3 / 4);
     let mut eq = Eq::new(src.rate, ch);
     let (mut eq_seen, mut eq_on) = (u32::MAX, false);
@@ -130,6 +204,16 @@ fn decode_loop(mut src: Source, mut producer: Producer<f32>, shared: Arc<Shared>
             let ramp = if gain_seen == u32::MAX { 0 } else { 300 };
             src.set_gain(sirtone_core::loudness::amplitude(db), ramp);
             gain_seen = g;
+        }
+        let mg = shared.mix_gen.load(Ordering::Acquire);
+        if mg != mix_seen {
+            mix = shared.mix.lock().ok().and_then(|m| *m);
+            swap = mix.and_then(|m| {
+                m.swap.map(|(hz, at)| {
+                    SwapSide::new(src.rate, ch, hz, at * src.rate as u64 / 1000, m.outgoing)
+                })
+            });
+            mix_seen = mg;
         }
         let e = shared.eq_gen.load(Ordering::Acquire);
         if e != eq_seen {
@@ -150,6 +234,10 @@ fn decode_loop(mut src: Source, mut producer: Producer<f32>, shared: Arc<Shared>
                     if eq_on {
                         eq.process(&mut buf);
                     }
+                    if let Some(m) = &mix {
+                        mix_chunk(m, &mut swap, src.rate as u64, ch, decoded, &mut buf);
+                    }
+                    decoded += (buf.len() / ch) as u64;
                 }
                 Ok(false) | Err(_) => {
                     // End or an unreadable file: the callback drains what is left, then «ended».
@@ -209,7 +297,7 @@ impl Player {
         inner.decoder = Some(
             std::thread::Builder::new()
                 .name("sirtone-decode".into())
-                .spawn(move || decode_loop(src, producer, shared))
+                .spawn(move || decode_loop(src, producer, shared, from_ms))
                 .map_err(|_| err("player.thread"))?,
         );
         let (viz, viz_consumer) = RingBuffer::<f32>::new(VIZ_RING);
@@ -232,6 +320,7 @@ impl Player {
             fade_to: fade,
             fade_seen: self.shared.fade_gen.load(Ordering::Acquire),
             viz,
+            base_frames: from_ms * u64::from(format.sample_rate) / 1000,
         }));
         inner.base_ms = from_ms;
         inner.path = Some(path);
@@ -263,6 +352,12 @@ impl Player {
                 fade_gen: AtomicU32::new(0),
                 fade_now: AtomicU32::new(1f32.to_bits()),
                 fill_ms: AtomicU32::new(FILL_MS as u32),
+                mix: Mutex::new(None),
+                mix_gen: AtomicU32::new(0),
+                ticks_per_s: AtomicU64::new(0f64.to_bits()),
+                cue_ms: AtomicU64::new(u64::MAX),
+                wait_host: AtomicU64::new(0),
+                partner: OnceLock::new(),
             }),
             inner: Mutex::new(Inner {
                 format: None,
@@ -274,6 +369,75 @@ impl Player {
         })
     }
 
+    /// The two decks know each other (D-167): the outgoing one tells the incoming one when to
+    /// start. Once, at launch.
+    pub fn pair(&self, other: Arc<Player>) {
+        let _ = self.shared.partner.set(other.shared.clone());
+        let _ = other.shared.partner.set(self.shared.clone());
+    }
+
+    /// The host clock the render callback's time stamps count in (`mach_absolute_time` ticks
+    /// per second on iPhone).
+    pub fn set_host_clock(&self, ticks_per_second: f64) {
+        self.shared
+            .ticks_per_s
+            .store(ticks_per_second.to_bits(), Ordering::Release);
+    }
+
+    /// This deck's side of a transition (D-167), by the track's own position: from `start_ms`
+    /// over `len_ms` the equal-power curve (out or in) when `equal_power`, the bass swap
+    /// `swap_at_ms` into it at `swap_hz` (`0` — none); the outgoing deck is silent from
+    /// `stop_ms`. Applied by the decode thread to every frame it makes from now on.
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_mix(
+        &self,
+        outgoing: bool,
+        start_ms: u64,
+        len_ms: u64,
+        equal_power: bool,
+        stop_ms: Option<u64>,
+        swap_hz: f32,
+        swap_at_ms: u64,
+    ) {
+        if let Ok(mut m) = self.shared.mix.lock() {
+            *m = Some(MixSide {
+                start_ms,
+                len_ms,
+                equal_power,
+                outgoing,
+                stop_ms,
+                swap: (swap_hz > 0.0).then_some((swap_hz, swap_at_ms)),
+            });
+        }
+        self.shared.mix_gen.fetch_add(1, Ordering::AcqRel);
+    }
+
+    /// No transition on this deck (it plays as is); a cue or a wait goes too.
+    pub fn clear_mix(&self) {
+        if let Ok(mut m) = self.shared.mix.lock() {
+            *m = None;
+        }
+        self.shared.mix_gen.fetch_add(1, Ordering::AcqRel);
+        self.shared.cue_ms.store(u64::MAX, Ordering::Release);
+        self.shared.wait_host.store(0, Ordering::Release);
+    }
+
+    /// Outgoing deck: the partner starts sounding when this track reaches `ms` — to the sample,
+    /// by the host clock.
+    pub fn cue_partner_at(&self, ms: u64) {
+        self.shared.cue_ms.store(ms, Ordering::Release);
+    }
+
+    /// Incoming deck: silent until the partner's cue (call before `play`).
+    pub fn wait_for_cue(&self) {
+        self.shared.wait_host.store(u64::MAX, Ordering::Release);
+    }
+
+    /// Whether this deck is still waiting for its cue.
+    pub fn waiting(&self) -> bool {
+        self.shared.wait_host.load(Ordering::Acquire) != 0
+    }
+
     /// Opens a file (paused). Then the app takes [`Player::take_render_handle`] for its node.
     pub fn open(&self, path: String) -> Result<TrackFormat, CoreError> {
         let mut inner = self
@@ -281,6 +445,8 @@ impl Player {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         self.shared.paused.store(true, Ordering::Release);
+        // A new track: the old one's transition is not its own (D-167).
+        self.clear_mix();
         self.start(&mut inner, PathBuf::from(path), 0)
     }
 
@@ -494,6 +660,7 @@ pub unsafe extern "C" fn sirtone_render(
     out: *mut f32,
     frames: u32,
     channels: u32,
+    host_time: u64,
 ) -> u32 {
     let len = frames as usize * channels as usize;
     if handle == 0 || out.is_null() || len == 0 {
@@ -510,6 +677,53 @@ pub unsafe extern "C" fn sirtone_render(
         out.fill(0.0);
         return 0;
     }
+    let ch = channels as usize;
+    let rate = u64::from(h.rate);
+    let tps = f64::from_bits(h.shared.ticks_per_s.load(Ordering::Relaxed));
+    let per_frame = if tps > 0.0 { tps / rate as f64 } else { 0.0 };
+    // An incoming deck waits for its cue (D-167): silence, then its first sample exactly then.
+    let mut lead = 0usize;
+    let wait = h.shared.wait_host.load(Ordering::Acquire);
+    if wait != 0 {
+        if wait == u64::MAX {
+            out.fill(0.0);
+            return 0;
+        }
+        if host_time != 0 && per_frame > 0.0 && wait > host_time {
+            let ahead = ((wait - host_time) as f64 / per_frame) as usize;
+            if ahead >= frames as usize {
+                out.fill(0.0);
+                return 0;
+            }
+            lead = ahead;
+        }
+        h.shared.wait_host.store(0, Ordering::Release);
+    }
+    // An outgoing deck tells its partner the host time of the cue, again every block until it
+    // is reached (the estimate only sharpens); without a clock — «now» once it is reached.
+    let cue = h.shared.cue_ms.load(Ordering::Acquire);
+    if cue != u64::MAX
+        && let Some(p) = h.shared.partner.get()
+    {
+        let pos = h.base_frames + h.shared.frames_out.load(Ordering::Relaxed);
+        let cue_f = cue * rate / 1000;
+        if p.wait_host.load(Ordering::Acquire) != 0 {
+            let at = if host_time != 0 && per_frame > 0.0 {
+                host_time + (cue_f.saturating_sub(pos) as f64 * per_frame) as u64
+            } else if cue_f <= pos + u64::from(frames) {
+                1
+            } else {
+                u64::MAX
+            };
+            p.wait_host.store(at.max(1), Ordering::Release);
+        }
+        if cue_f <= pos + u64::from(frames) {
+            h.shared.cue_ms.store(u64::MAX, Ordering::Release);
+        }
+    }
+    let (silent, out) = out.split_at_mut(lead * ch);
+    silent.fill(0.0);
+    let len = out.len();
     let volume = f32::from_bits(h.shared.volume.load(Ordering::Acquire));
     let fade_gen = h.shared.fade_gen.load(Ordering::Acquire);
     if fade_gen != h.fade_seen {
@@ -524,7 +738,7 @@ pub unsafe extern "C" fn sirtone_render(
             h.fade_step = (h.fade_to - h.fade) / frames as f32;
         }
     }
-    let n = h.consumer.slots().min(len) / channels as usize * channels as usize;
+    let n = h.consumer.slots().min(len) / ch * ch;
     if let Ok(chunk) = h.consumer.read_chunk(n) {
         let (a, b) = chunk.as_slices();
         // The visualiser's copy: only copying, whole frames, what fits (no wait, no allocation).
@@ -539,7 +753,6 @@ pub unsafe extern "C" fn sirtone_render(
                 unsafe { side.commit_all() };
             }
         }
-        let ch = channels as usize;
         for (i, (d, s)) in out.iter_mut().zip(a.iter().chain(b)).enumerate() {
             if i % ch == 0 && h.fade_step != 0.0 {
                 h.fade += h.fade_step;
@@ -626,14 +839,14 @@ pub(crate) mod tests {
 
         // Paused: silence, nothing consumed.
         // SAFETY: the handle and buffer satisfy the contract.
-        assert_eq!(unsafe { sirtone_render(h, out.as_mut_ptr(), 512, 2) }, 0);
+        assert_eq!(unsafe { sirtone_render(h, out.as_mut_ptr(), 512, 2, 0) }, 0);
         assert!(out.iter().all(|s| *s == 0.0));
 
         p.play();
         let (mut frames, mut peak) = (0u64, 0f32);
         for _ in 0..2_000 {
             // SAFETY: as above.
-            let n = unsafe { sirtone_render(h, out.as_mut_ptr(), 512, 2) };
+            let n = unsafe { sirtone_render(h, out.as_mut_ptr(), 512, 2, 0) };
             frames += u64::from(n);
             peak = out.iter().fold(peak, |m, s| m.max(s.abs()));
             if p.ended() {
@@ -660,7 +873,7 @@ pub(crate) mod tests {
         let mut got = 0u64;
         for _ in 0..2_000 {
             // SAFETY: as above.
-            got += u64::from(unsafe { sirtone_render(h2, out.as_mut_ptr(), 512, 2) });
+            got += u64::from(unsafe { sirtone_render(h2, out.as_mut_ptr(), 512, 2, 0) });
             if p.ended() {
                 break;
             }
@@ -691,7 +904,7 @@ pub(crate) mod tests {
         let mut rendered = 0u32;
         for _ in 0..2_000 {
             // SAFETY: the handle and buffer satisfy the contract.
-            rendered += unsafe { sirtone_render(h, out.as_mut_ptr(), 512, 2) };
+            rendered += unsafe { sirtone_render(h, out.as_mut_ptr(), 512, 2, 0) };
             if rendered >= 4_096 {
                 break;
             }
@@ -738,17 +951,17 @@ pub(crate) mod tests {
         let mut out = vec![1f32; 256 * 2];
         p.fade_to(0.0, 0);
         // SAFETY: the handle and buffer satisfy the contract.
-        unsafe { sirtone_render(h, out.as_mut_ptr(), 256, 2) };
+        unsafe { sirtone_render(h, out.as_mut_ptr(), 256, 2, 0) };
         assert!(out.iter().all(|x| *x == 0.0), "silent at once");
         p.fade_to(1.0, 100);
         // SAFETY: as above.
-        unsafe { sirtone_render(h, out.as_mut_ptr(), 256, 2) };
+        unsafe { sirtone_render(h, out.as_mut_ptr(), 256, 2, 0) };
         let first = f32::from_bits(p.shared.fade_now.load(Ordering::Relaxed));
         assert!((0.04..0.08).contains(&first), "a ramp, not a jump: {first}");
         let mut peak = 0f32;
         for _ in 0..30 {
             // SAFETY: as above.
-            unsafe { sirtone_render(h, out.as_mut_ptr(), 256, 2) };
+            unsafe { sirtone_render(h, out.as_mut_ptr(), 256, 2, 0) };
             peak = out.iter().fold(peak, |m, x| m.max(x.abs()));
             std::thread::sleep(Duration::from_millis(2));
         }
@@ -761,5 +974,97 @@ pub(crate) mod tests {
         unsafe { sirtone_render_release(h) };
         drop(p);
         let _ = std::fs::remove_file(&path);
+    }
+
+    fn rms(xs: &[f32]) -> f32 {
+        (xs.iter().map(|x| x * x).sum::<f32>() / xs.len().max(1) as f32).sqrt()
+    }
+
+    /// D-167: B starts on A's cue to the frame by the host clock — whichever deck the system
+    /// renders first — and the decks follow the PC's equal-power curves by frame (A silent from
+    /// its stop), not the old four steps.
+    #[test]
+    fn transitions_start_to_the_frame_and_curve_by_frame() {
+        for b_first in [false, true] {
+            let dir = std::env::temp_dir();
+            let pa = dir.join(format!(
+                "sirtone-mix-a-{}-{b_first}.wav",
+                std::process::id()
+            ));
+            let pb = dir.join(format!(
+                "sirtone-mix-b-{}-{b_first}.wav",
+                std::process::id()
+            ));
+            wav(&pa);
+            wav(&pb);
+            let (a, b) = (Player::new(), Player::new());
+            a.pair(b.clone());
+            // One host tick per frame at 44.1 kHz keeps the arithmetic plain.
+            a.set_host_clock(44_100.0);
+            b.set_host_clock(44_100.0);
+            a.open(pa.to_string_lossy().into_owned()).unwrap();
+            b.open(pb.to_string_lossy().into_owned()).unwrap();
+            let (ha, hb) = (a.take_render_handle(), b.take_render_handle());
+            a.set_mix(true, 200, 100, true, Some(300), 0.0, 0);
+            a.cue_partner_at(200);
+            b.set_mix(false, 0, 100, true, None, 0.0, 0);
+            b.wait_for_cue();
+            std::thread::sleep(Duration::from_millis(150));
+            a.play();
+            b.play();
+            const BLOCK: u32 = 256;
+            const HOST0: u64 = 1_000;
+            let (mut oa, mut ob) = (Vec::new(), Vec::new());
+            let mut out = vec![0f32; BLOCK as usize * 2];
+            let mut got_b = 0u64;
+            let cue_host = HOST0 + 200 * 44_100 / 1000;
+            for k in 0..80u64 {
+                let host = HOST0 + k * u64::from(BLOCK);
+                for side in if b_first { [1, 0] } else { [0, 1] } {
+                    let h = if side == 0 { ha } else { hb };
+                    // SAFETY: the handles and buffer satisfy the contract.
+                    let n = unsafe { sirtone_render(h, out.as_mut_ptr(), BLOCK, 2, host) };
+                    let left: Vec<f32> = out.iter().step_by(2).copied().collect();
+                    if side == 0 {
+                        oa.extend(left);
+                    } else {
+                        ob.extend(left);
+                        got_b += u64::from(n);
+                        // B's frames so far are exactly those after the cue.
+                        let end = host + u64::from(BLOCK);
+                        let want = end.saturating_sub(cue_host);
+                        // B rendered first sees the cue a block late at most once (A has not
+                        // told it yet) — then it is exact from the next block on.
+                        if !(b_first && want > 0 && want <= u64::from(BLOCK)) && want > 0 {
+                            assert_eq!(got_b, want, "block {k}, B first: {b_first}");
+                        }
+                    }
+                }
+            }
+            let cue = (cue_host - HOST0) as usize;
+            let full = rms(&oa[cue - 2_000..cue - 200]);
+            // A 0.37 sine: RMS ≈ 0.26.
+            assert!(full > 0.2, "{full}");
+            // The middle of the overlap: −3 dB on each side (cos π/4, sin π/4).
+            let mid = cue + 2_205;
+            let (ga, gb) = (
+                rms(&oa[mid - 300..mid + 300]) / full,
+                rms(&ob[mid - 300..mid + 300]) / full,
+            );
+            assert!(
+                (ga - 0.707).abs() < 0.06 && (gb - 0.707).abs() < 0.06,
+                "{ga} {gb}"
+            );
+            // A is silent from its stop; B is whole after the overlap.
+            assert!(oa[cue + 4_410 + 10..cue + 6_000].iter().all(|x| *x == 0.0));
+            assert!((rms(&ob[cue + 4_500..cue + 6_000]) / full - 1.0).abs() < 0.06);
+            // SAFETY: done with them.
+            unsafe {
+                sirtone_render_release(ha);
+                sirtone_render_release(hb);
+            }
+            let _ = std::fs::remove_file(&pa);
+            let _ = std::fs::remove_file(&pb);
+        }
     }
 }

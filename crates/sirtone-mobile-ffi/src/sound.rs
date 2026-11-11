@@ -60,7 +60,7 @@ fn mix_params() -> Option<&'static MixParams> {
 }
 
 /// How A hands over to B (positions in each track's own time).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
 pub struct MixPlan {
     /// In A: B starts sounding here …
     pub a_out_ms: u64,
@@ -68,9 +68,21 @@ pub struct MixPlan {
     pub a_stop_ms: u64,
     /// Where B starts (its lead silence skipped).
     pub b_start_ms: u64,
-    /// Equal-power curves over the overlap; `false` — A's own fade is kept, B comes in whole.
-    pub equal_power: bool,
+    /// How long the overlap sounds.
+    pub overlap_ms: u64,
+    /// Each deck's curve, as the PC plans it (D-167): equal power (`cos` out, `sin` in) or its
+    /// own (A's natural fade kept, B's soft start whole).
+    pub a_equal_power: bool,
+    pub b_equal_power: bool,
+    /// «Blend» (D-125): the bass hands over at `swap_at_ms` into the overlap below `swap_hz`;
+    /// `0` — no swap.
+    pub swap_hz: f32,
+    pub swap_at_ms: u64,
 }
+
+/// Beats may drift apart this much over a whole overlap and still sound together (a 32nd at
+/// 120 BPM is 62 ms): within it a beatmatched plan plays without a stretch (D-167).
+const DRIFT_MS: f64 = 15.0;
 
 fn mix_track(i: sirtone_library::mixinfo::MixInfo) -> MixTrack {
     MixTrack {
@@ -150,18 +162,27 @@ impl Library {
             genre_blacklist: Vec::new(),
         };
         let mut plan = automix::plan(&a, &b, ctx, &cfg(mode), p);
-        if plan.level == automix::Level::L3 || (plan.rate - 1.0).abs() > 1e-6 {
+        // The phone has no time stretch: a beatmatched plan stays only while the beats drift
+        // apart less than `DRIFT_MS` over the overlap unstretched; otherwise «Мягко».
+        if (plan.rate - 1.0).abs() * plan.out_ms as f64 > DRIFT_MS {
             plan = automix::plan(&a, &b, ctx, &cfg(Mode::Automix(Intensity::Soft)), p);
+        } else if (plan.rate - 1.0).abs() > 1e-9 {
+            // Unstretched, A plays the overlap at its own speed.
+            plan.a_stop_ms = plan.a_out_ms + plan.out_ms;
         }
         if plan.level == automix::Level::L0 {
             return None;
         }
+        let a_stop_ms = plan.a_stop_ms.max(plan.a_out_ms);
         Some(MixPlan {
             a_out_ms: plan.a_out_ms,
-            a_stop_ms: plan.a_stop_ms.max(plan.a_out_ms),
+            a_stop_ms,
             b_start_ms: plan.b_start_ms,
-            equal_power: plan.a_curve == automix::Curve::EqualPower
-                || plan.b_curve == automix::Curve::EqualPower,
+            overlap_ms: plan.out_ms.max(a_stop_ms - plan.a_out_ms),
+            a_equal_power: plan.a_curve == automix::Curve::EqualPower,
+            b_equal_power: plan.b_curve == automix::Curve::EqualPower,
+            swap_hz: plan.eq_swap.map_or(0.0, |s| s.hz),
+            swap_at_ms: plan.eq_swap.map_or(0, |s| s.at_ms),
         })
     }
 }

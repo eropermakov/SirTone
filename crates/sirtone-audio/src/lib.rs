@@ -24,8 +24,7 @@ pub mod probe;
 pub mod render;
 pub mod sfx;
 pub mod stretch;
-#[cfg(windows)]
-mod swap;
+pub mod swap;
 #[cfg(windows)]
 pub mod viz;
 pub mod vizframe;

@@ -43,6 +43,7 @@ fn run(k: &Coefs, st: &mut Cut, x: f64) -> f64 {
     })
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) struct EqSwap {
     coefs: Coefs,
     /// The swap's middle and half its ramp, overlap frames.
@@ -53,6 +54,8 @@ pub(crate) struct EqSwap {
     b: Vec<Cut>,
 }
 
+// The PC engine's two-deck swap; the phone uses [SwapSide] (the engine is Windows only).
+#[cfg_attr(not(windows), allow(dead_code))]
 impl EqSwap {
     pub(crate) fn new(rate: u32, channels: usize, hz: f32, at_frames: u64) -> Self {
         let rate = f64::from(rate);
@@ -83,11 +86,64 @@ impl EqSwap {
     }
 }
 
+/// One deck's half of [`EqSwap`], for players that render each deck on its own (the phone,
+/// D-167): the outgoing side plays whole until the swap and without its bass after; the incoming
+/// side the other way round. The same filter, ramp and timing as the PC's swap.
+pub struct SwapSide {
+    coefs: Coefs,
+    at: f64,
+    half: f64,
+    outgoing: bool,
+    st: Vec<Cut>,
+}
+
+impl SwapSide {
+    /// `at_frames` — the swap point in frames from the overlap's start; `outgoing` — deck A.
+    pub fn new(rate: u32, channels: usize, hz: f32, at_frames: u64, outgoing: bool) -> Self {
+        let rate = f64::from(rate);
+        Self {
+            coefs: highpass(rate, f64::from(hz)),
+            at: at_frames as f64,
+            half: RAMP_S * rate / 2.0,
+            outgoing,
+            st: vec![[[0.0; 4]; 2]; channels.max(1)],
+        }
+    }
+
+    /// One sample of channel `c` at overlap frame `pos`. Run it from the overlap's start, so the
+    /// filter is warm by the swap.
+    pub fn apply(&mut self, c: usize, pos: u64, x: f32) -> f32 {
+        let k = ((pos as f64 - (self.at - self.half)) / (2.0 * self.half)).clamp(0.0, 1.0);
+        let x = f64::from(x);
+        let cut = run(&self.coefs, &mut self.st[c], x);
+        (if self.outgoing {
+            x * (1.0 - k) + cut * k
+        } else {
+            cut * (1.0 - k) + x * k
+        }) as f32
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const RATE: u32 = 48_000;
+
+    /// The two halves give exactly what the PC's two-deck swap gives.
+    #[test]
+    fn the_halves_are_the_pcs_swap() {
+        let n = RATE as usize;
+        let mut both = EqSwap::new(RATE, 1, 200.0, (n / 2) as u64);
+        let mut a = SwapSide::new(RATE, 1, 200.0, (n / 2) as u64, true);
+        let mut b = SwapSide::new(RATE, 1, 200.0, (n / 2) as u64, false);
+        for i in 0..n {
+            let (xa, xb) = (tone(60.0, i), tone(90.0, i + 77));
+            let (ya, yb) = both.apply(0, i as u64, xa, xb);
+            assert_eq!(a.apply(0, i as u64, xa), ya);
+            assert_eq!(b.apply(0, i as u64, xb), yb);
+        }
+    }
 
     fn rms(xs: &[f32]) -> f64 {
         (xs.iter().map(|x| f64::from(*x).powi(2)).sum::<f64>() / xs.len() as f64).sqrt()
