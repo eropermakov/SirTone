@@ -84,4 +84,48 @@ struct ContextCards: View {
         .overlay(RoundedRectangle(cornerRadius: M.radiusLg, style: .continuous).stroke(p.border))
     }
 }
+
+/// The line under the greeting (D-168, the PC's «Снежный вечер · обновится в 18:40»): the part
+/// of the day, the weather or the season, and where the phone seems to be («в дороге», «на
+/// пробежке»); asked again when the part of the day changes.
+struct ContextLine: View {
+    @ObservedObject var ctx: ContextService
+    @EnvironmentObject private var app: AppModel
+    @Environment(\.palette) private var p
+    @State private var name: ContextName?
+
+    /// Grammatical gender of the part of the day's noun, as on the PC.
+    private static let gender = ["dawn": "m", "morning": "n", "day": "m", "evening": "m",
+                                 "dusk": "pl", "night": "f"]
+
+    var body: some View {
+        Group {
+            if let n = name {
+                let g = Self.gender[n.daypart] ?? "m"
+                let base = L.t("ctx.name", L.t("ctx.adj.\(n.weather ?? n.season).\(g)"),
+                               L.t("ctx.noun.\(n.daypart)"))
+                let line = ctx.scene.map { base + " " + L.t("ctx.scene.\($0)") } ?? base
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: line)
+                        .font(.sirtone(Ty.cardTitle))
+                        .foregroundStyle(p.textPrimary)
+                    Text(verbatim: L.t("ctx.next", Date(timeIntervalSince1970: Double(n.nextAtMs) / 1000)
+                        .formatted(date: .omitted, time: .shortened)))
+                        .font(.sirtone(Ty.caption, relativeTo: .caption))
+                        .foregroundStyle(p.textSecondary)
+                }
+            }
+        }
+        .task(id: ctx.weather) {
+            while !Task.isCancelled {
+                guard let wave = app.wave else { return }
+                let offset = Int32(TimeZone.current.secondsFromGMT() / 60)
+                let n = await Task.detached { wave.contextName(utcOffsetMin: offset) }.value
+                name = n
+                let wait = max(5, min(3600, Double(n.nextAtMs) / 1000 - Date().timeIntervalSince1970 + 2))
+                try? await Task.sleep(for: .seconds(wait))
+            }
+        }
+    }
+}
 #endif

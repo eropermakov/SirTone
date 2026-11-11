@@ -25,7 +25,10 @@ struct WaveView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: M.space8) {
-                    PageTitle(text: greeting)
+                    VStack(alignment: .leading, spacing: M.space1) {
+                        PageTitle(text: greeting)
+                        if app.wave != nil { ContextLine(ctx: app.context) }
+                    }
                     if (app.counts?.tracks ?? 0) == 0 {
                         EmptyState(title: L.t("wave.empty"))
                     } else {

@@ -48,6 +48,19 @@ pub struct WaveTuning {
 }
 
 /// «Подходит N треков»; `relaxed` — too few, the wave widens the filters itself.
+/// What the wave screen's context line is made of (D-168): ids, worded by the app.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ContextName {
+    /// `dawn` · `morning` · `day` · `evening` · `dusk` · `night`.
+    pub daypart: String,
+    /// `clear` · `cloudy` · `fog` · `rain` · `snow` · `storm`; `None` — no fresh weather.
+    pub weather: Option<String>,
+    /// `winter` · `spring` · `summer` · `autumn`.
+    pub season: String,
+    /// UTC ms of the next change of the part of the day.
+    pub next_at_ms: i64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
 pub struct TuningCount {
     pub tracks: u32,
@@ -412,6 +425,50 @@ impl Wave {
             .set_query(eff, now);
     }
 
+    /// The line under the wave screen's title, as the PC's (`wave_context_name`, D-168): the
+    /// part of the day, the weather (fresh only) and the leading season, and when the part of
+    /// the day changes next (UTC ms, to 5 minutes). The app words it.
+    pub fn context_name(&self, utc_offset_min: i32) -> ContextName {
+        use sirtone_core::wave::Daypart;
+        let clock = PhoneClock {
+            offset_min: utc_offset_min,
+        };
+        let now = clock.now_utc_ms();
+        let b = self.ctx();
+        let ctx = b.snapshot_at(&clock, now);
+        const STEP: i64 = 5 * 60_000;
+        let next_at = (1..=26 * 12)
+            .map(|i| now - now % STEP + i * STEP)
+            .find(|&t| b.snapshot_at(&clock, t).daypart != ctx.daypart)
+            .unwrap_or(now + 26 * 3_600_000);
+        let season = ctx
+            .season_w
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.total_cmp(b.1))
+            .map_or(0, |(i, _)| i);
+        let weather = b
+            .weather
+            .as_ref()
+            .filter(|w| w.fresh(now))
+            .and_then(|w| w.class())
+            .map(|c| sirtone_wave::weather::class_key(c).to_owned());
+        ContextName {
+            daypart: match ctx.daypart {
+                Daypart::Dawn => "dawn",
+                Daypart::Morning => "morning",
+                Daypart::Day => "day",
+                Daypart::Evening => "evening",
+                Daypart::Dusk => "dusk",
+                Daypart::Night => "night",
+            }
+            .to_owned(),
+            weather,
+            season: ["winter", "spring", "summer", "autumn"][season].to_owned(),
+            next_at_ms: next_at,
+        }
+    }
+
     /// The weather where the phone is (Open-Meteo's answer to `context::weather_query`) and the
     /// place for the daypart by the sun. Returns the weather class (`clear`…`storm`) or `None`
     /// when the answer is unreadable. Only rounded coordinates are kept (D-149).
@@ -481,6 +538,16 @@ mod tests {
         assert_eq!(rows, 2);
         wave.not_now(ids[0], 180).unwrap();
         let _ = wave.why(ids[0]);
+        // The context line (D-168): ids the app words, no weather until one is set, and the
+        // next change ahead within a day.
+        let n = wave.context_name(180);
+        assert!(
+            ["dawn", "morning", "day", "evening", "dusk", "night"].contains(&n.daypart.as_str())
+        );
+        assert!(["winter", "spring", "summer", "autumn"].contains(&n.season.as_str()));
+        assert_eq!(n.weather, None);
+        let now = PhoneClock { offset_min: 0 }.now_utc_ms();
+        assert!(n.next_at_ms > now && n.next_at_ms <= now + 26 * 3_600_000);
         // «Настроить волну»: no filter counts everything, a filter narrows or widens itself,
         // an unknown key is refused, and the wave keeps playing after tuning.
         // The phone's context (D-149): an activity steers «Моя волна» and is named in «Почему»;

@@ -20,6 +20,9 @@ final class ContextService: NSObject, ObservableObject, CLLocationManagerDelegat
     @Published private(set) var ask: String?
     /// The weather class now (`clear` … `storm`), for «Почему этот трек».
     @Published private(set) var weather: String?
+    /// Where the person seems to be, finer than the activity, for the wave screen's line
+    /// (D-168): `walk`, `run`, `bike`, `road`, `work`, `home`; `nil` — nothing known.
+    @Published private(set) var scene: String?
     /// The Bluetooth output right now (to offer «Это машина»).
     @Published private(set) var bluetoothName: String?
 
@@ -275,6 +278,13 @@ final class ContextService: NSObject, ObservableObject, CLLocationManagerDelegat
         if act == dismissed { act = nil }
         let changed = activity != act
         activity = act
+        scene = switch act {
+        case "road": motionNow == "walking" ? "walk" : "road"
+        case "workout": motionNow == "cycling" ? "bike" : "run"
+        case "work": "work"
+        case "rest": "home"
+        default: nil
+        }
         let w = wave, decided = act
         Task {
             let moved = await Task.detached { w.setAutoActivity(activity: decided) }.value
