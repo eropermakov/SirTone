@@ -464,7 +464,7 @@ test("commands go out, events come back, errors become a toast", async ({ page }
   expect(patch.patch.appearance.theme).toBe("light");
 });
 
-test("live effects only behind «Моя волна» (T4.20, FR-FX-006)", async ({ page }) => {
+test("live effects only behind «Мой поток» (T4.20, FR-FX-006)", async ({ page }) => {
   await page.addInitScript(() => {
     (window as unknown as Record<string, unknown>).__mockLibrary = {
       root: "D:/Music",
@@ -491,7 +491,7 @@ test("live effects only behind «Моя волна» (T4.20, FR-FX-006)", async 
     durationMs: 200000,
     volume: 0.5,
   });
-  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await page.getByRole("button", { name: "Мой поток", exact: true }).first().click();
   await expect(page.getByTestId("fx")).toHaveCount(1);
   await expect
     .poll(() =>
@@ -537,7 +537,7 @@ test("sleep and focus start from the wave screen; their settings render (T4.21, 
     durationMs: 200000,
     volume: 0.5,
   });
-  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await page.getByRole("button", { name: "Мой поток", exact: true }).first().click();
   await page.getByRole("button", { name: "Сон-таймер", exact: true }).click();
   await page.getByRole("menuitem", { name: "Через 30 минут" }).click();
   await expect
@@ -557,7 +557,7 @@ test("sleep and focus start from the wave screen; their settings render (T4.21, 
   await expect(page.getByText("Предпочтительно без слов")).toBeVisible();
 });
 
-test("«Настроить волну»: tiles combine, «Слушать» starts and saves; no page bounce", async ({
+test("«Настроить поток»: tiles combine, «Слушать» starts and saves; no page bounce", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -581,7 +581,7 @@ test("«Настроить волну»: tiles combine, «Слушать» start
   expect(
     await page.evaluate(() => getComputedStyle(document.documentElement).overscrollBehaviorY),
   ).toBe("none");
-  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await page.getByRole("button", { name: "Мой поток", exact: true }).first().click();
   await page.getByRole("button", { name: "Настроить", exact: true }).click();
   const dlg = page.getByRole("dialog");
   await dlg.getByRole("button", { name: "Работа", exact: true }).click();
@@ -649,7 +649,7 @@ test("event card: «Скоро Хэллоуин», answers go to Rust; «Соб�
   });
   await mockTauri(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await page.getByRole("button", { name: "Мой поток", exact: true }).first().click();
   // The contextual name (T5.11): the weather and the part of the day, agreed.
   await expect(page.getByTestId("wave-context")).toContainText("Снежный вечер");
   await expect(page.getByTestId("wave-context")).toContainText("Обновится в");
@@ -678,7 +678,9 @@ test("event card: «Скоро Хэллоуин», answers go to Rust; «Соб�
   expect(text).not.toMatch(/settingsEvents\.|events\.name/);
 });
 
-test("«Состав волны»: chips under the player switch an influence off (T5.16)", async ({ page }) => {
+test("«Состав потока»: chips under the player switch an influence off (T5.16)", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     (window as unknown as Record<string, unknown>).__mockLibrary = {
       root: "D:/Music",
@@ -706,7 +708,7 @@ test("«Состав волны»: chips under the player switch an influence of
     volume: 0.5,
     waveProfile: "my_wave",
   });
-  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await page.getByRole("button", { name: "Мой поток", exact: true }).first().click();
   const chips = page.getByTestId("wave-chips");
   for (const c of ["Осень", "Вечер", "Дождь", "Твой вкус"]) {
     await expect(chips.getByRole("button", { name: c, exact: true })).toHaveAttribute(
@@ -722,7 +724,7 @@ test("«Состав волны»: chips under the player switch an influence of
     "aria-pressed",
     "false",
   );
-  // «Настроить волну» 2.0: mode, novelty, influence, ranges.
+  // «Настроить поток» 2.0: mode, novelty, influence, ranges.
   await page.getByRole("button", { name: /^Настроить/ }).click();
   const dlg = page.getByRole("dialog");
   await dlg.getByRole("button", { name: /^Ещё настройки/ }).click();
@@ -734,7 +736,7 @@ test("«Состав волны»: chips under the player switch an influence of
   expect(await dlg.innerText()).not.toMatch(/wave\.setup\./);
 });
 
-test("«Мои волны»: a setup saved with a name becomes a card; rename (T5.17)", async ({ page }) => {
+test("«Мои потоки»: a setup saved with a name becomes a card; rename (T5.17)", async ({ page }) => {
   await page.addInitScript(() => {
     (window as unknown as Record<string, unknown>).__mockLibrary = {
       root: "D:/Music",
@@ -752,11 +754,11 @@ test("«Мои волны»: a setup saved with a name becomes a card; rename (T
   });
   await mockTauri(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await page.getByRole("button", { name: "Мой поток", exact: true }).first().click();
   await page.getByRole("button", { name: /^Настроить/ }).click();
   const dlg = page.getByRole("dialog");
   await dlg.getByRole("button", { name: "Спокойное", exact: true }).first().click();
-  await dlg.getByRole("button", { name: "Сохранить как свою волну" }).click();
+  await dlg.getByRole("button", { name: "Сохранить как свой поток" }).click();
   const name = page.getByRole("dialog").filter({ hasText: "Название" });
   await name.getByRole("textbox").fill("Вечерняя тишина");
   await name.getByRole("button", { name: "Сохранить", exact: true }).click();
@@ -858,9 +860,14 @@ test("Bluetooth in the player: paired devices, connect, play through (T5.4)", as
   await page.goto("/");
   await page.getByRole("button", { name: "Bluetooth", exact: true }).click();
   // The menu grows up from the bottom bar and stays inside the window (owner, proto 32).
-  const box = await page.getByRole("menu", { name: "Bluetooth" }).boundingBox();
+  // The menu animates in: poll until it has settled inside the window.
   const vh = page.viewportSize()?.height ?? 0;
-  expect(box && box.y >= 0 && box.y + box.height <= vh).toBe(true);
+  await expect
+    .poll(async () => {
+      const box = await page.getByRole("menu", { name: "Bluetooth" }).boundingBox();
+      return Boolean(box && box.y >= 0 && box.y + box.height <= vh);
+    })
+    .toBe(true);
   await page.getByRole("menuitem", { name: "WH-1000XM4" }).click();
   await page.getByRole("menuitem", { name: "Подключить" }).click();
   await expect
@@ -967,7 +974,7 @@ test("WCAG AA on the new UI: wave screen, dialogs, menus (T7.5)", async ({ page 
     const bad = r.violations.filter((v) => v.impact === "critical" || v.impact === "serious");
     expect(bad.map((v) => `${where}: ${v.id} — ${v.help} (${v.nodes[0]?.target})`)).toEqual([]);
   };
-  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await page.getByRole("button", { name: "Мой поток", exact: true }).first().click();
   await expect(page.getByTestId("wave-chips")).toBeVisible();
   await check("wave");
   await page.getByRole("button", { name: /^Настроить/ }).click();
@@ -1294,7 +1301,7 @@ test("«Телефоны»: «Выбрать» sends only the ticked parts, the 
   await card.getByText("Экономно", { exact: false }).click();
   await expect(parts).toContainText("55 МБ");
   // Nothing ticked — nothing to move.
-  for (const name of ["Музыка", "Плейлисты", "Вкусы и волна"]) {
+  for (const name of ["Музыка", "Плейлисты", "Вкусы и поток"]) {
     await parts.getByRole("checkbox", { name }).uncheck();
   }
   await expect(card.getByRole("button", { name: "Дальше" })).toBeDisabled();

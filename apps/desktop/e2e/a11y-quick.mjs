@@ -106,7 +106,7 @@ try {
     .waitFor({ timeout: 60000 });
   await invoke("wave_start", { profile: null, query: null });
   await sleep(1500);
-  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await page.getByRole("button", { name: "Мой поток", exact: true }).first().click();
   await sleep(3000);
   const wave = await axe(page);
   check(

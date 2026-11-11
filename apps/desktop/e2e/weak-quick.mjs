@@ -172,7 +172,7 @@ try {
   await page.waitForSelector("footer");
   await invoke("playback_set_volume", { volume: 0.05 }).catch(() => {});
   await invoke("wave_start", { profile: null, query: null });
-  await page.getByRole("button", { name: "Моя волна", exact: true }).first().click();
+  await page.getByRole("button", { name: "Мой поток", exact: true }).first().click();
   await page.locator('canvas[data-testid="milkdrop"]').waitFor({ timeout: 20000 });
   const again = await spin();
   check(
@@ -263,11 +263,11 @@ try {
     const took = [];
     const names = [];
     for (const [button, target] of [
-      ["Моя волна", "wave"],
+      ["Мой поток", "wave"],
       ["Настройки", "Производительность"],
-      ["Моя волна", "wave"],
+      ["Мой поток", "wave"],
       ["Настройки", "Производительность"],
-      ["Моя волна", "wave"],
+      ["Мой поток", "wave"],
       ["Настройки", "Производительность"],
     ]) {
       const t = await open(button, target);

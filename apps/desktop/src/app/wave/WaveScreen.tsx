@@ -367,6 +367,15 @@ export function WaveScreen({ snap, onGo }: { snap: PlaybackSnapshot; onGo: GoTo 
         // The visualiser fills the one big rounded panel (as before the redesign, owner proto 44).
         <div aria-hidden className="pointer-events-none absolute inset-0">
           <VizBackground trackId={id} cover={snap.cover} />
+          {/* A soft dark pool behind the text column: the panel is no longer under the glass bars, so the
+              captions keep ≥ 4.5:1 over the brightest frames (T7.5). */}
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(ellipse 80% 90% at 50% 52%, rgba(0,0,0,0.78), rgba(0,0,0,0.62) 55%, rgba(0,0,0,0.38) 100%)",
+            }}
+          />
         </div>
       )}
       {!night && <VizToolbar />}

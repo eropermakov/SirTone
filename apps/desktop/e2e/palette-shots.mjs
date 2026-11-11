@@ -1,6 +1,6 @@
 // Screenshots of the colour themes in the real app (T7.7, palette 2.0): an isolated instance with
 // a small generated library (sine tones, made-up names, generated covers), music very quiet.
-// For each theme × colour: «Моя волна» (home), an album, the queue panel with «Сейчас играет»,
+// For each theme × colour: «Мой поток» (home), an album, the queue panel with «Сейчас играет»,
 // the track menu, settings → «Цвет». Shots: $SHOTS (default target/palette-shots/).
 // ACCENTS=sirkov,black,yellow,bordeaux SMOKE_PORT=9381 node apps/desktop/e2e/palette-shots.mjs
 
@@ -164,7 +164,7 @@ try {
         await sleep(250);
         await page.screenshot({ path: join(outDir, `${theme}-${accent}-${name}.png`) });
       };
-      await nav("Моя волна");
+      await nav("Мой поток");
       await sleep(800);
       await shot("1-home");
       await nav("Альбомы");

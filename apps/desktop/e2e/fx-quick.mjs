@@ -1,5 +1,5 @@
 // Live effects (T4.19 spike S-19 measurements + T4.20 smoke), an isolated app with music:
-// frame p95 of the wave screen with Волны / MilkDrop / Видео, without effects and with 300 /
+// frame p95 of the wave screen with Потока / MilkDrop / Видео, without effects and with 300 /
 // 1500 / 5000 particles; the effects' own GPU time (timer query if present, else gl.finish);
 // the number of GL contexts; the settings path (manual pick → the type on screen); the layer
 // is gone outside the wave screen.
@@ -91,7 +91,7 @@ try {
     .getByRole("status")
     .filter({ hasText: "Музыка добавлена" })
     .waitFor({ timeout: 60000 });
-  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Мой поток" }).click();
   await invoke("wave_start", {});
   await page.locator('canvas[data-testid="fx"]').waitFor({ timeout: 10000 });
   await sleep(1500);

@@ -1,4 +1,4 @@
-// «Моя волна» never ends (T7.2 soak finding, D-119) in the real app, isolated: a library shorter
+// «Мой поток» never ends (T7.2 soak finding, D-119) in the real app, isolated: a library shorter
 // than the 24 h repeat window — 5 tracks of 8 s — must keep playing after all of them were heard
 // (the least recently played come back first). Then the soak's hourly chores one by one with the
 // music playing: closed to the tray until the window is destroyed (60 s), built again, the output

@@ -949,11 +949,11 @@ if (existsSync(corpus)) {
   await genreRows.first().waitFor({ timeout: 5000 });
   check("genre page lists its tracks", (await page.locator("h1").first().textContent()) === "Rock");
   await axeScreen("genre page");
-  // T2.5 / T2.19: «Моя волна» is the player — like, «не сейчас» skips, «никогда» for the artist
+  // T2.5 / T2.19: «Мой поток» is the player — like, «не сейчас» skips, «никогда» for the artist
   // lands in Settings and comes back from there.
   await genreRows.first().dblclick();
   await sleep(800);
-  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Мой поток" }).click();
   const heart = page.getByRole("button", { name: "Нравится" });
   await heart.click();
   await sleep(500);
@@ -1015,7 +1015,7 @@ if (existsSync(corpus)) {
     await page.screenshot({ path: join(process.env.SMOKE_SHOTS, "t42-waves.png") });
   }
   await page.getByRole("navigation").getByRole("button", { name: "Жанры" }).click();
-  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Мой поток" }).click();
   await page.locator('canvas[data-testid="waves"]').waitFor({ timeout: 5000 });
   await sleep(1000);
   const back0 = await vizRead();
@@ -1257,7 +1257,7 @@ if (existsSync(corpus)) {
   );
   await invoke("settings_patch", { patch: { viz: { mode: "waves" } } });
   await page.locator('canvas[data-testid="waves"]').waitFor({ timeout: 10000 });
-  await axeScreen("«Моя волна»");
+  await axeScreen("«Мой поток»");
   // T2.20 / P-01 (DESIGN.md §1, `08` §1): event → the frame that shows the change, measured
   // in the page. Direct actions ≤ 100 ms, a screen change ≤ 400 ms.
   const reaction = (pick, changed) =>
@@ -1307,9 +1307,9 @@ if (existsSync(corpus)) {
     Math.max(...likeMs) <= 100 && Math.max(...playMs) <= 100 && navMs <= 400,
     `♡ ${likeMs.map((v) => v.toFixed(0)).join("/")} ms, play ${playMs.map((v) => v.toFixed(0)).join("/")} ms, screen ${navMs.toFixed(0)} ms`,
   );
-  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Мой поток" }).click();
   await page.getByRole("main").getByRole("button", { name: "Ещё" }).click();
-  await page.getByRole("menuitem", { name: "Никогда в волне" }).click();
+  await page.getByRole("menuitem", { name: "Никогда в потоке" }).click();
   await page.getByRole("menuitem", { name: "Этого исполнителя" }).click();
   await sleep(600);
   await page.getByRole("navigation").getByRole("button", { name: "Настройки" }).click();
@@ -1329,10 +1329,10 @@ if (existsSync(corpus)) {
     neverListed && neverLeft.length === 0,
     `listed ${neverListed}, left ${neverLeft.length}`,
   );
-  // Stage 3: with an album playing, «Моя волна» offers «Слушать волну»; the engine queues 5,
+  // Stage 3: with an album playing, «Мой поток» offers «Слушать поток»; the engine queues 5,
   // refills as they run out; a not-yet-played track marked «никогда» never comes.
-  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
-  const startBtn = page.getByRole("main").getByRole("button", { name: "Слушать волну" });
+  await page.getByRole("navigation").getByRole("button", { name: "Мой поток" }).click();
+  const startBtn = page.getByRole("main").getByRole("button", { name: "Слушать поток" });
   const offered = await startBtn.waitFor({ timeout: 3000 }).then(
     () => true,
     () => false,
@@ -1353,7 +1353,7 @@ if (existsSync(corpus)) {
   const q1 = await invoke("queue_get", {});
   const ids = [...fresh.items, ...q1.items].map((it) => it.trackId);
   check(
-    "wave: «Слушать волну» from a playing album, 5 → refilled, «никогда» excluded",
+    "wave: «Слушать поток» from a playing album, 5 → refilled, «никогда» excluded",
     offered && inWave && q0.items.length === 5 && q1.items.length > 5 && !ids.includes(unplayed),
     `offered ${offered}, inWave ${inWave}, queue ${q0.items.length} → ${q1.items.length}`,
   );
@@ -1363,7 +1363,7 @@ if (existsSync(corpus)) {
   await sleep(800);
   const waveTrack = (await invoke("playback_snapshot", {})).trackId;
   const reasons = await invoke("wave_why", { track: waveTrack });
-  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Мой поток" }).click();
   await page.getByRole("main").getByRole("button", { name: "Ещё" }).click();
   await page.getByRole("menuitem", { name: "Метки" }).click();
   await page.getByRole("menuitem", { name: "Для сна" }).click();
@@ -1395,14 +1395,14 @@ if (existsSync(corpus)) {
     (settings().wave?.novelty ?? 50) <= 10 && upAfter !== upBefore && upAfter !== "",
     `novelty ${settings().wave?.novelty}`,
   );
-  // T3.30: «Сезонная волна» — named by the calendar; started by its button while «Моя волна»
-  // plays, and «Слушать волну» leads back.
+  // T3.30: «Сезонный поток» — named by the calendar; started by its button while «Мой поток»
+  // plays, and «Слушать поток» leads back.
   const seasonKey = await invoke("wave_season_card", {});
   const shellRu = JSON.parse(
     readFileSync(new URL("../../../assets/i18n/ru/shell.json", import.meta.url), "utf8"),
   );
   const seasonLabel = shellRu.wave.season[seasonKey];
-  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Мой поток" }).click();
   await page.getByRole("main").getByRole("button", { name: seasonLabel }).click();
   let seasonSnap = await invoke("playback_snapshot", {});
   for (let i = 0; i < 20 && seasonSnap.waveProfile !== "seasonal"; i++) {
@@ -1412,17 +1412,17 @@ if (existsSync(corpus)) {
   const sq = await invoke("queue_get", {});
   const back = await page
     .getByRole("main")
-    .getByRole("button", { name: "Слушать волну" })
+    .getByRole("button", { name: "Слушать поток" })
     .isVisible();
   check(
-    "seasonal wave: named by the calendar, started by its button, «Моя волна» offered back",
+    "seasonal wave: named by the calendar, started by its button, «Мой поток» offered back",
     ["autumn", "earlyAutumn", "preWinter", "earlyWinter", "winter"].includes(seasonKey) &&
       seasonSnap.waveProfile === "seasonal" &&
       sq.items.length === 5 &&
       back,
     `${seasonKey} «${seasonLabel}», profile ${seasonSnap.waveProfile}, queue ${sq.items.length}, back ${back}`,
   );
-  // T3.18: «Настроить волну» — a mood needs deep analysis (not yet): the wave relaxes it and
+  // T3.18: «Настроить поток» — a mood needs deep analysis (not yet): the wave relaxes it and
   // still plays; frequency «любимые» + Russian hold or relax in order; a bad key is refused.
   const moodStart = await invoke("wave_start", { query: { mood: ["happy"] } });
   // The rejection is caught in the page: the AppError object does not survive page.evaluate.
@@ -2265,7 +2265,7 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
     await sleep(150);
     faSnap = await invoke("playback_snapshot", {});
   }
-  await page.getByRole("navigation").getByRole("button", { name: "Моя волна" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Мой поток" }).click();
   const faBtn = await page
     .getByRole("button", { name: "Для всех" })
     .first()
