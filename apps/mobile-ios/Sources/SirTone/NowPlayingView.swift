@@ -19,6 +19,7 @@ struct NowPlayingView: View {
     @State private var showViz = false
     /// What is behind the player (D-166): «Волны» (as before), MilkDrop, «Обложка», «Нет».
     @AppStorage("playerBackground") private var playerBackground = "waves"
+    @StateObject private var output = OutputDevice()
 
     var body: some View {
         GeometryReader { geo in
@@ -56,6 +57,7 @@ struct NowPlayingView: View {
                         }
                     }
                     .padding(.top, M.space2)
+                    OutputDeviceLine(device: output)
                     Spacer(minLength: 0)
                     cover(side)
                     titles
@@ -186,6 +188,7 @@ struct NowPlayingView: View {
         HStack(spacing: M.space6) {
             Button { playback.previous() } label: {
                 Image(systemName: "backward.fill").font(.system(size: 28)).frame(width: 64, height: 64)
+                    .glassCircle()
             }
             .accessibilityLabel(L.t("player.previous"))
             Button { Haptics.tap(); playback.toggle() } label: {
@@ -198,6 +201,7 @@ struct NowPlayingView: View {
             .accessibilityLabel(playback.playing ? L.t("player.pause") : L.t("player.play"))
             Button { playback.next() } label: {
                 Image(systemName: "forward.fill").font(.system(size: 28)).frame(width: 64, height: 64)
+                    .glassCircle()
             }
             .accessibilityLabel(L.t("player.next"))
         }
@@ -331,6 +335,17 @@ struct QueueView: View {
             .navigationTitle(L.t("queue.title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { EditButton() }
+        }
+    }
+}
+
+extension View {
+    /// iOS 26+: the system's interactive glass circle behind a control (D-169); before — as is.
+    @ViewBuilder func glassCircle() -> some View {
+        if #available(iOS 26, *) {
+            self.glassEffect(.regular.interactive(), in: .circle)
+        } else {
+            self
         }
     }
 }

@@ -152,6 +152,8 @@ struct MiniPlayer: View {
     @EnvironmentObject private var playback: Playback
     @Environment(\.palette) private var p
     @Binding var expanded: Bool
+    /// In the iOS 26 tab bar's accessory: the system draws the glass, no own card (D-169).
+    var inAccessory = false
 
     var body: some View {
         if let item = playback.current {
@@ -178,11 +180,13 @@ struct MiniPlayer: View {
                 .accessibilityLabel(L.t("player.next"))
             }
             .padding(.horizontal, M.space3)
-            .frame(height: 64)
-            .background(p.bgRaised, in: RoundedRectangle(cornerRadius: M.radiusLg, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: M.radiusLg, style: .continuous).stroke(p.border))
-            .padding(.horizontal, M.space2)
-            .padding(.bottom, M.space1)
+            .frame(height: inAccessory ? nil : 64)
+            .background(inAccessory ? Color.clear : p.bgRaised,
+                        in: RoundedRectangle(cornerRadius: M.radiusLg, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: M.radiusLg, style: .continuous)
+                .stroke(inAccessory ? Color.clear : p.border))
+            .padding(.horizontal, inAccessory ? 0 : M.space2)
+            .padding(.bottom, inAccessory ? 0 : M.space1)
             .contentShape(Rectangle())
             .onTapGesture { expanded = true }
             .gesture(DragGesture(minimumDistance: 30).onEnded { g in

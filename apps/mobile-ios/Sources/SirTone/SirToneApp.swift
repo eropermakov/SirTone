@@ -41,11 +41,7 @@ struct RootView: View {
 
     var body: some View {
         let p = app.palette(system: system, contrast: contrast)
-        TabView {
-            tab(WaveView(), L.t("tab.wave"), "water.waves")
-            tab(LibraryView(), L.t("tab.library"), "square.stack")
-            tab(SearchView(), L.t("tab.search"), "magnifyingglass")
-        }
+        tabs
         .tint(p.accent.text)
         .environment(\.palette, p)
         .preferredColorScheme(app.preferredScheme)
@@ -69,6 +65,28 @@ struct RootView: View {
         .onChange(of: phase) { _, now in
             app.playback.setOnScreen(now == .active)
             if now == .active { app.becameActive() }
+        }
+    }
+
+    /// On iOS 26+ as Apple Music (D-169): system glass tabs that shrink on scroll, «Поиск» as
+    /// its own round button, the mini-player above the tabs; before that the tabs as they were.
+    @ViewBuilder private var tabs: some View {
+        if #available(iOS 26.1, *) {
+            TabView {
+                Tab(L.t("tab.wave"), systemImage: "water.waves") { WaveView() }
+                Tab(L.t("tab.library"), systemImage: "square.stack") { LibraryView() }
+                Tab(L.t("tab.search"), systemImage: "magnifyingglass", role: .search) { SearchView() }
+            }
+            .tabBarMinimizeBehavior(.onScrollDown)
+            .tabViewBottomAccessory(isEnabled: playback.current != nil) {
+                MiniPlayer(expanded: $expanded, inAccessory: true)
+            }
+        } else {
+            TabView {
+                tab(WaveView(), L.t("tab.wave"), "water.waves")
+                tab(LibraryView(), L.t("tab.library"), "square.stack")
+                tab(SearchView(), L.t("tab.search"), "magnifyingglass")
+            }
         }
     }
 

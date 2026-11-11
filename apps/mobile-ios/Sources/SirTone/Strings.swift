@@ -308,6 +308,7 @@ enum L {
         "storage.trash": "В корзине: %@",
         "storage.empty_trash": "Очистить корзину",
         "storage.empty_trash.confirm": "Удалённая музыка сотрётся навсегда, место освободится.",
+        "bt.left": "≈ %@",
         "search.artists_prompt": "Найти исполнителя",
         "search.tracks_prompt": "Название или исполнитель",
         "player.background": "Фон плеера",
