@@ -170,6 +170,66 @@ pub(crate) fn track_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<TrackRow> {
     })
 }
 
+/// `%…%` for LIKE over a normalised string (`\` escapes `%` and `_`).
+fn contains(norm: &str) -> String {
+    let esc = norm
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    format!("%{esc}%")
+}
+
+/// Artists whose normalised name holds `query_norm` — over the whole library, those starting
+/// with it first (the phone's «Исполнители» filter, D-164).
+pub fn find_artists(
+    conn: &Connection,
+    query_norm: &str,
+    limit: u32,
+) -> Result<Vec<ArtistRow>, LibraryError> {
+    let mut st = conn.prepare_cached(
+        "SELECT a.id, a.name,
+                (SELECT count(*) FROM track_artist ta JOIN track t ON t.id = ta.track_id
+                 WHERE ta.artist_id = a.id AND t.state = 'ok') AS n,
+                (SELECT coalesce(max(t.added_at), 0) FROM track_artist ta JOIN track t ON t.id = ta.track_id
+                 WHERE ta.artist_id = a.id AND t.state = 'ok')
+         FROM artist a
+         WHERE a.merged_into IS NULL AND a.name_norm LIKE ?1 ESCAPE '\\' AND n > 0
+         ORDER BY a.name_norm LIKE ?2 ESCAPE '\\' DESC, a.name_norm, a.id LIMIT ?3",
+    )?;
+    let starts = format!("{}%", contains(query_norm).trim_start_matches('%'));
+    let rows = st
+        .query_map(params![contains(query_norm), starts, limit], |r| {
+            Ok(ArtistRow {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                tracks: r.get(2)?,
+                added_at: r.get(3)?,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+/// Playable tracks whose normalised title or an artist's name holds `query_norm`, by title —
+/// over the whole library (the phone's «Все треки» filter, D-164).
+pub fn find_tracks(
+    conn: &Connection,
+    query_norm: &str,
+    limit: u32,
+) -> Result<Vec<TrackRow>, LibraryError> {
+    let mut st = conn.prepare_cached(&format!(
+        "SELECT {TRACK_COLS} FROM track t LEFT JOIN album al ON al.id = t.album_id
+         WHERE t.state = 'ok' AND (t.title_norm LIKE ?1 ESCAPE '\\'
+            OR EXISTS (SELECT 1 FROM track_artist ta JOIN artist a ON a.id = ta.artist_id
+                       WHERE ta.track_id = t.id AND a.name_norm LIKE ?1 ESCAPE '\\'))
+         ORDER BY t.title_norm, t.id LIMIT ?2"
+    ))?;
+    let rows = st
+        .query_map(params![contains(query_norm), limit], track_row)?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
 /// Playable tracks by id, in the order given (recommendations, T3.14).
 pub fn tracks_by_ids(conn: &Connection, ids: &[i64]) -> Result<Vec<TrackRow>, LibraryError> {
     let mut st = conn.prepare_cached(&format!(

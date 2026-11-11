@@ -218,20 +218,44 @@ struct AllTracksView: View {
     @State private var done = false
     /// One page at a time: several rows appear together and would ask for the same page.
     @State private var loading = false
+    /// The filter (D-164): the whole library by title or artist, not the loaded pages.
+    @State private var query = ""
+    @State private var found: [TrackItem]?
 
     var body: some View {
         List {
             PageTitle(text: L.t("library.tracks")).listRowBackground(Color.clear).listRowSeparator(.hidden)
-            ForEach(Array(tracks.enumerated()), id: \.element.id) { i, t in
-                TrackRowView(track: t) { playback.play(tracks, at: i) }
-                    .listRowBackground(p.bgLayer)
-                    .onAppear { if i >= tracks.count - 20 { Task { await more() } } }
+            if let found {
+                if found.isEmpty {
+                    Text(verbatim: L.t("search.empty")).foregroundStyle(p.textSecondary)
+                        .listRowBackground(Color.clear)
+                }
+                ForEach(Array(found.enumerated()), id: \.element.id) { i, t in
+                    TrackRowView(track: t) { playback.play(found, at: i) }
+                        .listRowBackground(p.bgLayer)
+                }
+            } else {
+                ForEach(Array(tracks.enumerated()), id: \.element.id) { i, t in
+                    TrackRowView(track: t) { playback.play(tracks, at: i) }
+                        .listRowBackground(p.bgLayer)
+                        .onAppear { if i >= tracks.count - 20 { Task { await more() } } }
+                }
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(p.bgLayer)
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: L.t("search.tracks_prompt"))
+        .task(id: query) {
+            let q = query.trimmingCharacters(in: .whitespaces)
+            guard !q.isEmpty, let lib = app.library else { found = nil; return }
+            // A short pause: the core is asked once the typing settles.
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            found = await Task.detached { (try? lib.findTracks(query: q)) ?? [] }.value
+        }
         .task(id: app.revision) {
             tracks = []; next = nil; done = false
             await more()
@@ -318,11 +342,19 @@ struct ArtistsView: View {
     @State private var done = false
     /// One page at a time: several rows appear together and would ask for the same page.
     @State private var loading = false
+    /// The filter (D-164): the whole library, not the loaded pages.
+    @State private var query = ""
+    @State private var found: [ArtistItem]?
 
     var body: some View {
         List {
             PageTitle(text: L.t("library.artists")).listRowBackground(Color.clear).listRowSeparator(.hidden)
-            ForEach(Array(artists.enumerated()), id: \.element.id) { i, a in
+            if let found, found.isEmpty {
+                Text(verbatim: L.t("search.empty")).foregroundStyle(p.textSecondary)
+                    .listRowBackground(Color.clear)
+            }
+            let shown = found ?? artists
+            ForEach(Array(shown.enumerated()), id: \.element.id) { i, a in
                 NavigationLink(value: LibraryRoute.artist(id: a.id, name: a.name)) {
                     HStack(spacing: M.space3) {
                         Text(verbatim: String(a.name.prefix(1)).uppercased())
@@ -339,13 +371,22 @@ struct ArtistsView: View {
                     .frame(minHeight: M.rowHeight)
                 }
                 .listRowBackground(p.bgLayer)
-                .onAppear { if i >= artists.count - 20 { Task { await more() } } }
+                .onAppear { if found == nil, i >= artists.count - 20 { Task { await more() } } }
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(p.bgLayer)
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: L.t("search.artists_prompt"))
+        .task(id: query) {
+            let q = query.trimmingCharacters(in: .whitespaces)
+            guard !q.isEmpty, let lib = app.library else { found = nil; return }
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            found = await Task.detached { (try? lib.findArtists(query: q)) ?? [] }.value
+        }
         .task(id: app.revision) {
             artists = []; next = nil; done = false
             await more()
@@ -431,6 +472,8 @@ struct SearchView: View {
     @Environment(\.palette) private var p
     @State private var query = ""
     @State private var results: SearchResults?
+    /// The field is active as soon as the tab opens: one tap and the keyboard is up (D-164).
+    @State private var searching = false
     @AppStorage("recentSearches") private var recentRaw = ""
 
     private var recent: [String] { recentRaw.split(separator: "\n").map(String.init) }
@@ -489,8 +532,16 @@ struct SearchView: View {
             .scrollContentBackground(.hidden)
             .background(p.bgLayer)
             .navigationTitle(L.t("tab.search"))
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
+            .searchable(text: $query, isPresented: $searching,
+                        placement: .navigationBarDrawer(displayMode: .always),
                         prompt: L.t("search.prompt"))
+            .onAppear {
+                // After the tab's own appearance, or iOS drops the focus.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(50))
+                    searching = true
+                }
+            }
             .navigationDestination(for: LibraryRoute.self) { r in
                 switch r {
                 case let .album(id, title, cover):

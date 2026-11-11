@@ -235,6 +235,8 @@ enum L {
         "viz.presetChange": "Когда менять пресет",
         "viz.presetChange.track": "При смене трека",
         "viz.presetChange.never": "Никогда",
+        "search.artists_prompt": "Найти исполнителя",
+        "search.tracks_prompt": "Название или исполнитель",
         "player.background": "Фон плеера",
         "player.background.waves": "Волны",
         "player.background.milkdrop": "MilkDrop",

@@ -109,6 +109,31 @@ impl Library {
         })
     }
 
+    /// «Исполнители» filtered by a typed text, over the whole library (D-164); empty text — none.
+    pub fn find_artists(&self, query: String) -> Result<Vec<ArtistItem>, CoreError> {
+        let Some(q) = sirtone_core::text::norm(&query) else {
+            return Ok(Vec::new());
+        };
+        let rows = self.with(|c| collection::find_artists(c, &q, 500))?;
+        Ok(rows
+            .into_iter()
+            .map(|a| ArtistItem {
+                id: a.id,
+                name: a.name,
+                tracks: a.tracks,
+            })
+            .collect())
+    }
+
+    /// «Все треки» filtered by title or artist, over the whole library (D-164).
+    pub fn find_tracks(&self, query: String) -> Result<Vec<TrackItem>, CoreError> {
+        let Some(q) = sirtone_core::text::norm(&query) else {
+            return Ok(Vec::new());
+        };
+        let rows = self.with(|c| collection::find_tracks(c, &q, 1_000))?;
+        Ok(rows.into_iter().map(item).collect())
+    }
+
     /// An album's tracks in disc and track order (S08).
     pub fn album_tracks(&self, album_id: i64) -> Result<Vec<TrackItem>, CoreError> {
         let rows = self.with(|c| collection::album_tracks(c, album_id))?;
@@ -224,6 +249,21 @@ mod tests {
         let artists = lib.artists(None, 50).unwrap();
         assert_eq!(artists.artists[0].name, "Кино");
         assert_eq!(lib.artist_tracks(artists.artists[0].id).unwrap().len(), 3);
+        // D-164: the filters see the whole library, case and «ё» aside.
+        assert_eq!(lib.find_artists("кИн".into()).unwrap().len(), 1);
+        assert!(lib.find_artists("Аквариум".into()).unwrap().is_empty());
+        assert_eq!(
+            lib.find_tracks("кино".into()).unwrap().len(),
+            3,
+            "by artist"
+        );
+        assert_eq!(
+            lib.find_tracks("крови".into()).unwrap().len(),
+            1,
+            "by title"
+        );
+        assert!(lib.find_tracks("  ".into()).unwrap().is_empty());
+        assert!(lib.find_tracks("100%".into()).unwrap().is_empty());
         let path = lib.track_path(tracks[0].id).unwrap();
         assert!(path.starts_with(&dir.to_string_lossy().into_owned()));
         assert!(path.ends_with("01 Группа крови.flac"));
