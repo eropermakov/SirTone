@@ -22,7 +22,9 @@ struct VizView: View {
     /// «Когда менять пресет» (D-153): `track` or `never`; `never` stays on the last preset shown.
     @AppStorage("vizPresetChange") private var presetChange = "track"
     @AppStorage("vizPresetLast") private var presetLast = ""
-    @State private var controls = true
+    /// The player over the picture: a tap shows or hides it, and it stays so (D-166) — it no
+    /// longer steps aside by itself.
+    @AppStorage("vizControls") private var controls = true
     @StateObject private var bridge = VizBridge()
 
     var body: some View {
@@ -50,11 +52,6 @@ struct VizView: View {
         .onChange(of: playback.deckGen) { _, _ in bridge.halt(); bridge.run() }
         .onChange(of: phase) { _, now in now == .active ? bridge.run() : bridge.halt() }
         .onDisappear { bridge.halt() }
-        .task {
-            // The controls step aside after a moment, as a video player's.
-            try? await Task.sleep(for: .seconds(3))
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) { controls = false }
-        }
     }
 
     private func configure() {
@@ -318,8 +315,9 @@ private final class WeakHandler: NSObject, WKScriptMessageHandler {
     }
 }
 
-/// «Волны» behind «Сейчас играет» (as the PC's player over its waves, D-148): the same page, a
-/// lighter level, under the artwork scrim; paused while the full-screen visualiser is open.
+/// The visualiser behind «Сейчас играет» (as the PC's player over its waves, D-148; «Волны» or
+/// MilkDrop by choice, D-166): the same page, a lighter level, under the artwork scrim; paused
+/// while the full-screen visualiser is open.
 struct VizBackground: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var playback: Playback
@@ -327,21 +325,25 @@ struct VizBackground: View {
     @Environment(\.scenePhase) private var phase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let paused: Bool
+    var mode = "waves"
     @StateObject private var bridge = VizBridge()
 
     var body: some View {
         VizWeb(bridge: bridge)
-            .onAppear {
-                // Under the scrim: the lightest level is enough.
-                bridge.configure(mode: "waves", accent: p.accent.fill.hex, reduced: reduceMotion,
-                                 level: 1, playback: playback, library: app.library, role: "bg")
-                if paused { bridge.halt() }
-            }
+            .onChange(of: mode) { _, _ in configure() }
+            .onAppear { configure() }
             .onChange(of: playback.current?.track.id) { _, _ in bridge.sendColors() }
             .onChange(of: playback.deckGen) { _, _ in if !paused { bridge.halt(); bridge.run() } }
             .onChange(of: paused) { _, now in now ? bridge.halt() : bridge.run() }
             .onChange(of: phase) { _, now in now == .active && !paused ? bridge.run() : bridge.halt() }
             .onDisappear { bridge.halt() }
+    }
+
+    private func configure() {
+        // Under the scrim: the lightest level is enough.
+        bridge.configure(mode: mode, accent: p.accent.fill.hex, reduced: reduceMotion,
+                         level: 1, playback: playback, library: app.library, role: "bg")
+        if paused { bridge.halt() }
     }
 }
 

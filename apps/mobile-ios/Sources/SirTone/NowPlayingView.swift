@@ -17,6 +17,8 @@ struct NowPlayingView: View {
     @State private var showQueue = false
     @State private var why: WhyList?
     @State private var showViz = false
+    /// What is behind the player (D-166): «Волны» (as before), MilkDrop, «Обложка», «Нет».
+    @AppStorage("playerBackground") private var playerBackground = "waves"
 
     var body: some View {
         GeometryReader { geo in
@@ -30,6 +32,18 @@ struct NowPlayingView: View {
                         // F22: the visualiser; not in «Только музыка» (D-147).
                         if !app.musicOnly {
                             HStack {
+                                Menu {
+                                    Picker(L.t("player.background"), selection: $playerBackground) {
+                                        ForEach(["waves", "milkdrop", "cover", "none"], id: \.self) { b in
+                                            Text(verbatim: L.t("player.background.\(b)")).tag(b)
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: "rectangle.on.rectangle").font(.system(size: 20))
+                                        .frame(width: 44, height: 44)
+                                }
+                                .opacity(0.85)
+                                .accessibilityLabel(L.t("player.background"))
                                 Spacer()
                                 Button { showViz = true } label: {
                                     Image(systemName: "waveform").font(.system(size: 20))
@@ -65,11 +79,12 @@ struct NowPlayingView: View {
     }
 
     private var background: some View {
-        ZStack {
+        // «Только музыка» keeps the cover only (D-147); otherwise as chosen (D-166).
+        let bg = app.musicOnly ? "cover" : playerBackground
+        return ZStack {
             p.bgBase
-            if !app.musicOnly {
-                // The waves of the track's colours behind the player, as on the PC (D-148); the
-                // blurred cover shows through until the page draws.
+            if bg != "none" {
+                // The blurred cover; under a visualiser it shows through until the page draws.
                 if let img = playback.cover {
                     Color.clear
                         .overlay { Image(uiImage: img).resizable().scaledToFill() }
@@ -77,7 +92,9 @@ struct NowPlayingView: View {
                         .blur(radius: 100)
                         .opacity(0.9)
                 }
-                VizBackground(paused: showViz)
+            }
+            if bg == "waves" || bg == "milkdrop" {
+                VizBackground(paused: showViz, mode: bg)
             }
             p.artworkScrim.ignoresSafeArea()
         }
@@ -144,13 +161,13 @@ struct NowPlayingView: View {
         }
     }
 
+    /// «Назад» and «Вперёд» close to Play (D-166): a thumb reaches all three without a stretch.
     private var controls: some View {
-        HStack {
+        HStack(spacing: M.space6) {
             Button { playback.previous() } label: {
                 Image(systemName: "backward.fill").font(.system(size: 28)).frame(width: 64, height: 64)
             }
             .accessibilityLabel(L.t("player.previous"))
-            Spacer()
             Button { Haptics.tap(); playback.toggle() } label: {
                 Image(systemName: playback.playing ? "pause.fill" : "play.fill")
                     .font(.system(size: 30, weight: .semibold))
@@ -159,7 +176,6 @@ struct NowPlayingView: View {
                     .background(p.accent.fill, in: Circle())
             }
             .accessibilityLabel(playback.playing ? L.t("player.pause") : L.t("player.play"))
-            Spacer()
             Button { playback.next() } label: {
                 Image(systemName: "forward.fill").font(.system(size: 28)).frame(width: 64, height: 64)
             }
