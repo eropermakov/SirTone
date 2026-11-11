@@ -261,9 +261,12 @@ pub(crate) mod tests {
 
     /// A library in a fresh temp folder with a few tracks.
     pub(crate) fn sample() -> (std::sync::Arc<Library>, PathBuf) {
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "sirtone-mobile-{}-{}",
+            "sirtone-mobile-{}-{}-{}",
             std::process::id(),
+            // Parallel tests can share a clock tick on Windows: a counter keeps them apart.
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_nanos())

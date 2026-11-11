@@ -80,6 +80,12 @@ impl Library {
         let root = std::path::PathBuf::from(self.root());
         let freed = self.delete_size(track_ids.clone())?;
         let files = PhoneFiles { root: root.clone() };
+        // As the hub's matcher sees them: the primary artist, the hash, the fingerprint.
+        let rows: Vec<_> = self
+            .with(|c| sirtone_library::transfer::tracks(c))?
+            .into_iter()
+            .filter(|t| track_ids.contains(&t.id))
+            .collect();
         let mut gone = Vec::new();
         for id in &track_ids {
             let who = self.with(|c| {
@@ -102,7 +108,7 @@ impl Library {
                 .optional()
                 .map_err(sirtone_library::LibraryError::from)
             })?;
-            let Some((title, duration, hash, copy, artist)) = who else {
+            let Some((_, _, _, copy, _)) = who else {
                 continue;
             };
             // The economy copy beside the original (D-146) goes to the trash too.
@@ -115,12 +121,18 @@ impl Library {
                 }
             }
             self.with(|c| relocate::remove(c, &root, *id, true, &files))?;
-            gone.push(sirtone_sync::Gone {
-                artist,
-                title,
-                duration_ms: u32::try_from(duration).unwrap_or(0),
-                hash,
-            });
+            if let Some(t) = rows.iter().find(|t| t.id == *id) {
+                gone.push(sirtone_sync::Gone {
+                    artist: t.artist.clone(),
+                    title: t.title.clone(),
+                    duration_ms: t.duration_ms,
+                    hash: Some(t.content_hash.clone()),
+                    fingerprint: t
+                        .fingerprint
+                        .as_deref()
+                        .map(sirtone_core::fingerprint::base64url),
+                });
+            }
         }
         let list = root.join(SERVICE_DIR).join(sirtone_sync::GONE_FILE);
         sirtone_sync::add_gone(&list, &gone).map_err(|_| failed("manage.gone_list"))?;

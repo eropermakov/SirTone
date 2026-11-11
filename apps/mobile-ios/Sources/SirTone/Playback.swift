@@ -530,6 +530,8 @@ final class Playback: ObservableObject {
             guard !Task.isCancelled, let (f, h, liked, art) = opened, index == i - 1 else {
                 if let opened { sirtone_render_release(opened.1) }
                 core.clearMix()
+                // A plays to its own end: no fade or stop for a track that is not coming.
+                outgoing.core.clearMix()
                 mixing = nil
                 return
             }
@@ -537,10 +539,20 @@ final class Playback: ObservableObject {
             // B renders silence until A's callback reaches the cue, then its first sample.
             core.play()
             outgoing.core.cuePartnerAt(ms: mix.aOutMs)
+            // Bounded: A may end before its cue (a guessed length) or stall — then B starts now.
+            let ahead = max(0, Int64(mix.aOutMs) - Int64(outgoing.core.positionMs()))
+            let deadline = Date().addingTimeInterval(Double(ahead + 1_500) / 1000)
+            var fallback = false
             while core.waiting() {
+                if outgoing.core.ended() || Date() > deadline {
+                    fallback = true
+                    core.clearMix()
+                    break
+                }
                 try? await Task.sleep(for: .milliseconds(20))
                 guard !Task.isCancelled else { return }
             }
+            MixStats.record(mix: mix, report: core.cueReport(), fallback: fallback)
             // The new track is the current one from here (A's journal row up to this moment).
             positionMs = outgoing.core.positionMs()
             logCurrent(skipped: false)
@@ -685,6 +697,34 @@ enum Haptics {
             || ((d.object(forKey: "musicOnlyWithLowPower") as? Bool ?? true)
                 && ProcessInfo.processInfo.isLowPowerModeEnabled)
         if !musicOnly { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+    }
+}
+
+/// What each transition did (D-167), for the PC to read after a listen (`phone pull`):
+/// `Documents/mix-stats.json` — the last 50 starts, planned vs actual host time.
+enum MixStats {
+    static func record(mix: MixPlan, report: CueReport, fallback: Bool) {
+        guard let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        else { return }
+        let url = dir.appendingPathComponent("mix-stats.json")
+        var all = (try? JSONSerialization.jsonObject(with: Data(contentsOf: url))) as? [[String: Any]] ?? []
+        var tb = mach_timebase_info_data_t()
+        mach_timebase_info(&tb)
+        let diff = Int64(bitPattern: report.actualHost &- report.plannedHost)
+        let us = report.plannedHost > 1 && report.actualHost > 0
+            ? Double(diff) * Double(tb.numer) / Double(max(tb.denom, 1)) / 1000 : nil
+        all.append([
+            "at": Date().timeIntervalSince1970,
+            "aOutMs": mix.aOutMs, "overlapMs": mix.overlapMs,
+            "aEqualPower": mix.aEqualPower, "bEqualPower": mix.bEqualPower,
+            "swapHz": mix.swapHz, "swapAtMs": mix.swapAtMs,
+            "hostClock": report.plannedHost > 1, "startErrorUs": us as Any,
+            "fallback": fallback,
+        ])
+        if all.count > 50 { all.removeFirst(all.count - 50) }
+        if let data = try? JSONSerialization.data(withJSONObject: all, options: [.prettyPrinted]) {
+            try? data.write(to: url)
+        }
     }
 }
 #endif

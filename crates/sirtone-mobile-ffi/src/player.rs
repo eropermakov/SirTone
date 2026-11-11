@@ -69,6 +69,16 @@ struct Shared {
     wait_host: AtomicU64,
     /// The other deck (`Player::pair`), read lock-free by the callback.
     partner: OnceLock<Arc<Shared>>,
+    /// The last cue: the host time asked for and the one the first sample got (0 — no clock).
+    start_planned: AtomicU64,
+    start_actual: AtomicU64,
+}
+
+/// How the last transition's start went (`Player::cue_report`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct CueReport {
+    pub planned_host: u64,
+    pub actual_host: u64,
 }
 
 /// A deck's side of a transition: positions in the track's own time.
@@ -358,6 +368,8 @@ impl Player {
                 cue_ms: AtomicU64::new(u64::MAX),
                 wait_host: AtomicU64::new(0),
                 partner: OnceLock::new(),
+                start_planned: AtomicU64::new(0),
+                start_actual: AtomicU64::new(0),
             }),
             inner: Mutex::new(Inner {
                 format: None,
@@ -431,6 +443,15 @@ impl Player {
     /// Incoming deck: silent until the partner's cue (call before `play`).
     pub fn wait_for_cue(&self) {
         self.shared.wait_host.store(u64::MAX, Ordering::Release);
+    }
+
+    /// The last start on a cue: planned and actual host time (`1` planned — started because
+    /// the partner ran out; equal — to the sample).
+    pub fn cue_report(&self) -> CueReport {
+        CueReport {
+            planned_host: self.shared.start_planned.load(Ordering::Relaxed),
+            actual_host: self.shared.start_actual.load(Ordering::Relaxed),
+        }
     }
 
     /// Whether this deck is still waiting for its cue.
@@ -698,6 +719,12 @@ pub unsafe extern "C" fn sirtone_render(
             lead = ahead;
         }
         h.shared.wait_host.store(0, Ordering::Release);
+        // What the transition's first sample got, for `mix-stats.json` (D-167).
+        h.shared.start_planned.store(wait, Ordering::Relaxed);
+        h.shared.start_actual.store(
+            host_time + (lead as f64 * per_frame) as u64,
+            Ordering::Relaxed,
+        );
     }
     // An outgoing deck tells its partner the host time of the cue, again every block until it
     // is reached (the estimate only sharpens); without a clock — «now» once it is reached.
@@ -778,6 +805,13 @@ pub unsafe extern "C" fn sirtone_render(
         .fetch_add(u64::from(written), Ordering::AcqRel);
     if n == 0 && h.shared.decode_done.load(Ordering::Acquire) {
         h.shared.ended.store(true, Ordering::Release);
+        // A track shorter than its tags said never reaches the cue: the partner starts now.
+        if h.shared.cue_ms.swap(u64::MAX, Ordering::AcqRel) != u64::MAX
+            && let Some(p) = h.shared.partner.get()
+            && p.wait_host.load(Ordering::Acquire) != 0
+        {
+            p.wait_host.store(1, Ordering::Release);
+        }
     }
     written
 }
@@ -974,6 +1008,48 @@ pub(crate) mod tests {
         unsafe { sirtone_render_release(h) };
         drop(p);
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// A track that ends before its cue (its length was a guess) lets the partner start.
+    #[test]
+    fn a_short_track_releases_its_partner() {
+        let dir = std::env::temp_dir();
+        let (pa, pb) = (
+            dir.join(format!("sirtone-short-a-{}.wav", std::process::id())),
+            dir.join(format!("sirtone-short-b-{}.wav", std::process::id())),
+        );
+        wav(&pa);
+        wav(&pb);
+        let (a, b) = (Player::new(), Player::new());
+        a.pair(b.clone());
+        a.open(pa.to_string_lossy().into_owned()).unwrap();
+        b.open(pb.to_string_lossy().into_owned()).unwrap();
+        let (ha, hb) = (a.take_render_handle(), b.take_render_handle());
+        a.cue_partner_at(9_000); // past the 0.5 s file
+        b.wait_for_cue();
+        a.play();
+        b.play();
+        let mut out = vec![0f32; 512 * 2];
+        for _ in 0..4_000 {
+            // SAFETY: the handles and buffer satisfy the contract.
+            unsafe {
+                sirtone_render(ha, out.as_mut_ptr(), 512, 2, 0);
+                sirtone_render(hb, out.as_mut_ptr(), 512, 2, 0);
+            }
+            if !b.waiting() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(a.ended(), "A ran out");
+        assert!(!b.waiting(), "and B started");
+        // SAFETY: done with them.
+        unsafe {
+            sirtone_render_release(ha);
+            sirtone_render_release(hb);
+        }
+        let _ = std::fs::remove_file(&pa);
+        let _ = std::fs::remove_file(&pb);
     }
 
     fn rms(xs: &[f32]) -> f32 {

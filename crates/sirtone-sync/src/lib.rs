@@ -232,6 +232,10 @@ pub struct Gone {
     pub title: String,
     pub duration_ms: u32,
     pub hash: Option<String>,
+    /// The stored Chromaprint (compressed, base64url): an economy copy has another hash than
+    /// the PC's original, but the same sound.
+    #[serde(default)]
+    pub fingerprint: Option<String>,
 }
 
 /// The list of [`Gone`] tracks, in the library's service folder (`.sirtone/deleted.json`).
@@ -311,6 +315,8 @@ pub fn narrow(
         None => HashMap::new(),
     };
     // Deleted on the other side by its owner (D-165): never sent back, nor its plays or marks.
+    // Only for the whole library: a track the person chooses to send again goes (D-165).
+    let gone: &[Gone] = if chosen.is_some() { &[] } else { gone };
     let gone_local: Vec<merge::LocalTrack> = gone
         .iter()
         .enumerate()
@@ -319,7 +325,11 @@ pub fn narrow(
             duration_ms: g.duration_ms,
             artist: g.artist.clone(),
             title: Some(g.title.clone()),
-            fingerprint: None,
+            fingerprint: g
+                .fingerprint
+                .as_deref()
+                .and_then(sirtone_core::fingerprint::unbase64url)
+                .and_then(|b| sirtone_core::fingerprint::decompress(&b)),
             hash: g.hash.clone(),
         })
         .collect();
@@ -938,9 +948,15 @@ mod tests {
             title: "Группа крови".into(),
             duration_ms: 200_000,
             hash: Some("h3".into()),
+            fingerprint: None,
         }];
         let n = narrow(&out, Some(&phone), None, None, &gone).unwrap();
         assert!(n.send.is_empty(), "deleted stays deleted: {n:?}");
+        // … unless the person sends it on purpose («На телефон»).
+        export(&out);
+        let chosen: HashSet<String> = [format!("{uid}:{c}")].into_iter().collect();
+        let n = narrow(&out, Some(&phone), Some(&chosen), None, &gone).unwrap();
+        assert_eq!(n.send, vec![format!("{MUSIC_DIR}/Кино/3.flac")]);
         let list = base.join("deleted.json");
         add_gone(&list, &gone).unwrap();
         add_gone(&list, &gone).unwrap();
