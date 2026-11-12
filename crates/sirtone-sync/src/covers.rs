@@ -30,11 +30,25 @@ pub struct CoverEntry {
     pub hash: Option<String>,
     /// BLAKE3 of the picture (`cover.hash`).
     pub cover: String,
+    /// The track's own cover (D-173: a single, or its album has none) — not its album's.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub on_track: bool,
+}
+
+/// An artist's own picture on the PC (D-173, `artist.photo_cover_id`); the phone shows it where
+/// none of their albums has a cover, as the PC does.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ArtistPicture {
+    pub name: String,
+    pub cover: String,
 }
 
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 struct CoversFile {
+    #[serde(default)]
     tracks: Vec<CoverEntry>,
+    #[serde(default)]
+    artists: Vec<ArtistPicture>,
 }
 
 fn as_entry(i: usize, e: &CoverEntry) -> TrackEntry {
@@ -53,16 +67,29 @@ fn as_entry(i: usize, e: &CoverEntry) -> TrackEntry {
     }
 }
 
-/// Track id → the hash of its album's cover.
-fn track_covers(conn: &Connection) -> Result<HashMap<i64, String>, SyncError> {
+/// Track id → the picture it shows (its album's cover, else its own — D-173) and whether that
+/// is its own.
+fn track_covers(conn: &Connection) -> Result<HashMap<i64, (String, bool)>, SyncError> {
     let mut st = conn.prepare(
-        "SELECT t.id, cv.hash FROM track t
-           JOIN album al ON al.id = t.album_id
-           JOIN cover cv ON cv.id = al.cover_id
-          WHERE t.state = 'ok'",
+        "SELECT t.id, coalesce(ac.hash, tc.hash), ac.hash IS NULL FROM track t
+           LEFT JOIN album al ON al.id = t.album_id
+           LEFT JOIN cover ac ON ac.id = al.cover_id
+           LEFT JOIN cover tc ON tc.id = t.cover_id
+          WHERE t.state = 'ok' AND coalesce(ac.hash, tc.hash) IS NOT NULL",
     )?;
     let rows = st
-        .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?
+        .query_map([], |r| Ok((r.get::<_, i64>(0)?, (r.get(1)?, r.get(2)?))))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+/// Artist name → their own picture's hash.
+fn artist_pictures(conn: &Connection) -> Result<HashMap<String, String>, SyncError> {
+    let mut st = conn.prepare(
+        "SELECT a.name, cv.hash FROM artist a JOIN cover cv ON cv.id = a.photo_cover_id",
+    )?;
+    let rows = st
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect::<Result<_, _>>()?;
     Ok(rows)
 }
@@ -96,7 +123,8 @@ pub fn write_covers(
         title: t.title.clone(),
         duration_ms: t.duration_ms,
         hash: Some(t.content_hash.clone()),
-        cover: pc[&t.id].clone(),
+        cover: pc[&t.id].0.clone(),
+        on_track: pc[&t.id].1,
     };
 
     // The package's tracks (keys `<uid>:<id>` of this library).
@@ -109,11 +137,16 @@ pub fn write_covers(
         .collect();
     let mut skip: HashSet<i64> = HashSet::new();
     let mut theirs: HashSet<String> = HashSet::new();
+    let mut their_artists: HashMap<String, String> = HashMap::new();
     if let Some(c) = other {
         theirs = cover_hashes(c)?;
+        their_artists = artist_pictures(c)?;
         // The phone's tracks and the picture each shows now.
         let there = local_tracks(c)?;
-        let shows: HashMap<i64, String> = track_covers(c)?;
+        let shows: HashMap<i64, String> = track_covers(c)?
+            .into_iter()
+            .map(|(k, (h, _))| (k, h))
+            .collect();
         let all: Vec<(i64, CoverEntry)> = rows.values().map(|t| (t.id, entry(t))).collect();
         let entries: Vec<TrackEntry> = all.iter().map(|(_, e)| as_entry(0, e)).collect();
         for ((id, e), m) in all.iter().zip(merge::match_tracks(&entries, &there)) {
@@ -126,6 +159,17 @@ pub fn write_covers(
             }
         }
     }
+    // The artists of the music that will be on the phone, with their own picture on the PC.
+    let names: HashSet<&str> = ids
+        .iter()
+        .chain(skip.iter())
+        .filter_map(|id| rows[id].artist.as_deref())
+        .collect();
+    let artists: Vec<ArtistPicture> = artist_pictures(conn)?
+        .into_iter()
+        .filter(|(n, h)| names.contains(n.as_str()) && their_artists.get(n) != Some(h))
+        .map(|(name, cover)| ArtistPicture { name, cover })
+        .collect();
     let mut seen = HashSet::new();
     let list: Vec<CoverEntry> = ids
         .into_iter()
@@ -135,32 +179,41 @@ pub fn write_covers(
 
     let file = out.join(COVERS_FILE);
     let dir = out.join(COVERS_DIR);
-    if list.is_empty() {
+    if list.is_empty() && artists.is_empty() {
         let _ = std::fs::remove_file(&file);
         let _ = std::fs::remove_dir_all(&dir);
         return Ok(0);
     }
     let mut copied = HashSet::new();
-    for e in &list {
-        if theirs.contains(&e.cover) || !copied.insert(e.cover.clone()) {
+    let hashes = list
+        .iter()
+        .map(|e| &e.cover)
+        .chain(artists.iter().map(|a| &a.cover));
+    for hash in hashes {
+        if theirs.contains(hash) || !copied.insert(hash.clone()) {
             continue;
         }
-        if let Some(src) = covers::original(root, &e.cover) {
+        if let Some(src) = covers::original(root, hash) {
             let name = src.file_name().map(|n| n.to_owned()).unwrap_or_default();
             std::fs::create_dir_all(&dir)?;
             std::fs::copy(&src, dir.join(name))?;
         }
     }
-    let n = list.len() as u32;
-    let json = serde_json::to_vec(&CoversFile { tracks: list })
-        .map_err(|e| SyncError::Io(std::io::Error::other(e)))?;
+    let n = (list.len() + artists.len()) as u32;
+    let json = serde_json::to_vec(&CoversFile {
+        tracks: list,
+        artists,
+    })
+    .map_err(|e| SyncError::Io(std::io::Error::other(e)))?;
     std::fs::write(file, json)?;
     Ok(n)
 }
 
 /// Phone side, after [`crate::apply`] (the new music is imported by then): each matched track's
 /// album gets the hub's picture, from the package or — when the phone has it already — from its
-/// own store. A cover the person chose here (`cover_locked`) stays. Returns albums changed.
+/// own store; a track's own cover goes to the track, an artist's picture to the artist (D-173).
+/// A cover the person chose here (`cover_locked`) stays. Returns albums, tracks and artists
+/// changed.
 pub fn apply_covers(conn: &Connection, root: &Path, pkg: &Path) -> Result<u32, SyncError> {
     let list: CoversFile = match std::fs::read(pkg.join(COVERS_FILE)) {
         Ok(b) => serde_json::from_slice(&b).unwrap_or_default(),
@@ -175,10 +228,20 @@ pub fn apply_covers(conn: &Connection, root: &Path, pkg: &Path) -> Result<u32, S
     let matches = merge::match_tracks(&entries, &local_tracks(conn)?);
     let mut ids: HashMap<String, Option<i64>> = HashMap::new();
     let mut changed = HashSet::new();
+    let mut tracks = 0u32;
     for (e, m) in list.tracks.iter().zip(matches) {
         let merge::TrackMatch::Same(track) = m else {
             continue;
         };
+        if e.on_track {
+            if let Some(cover) = cached(&mut ids, conn, root, pkg, &e.cover)? {
+                tracks += conn.execute(
+                    "UPDATE track SET cover_id = ?2 WHERE id = ?1 AND cover_id IS NOT ?2",
+                    [track, cover],
+                )? as u32;
+            }
+            continue;
+        }
         let Some(album) = conn
             .query_row("SELECT album_id FROM track WHERE id = ?1", [track], |r| {
                 r.get::<_, Option<i64>>(0)
@@ -188,15 +251,9 @@ pub fn apply_covers(conn: &Connection, root: &Path, pkg: &Path) -> Result<u32, S
         else {
             continue;
         };
-        let cover = match ids.get(&e.cover) {
-            Some(c) => *c,
-            None => {
-                let c = cover_id(conn, root, pkg, &e.cover)?;
-                ids.insert(e.cover.clone(), c);
-                c
-            }
+        let Some(cover) = cached(&mut ids, conn, root, pkg, &e.cover)? else {
+            continue;
         };
-        let Some(cover) = cover else { continue };
         let n = conn.execute(
             "UPDATE album SET cover_id = ?2
               WHERE id = ?1 AND cover_locked = 0 AND cover_id IS NOT ?2",
@@ -206,7 +263,33 @@ pub fn apply_covers(conn: &Connection, root: &Path, pkg: &Path) -> Result<u32, S
             changed.insert(album);
         }
     }
-    Ok(changed.len() as u32)
+    let mut artists = 0u32;
+    for a in &list.artists {
+        let Some(cover) = cached(&mut ids, conn, root, pkg, &a.cover)? else {
+            continue;
+        };
+        artists += conn.execute(
+            "UPDATE artist SET photo_cover_id = ?2 WHERE name = ?1 AND photo_cover_id IS NOT ?2",
+            rusqlite::params![a.name, cover],
+        )? as u32;
+    }
+    Ok(changed.len() as u32 + tracks + artists)
+}
+
+/// [`cover_id`] once per picture.
+fn cached(
+    ids: &mut HashMap<String, Option<i64>>,
+    conn: &Connection,
+    root: &Path,
+    pkg: &Path,
+    hash: &str,
+) -> Result<Option<i64>, SyncError> {
+    if let Some(c) = ids.get(hash) {
+        return Ok(*c);
+    }
+    let c = cover_id(conn, root, pkg, hash)?;
+    ids.insert(hash.to_owned(), c);
+    Ok(c)
 }
 
 /// The phone's `cover.id` for a hub picture: already stored, else stored from the package.
@@ -387,6 +470,50 @@ mod tests {
             .unwrap();
         assert_eq!(apply_covers(&phone, &phone_root, &out).unwrap(), 1);
         assert_eq!(album_cover(&phone, phone_album), album_cover(&pc, 1));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// D-173 on the phone: the PC's own cover of a track whose album has none, and an artist's
+    /// picture, travel and land on the track and the artist.
+    #[test]
+    fn a_tracks_own_cover_and_an_artists_picture_travel() {
+        let base = std::env::temp_dir().join(format!("sirtone-covers3-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (pc_root, phone_root, out) = (base.join("pc"), base.join("phone"), base.join("out"));
+        let (pc, _) = library(&pc_root, None);
+        let own = covers::store(&pc, &pc_root, &png(10), CoverSource::Caa).unwrap();
+        covers::link_track(&pc, 1, own).unwrap();
+        let photo = covers::store(&pc, &pc_root, &png(250), CoverSource::Caa).unwrap();
+        covers::link_artist(&pc, 1, photo).unwrap();
+        let (phone, _) = library(&phone_root, None);
+
+        let parts = Parts {
+            music: true,
+            playlists: true,
+            taste: true,
+            settings: false,
+        };
+        export_with(&pc, &pc_root, &out, Platform::Windows, "t", parts, false).unwrap();
+        narrow(&out, Some(&phone), None, None, &[]).unwrap();
+        assert_eq!(write_covers(&pc, &pc_root, &out, Some(&phone)).unwrap(), 2);
+        assert_eq!(std::fs::read_dir(out.join(COVERS_DIR)).unwrap().count(), 2);
+        assert_eq!(apply_covers(&phone, &phone_root, &out).unwrap(), 2);
+
+        let hash = |c: &Connection, sql: &str| -> Option<String> {
+            c.query_row(sql, [], |r| r.get(0)).optional().unwrap()
+        };
+        let track = "SELECT cv.hash FROM track t JOIN cover cv ON cv.id = t.cover_id";
+        let artist = "SELECT cv.hash FROM artist a JOIN cover cv ON cv.id = a.photo_cover_id";
+        assert!(hash(&phone, track).is_some());
+        assert_eq!(hash(&phone, track), hash(&pc, track));
+        assert_eq!(hash(&phone, artist), hash(&pc, artist));
+        assert_eq!(
+            sirtone_library::collection::track_cover(&phone, 1).unwrap(),
+            hash(&pc, track),
+            "the phone shows the track's own cover"
+        );
+        // Nothing left to send next time.
+        assert_eq!(write_covers(&pc, &pc_root, &out, Some(&phone)).unwrap(), 0);
         let _ = std::fs::remove_dir_all(&base);
     }
 }

@@ -73,9 +73,16 @@ pub fn artist_covers(
          WHERE ta.artist_id = ?1
          GROUP BY al.id ORDER BY count(*) DESC, al.id DESC LIMIT 1",
     )?;
+    // No album cover: the photo from the web (D-173).
+    let mut photo = conn.prepare_cached(
+        "SELECT cv.hash FROM artist a JOIN cover cv ON cv.id = a.photo_cover_id WHERE a.id = ?1",
+    )?;
     let mut out = std::collections::HashMap::new();
     for id in ids {
-        if let Ok(h) = st.query_row([id], |r| r.get::<_, String>(0)) {
+        if let Ok(h) = st
+            .query_row([id], |r| r.get::<_, String>(0))
+            .or_else(|_| photo.query_row([id], |r| r.get::<_, String>(0)))
+        {
             out.insert(*id, h);
         }
     }
@@ -374,8 +381,8 @@ pub fn liked_tracks(conn: &Connection, limit: u32) -> Result<Vec<TrackRow>, Libr
 pub fn track_cover(conn: &Connection, track: i64) -> Result<Option<String>, LibraryError> {
     Ok(conn
         .query_row(
-            "SELECT c.hash FROM track t JOIN album al ON al.id = t.album_id
-             JOIN cover c ON c.id = al.cover_id WHERE t.id = ?1",
+            "SELECT c.hash FROM track t LEFT JOIN album al ON al.id = t.album_id
+             JOIN cover c ON c.id = coalesce(al.cover_id, t.cover_id) WHERE t.id = ?1",
             [track],
             |r| r.get(0),
         )
