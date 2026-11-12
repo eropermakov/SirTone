@@ -23,7 +23,11 @@ case "${1:-}" in
     DST="$HOME/build/mobile-ios"
     mkdir -p "$DST"
     rsync -a --delete --exclude xtool --exclude .build --exclude .bsp "$REPO/apps/mobile-ios/" "$DST/"
-    cd "$DST" && xtool dev build
+    # Release by default (the packages people install); SIRTONE_IOS_CONFIG=debug for quick tries.
+    cd "$DST" && xtool dev build -c "${SIRTONE_IOS_CONFIG:-release}"
+    # The real SDK into the binary, as Xcode does: else iOS 26+ runs it as an iOS 17 app (D-169).
+    SDK="$HOME/.swiftpm/swift-sdks/darwin.artifactbundle/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
+    python3 "$REPO/scripts/ios-sdk-stamp.py" "$DST/xtool/SirTone.app" "$SDK"
     ;;
   package)
     OUT="${SIRTONE_IOS_PACKAGE_DIR:-/mnt/d/SirVault/p4-app/src}"

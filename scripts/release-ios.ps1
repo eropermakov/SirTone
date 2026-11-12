@@ -7,7 +7,10 @@
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release-ios.ps1
 param(
     [string]$KeyPath = 'D:\SirVault\SirTone-secrets\sirtone-updater.key',
-    [string]$Repo = 'eropermakov/SirTone'
+    [string]$Repo = 'eropermakov/SirTone',
+    # The phone app's own number when only it is republished (e.g. 0.2.1 beside PC 0.2.0);
+    # empty - the PC's version from tauri.conf.json.
+    [string]$Version = ''
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -15,6 +18,7 @@ $root = Split-Path $PSScriptRoot -Parent
 function Must($what) { if ($LASTEXITCODE -ne 0) { throw "FAILED: $what (exit $LASTEXITCODE)" } }
 
 $version = (Get-Content (Join-Path $root 'apps\desktop\src-tauri\tauri.conf.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
+if ($Version) { $version = $Version }
 $tag = "mobile-v$version"
 $name = "sirtone-ios-$version-unsigned.ipa"
 if (git -C $root status --porcelain) { throw 'working tree is not clean' }
