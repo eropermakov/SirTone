@@ -132,7 +132,8 @@ pub fn album_has_cover(conn: &Connection, album: AlbumId) -> Result<bool, Librar
 }
 
 /// Albums imported before covers existed (or whose first track had none) get one from the
-/// embedded art of their files in the library. Runs at startup; at most `limit` albums per call.
+/// embedded art of their files in the library, and so do singles without an album (D-174).
+/// Runs at startup; at most `limit` albums and `limit` singles per call.
 pub fn backfill(
     conn: &Connection,
     root: &Path,
@@ -154,6 +155,23 @@ pub fn backfill(
             && let Ok(cover) = store(conn, root, &bytes, source)
         {
             link_album(conn, album, cover)?;
+            done += 1;
+        }
+    }
+    // Singles without an album (D-174): the picture embedded in their own file.
+    let mut st = conn.prepare(
+        "SELECT id, rel_path FROM track
+         WHERE album_id IS NULL AND cover_id IS NULL AND state = 'ok' LIMIT ?1",
+    )?;
+    let singles: Vec<(i64, String)> = st
+        .query_map([limit as i64], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    for (track, rel) in singles {
+        let file = rel.split('/').fold(root.to_path_buf(), |p, c| p.join(c));
+        if let Some((bytes, source)) = reader.read(&file, None)
+            && let Ok(cover) = store(conn, root, &bytes, source)
+        {
+            link_track(conn, track, cover)?;
             done += 1;
         }
     }

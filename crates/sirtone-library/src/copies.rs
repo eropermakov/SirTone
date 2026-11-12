@@ -64,7 +64,7 @@ const JOB_COLS: &str = "t.id, t.rel_path, t.title,
        WHERE ta.track_id = t.id ORDER BY ta.position)), ''),
     al.title, (SELECT name FROM artist WHERE id = al.album_artist_id),
     t.track_no, t.disc_no, coalesce(t.year, al.year), t.genre_main,
-    (SELECT hash FROM cover WHERE id = al.cover_id)";
+    (SELECT hash FROM cover WHERE id = coalesce(al.cover_id, t.cover_id))";
 
 fn job(root: &Path, r: &rusqlite::Row<'_>) -> rusqlite::Result<CopyJob> {
     let cover: Option<String> = r.get(10)?;

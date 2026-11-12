@@ -73,15 +73,23 @@ pub fn artist_covers(
          WHERE ta.artist_id = ?1
          GROUP BY al.id ORDER BY count(*) DESC, al.id DESC LIMIT 1",
     )?;
-    // No album cover: the photo from the web (D-173).
+    // No album cover: the photo from the web (D-173), then the cover of their newest single
+    // (D-174).
     let mut photo = conn.prepare_cached(
         "SELECT cv.hash FROM artist a JOIN cover cv ON cv.id = a.photo_cover_id WHERE a.id = ?1",
+    )?;
+    let mut single = conn.prepare_cached(
+        "SELECT cv.hash FROM track_artist ta
+         JOIN track t ON t.id = ta.track_id AND t.state = 'ok'
+         JOIN cover cv ON cv.id = t.cover_id
+         WHERE ta.artist_id = ?1 ORDER BY t.added_at DESC, t.id DESC LIMIT 1",
     )?;
     let mut out = std::collections::HashMap::new();
     for id in ids {
         if let Ok(h) = st
             .query_row([id], |r| r.get::<_, String>(0))
             .or_else(|_| photo.query_row([id], |r| r.get::<_, String>(0)))
+            .or_else(|_| single.query_row([id], |r| r.get::<_, String>(0)))
         {
             out.insert(*id, h);
         }

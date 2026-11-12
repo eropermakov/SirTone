@@ -387,3 +387,68 @@ fn crash_after_any_move_recovers_and_resumes() {
         assert_eq!(sb.source_hashes(), before);
     }
 }
+
+/// Every file carries an embedded picture (a real PNG, so the cover store accepts it).
+struct Embedded;
+impl CoverReader for Embedded {
+    fn read(&self, _: &Path, _: Option<&Path>) -> Option<(Vec<u8>, CoverSource)> {
+        let img = image::RgbImage::from_pixel(8, 8, image::Rgb([200, 40, 40]));
+        let mut out = Vec::new();
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+            .ok()?;
+        Some((out, CoverSource::Embedded))
+    }
+}
+
+#[test]
+fn singles_keep_their_embedded_picture() {
+    // D-174: a single has no album to hang the picture on — it becomes the track's own cover,
+    // both at import and for a library imported before the fix.
+    let sb = Sandbox::new("covers");
+    let mut db = open_in_memory().unwrap();
+    let batch = import::start_batch(&mut db, &[sb.src()], "drop").unwrap();
+    let mut d = deps(Ops::default());
+    d.covers = Arc::new(Embedded);
+    import::run_batch(
+        &mut db,
+        &sb.lib(),
+        batch,
+        &d,
+        &AtomicBool::new(false),
+        &mut |_| {},
+    )
+    .unwrap();
+    let id = |title: &str| -> i64 {
+        db.query_row("SELECT id FROM track WHERE title = ?1", [title], |r| {
+            r.get(0)
+        })
+        .unwrap()
+    };
+    let single = id("Мой рок-н-ролл");
+    let album_track = id("Варвара");
+    assert!(collection::track_cover(&db, single).unwrap().is_some());
+    assert!(collection::track_cover(&db, album_track).unwrap().is_some());
+    let own: Option<i64> = db
+        .query_row(
+            "SELECT cover_id FROM track WHERE id = ?1",
+            [album_track],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(own, None, "an album track shares the album's cover");
+
+    // A library from before: nothing linked; the startup backfill fills both kinds.
+    db.execute("UPDATE track SET cover_id = NULL", []).unwrap();
+    db.execute("UPDATE album SET cover_id = NULL", []).unwrap();
+    assert!(collection::track_cover(&db, single).unwrap().is_none());
+    let n = sirtone_library::covers::backfill(&db, &sb.lib(), &Embedded, 100).unwrap();
+    assert_eq!(n, 3, "the album and two tracks without an album");
+    assert!(collection::track_cover(&db, single).unwrap().is_some());
+    assert!(collection::track_cover(&db, album_track).unwrap().is_some());
+    assert_eq!(
+        sirtone_library::covers::backfill(&db, &sb.lib(), &Embedded, 100).unwrap(),
+        0,
+        "done once"
+    );
+}

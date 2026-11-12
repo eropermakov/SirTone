@@ -691,27 +691,38 @@ pub(crate) fn insert_identified(
     Ok((id, album_id))
 }
 
-/// Album cover (FR-REC-009, offline part): first track that brings one wins. Best effort — a
-/// broken picture never fails the import. (docs/03 §10 `probe_cover`; inline until the job
-/// queue exists.)
+/// Album cover (FR-REC-009, offline part): first track that brings one wins. A single without
+/// an album keeps the picture embedded in its own file as the track's cover (D-174) — a folder
+/// picture is not taken for it: a folder of singles is not one release. Best effort — a broken
+/// picture never fails the import. (docs/03 §10 `probe_cover`; inline until the job queue
+/// exists.)
 pub(crate) fn attach_cover(
     conn: &Connection,
     root: &Path,
+    track_id: i64,
     album_id: Option<i64>,
     file: &Path,
     src_dir: Option<&Path>,
     deps: &ImportDeps,
 ) {
-    if let Some(album) = album_id
-        && !crate::covers::album_has_cover(conn, album).unwrap_or(true)
-        && let Some((bytes, source)) = deps.covers.read(file, src_dir)
-    {
-        match crate::covers::store(conn, root, &bytes, source) {
-            Ok(cover) => {
-                let _ = crate::covers::link_album(conn, album, cover);
-            }
-            Err(e) => tracing::warn!(target: "sirtone::import", error = %e, "cover skipped"),
+    let picture = match album_id {
+        Some(album) if !crate::covers::album_has_cover(conn, album).unwrap_or(true) => {
+            deps.covers.read(file, src_dir)
         }
+        Some(_) => None,
+        None => deps.covers.read(file, None),
+    };
+    let Some((bytes, source)) = picture else {
+        return;
+    };
+    match crate::covers::store(conn, root, &bytes, source) {
+        Ok(cover) => {
+            let _ = match album_id {
+                Some(album) => crate::covers::link_album(conn, album, cover),
+                None => crate::covers::link_track(conn, track_id, cover),
+            };
+        }
+        Err(e) => tracing::warn!(target: "sirtone::import", error = %e, "cover skipped"),
     }
 }
 
@@ -872,7 +883,7 @@ fn place(
     if d.genre.is_some() {
         repo::search_reindex(conn, id)?;
     }
-    attach_cover(conn, root, album_id, &dst, src.parent(), deps);
+    attach_cover(conn, root, id, album_id, &dst, src.parent(), deps);
     report.added += 1;
     on_event(ImportEvent::TrackAdded {
         track_id: id,

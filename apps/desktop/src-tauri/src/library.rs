@@ -918,13 +918,13 @@ fn import_worker(
             tracing::error!(target: "sirtone::import", error = %e, "recovery failed");
         }
         // Once per library: covers for albums imported before T1.26 (or without art on their
-        // first track).
+        // first track) and for singles without an album (D-174).
         if backfilled.as_deref() != Some(root.as_path()) {
             backfilled = Some(root.clone());
-            if let Ok(n) = sirtone_library::covers::backfill(db, &root, deps.covers.as_ref(), 500)
+            if let Ok(n) = sirtone_library::covers::backfill(db, &root, deps.covers.as_ref(), 2000)
                 && n > 0
             {
-                tracing::info!(target: "sirtone::import", albums = n, "covers backfilled");
+                tracing::info!(target: "sirtone::import", covers = n, "covers backfilled");
                 emit_changed(&app, &shared);
             }
             // The language tag of tracks imported before it was read (D-79).

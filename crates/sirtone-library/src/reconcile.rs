@@ -393,7 +393,7 @@ fn adopt_in_place(
     if d.genre.is_some() {
         repo::search_reindex(conn, id)?;
     }
-    attach_cover(conn, root, album, &abs, abs.parent(), deps);
+    attach_cover(conn, root, id, album, &abs, abs.parent(), deps);
     Ok(Some(id))
 }
 
