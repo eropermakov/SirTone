@@ -7,7 +7,9 @@ in compatibility mode: no Liquid Glass, the old tab bar (D-169 never shows). Xco
 SDK there and the DT* keys into Info.plist; this does the same, before any signature (the hub
 signs the package afterwards, D-154).
 
-Usage: ios-sdk-stamp.py <SirTone.app> <iPhoneOS.sdk>
+Usage: ios-sdk-stamp.py <SirTone.app> <iPhoneOS.sdk> [version]
+With a version (release-ios.ps1), it also goes into CFBundleShortVersionString/CFBundleVersion,
+so the phone's Settings show which build is installed.
 """
 import json
 import plistlib
@@ -47,6 +49,7 @@ def stamp_binary(path: Path, sdk: int) -> None:
 
 def main() -> None:
     app, sdk_dir = Path(sys.argv[1]), Path(sys.argv[2])
+    release = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else None
     settings = json.loads((sdk_dir / "SDKSettings.json").read_text())
     version = settings["Version"]  # e.g. "27.1"
     name = settings.get("CanonicalName", f"iphoneos{version}")
@@ -61,9 +64,12 @@ def main() -> None:
             "DTSDKName": name,
         }
     )
+    if release:
+        info["CFBundleShortVersionString"] = release
+        info["CFBundleVersion"] = release
     with info_path.open("wb") as f:
         plistlib.dump(info, f)
-    print(f"stamped: SDK {version} ({name})")
+    print(f"stamped: SDK {version} ({name}), version {release or info.get('CFBundleShortVersionString')}")
 
 
 if __name__ == "__main__":

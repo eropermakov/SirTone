@@ -36,7 +36,7 @@ New-Item -ItemType Directory -Force $outDir | Out-Null
 $ipa = Join-Path $outDir $name
 $wslIpa = "$wslRepo/target/ios/$name"
 foreach ($step in 'core', 'app') {
-    wsl -d Ubuntu-24.04 -- bash -lc "bash $wslRepo/scripts/wsl-ios.sh $step"; Must "wsl-ios $step"
+    wsl -d Ubuntu-24.04 -- bash -lc "SIRTONE_IOS_VERSION=$version bash $wslRepo/scripts/wsl-ios.sh $step"; Must "wsl-ios $step"
 }
 wsl -d Ubuntu-24.04 -- bash -lc "SIRTONE_IOS_IPA=$wslIpa bash $wslRepo/scripts/wsl-ios.sh ipa"; Must 'wsl-ios ipa'
 if (-not (Test-Path $ipa)) { throw "missing artifact: $ipa" }
