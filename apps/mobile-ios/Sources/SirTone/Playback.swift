@@ -681,10 +681,17 @@ final class Playback: ObservableObject {
         ]
         if let a = t.album { info[MPMediaItemPropertyAlbumTitle] = a }
         if let img = cover {
-            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: img.size) { _ in img }
+            info[MPMediaItemPropertyArtwork] = Self.artwork(img)
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         MPNowPlayingInfoCenter.default().playbackState = playing ? .playing : .paused
+    }
+
+    /// The lock screen's picture. MediaPlayer asks for it on its own queue: a closure written in
+    /// this main-actor class would be main-actor too, and the Swift 6 check stops the app there
+    /// (a track with a cover crashed on play once the app was linked with the real SDK, 0.2.1).
+    private nonisolated static func artwork(_ img: UIImage) -> MPMediaItemArtwork {
+        MPMediaItemArtwork(boundsSize: img.size) { _ in img }
     }
 }
 
