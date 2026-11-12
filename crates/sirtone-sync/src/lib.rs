@@ -4,6 +4,10 @@
 //! by the PC hub, the phone core (`sirtone-mobile-ffi`) and `sirtone-cli`. Importing new music
 //! is the caller's (its platform ports): it is handed in as a function.
 
+pub mod covers;
+
+pub use covers::{COVERS_DIR, COVERS_FILE, apply_covers, write_covers};
+
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -26,6 +30,12 @@ pub enum SyncError {
     Io(#[from] std::io::Error),
     #[error("import of the new music failed: {0}")]
     Import(String),
+}
+
+impl From<rusqlite::Error> for SyncError {
+    fn from(e: rusqlite::Error) -> Self {
+        Self::Library(LibraryError::from(e))
+    }
 }
 
 impl SyncError {

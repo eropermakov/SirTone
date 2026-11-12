@@ -7408,6 +7408,7 @@ dependencies = [
 name = "sirtone-sync"
 version = "0.2.0"
 dependencies = [
+ "image",
  "rusqlite",
  "serde",
  "serde_json",

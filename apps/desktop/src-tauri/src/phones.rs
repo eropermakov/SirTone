@@ -1086,7 +1086,25 @@ async fn send(
     })
     .await
     .map_err(|_| AppError::new(ErrorCode::Internal))??;
-    if narrowed.is_empty() {
+    // The PC's pictures for the music that will be on the phone (D-172): the phone never goes
+    // online for them. Best effort — the music goes even when a picture cannot be read.
+    let db3 = phone_root.join(".sirtone").join("library.db");
+    let pictures = lib
+        .with_read(|c| {
+            let other = if has_db {
+                sirtone_library::open_existing(&db3, sirtone_library::Medium::Fixed).ok()
+            } else {
+                None
+            };
+            Ok(sirtone_sync::write_covers(c, &root, &out, other.as_ref()))
+        })
+        .ok()
+        .and_then(|r| {
+            r.inspect_err(|e| tracing::warn!(target: "sirtone::phones", code = e.code(), "covers"))
+                .ok()
+        })
+        .unwrap_or(0);
+    if narrowed.is_empty() && pictures == 0 {
         let _ = std::fs::remove_dir_all(&out);
         let _ = progress.send(TransferProgress { fraction: 1.0 });
         tracing::info!(target: "sirtone::phones", "nothing new for the phone");

@@ -32,11 +32,14 @@ impl Library {
     pub fn apply_package(&self, dir: String) -> Result<TransferResult, CoreError> {
         let root = PathBuf::from(self.root());
         self.with(|conn| {
-            sirtone_sync::apply(conn, Path::new(&dir), &mut |db, files| {
+            let s = sirtone_sync::apply(conn, Path::new(&dir), &mut |db, files| {
                 crate::import::import_with(db, &root, files, &self.work)
                     .map(|_| ())
                     .map_err(|e| e.to_string())
-            })
+            })?;
+            // The PC's pictures (D-172): after the import, so new albums get theirs too.
+            sirtone_sync::apply_covers(conn, &root, Path::new(&dir))?;
+            Ok(s)
         })
         .map(|s| TransferResult {
             tracks: s.tracks,
