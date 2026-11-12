@@ -658,7 +658,8 @@ impl Library {
                         coalesce((SELECT group_concat(name, ', ') FROM
                           (SELECT a.name FROM track_artist ta JOIN artist a ON a.id = ta.artist_id
                            WHERE ta.track_id = t.id ORDER BY ta.position)), ''),
-                        (SELECT cv.hash FROM album al JOIN cover cv ON cv.id = al.cover_id WHERE al.id = t.album_id),
+                        coalesce((SELECT cv.hash FROM album al JOIN cover cv ON cv.id = al.cover_id WHERE al.id = t.album_id),
+                                 (SELECT cv.hash FROM cover cv WHERE cv.id = t.cover_id)),
                         t.album_id,
                         (SELECT ta.artist_id FROM track_artist ta WHERE ta.track_id = t.id ORDER BY ta.position LIMIT 1)
                  FROM track t WHERE t.id = ?1",

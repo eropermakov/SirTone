@@ -278,7 +278,8 @@ pub fn list(conn: &Connection) -> Result<Vec<PlaylistRow>, LibraryError> {
     }
     let mut covers = conn.prepare_cached(
         "SELECT cv.hash FROM playlist_item i JOIN track t ON t.id = i.track_id
-         JOIN album al ON al.id = t.album_id JOIN cover cv ON cv.id = al.cover_id
+         LEFT JOIN album al ON al.id = t.album_id
+         JOIN cover cv ON cv.id = coalesce(al.cover_id, t.cover_id)
          WHERE i.playlist_id = ?1 AND t.state = 'ok' ORDER BY i.position LIMIT 64",
     )?;
     for row in rows.iter_mut().filter(|r| r.covers.is_empty()) {
