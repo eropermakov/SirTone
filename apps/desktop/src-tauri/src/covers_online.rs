@@ -316,12 +316,12 @@ fn run_tracks(app: &AppHandle, me: &CoversOnline) -> usize {
         let stored = match found {
             Ok(Some(bytes)) => lib.with_write(|c| {
                 let cover = covers::store(c, &root, &bytes, CoverSource::Caa)?;
-                covers::link_track(c, track, cover)
+                covers::link_track(c, track, cover).map(|()| true)
             }),
             // No confident match: the artist's photo, if there is one; else the placeholder.
             Ok(None) => lib.with_write(|c| match covers::artist_photo(c, artist)? {
-                Some(cover) => covers::link_track(c, track, cover),
-                None => Ok(()),
+                Some(cover) => covers::link_track(c, track, cover).map(|()| true),
+                None => Ok(false),
             }),
             Err(_) => {
                 if let Ok(mut a) = me.asked_tracks.lock() {
@@ -330,7 +330,7 @@ fn run_tracks(app: &AppHandle, me: &CoversOnline) -> usize {
                 return got;
             }
         };
-        if stored.is_ok() {
+        if matches!(stored, Ok(true)) {
             got += 1;
         }
     }

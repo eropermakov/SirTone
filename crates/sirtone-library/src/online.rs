@@ -151,7 +151,7 @@ pub fn tracks_for_web_cover(conn: &Connection, limit: u32) -> Result<Vec<WebTrac
          JOIN track_artist ta ON ta.track_id = t.id
            AND ta.position = (SELECT min(position) FROM track_artist WHERE track_id = t.id)
          JOIN artist ar ON ar.id = ta.artist_id
-         WHERE t.state = 'ok' AND t.cover_id IS NULL
+         WHERE t.state = 'ok' AND t.cover_id IS NULL AND t.identity_state != 'unknown'
            AND (al.id IS NULL OR (al.cover_id IS NULL AND al.cover_locked = 0))
          ORDER BY t.id LIMIT ?1",
     )?;
