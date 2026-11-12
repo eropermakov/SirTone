@@ -9,7 +9,7 @@ use sirtone_core::text::norm;
 use crate::identify::similarity;
 
 const MIN_SIMILARITY: f64 = 0.8;
-/// A person's photo needs an almost exact name (D-172).
+/// A person's photo needs an almost exact name (D-173).
 const MIN_ARTIST: f64 = 0.9;
 
 fn same_album(found: &str, wanted: &str) -> bool {
@@ -65,7 +65,7 @@ pub fn itunes_pick(json: &[u8], artist: &str, album: &str) -> Option<String> {
     })
 }
 
-/// Deezer artist search: `search/artist?q=…` (D-172).
+/// Deezer artist search: `search/artist?q=…` (D-173).
 pub fn deezer_artist_path(artist: &str, encode: impl Fn(&str) -> String) -> String {
     format!(
         "search/artist?q={}&limit=5",
@@ -87,7 +87,7 @@ pub fn deezer_artist_pick(json: &[u8], artist: &str) -> Option<String> {
     })
 }
 
-/// Deezer track search: `search/track?q=artist:"…" track:"…"` (D-172).
+/// Deezer track search: `search/track?q=artist:"…" track:"…"` (D-173).
 pub fn deezer_track_path(artist: &str, title: &str, encode: impl Fn(&str) -> String) -> String {
     let q = format!("artist:\"{artist}\" track:\"{title}\"");
     format!("search/track?q={}&limit=5", encode(&q))

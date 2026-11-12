@@ -93,7 +93,7 @@ pub fn link_album(conn: &Connection, album: AlbumId, cover: i64) -> Result<(), L
     Ok(())
 }
 
-/// The artist's photo from the web (D-172); an existing one stays.
+/// The artist's photo from the web (D-173); an existing one stays.
 pub fn link_artist(conn: &Connection, artist: i64, cover: i64) -> Result<(), LibraryError> {
     conn.execute(
         "UPDATE artist SET photo_cover_id = ?2 WHERE id = ?1 AND photo_cover_id IS NULL",
@@ -102,7 +102,7 @@ pub fn link_artist(conn: &Connection, artist: i64, cover: i64) -> Result<(), Lib
     Ok(())
 }
 
-/// A track's own cover from the web (D-172); an existing one stays.
+/// A track's own cover from the web (D-173); an existing one stays.
 pub fn link_track(conn: &Connection, track: i64, cover: i64) -> Result<(), LibraryError> {
     conn.execute(
         "UPDATE track SET cover_id = ?2 WHERE id = ?1 AND cover_id IS NULL",

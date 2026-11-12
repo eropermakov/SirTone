@@ -73,7 +73,7 @@ pub fn artist_covers(
          WHERE ta.artist_id = ?1
          GROUP BY al.id ORDER BY count(*) DESC, al.id DESC LIMIT 1",
     )?;
-    // No album cover: the photo from the web (D-172).
+    // No album cover: the photo from the web (D-173).
     let mut photo = conn.prepare_cached(
         "SELECT cv.hash FROM artist a JOIN cover cv ON cv.id = a.photo_cover_id WHERE a.id = ?1",
     )?;

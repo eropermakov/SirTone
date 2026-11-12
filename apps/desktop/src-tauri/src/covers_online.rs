@@ -6,7 +6,7 @@
 //! Albums that stay without a cover are then searched on Deezer and iTunes by artist and title
 //! (D-162, `08` §4): a close match only. Then artists still without a picture get a Deezer photo and
 //! tracks without any cover get the cover of the found track's album, else the artist's photo
-//! (D-172). Stored with source `caa` (the column means «from the web»).
+//! (D-173). Stored with source `caa` (the column means «from the web»).
 
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -235,7 +235,7 @@ fn fetch(
     }
 }
 
-/// Artists without an album cover: Deezer photo (D-172).
+/// Artists without an album cover: Deezer photo (D-173).
 fn run_artists(app: &AppHandle, me: &CoversOnline) -> usize {
     let lib = app.state::<Library>();
     let Some(root) = lib.root() else {
@@ -284,7 +284,7 @@ fn run_artists(app: &AppHandle, me: &CoversOnline) -> usize {
     got
 }
 
-/// Tracks without any cover: the found track's album cover, else the artist's photo (D-172).
+/// Tracks without any cover: the found track's album cover, else the artist's photo (D-173).
 fn run_tracks(app: &AppHandle, me: &CoversOnline) -> usize {
     let lib = app.state::<Library>();
     let Some(root) = lib.root() else {

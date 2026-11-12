@@ -117,7 +117,7 @@ pub fn albums_for_web_cover(
     Ok(rows)
 }
 
-/// Artists with playable tracks but no album cover and no photo yet: id, name (D-172).
+/// Artists with playable tracks but no album cover and no photo yet: id, name (D-173).
 pub fn artists_for_photo(
     conn: &Connection,
     limit: u32,
@@ -138,7 +138,7 @@ pub fn artists_for_photo(
     Ok(rows)
 }
 
-/// A track still without any cover (D-172): id, title, first artist id and name.
+/// A track still without any cover (D-173): id, title, first artist id and name.
 pub type WebTrack = (i64, String, i64, String);
 
 /// Playable tracks whose own cover and album cover are both missing (no album, an «unknown» album
