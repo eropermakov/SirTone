@@ -37,8 +37,9 @@ impl Library {
                     .map(|_| ())
                     .map_err(|e| e.to_string())
             })?;
-            // The PC's pictures (D-172): after the import, so new albums get theirs too.
-            sirtone_sync::apply_covers(conn, &root, Path::new(&dir))?;
+            // The PC's pictures (D-172): after the import, so new albums get theirs too. Best
+            // effort — the music, plays and playlists are in by now and stay.
+            let _ = sirtone_sync::apply_covers(conn, &root, Path::new(&dir));
             Ok(s)
         })
         .map(|s| TransferResult {
