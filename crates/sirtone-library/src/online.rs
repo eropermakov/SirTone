@@ -117,6 +117,52 @@ pub fn albums_for_web_cover(
     Ok(rows)
 }
 
+/// Artists with playable tracks but no album cover and no photo yet: id, name (D-172).
+pub fn artists_for_photo(
+    conn: &Connection,
+    limit: u32,
+) -> Result<Vec<(i64, String)>, LibraryError> {
+    let mut st = conn.prepare_cached(
+        "SELECT a.id, a.name FROM artist a
+         WHERE a.merged_into IS NULL AND a.photo_cover_id IS NULL
+           AND EXISTS (SELECT 1 FROM track_artist ta JOIN track t ON t.id = ta.track_id
+                       WHERE ta.artist_id = a.id AND t.state = 'ok')
+           AND NOT EXISTS (SELECT 1 FROM track_artist ta JOIN track t ON t.id = ta.track_id
+                           JOIN album al ON al.id = t.album_id
+                           WHERE ta.artist_id = a.id AND t.state = 'ok' AND al.cover_id IS NOT NULL)
+         ORDER BY a.id LIMIT ?1",
+    )?;
+    let rows = st
+        .query_map([limit], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+/// A track still without any cover (D-172): id, title, first artist id and name.
+pub type WebTrack = (i64, String, i64, String);
+
+/// Playable tracks whose own cover and album cover are both missing (no album, an «unknown» album
+/// or an album without a cover that the user did not lock).
+pub fn tracks_for_web_cover(conn: &Connection, limit: u32) -> Result<Vec<WebTrack>, LibraryError> {
+    let mut st = conn.prepare_cached(
+        "SELECT t.id, t.title, ta.artist_id, ar.name
+         FROM track t
+         LEFT JOIN album al ON al.id = t.album_id
+         JOIN track_artist ta ON ta.track_id = t.id
+           AND ta.position = (SELECT min(position) FROM track_artist WHERE track_id = t.id)
+         JOIN artist ar ON ar.id = ta.artist_id
+         WHERE t.state = 'ok' AND t.cover_id IS NULL
+           AND (al.id IS NULL OR (al.cover_id IS NULL AND al.cover_locked = 0))
+         ORDER BY t.id LIMIT ?1",
+    )?;
+    let rows = st
+        .query_map([limit], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
 /// Hints for «Неизвестные» (`None` clears them); an unchanged value is not written again.
 pub fn set_candidates(
     conn: &Connection,
@@ -165,6 +211,59 @@ mod tests {
             },
         )
         .unwrap()
+    }
+
+    #[test]
+    fn web_photo_and_track_cover_candidates() {
+        let mut c = open_in_memory().unwrap();
+        let t = track(&mut c, 1, Identity::Inferred, 200_000);
+        let artist: i64 = c
+            .query_row(
+                "SELECT artist_id FROM track_artist WHERE track_id = ?1",
+                [t],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            artists_for_photo(&c, 10).unwrap(),
+            vec![(artist, "Кино".to_string())]
+        );
+        let w = tracks_for_web_cover(&c, 10).unwrap();
+        assert_eq!(
+            w,
+            vec![(t, "Группа крови".to_string(), artist, "Кино".to_string())]
+        );
+
+        c.execute(
+            "INSERT INTO cover(id, hash, source, created_at) VALUES (1, 'hh', 'caa', 0)",
+            [],
+        )
+        .unwrap();
+        crate::covers::link_artist(&c, artist, 1).unwrap();
+        assert!(artists_for_photo(&c, 10).unwrap().is_empty());
+        assert_eq!(crate::covers::artist_photo(&c, artist).unwrap(), Some(1));
+        let covers = crate::collection::artist_covers(&c, &[artist]).unwrap();
+        assert_eq!(
+            covers.get(&artist).map(String::as_str),
+            Some("hh"),
+            "photo fills the card"
+        );
+
+        crate::covers::link_track(&c, t, 1).unwrap();
+        assert!(tracks_for_web_cover(&c, 10).unwrap().is_empty());
+        // A cover of the track stays: a later one does not replace it.
+        c.execute(
+            "INSERT INTO cover(id, hash, source, created_at) VALUES (2, 'h2', 'caa', 0)",
+            [],
+        )
+        .unwrap();
+        crate::covers::link_track(&c, t, 2).unwrap();
+        let kept: i64 = c
+            .query_row("SELECT cover_id FROM track WHERE id = ?1", [t], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(kept, 1);
     }
 
     #[test]

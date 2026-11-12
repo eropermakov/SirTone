@@ -4,7 +4,9 @@
 //! network; ≤ 4 req/s and 90 days of cache in `sirtone-net`; a cover the user chose is never
 //! replaced (`cover_locked`). An album asked once in a session is not asked again until restart.
 //! Albums that stay without a cover are then searched on Deezer and iTunes by artist and title
-//! (D-162, `08` §4): a close match only. Stored with source `caa` (the column means «from the web»).
+//! (D-162, `08` §4): a close match only. Then artists still without a picture get a Deezer photo and
+//! tracks without any cover get the cover of the found track's album, else the artist's photo
+//! (D-172). Stored with source `caa` (the column means «from the web»).
 
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -27,6 +29,8 @@ pub struct CoversOnline {
     running: AtomicBool,
     asked: Mutex<HashSet<i64>>,
     asked_web: Mutex<HashSet<i64>>,
+    asked_artists: Mutex<HashSet<i64>>,
+    asked_tracks: Mutex<HashSet<i64>>,
 }
 
 /// «Найти обложки» (D-162): asks every album without a cover again, now. `false` — offline.
@@ -41,6 +45,12 @@ pub fn covers_find_online(app: AppHandle) -> bool {
             a.clear();
         }
         if let Ok(mut a) = c.asked_web.lock() {
+            a.clear();
+        }
+        if let Ok(mut a) = c.asked_artists.lock() {
+            a.clear();
+        }
+        if let Ok(mut a) = c.asked_tracks.lock() {
             a.clear();
         }
     }
@@ -61,7 +71,10 @@ pub fn kick(app: &AppHandle) {
         .spawn(move || {
             sirtone_platform::power::background_thread();
             let me = app.state::<CoversOnline>();
-            let n = run(&app, &me) + run_web(&app, &me);
+            let n = run(&app, &me)
+                + run_web(&app, &me)
+                + run_artists(&app, &me)
+                + run_tracks(&app, &me);
             if n > 0 {
                 tracing::info!(target: "sirtone::covers", albums = n, "covers from the Cover Art Archive");
                 app.state::<Library>().notify_changed(&app);
@@ -159,37 +172,20 @@ fn run_web(app: &AppHandle, me: &CoversOnline) -> usize {
         {
             continue;
         }
-        let image = |host_search: Host,
-                     search: String,
-                     pick: fn(&[u8], &str, &str) -> Option<String>,
-                     host_image: Host|
-         -> Result<Option<Vec<u8>>, NetError> {
-            let json = match net.get(host_search, &search) {
-                Ok(j) => j,
-                Err(NetError::Status(_)) => return Ok(None),
-                Err(e) => return Err(e),
-            };
-            match pick(&json, &artist, &title) {
-                Some(path) => match net.get(host_image, &path) {
-                    Ok(b) => Ok(Some(b)),
-                    Err(NetError::Status(_)) => Ok(None),
-                    Err(e) => Err(e),
-                },
-                None => Ok(None),
-            }
-        };
-        let found = image(
+        let found = fetch(
+            net,
             Host::Deezer,
             web_covers::deezer_path(&artist, &title, encode),
-            web_covers::deezer_pick,
+            |j| web_covers::deezer_pick(j, &artist, &title),
             Host::DeezerImages,
         )
         .and_then(|d| match d {
             Some(b) => Ok(Some(b)),
-            None => image(
+            None => fetch(
+                net,
                 Host::Itunes,
                 web_covers::itunes_path(&artist, &title, encode),
-                web_covers::itunes_pick,
+                |j| web_covers::itunes_pick(j, &artist, &title),
                 Host::AppleImages,
             ),
         });
@@ -211,6 +207,131 @@ fn run_web(app: &AppHandle, me: &CoversOnline) -> usize {
                 }
                 return got;
             }
+        }
+    }
+    got
+}
+
+/// Search → pick a path from the answer → the image. `Ok(None)`: no confident match.
+fn fetch(
+    net: &sirtone_net::Net,
+    host_search: Host,
+    search: String,
+    pick: impl Fn(&[u8]) -> Option<String>,
+    host_image: Host,
+) -> Result<Option<Vec<u8>>, NetError> {
+    let json = match net.get(host_search, &search) {
+        Ok(j) => j,
+        Err(NetError::Status(_)) => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    match pick(&json) {
+        Some(path) => match net.get(host_image, &path) {
+            Ok(b) => Ok(Some(b)),
+            Err(NetError::Status(_)) => Ok(None),
+            Err(e) => Err(e),
+        },
+        None => Ok(None),
+    }
+}
+
+/// Artists without an album cover: Deezer photo (D-172).
+fn run_artists(app: &AppHandle, me: &CoversOnline) -> usize {
+    let lib = app.state::<Library>();
+    let Some(root) = lib.root() else {
+        return 0;
+    };
+    let Ok(artists) = lib.with_read(|c| sirtone_library::online::artists_for_photo(c, RUN)) else {
+        return 0;
+    };
+    let net = &app.state::<NetState>().0;
+    let mut got = 0;
+    for (id, name) in artists {
+        if name.trim().is_empty()
+            || !me
+                .asked_artists
+                .lock()
+                .map(|mut a| a.insert(id))
+                .unwrap_or(false)
+        {
+            continue;
+        }
+        match fetch(
+            net,
+            Host::Deezer,
+            web_covers::deezer_artist_path(&name, encode),
+            |j| web_covers::deezer_artist_pick(j, &name),
+            Host::DeezerImages,
+        ) {
+            Ok(Some(bytes)) => {
+                let stored = lib.with_write(|c| {
+                    let cover = covers::store(c, &root, &bytes, CoverSource::Caa)?;
+                    covers::link_artist(c, id, cover)
+                });
+                if stored.is_ok() {
+                    got += 1;
+                }
+            }
+            Ok(None) => {}
+            Err(_) => {
+                if let Ok(mut a) = me.asked_artists.lock() {
+                    a.remove(&id);
+                }
+                return got;
+            }
+        }
+    }
+    got
+}
+
+/// Tracks without any cover: the found track's album cover, else the artist's photo (D-172).
+fn run_tracks(app: &AppHandle, me: &CoversOnline) -> usize {
+    let lib = app.state::<Library>();
+    let Some(root) = lib.root() else {
+        return 0;
+    };
+    let Ok(tracks) = lib.with_read(|c| sirtone_library::online::tracks_for_web_cover(c, RUN))
+    else {
+        return 0;
+    };
+    let net = &app.state::<NetState>().0;
+    let mut got = 0;
+    for (track, title, artist, name) in tracks {
+        if name.trim().is_empty()
+            || !me
+                .asked_tracks
+                .lock()
+                .map(|mut a| a.insert(track))
+                .unwrap_or(false)
+        {
+            continue;
+        }
+        let found = fetch(
+            net,
+            Host::Deezer,
+            web_covers::deezer_track_path(&name, &title, encode),
+            |j| web_covers::deezer_track_pick(j, &name, &title),
+            Host::DeezerImages,
+        );
+        let stored = match found {
+            Ok(Some(bytes)) => lib.with_write(|c| {
+                let cover = covers::store(c, &root, &bytes, CoverSource::Caa)?;
+                covers::link_track(c, track, cover)
+            }),
+            // No confident match: the artist's photo, if there is one; else the placeholder.
+            Ok(None) => lib.with_write(|c| match covers::artist_photo(c, artist)? {
+                Some(cover) => covers::link_track(c, track, cover),
+                None => Ok(()),
+            }),
+            Err(_) => {
+                if let Ok(mut a) = me.asked_tracks.lock() {
+                    a.remove(&track);
+                }
+                return got;
+            }
+        };
+        if stored.is_ok() {
+            got += 1;
         }
     }
     got

@@ -9,6 +9,8 @@ use sirtone_core::text::norm;
 use crate::identify::similarity;
 
 const MIN_SIMILARITY: f64 = 0.8;
+/// A person's photo needs an almost exact name (D-172).
+const MIN_ARTIST: f64 = 0.9;
 
 fn same_album(found: &str, wanted: &str) -> bool {
     if similarity(found, wanted) >= MIN_SIMILARITY {
@@ -63,6 +65,47 @@ pub fn itunes_pick(json: &[u8], artist: &str, album: &str) -> Option<String> {
     })
 }
 
+/// Deezer artist search: `search/artist?q=…` (D-172).
+pub fn deezer_artist_path(artist: &str, encode: impl Fn(&str) -> String) -> String {
+    format!(
+        "search/artist?q={}&limit=5",
+        encode(&format!("artist:\"{artist}\""))
+    )
+}
+
+/// The photo (`picture_xl`) of the artist whose name is almost exactly the wanted one.
+pub fn deezer_artist_pick(json: &[u8], artist: &str) -> Option<String> {
+    let v: Value = serde_json::from_slice(json).ok()?;
+    v.get("data")?.as_array()?.iter().find_map(|d| {
+        let name = d.get("name")?.as_str()?;
+        if similarity(name, artist) < MIN_ARTIST {
+            return None;
+        }
+        // Deezer's «no picture» placeholder has an empty hash in its path (`/artist//`).
+        let path = image_path(d.get("picture_xl")?.as_str()?, "dzcdn.net/")?;
+        (!path.contains("//")).then_some(path)
+    })
+}
+
+/// Deezer track search: `search/track?q=artist:"…" track:"…"` (D-172).
+pub fn deezer_track_path(artist: &str, title: &str, encode: impl Fn(&str) -> String) -> String {
+    let q = format!("artist:\"{artist}\" track:\"{title}\"");
+    format!("search/track?q={}&limit=5", encode(&q))
+}
+
+/// The cover of the album of the track whose artist and title match closely.
+pub fn deezer_track_pick(json: &[u8], artist: &str, title: &str) -> Option<String> {
+    let v: Value = serde_json::from_slice(json).ok()?;
+    v.get("data")?.as_array()?.iter().find_map(|d| {
+        let by = d.get("artist")?.get("name")?.as_str()?;
+        let name = d.get("title_short").or_else(|| d.get("title"))?.as_str()?;
+        if similarity(by, artist) < MIN_SIMILARITY || similarity(name, title) < MIN_SIMILARITY {
+            return None;
+        }
+        image_path(d.get("album")?.get("cover_big")?.as_str()?, "dzcdn.net/")
+    })
+}
+
 /// «https://any-subdomain.<site>/path» → `path` (the host is fixed by `sirtone-net`).
 fn image_path(url: &str, site: &str) -> Option<String> {
     let rest = url.strip_prefix("https://")?;
@@ -95,6 +138,52 @@ mod tests {
             Some("image/thumb/Music/x/y/source/600x600bb.jpg")
         );
         assert_eq!(itunes_pick(b"nope", "a", "b"), None);
+    }
+
+    #[test]
+    fn artist_photo_needs_the_same_name() {
+        let json = r#"{"data":[
+          {"name":"Кино-2","picture_xl":"https://e-cdns-images.dzcdn.net/images/artist/aaa/1000x1000-000000-80-0-0.jpg"},
+          {"name":"Кино","picture_xl":"https://cdn-images.dzcdn.net/images/artist/bbb/1000x1000-000000-80-0-0.jpg"}]}"#;
+        assert_eq!(
+            deezer_artist_pick(json.as_bytes(), "Кино").as_deref(),
+            Some("images/artist/bbb/1000x1000-000000-80-0-0.jpg")
+        );
+        assert_eq!(deezer_artist_pick(json.as_bytes(), "Ария"), None);
+    }
+
+    #[test]
+    fn artist_placeholder_photo_is_refused() {
+        let json = r#"{"data":[{"name":"Кино","picture_xl":"https://cdn-images.dzcdn.net/images/artist//1000x1000-000000-80-0-0.jpg"}]}"#;
+        assert_eq!(deezer_artist_pick(json.as_bytes(), "Кино"), None);
+    }
+
+    #[test]
+    fn track_cover_is_the_found_tracks_album() {
+        let json = r#"{"data":[
+          {"title":"Другая","title_short":"Другая","artist":{"name":"Кино"},"album":{"cover_big":"https://cdn-images.dzcdn.net/images/cover/aaa/500x500-000000-80-0-0.jpg"}},
+          {"title":"Звезда по имени Солнце (Remastered)","title_short":"Звезда по имени Солнце","artist":{"name":"Кино"},"album":{"cover_big":"https://cdn-images.dzcdn.net/images/cover/bbb/500x500-000000-80-0-0.jpg"}}]}"#;
+        assert_eq!(
+            deezer_track_pick(json.as_bytes(), "Кино", "Звезда по имени Солнце").as_deref(),
+            Some("images/cover/bbb/500x500-000000-80-0-0.jpg")
+        );
+        assert_eq!(
+            deezer_track_pick(json.as_bytes(), "Ария", "Звезда по имени Солнце"),
+            None
+        );
+        assert_eq!(deezer_track_pick(b"{}", "Кино", "x"), None);
+    }
+
+    #[test]
+    fn request_paths_are_encoded_queries() {
+        let enc = |q: &str| q.replace(' ', "+");
+        assert_eq!(
+            deezer_artist_path("Кино", enc),
+            "search/artist?q=artist:\"Кино\"&limit=5"
+        );
+        assert!(
+            deezer_track_path("A", "B", enc).starts_with("search/track?q=artist:\"A\"+track:\"B\"")
+        );
     }
 
     #[test]

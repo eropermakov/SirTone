@@ -93,6 +93,36 @@ pub fn link_album(conn: &Connection, album: AlbumId, cover: i64) -> Result<(), L
     Ok(())
 }
 
+/// The artist's photo from the web (D-172); an existing one stays.
+pub fn link_artist(conn: &Connection, artist: i64, cover: i64) -> Result<(), LibraryError> {
+    conn.execute(
+        "UPDATE artist SET photo_cover_id = ?2 WHERE id = ?1 AND photo_cover_id IS NULL",
+        params![artist, cover],
+    )?;
+    Ok(())
+}
+
+/// A track's own cover from the web (D-172); an existing one stays.
+pub fn link_track(conn: &Connection, track: i64, cover: i64) -> Result<(), LibraryError> {
+    conn.execute(
+        "UPDATE track SET cover_id = ?2 WHERE id = ?1 AND cover_id IS NULL",
+        params![track, cover],
+    )?;
+    Ok(())
+}
+
+/// `cover.id` of the artist's photo, if any.
+pub fn artist_photo(conn: &Connection, artist: i64) -> Result<Option<i64>, LibraryError> {
+    Ok(conn
+        .query_row(
+            "SELECT photo_cover_id FROM artist WHERE id = ?1",
+            [artist],
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten())
+}
+
 pub fn album_has_cover(conn: &Connection, album: AlbumId) -> Result<bool, LibraryError> {
     Ok(conn.query_row(
         "SELECT cover_id IS NOT NULL FROM album WHERE id = ?1",
