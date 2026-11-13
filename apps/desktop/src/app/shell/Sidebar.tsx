@@ -1,6 +1,5 @@
 import { useDroppable } from "@dnd-kit/core";
 import {
-  AudioLines,
   ChevronDown,
   CircleHelp,
   Disc3,
@@ -22,6 +21,7 @@ import { useTranslation } from "react-i18next";
 import { dropId } from "@/app/dnd/dnd";
 import type { PlaylistItem } from "@/shared/ipc/playlists";
 import { cn } from "@/shared/lib/utils";
+import { BrandMark } from "@/shared/ui/BrandMark";
 import { SidebarPlaylist } from "./SidebarPlaylist";
 
 export type Screen =
@@ -150,14 +150,10 @@ export function Sidebar({
         collapsed ? "w-(--sidebar-collapsed)" : "w-(--sidebar-width)",
       )}
     >
-      {/* Menu header (DESIGN.md §13): accent circle 48 with the white mark, «Sir.kov» and the product. */}
+      {/* Menu header (DESIGN.md §13): the mark 48, «Sir.kov» and the product. The owner's logo 1.0
+          replaces the accent circle with the Сиртон mark (D-175). */}
       <div className={cn("mb-3 flex items-center gap-3", collapsed ? "justify-center" : "px-1")}>
-        <span
-          aria-hidden
-          className="flex size-12 shrink-0 items-center justify-center rounded-full bg-accent-fill text-accent-on"
-        >
-          <AudioLines size={24} strokeWidth={2} />
-        </span>
+        <BrandMark px={48} className="text-text-primary" />
         {!collapsed && (
           <>
             <span className="flex min-w-0 flex-1 flex-col">

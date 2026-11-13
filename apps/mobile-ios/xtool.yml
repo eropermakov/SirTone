@@ -3,6 +3,8 @@ version: 1
 bundleID: studio.serkov.sirtone.mobile
 product: SirTone
 infoPath: Support/SirTone-Info.plist
+# The app icon (owner logo 1.0, D-175): a solid 1024 square, iOS applies the mask.
+iconPath: Resources/AppIcon.png
 # The widget (SirToneWidget, check П5) is not packed by xtool 1.24: an appex links with
 # `-e _NSExtensionMain`, its code is dead-stripped and zsign refuses the `__text`-less stub
 # (xtool-org/xtool#313, #379). Open: an Xcode-project build on the macOS runner, or an xtool fix.
