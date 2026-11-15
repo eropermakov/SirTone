@@ -24,8 +24,7 @@ pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .build()
 }
 
-/// The NSIS per-user install (`%LOCALAPPDATA%\SirTone`, tauri.conf.json `currentUser`), not a test
-/// instance.
+/// The NSIS per-user install (default or custom folder), excluding test and portable instances.
 pub fn available() -> bool {
     let isolated = std::env::var_os("SIRTONE_DATA_DIR").is_some_and(|d| !d.is_empty());
     let Ok(exe) = std::env::current_exe() else {
@@ -35,7 +34,24 @@ pub fn available() -> bool {
         return false;
     };
     // A portable copy writes nothing to the host: no Run entry, no updater (T6.4).
-    !isolated && !crate::portable::is_portable() && is_installed_path(&exe, Path::new(&local))
+    // NSIS also lets the user pick another folder: its uninstaller marks an install there too.
+    installed_copy_available(
+        &exe,
+        Path::new(&local),
+        isolated,
+        crate::portable::is_portable(),
+        exe.with_file_name("uninstall.exe").is_file(),
+    )
+}
+
+fn installed_copy_available(
+    exe: &Path,
+    local_app_data: &Path,
+    isolated: bool,
+    portable: bool,
+    has_uninstaller: bool,
+) -> bool {
+    !isolated && !portable && (is_installed_path(exe, local_app_data) || has_uninstaller)
 }
 
 fn is_installed_path(exe: &Path, local_app_data: &Path) -> bool {
@@ -98,6 +114,37 @@ pub fn autostart_set(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn custom_install_requires_uninstaller_and_never_enables_isolated_or_portable_copies() {
+        let local = Path::new(r"C:\Users\u\AppData\Local");
+        let custom = Path::new(r"D:\Music Apps\SirTone\SirTone.exe");
+        assert!(installed_copy_available(custom, local, false, false, true));
+        assert!(!installed_copy_available(
+            custom, local, false, false, false
+        ));
+        for exe in [
+            custom,
+            Path::new(r"C:\Users\u\AppData\Local\SirTone\SirTone.exe"),
+        ] {
+            for has_uninstaller in [false, true] {
+                assert!(!installed_copy_available(
+                    exe,
+                    local,
+                    true,
+                    false,
+                    has_uninstaller
+                ));
+                assert!(!installed_copy_available(
+                    exe,
+                    local,
+                    false,
+                    true,
+                    has_uninstaller
+                ));
+            }
+        }
+    }
 
     #[test]
     fn only_the_installed_copy_qualifies() {
