@@ -23,49 +23,15 @@ struct NowPlayingView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let side = min(geo.size.width - M.space8 * 2, geo.size.height * 0.45)
             // The blurred cover lies in `.background`: a filled picture there cannot widen the
             // layout (in a ZStack it pushed the player off-screen on non-square covers).
-            VStack(spacing: M.space6) {
-                    ZStack {
-                        Capsule().fill(Color.white.opacity(0.4)).frame(width: 40, height: 5)
-                            .accessibilityHidden(true)
-                        // F22: the visualiser; not in «Только музыка» (D-147).
-                        if !app.musicOnly {
-                            HStack {
-                                Menu {
-                                    Picker(L.t("player.background"), selection: $playerBackground) {
-                                        ForEach(["waves", "milkdrop", "cover", "none"], id: \.self) { b in
-                                            Text(verbatim: L.t("player.background.\(b)")).tag(b)
-                                        }
-                                    }
-                                } label: {
-                                    Image(systemName: "rectangle.on.rectangle").font(.system(size: 20))
-                                        .frame(width: 44, height: 44)
-                                }
-                                .opacity(0.85)
-                                .accessibilityLabel(L.t("player.background"))
-                                Spacer()
-                                Button { showViz = true } label: {
-                                    Image(systemName: "waveform").font(.system(size: 20))
-                                        .frame(width: 44, height: 44)
-                                }
-                                .buttonStyle(.plain)
-                                .opacity(0.85)
-                                .accessibilityLabel(L.t("viz.open"))
-                            }
-                        }
-                    }
-                    .padding(.top, M.space2)
-                    OutputDeviceLine(device: output)
-                    Spacer(minLength: 0)
-                    cover(side)
-                    titles
-                    progress
-                    controls
-                    secondary
-                    Spacer(minLength: 0)
+            Group {
+                if geo.size.width > geo.size.height {
+                    landscapeLayout(geo.size)
+                } else {
+                    portraitLayout(geo.size)
                 }
+            }
                 .padding(.horizontal, M.space8)
                 .padding(.bottom, M.space6)
                 .frame(width: geo.size.width, height: geo.size.height)
@@ -79,6 +45,76 @@ struct NowPlayingView: View {
         // A stored item: one built inside a Binding got a new id on every redraw, and the sheet
         // closed and opened again forever.
         .sheet(item: $why) { w in WhySheet(codes: w.codes).presentationDetents([.fraction(0.3)]) }
+    }
+
+    private var playerHeader: some View {
+        ZStack {
+            Capsule().fill(Color.white.opacity(0.4)).frame(width: 40, height: 5)
+                .accessibilityHidden(true)
+            // F22: the visualiser; not in «Только музыка» (D-147).
+            if !app.musicOnly {
+                HStack {
+                    Menu {
+                        Picker(L.t("player.background"), selection: $playerBackground) {
+                            ForEach(["waves", "milkdrop", "cover", "none"], id: \.self) { b in
+                                Text(verbatim: L.t("player.background.\(b)")).tag(b)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "rectangle.on.rectangle").font(.system(size: 20))
+                            .frame(width: 44, height: 44)
+                    }
+                    .opacity(0.85)
+                    .accessibilityLabel(L.t("player.background"))
+                    Spacer()
+                    Button { showViz = true } label: {
+                        Image(systemName: "waveform").font(.system(size: 20))
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .opacity(0.85)
+                    .accessibilityLabel(L.t("viz.open"))
+                }
+            }
+        }
+        .padding(.top, M.space2)
+    }
+
+    private func portraitLayout(_ size: CGSize) -> some View {
+        let side = min(size.width - M.space8 * 2, size.height * 0.45)
+        return VStack(spacing: M.space6) {
+            playerHeader
+            OutputDeviceLine(device: output)
+            Spacer(minLength: 0)
+            cover(side)
+            titles
+            progress
+            controls
+            secondary
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// The same controls, not a second player: only the arrangement changes when a phone is
+    /// wider than tall (D-177). The reserve above keeps the header and every 44 pt action visible.
+    private func landscapeLayout(_ size: CGSize) -> some View {
+        let side = min(size.width * 0.38, size.height - M.tapWeb - M.space8 * 2 - M.space3)
+        return VStack(spacing: M.space3) {
+            playerHeader
+            HStack(spacing: M.space8) {
+                cover(max(0, side))
+                VStack(alignment: .leading, spacing: M.space3) {
+                    OutputDeviceLine(device: output)
+                    Spacer(minLength: 0)
+                    titles
+                    progress
+                    controls.frame(maxWidth: .infinity)
+                    secondary
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(maxHeight: .infinity)
+        }
     }
 
     private var background: some View {
