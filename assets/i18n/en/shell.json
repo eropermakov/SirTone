@@ -55,6 +55,7 @@
     "repeatOne": "Repeat track",
     "shuffleOn": "Shuffled"
   },
+  "importQuality": { "title": "", "hint": "", "original": "", "high": "", "standard": "", "compact": "" },
   "settings": {
     "title": "",
     "appearance": "",

@@ -170,6 +170,8 @@ export function SettingsScreen({
         </div>
       )}
 
+      <ImportQualitySection />
+
       {onSpacesChanged && <SpacesSection onChanged={onSpacesChanged} />}
 
       <SoundSection />
@@ -2366,6 +2368,36 @@ function OrganizeLine() {
  * «Сеть» (T3.1, `03` §11): «Работать полностью офлайн» — no request leaves the computer
  * (recognition, weather, updates); the music, the wave and the search work as before.
  */
+function ImportQualitySection() {
+  const { t } = useTranslation("shell");
+  const [quality, setQuality] = useState("original");
+  useEffect(() => {
+    getSettings().then((s) => setQuality(String((s.library as { import_quality?: string } | undefined)?.import_quality ?? "original"))).catch(() => {});
+  }, []);
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="t-shelf-title text-primary-text">{t("importQuality.title")}</h2>
+      <div className="flex flex-col gap-3 rounded-(--radius-xl) border border-border bg-bg-raised p-6">
+        <span className="t-body text-text-secondary">{t("importQuality.hint")}</span>
+        <select
+          value={quality}
+          onChange={(e) => {
+            const value = e.target.value;
+            setQuality(value);
+            patchSettings({ library: { import_quality: value } } as never).catch(() => setQuality("original"));
+          }}
+          className="h-(--button-height) w-fit rounded-(--radius-md) border border-border bg-bg-layer px-3 text-text-primary"
+        >
+          <option value="original">{t("importQuality.original")}</option>
+          <option value="high">{t("importQuality.high")}</option>
+          <option value="standard">{t("importQuality.standard")}</option>
+          <option value="compact">{t("importQuality.compact")}</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
 function NetworkSection() {
   const { t } = useTranslation("shell");
   const [off, setOff] = useState(false);
