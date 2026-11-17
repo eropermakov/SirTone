@@ -9,6 +9,7 @@ use std::collections::VecDeque;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 
@@ -40,6 +41,8 @@ pub enum Rejected {
     NoSpace,
     PathTooLong,
     ReadError,
+    EncoderUnavailable,
+    TranscodeFailed,
 }
 
 impl Rejected {
@@ -52,6 +55,29 @@ impl Rejected {
             Self::NoSpace => "no_space",
             Self::PathTooLong => "path_too_long",
             Self::ReadError => "read_error",
+            Self::EncoderUnavailable => "encoder_unavailable",
+            Self::TranscodeFailed => "transcode_failed",
+        }
+    }
+}
+
+/// Explicit import policy. The original source is always read-only; compact policies make a new
+/// Opus file inside staging and never replace or delete the source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportQuality {
+    Original,
+    High,
+    Standard,
+    Compact,
+}
+
+impl ImportQuality {
+    fn opus_bitrate(self) -> Option<&'static str> {
+        match self {
+            Self::Original => None,
+            Self::High => Some("160k"),
+            Self::Standard => Some("96k"),
+            Self::Compact => Some("48k"),
         }
     }
 }
@@ -244,6 +270,53 @@ fn copy_verified(
     Ok(Some(read))
 }
 
+fn transcode_verified(
+    src: &Path,
+    dst: &Path,
+    bitrate: &str,
+    cancel: &AtomicBool,
+) -> Result<Option<String>, Rejected> {
+    if cancel.load(Ordering::Relaxed) {
+        return Ok(None);
+    }
+    let part = dst.with_extension("opus.part");
+    let status = Command::new("ffmpeg")
+        .args(["-nostdin", "-v", "error", "-y", "-i"])
+        .arg(src)
+        .args([
+            "-map",
+            "0:a:0",
+            "-map_metadata",
+            "0",
+            "-vn",
+            "-c:a",
+            "libopus",
+            "-b:a",
+        ])
+        .arg(bitrate)
+        .arg(&part)
+        .status()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                Rejected::EncoderUnavailable
+            } else {
+                Rejected::TranscodeFailed
+            }
+        })?;
+    if cancel.load(Ordering::Relaxed) {
+        let _ = fs::remove_file(&part);
+        return Ok(None);
+    }
+    if !status.success() {
+        let _ = fs::remove_file(&part);
+        return Err(Rejected::TranscodeFailed);
+    }
+    fs::rename(&part, dst).map_err(|_| Rejected::TranscodeFailed)?;
+    hash_file(dst)
+        .map(Some)
+        .map_err(|_| Rejected::TranscodeFailed)
+}
+
 pub fn hash_file(p: &Path) -> std::io::Result<String> {
     let mut f = File::open(p)?;
     let mut h = blake3::Hasher::new();
@@ -263,6 +336,7 @@ fn probe_and_copy(
     src: PathBuf,
     staging: &Path,
     deps: &ImportDeps,
+    quality: ImportQuality,
     cancel: &AtomicBool,
 ) -> Copied {
     if cancel.load(Ordering::Relaxed) {
@@ -293,12 +367,18 @@ fn probe_and_copy(
             reason: Rejected::Corrupt,
         };
     }
-    let staged = staging.join(if ext.is_empty() {
+    let staged = staging.join(if quality.opus_bitrate().is_some() {
+        format!("{item}.opus")
+    } else if ext.is_empty() {
         item.to_string()
     } else {
         format!("{item}.{ext}")
     });
-    match copy_verified(&src, &staged, deps.fs.as_ref(), cancel) {
+    let copied = match quality.opus_bitrate() {
+        Some(bitrate) => transcode_verified(&src, &staged, bitrate, cancel),
+        None => copy_verified(&src, &staged, deps.fs.as_ref(), cancel),
+    };
+    match copied {
         Ok(Some(hash)) => Copied::Ok {
             item,
             staged,
@@ -355,6 +435,26 @@ pub fn run_batch(
     root: &Path,
     batch: i64,
     deps: &ImportDeps,
+    cancel: &AtomicBool,
+    on_event: &mut dyn FnMut(ImportEvent),
+) -> Result<Report, LibraryError> {
+    run_batch_with_quality(
+        conn,
+        root,
+        batch,
+        deps,
+        ImportQuality::Original,
+        cancel,
+        on_event,
+    )
+}
+
+pub fn run_batch_with_quality(
+    conn: &mut Connection,
+    root: &Path,
+    batch: i64,
+    deps: &ImportDeps,
+    quality: ImportQuality,
     cancel: &AtomicBool,
     on_event: &mut dyn FnMut(ImportEvent),
 ) -> Result<Report, LibraryError> {
@@ -435,7 +535,7 @@ pub fn run_batch(
                     let next = queue.lock().ok().and_then(|mut q| q.pop_front());
                     let Some((item, src)) = next else { break };
                     if tx
-                        .send(probe_and_copy(item, src, &staging, deps, cancel))
+                        .send(probe_and_copy(item, src, &staging, deps, quality, cancel))
                         .is_err()
                     {
                         break;

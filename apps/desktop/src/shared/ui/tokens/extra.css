@@ -129,6 +129,30 @@
   transform: scale(0.98);
 }
 
+/* Compact landscape canvas for a phone-sized WebView or a narrow secondary display. The player
+   keeps transport and track identity in view; secondary labels make room instead of shrinking
+   controls below their 36 px target. Desktop layouts are unchanged. */
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 900px) {
+  :root {
+    --sidebar-width: 64px;
+    --player-height: 64px;
+  }
+  nav[aria-label] {
+    padding: var(--space-1);
+  }
+  footer {
+    gap: var(--space-2);
+    padding-inline: var(--space-2);
+  }
+  footer > :first-child {
+    width: 13rem;
+  }
+  footer .t-caption,
+  footer .t-timecode {
+    display: none;
+  }
+}
+
 /* Performance presets (T2.3, docs/06 §6): the level scales the DESIGN.md duration tokens;
    «Очень слабое» (motion 0) turns every animation and transition off. Weak machines also drop
    blur. Set by `applyPerformance` as one write to <html>. */

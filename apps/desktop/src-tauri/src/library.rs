@@ -379,12 +379,17 @@ impl Library {
         }));
         let cancel = Arc::new(AtomicBool::new(false));
         let importing = Arc::new(AtomicBool::new(false));
-        let (w_shared, w_cancel, w_importing) = (shared.clone(), cancel.clone(), importing.clone());
+        let (w_shared, w_cancel, w_importing, w_settings) = (
+            shared.clone(),
+            cancel.clone(),
+            importing.clone(),
+            settings.clone(),
+        );
         let (m_app, m_shared, m_settings, m_jobs) =
             (app.clone(), shared.clone(), settings.clone(), jobs.clone());
         std::thread::Builder::new()
             .name("sirtone-import".into())
-            .spawn(move || import_worker(app, w_shared, rx, w_cancel, w_importing))
+            .spawn(move || import_worker(app, w_shared, rx, w_cancel, w_importing, w_settings))
             .ok();
         std::thread::Builder::new()
             .name("sirtone-root-monitor".into())
@@ -745,6 +750,7 @@ fn import_worker(
     rx: mpsc::Receiver<Job>,
     cancel: Arc<AtomicBool>,
     importing: Arc<AtomicBool>,
+    settings: Arc<SettingsStore>,
 ) {
     let deps = deps();
     let mut conn: Option<(PathBuf, Connection)> = None;
@@ -967,7 +973,21 @@ fn import_worker(
                     released = true;
                 }
             };
-            match import::run_batch(db, &root, batch, &deps, &cancel, &mut on_event) {
+            let quality = match settings.get()["library"]["import_quality"].as_str() {
+                Some("high") => import::ImportQuality::High,
+                Some("standard") => import::ImportQuality::Standard,
+                Some("compact") => import::ImportQuality::Compact,
+                _ => import::ImportQuality::Original,
+            };
+            match import::run_batch_with_quality(
+                db,
+                &root,
+                batch,
+                &deps,
+                quality,
+                &cancel,
+                &mut on_event,
+            ) {
                 Ok(r) => {
                     let mut reasons: Vec<String> =
                         r.rejected.iter().map(|(_, r)| r.clone()).collect();
