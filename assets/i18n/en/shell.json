@@ -73,6 +73,17 @@
     "themeMono": "Black & white",
     "accentByTheme": "The colour comes with this theme — choose Dark, Light or System to change it"
   },
+  "spaces": {
+    "title": "",
+    "add": "",
+    "active": "",
+    "hint": "",
+    "newTitle": "",
+    "name": "",
+    "folder": "",
+    "choose": "",
+    "create": ""
+  },
   "accent": {
     "sirkov": "",
     "blue": "",

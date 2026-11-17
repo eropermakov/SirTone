@@ -172,7 +172,12 @@ pub enum ImportStart {
 /// Work for the import thread: imports and reconcile passes never run at the same time, so the
 /// pipeline's own placements can never race the watcher (docs/05 §7).
 enum Job {
-    Import(Vec<PathBuf>),
+    /// The root is captured at enqueue time: switching spaces while an import waits must never
+    /// redirect files into the newly active library.
+    Import {
+        paths: Vec<PathBuf>,
+        root: PathBuf,
+    },
     Reconcile {
         confirmed: bool,
     },
@@ -465,7 +470,10 @@ impl Library {
         tracing::info!(target: "sirtone::library", "library folder set");
         let _ = self.jobs.send(Job::Reconcile { confirmed: false });
         if !pending.is_empty() {
-            let _ = self.jobs.send(Job::Import(pending));
+            let _ = self.jobs.send(Job::Import {
+                paths: pending,
+                root: path.to_path_buf(),
+            });
         }
         Ok(())
     }
@@ -484,7 +492,10 @@ impl Library {
         }
         drop(s);
         self.cancel.store(false, Ordering::Relaxed);
-        let _ = self.jobs.send(Job::Import(paths));
+        let root = lock(&self.shared).root.clone();
+        if let Some(root) = root {
+            let _ = self.jobs.send(Job::Import { paths, root });
+        }
         ImportStart::Started
     }
 
@@ -751,7 +762,13 @@ fn import_worker(
         let mut organize = Vec::new();
         for j in jobs {
             match j {
-                Job::Import(p) => imports.extend(p),
+                Job::Import { paths, root } => {
+                    // A queued request for a previous space is deliberately ignored here. The
+                    // source remains untouched and the new space cannot receive those files.
+                    if lock(&shared).root.as_ref() == Some(&root) {
+                        imports.extend(paths);
+                    }
+                }
                 Job::Assign {
                     track,
                     assignment,

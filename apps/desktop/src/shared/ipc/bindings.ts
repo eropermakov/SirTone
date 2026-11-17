@@ -10,6 +10,13 @@ export const commands = {
 	appBootstrap: () => __TAURI_INVOKE<Bootstrap>("app_bootstrap"),
 	settingsGet: () => __TAURI_INVOKE<unknown>("settings_get"),
 	settingsPatch: (patch: unknown) => typedError<unknown, AppError>(__TAURI_INVOKE("settings_patch", { patch })),
+	spacesList: () => __TAURI_INVOKE<SpacesState>("spaces_list"),
+	spacesCreate: (name: string, root: string) => typedError<SpacesState, AppError>(__TAURI_INVOKE("spaces_create", { name, root })),
+	/**
+	 *  Switches the fully isolated library service. Playback is stopped by the caller before this
+	 *  command is exposed in the UI; this command never mutates audio source files.
+	 */
+	spacesSelect: (id: string) => typedError<SpacesState, AppError>(__TAURI_INVOKE("spaces_select", { id })),
 	playbackSnapshot: () => __TAURI_INVOKE<PlaybackSnapshot>("playback_snapshot"),
 	playbackOpen: (paths: string[]) => __TAURI_INVOKE<void>("playback_open", { paths }),
 	playbackToggle: () => __TAURI_INVOKE<void>("playback_toggle"),
@@ -877,6 +884,17 @@ export type SleepStatus = {
 	remainingMs: number,
 	/**  Tracks left for «через N треков». */
 	tracksLeft: number | null,
+};
+
+export type Space = {
+	id: string,
+	name: string,
+	root: string,
+};
+
+export type SpacesState = {
+	activeId: string,
+	spaces: Space[],
 };
 
 export type StorageInfo = {

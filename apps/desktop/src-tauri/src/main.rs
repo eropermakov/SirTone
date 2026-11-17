@@ -38,6 +38,7 @@ mod resolve;
 mod search;
 mod settings_store;
 mod sleep;
+mod spaces;
 mod storage;
 mod taskbar;
 mod tray;
@@ -81,6 +82,12 @@ fn main() {
     diagnostics::install_panic_hook(data_dir.clone());
     tracing::info!(target: "sirtone::startup", version = env!("CARGO_PKG_VERSION"), "starting");
     let settings = settings_store::SettingsStore::open(&data_dir);
+    let spaces = spaces::Spaces::open(
+        &data_dir,
+        settings.get()["library"]["root"]
+            .as_str()
+            .map(str::to_owned),
+    );
 
     let specta = ipc::builder();
     let mut context = tauri::generate_context!();
@@ -143,6 +150,7 @@ fn main() {
         .manage(ShownOnce(Arc::new(AtomicBool::new(autostart::started_minimized()))))
         .manage(tray::TrayMenu::default())
         .manage(settings)
+        .manage(spaces)
         .invoke_handler(specta.invoke_handler())
         // Native file drop (D-07): paths stay in Rust and go to the library import (FR-IMP-001).
         .on_window_event(|window, event| {

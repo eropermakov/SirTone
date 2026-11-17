@@ -1270,6 +1270,15 @@ impl Playback {
         self.hand_next();
     }
 
+    /// A local space owns its queue and listening context. Switching spaces must therefore never
+    /// let a track or recommendation from the previous space continue playing.
+    pub fn stop_for_space_switch(&self) {
+        self.pause();
+        self.journal.close(EndReason::Skip);
+        let _ = self.queue().replace(Vec::new(), 0);
+        self.queue_edited();
+    }
+
     pub fn next(&self) {
         // A skipped wave track turns the wave away from its vibe at once (D-92, AT-21).
         let skipped = self

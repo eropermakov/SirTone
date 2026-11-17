@@ -47,6 +47,7 @@ import { FX_TYPES, type FxType, isFxType } from "@/shared/viz/fxPlan";
 import EQ_PRESETS_JSON from "../../../../../assets/eq/presets.json";
 import { openHelp } from "./HelpDialog";
 import { LicensesDialog } from "./LicensesDialog";
+import { SpacesSection } from "./SpacesSection";
 
 type Props = {
   theme: ThemePref;
@@ -64,6 +65,7 @@ type Props = {
   onReplayTips?: () => void;
   /** «Дубли» (T3.5). */
   onShowDuplicates?: () => void;
+  onSpacesChanged?: () => void;
 };
 
 const THEMES: { id: ThemePref; key: string }[] = [
@@ -86,6 +88,7 @@ export function SettingsScreen({
   onReplaySetup,
   onReplayTips,
   onShowDuplicates,
+  onSpacesChanged,
 }: Props) {
   const { t } = useTranslation("shell");
   const [licenses, setLicenses] = useState(false);
@@ -166,6 +169,8 @@ export function SettingsScreen({
           </div>
         </div>
       )}
+
+      {onSpacesChanged && <SpacesSection onChanged={onSpacesChanged} />}
 
       <SoundSection />
 

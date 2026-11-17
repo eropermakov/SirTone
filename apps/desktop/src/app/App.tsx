@@ -524,6 +524,7 @@ export function App() {
                   onReplaySetup={() => setOnboard("setup")}
                   onReplayTips={() => setOnboard("tips")}
                   onShowDuplicates={() => setDupsOpen(true)}
+                  onSpacesChanged={lib.refresh}
                 />
               ) : screen === "wave" && hasMusic ? (
                 <WaveScreen snap={snap} onGo={goTo} />
