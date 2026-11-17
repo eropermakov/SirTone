@@ -23,6 +23,7 @@ import type { PlaylistItem } from "@/shared/ipc/playlists";
 import { cn } from "@/shared/lib/utils";
 import { BrandMark } from "@/shared/ui/BrandMark";
 import { SidebarPlaylist } from "./SidebarPlaylist";
+import { SpaceMenu } from "./SpaceMenu";
 
 export type Screen =
   | "search"
@@ -175,6 +176,7 @@ export function Sidebar({
           </>
         )}
       </div>
+      <SpaceMenu collapsed={collapsed} />
       {/* DESIGN.md §9: «Новый плейлист» first, then the main items. */}
       {onNewPlaylist && (
         <button

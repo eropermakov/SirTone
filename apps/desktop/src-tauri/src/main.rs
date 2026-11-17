@@ -40,6 +40,7 @@ mod resolve;
 mod search;
 mod settings_store;
 mod sleep;
+mod spaces;
 mod storage;
 mod taskbar;
 mod tray;
@@ -148,6 +149,7 @@ fn main() {
         .manage(ShownOnce(Arc::new(AtomicBool::new(autostart::started_minimized()))))
         .manage(tray::TrayMenu::default())
         .manage(settings)
+        .manage(spaces::Spaces::open())
         .invoke_handler(specta.invoke_handler())
         // Native file drop (D-07): paths stay in Rust and go to the library import (FR-IMP-001).
         .on_window_event(|window, event| {

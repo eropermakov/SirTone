@@ -10,6 +10,11 @@ export const commands = {
 	appBootstrap: () => __TAURI_INVOKE<Bootstrap>("app_bootstrap"),
 	settingsGet: () => __TAURI_INVOKE<unknown>("settings_get"),
 	settingsPatch: (patch: unknown) => typedError<unknown, AppError>(__TAURI_INVOKE("settings_patch", { patch })),
+	spacesList: () => __TAURI_INVOKE<LocalSpace[]>("spaces_list"),
+	spacesCreate: (name: string) => typedError<LocalSpace, AppError>(__TAURI_INVOKE("spaces_create", { name })),
+	spacesRename: (id: string, name: string) => typedError<null, AppError>(__TAURI_INVOKE("spaces_rename", { id, name })),
+	spacesRemove: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("spaces_remove", { id })),
+	spacesSelect: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("spaces_select", { id })),
 	playbackSnapshot: () => __TAURI_INVOKE<PlaybackSnapshot>("playback_snapshot"),
 	playbackOpen: (paths: string[]) => __TAURI_INVOKE<void>("playback_open", { paths }),
 	playbackToggle: () => __TAURI_INVOKE<void>("playback_toggle"),
@@ -730,6 +735,12 @@ export type LibraryStatus = {
 	offline: boolean,
 	/**  Many files vanished at once: how many, waiting for the user (FR-FS-003). */
 	goneQuestion: number | null,
+};
+
+export type LocalSpace = {
+	id: string,
+	name: string,
+	active: boolean,
 };
 
 export type MergeDone = {

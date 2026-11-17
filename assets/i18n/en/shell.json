@@ -1,4 +1,16 @@
 {
+  "spaces": {
+    "title": "",
+    "default": "",
+    "switch": "",
+    "create": "",
+    "createPrompt": "",
+    "rename": "",
+    "renamePrompt": "",
+    "remove": "",
+    "removeConfirm": "",
+    "error": ""
+  },
   "proto": "",
   "drop": {
     "title": "",

@@ -7241,6 +7241,8 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "trash",
+ "uuid",
  "webview2-com",
  "windows",
 ]
