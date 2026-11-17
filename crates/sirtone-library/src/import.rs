@@ -72,6 +72,26 @@ pub enum ImportQuality {
 }
 
 impl ImportQuality {
+    /// Stable value stored with an import batch, so an interrupted batch always resumes with
+    /// the policy that was chosen when it was queued.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Original => "original",
+            Self::High => "high",
+            Self::Standard => "standard",
+            Self::Compact => "compact",
+        }
+    }
+
+    pub fn from_key(value: &str) -> Self {
+        match value {
+            "high" => Self::High,
+            "standard" => Self::Standard,
+            "compact" => Self::Compact,
+            _ => Self::Original,
+        }
+    }
+
     fn opus_bitrate(self) -> Option<&'static str> {
         match self {
             Self::Original => None,
@@ -80,6 +100,24 @@ impl ImportQuality {
             Self::Compact => Some("48k"),
         }
     }
+}
+
+fn batch_quality(
+    conn: &Connection,
+    batch: i64,
+    fallback: ImportQuality,
+) -> Result<ImportQuality, LibraryError> {
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT quality FROM import_batch WHERE id = ?1",
+            [batch],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(stored
+        .as_deref()
+        .map(ImportQuality::from_key)
+        .unwrap_or(fallback))
 }
 
 pub struct ImportDeps {
@@ -144,6 +182,17 @@ pub fn start_batch(
     sources: &[PathBuf],
     kind: &str,
 ) -> Result<i64, LibraryError> {
+    start_batch_with_quality(conn, sources, kind, ImportQuality::Original)
+}
+
+/// Creates a batch with a durable quality policy. Source kind and policy remain separate:
+/// `source` is a constrained audit field (`drop`/`watch`/`external`).
+pub fn start_batch_with_quality(
+    conn: &mut Connection,
+    sources: &[PathBuf],
+    kind: &str,
+    quality: ImportQuality,
+) -> Result<i64, LibraryError> {
     let mut files = Vec::new();
     for s in sources {
         walk(s, &mut files);
@@ -152,8 +201,8 @@ pub fn start_batch(
     files.dedup();
     let tx = conn.transaction()?;
     tx.execute(
-        "INSERT INTO import_batch(started_at, source) VALUES (?1, ?2)",
-        params![now_ms(), kind],
+        "INSERT INTO import_batch(started_at, source, quality) VALUES (?1, ?2, ?3)",
+        params![now_ms(), kind, quality.key()],
     )?;
     let batch = tx.last_insert_rowid();
     {
@@ -458,6 +507,9 @@ pub fn run_batch_with_quality(
     cancel: &AtomicBool,
     on_event: &mut dyn FnMut(ImportEvent),
 ) -> Result<Report, LibraryError> {
+    // New desktop batches persist quality in `import_batch.quality`; callers that do not opt in
+    // retain the passed/default policy.
+    let quality = batch_quality(conn, batch, quality)?;
     let staging = staging_dir(root, batch);
     fs::create_dir_all(&staging)?;
     let all = items(conn, batch)?;
@@ -475,11 +527,15 @@ pub fn run_batch_with_quality(
             "discovered" => queue.push_back((it.id, it.src.clone())),
             "copied" => {
                 let staged = staging.join({
-                    let ext = ext_of(&it.src);
-                    if ext.is_empty() {
-                        it.id.to_string()
+                    if quality.opus_bitrate().is_some() {
+                        format!("{}.opus", it.id)
                     } else {
-                        format!("{}.{ext}", it.id)
+                        let ext = ext_of(&it.src);
+                        if ext.is_empty() {
+                            it.id.to_string()
+                        } else {
+                            format!("{}.{ext}", it.id)
+                        }
                     }
                 });
                 let ok =
@@ -1157,4 +1213,26 @@ pub fn lang_backfill(
         [next],
     )?;
     Ok(found)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn persisted_batch_quality_overrides_a_later_setting() {
+        let mut conn = crate::db::open_in_memory().unwrap();
+        let compact =
+            start_batch_with_quality(&mut conn, &[], "drop", ImportQuality::Compact).unwrap();
+        let legacy = start_batch(&mut conn, &[], "drop").unwrap();
+
+        assert_eq!(
+            batch_quality(&conn, compact, ImportQuality::Original).unwrap(),
+            ImportQuality::Compact
+        );
+        assert_eq!(
+            batch_quality(&conn, legacy, ImportQuality::High).unwrap(),
+            ImportQuality::Original
+        );
+    }
 }

@@ -177,6 +177,7 @@ enum Job {
     Import {
         paths: Vec<PathBuf>,
         root: PathBuf,
+        quality: import::ImportQuality,
     },
     Reconcile {
         confirmed: bool,
@@ -379,17 +380,12 @@ impl Library {
         }));
         let cancel = Arc::new(AtomicBool::new(false));
         let importing = Arc::new(AtomicBool::new(false));
-        let (w_shared, w_cancel, w_importing, w_settings) = (
-            shared.clone(),
-            cancel.clone(),
-            importing.clone(),
-            settings.clone(),
-        );
+        let (w_shared, w_cancel, w_importing) = (shared.clone(), cancel.clone(), importing.clone());
         let (m_app, m_shared, m_settings, m_jobs) =
             (app.clone(), shared.clone(), settings.clone(), jobs.clone());
         std::thread::Builder::new()
             .name("sirtone-import".into())
-            .spawn(move || import_worker(app, w_shared, rx, w_cancel, w_importing, w_settings))
+            .spawn(move || import_worker(app, w_shared, rx, w_cancel, w_importing))
             .ok();
         std::thread::Builder::new()
             .name("sirtone-root-monitor".into())
@@ -478,6 +474,11 @@ impl Library {
             let _ = self.jobs.send(Job::Import {
                 paths: pending,
                 root: path.to_path_buf(),
+                quality: import::ImportQuality::from_key(
+                    self.settings.get()["library"]["import_quality"]
+                        .as_str()
+                        .unwrap_or("original"),
+                ),
             });
         }
         Ok(())
@@ -499,7 +500,16 @@ impl Library {
         self.cancel.store(false, Ordering::Relaxed);
         let root = lock(&self.shared).root.clone();
         if let Some(root) = root {
-            let _ = self.jobs.send(Job::Import { paths, root });
+            let quality = import::ImportQuality::from_key(
+                self.settings.get()["library"]["import_quality"]
+                    .as_str()
+                    .unwrap_or("original"),
+            );
+            let _ = self.jobs.send(Job::Import {
+                paths,
+                root,
+                quality,
+            });
         }
         ImportStart::Started
     }
@@ -750,7 +760,6 @@ fn import_worker(
     rx: mpsc::Receiver<Job>,
     cancel: Arc<AtomicBool>,
     importing: Arc<AtomicBool>,
-    settings: Arc<SettingsStore>,
 ) {
     let deps = deps();
     let mut conn: Option<(PathBuf, Connection)> = None;
@@ -762,17 +771,21 @@ fn import_worker(
             jobs.push(more);
         }
         let mut reconcile_pass: Option<bool> = None;
-        let mut imports: Vec<PathBuf> = Vec::new();
+        let mut imports: Vec<(Vec<PathBuf>, import::ImportQuality)> = Vec::new();
         let mut assigns = Vec::new();
         let mut merges = Vec::new();
         let mut organize = Vec::new();
         for j in jobs {
             match j {
-                Job::Import { paths, root } => {
+                Job::Import {
+                    paths,
+                    root,
+                    quality,
+                } => {
                     // A queued request for a previous space is deliberately ignored here. The
                     // source remains untouched and the new space cannot receive those files.
                     if lock(&shared).root.as_ref() == Some(&root) {
-                        imports.extend(paths);
+                        imports.push((paths, quality));
                     }
                 }
                 Job::Assign {
@@ -936,8 +949,8 @@ fn import_worker(
         }
         let mut batches = import::unfinished_batches(db).unwrap_or_default();
         importing.store(!batches.is_empty() || !paths.is_empty(), Ordering::Relaxed);
-        if !paths.is_empty() {
-            match import::start_batch(db, &paths, "drop") {
+        for (paths, quality) in paths {
+            match import::start_batch_with_quality(db, &paths, "drop", quality) {
                 Ok(b) => batches.push(b),
                 Err(e) => tracing::error!(target: "sirtone::import", error = %e, "start failed"),
             }
@@ -973,18 +986,12 @@ fn import_worker(
                     released = true;
                 }
             };
-            let quality = match settings.get()["library"]["import_quality"].as_str() {
-                Some("high") => import::ImportQuality::High,
-                Some("standard") => import::ImportQuality::Standard,
-                Some("compact") => import::ImportQuality::Compact,
-                _ => import::ImportQuality::Original,
-            };
             match import::run_batch_with_quality(
                 db,
                 &root,
                 batch,
                 &deps,
-                quality,
+                import::ImportQuality::Original,
                 &cancel,
                 &mut on_event,
             ) {

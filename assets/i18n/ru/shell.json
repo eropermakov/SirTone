@@ -156,7 +156,9 @@
       "playlist": "плейлисты не импортируются",
       "no_space": "нет места на диске",
       "path_too_long": "слишком длинный путь",
-      "read_error": "ошибка чтения"
+      "read_error": "ошибка чтения",
+      "encoder_unavailable": "FFmpeg не найден",
+      "transcode_failed": "не удалось создать сжатую копию"
     }
   },
   "importQuality": {
