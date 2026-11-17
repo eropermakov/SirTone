@@ -17,3 +17,7 @@ export const listSpaces = (): Promise<SpacesState> => (isTauri() ? commands.spac
 export const selectSpace = async (id: string): Promise<SpacesState> => unwrap(await commands.spacesSelect(id));
 export const createSpace = async (name: string, root: string): Promise<SpacesState> =>
   unwrap(await commands.spacesCreate(name, root));
+export const renameSpace = async (id: string, name: string): Promise<SpacesState> =>
+  unwrap(await commands.spacesRename(id, name));
+export const deleteSpace = async (id: string): Promise<SpacesState> =>
+  unwrap(await commands.spacesDelete(id));

@@ -13,10 +13,16 @@ export const commands = {
 	spacesList: () => __TAURI_INVOKE<SpacesState>("spaces_list"),
 	spacesCreate: (name: string, root: string) => typedError<SpacesState, AppError>(__TAURI_INVOKE("spaces_create", { name, root })),
 	/**
+	 *  Removes only the local registry entry. Music and `.sirtone` data are deliberately untouched.
+	 *  An active entry is first switched to a remaining one, so readers never observe no space.
+	 */
+	spacesDelete: (id: string) => typedError<SpacesState, AppError>(__TAURI_INVOKE("spaces_delete", { id })),
+	/**
 	 *  Switches the fully isolated library service. Playback is stopped by the caller before this
 	 *  command is exposed in the UI; this command never mutates audio source files.
 	 */
 	spacesSelect: (id: string) => typedError<SpacesState, AppError>(__TAURI_INVOKE("spaces_select", { id })),
+	spacesRename: (id: string, name: string) => typedError<SpacesState, AppError>(__TAURI_INVOKE("spaces_rename", { id, name })),
 	playbackSnapshot: () => __TAURI_INVOKE<PlaybackSnapshot>("playback_snapshot"),
 	playbackOpen: (paths: string[]) => __TAURI_INVOKE<void>("playback_open", { paths }),
 	playbackToggle: () => __TAURI_INVOKE<void>("playback_toggle"),

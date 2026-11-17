@@ -83,7 +83,13 @@
     "name": "",
     "folder": "",
     "choose": "",
-    "create": ""
+    "create": "",
+    "rename": "",
+    "renameTitle": "",
+    "save": "",
+    "delete": "",
+    "deleteTitle": "",
+    "deleteHint": ""
   },
   "accent": {
     "sirkov": "",

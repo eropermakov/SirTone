@@ -143,6 +143,77 @@ pub fn spaces_create(
     Ok(out)
 }
 
+#[tauri::command]
+#[specta::specta]
+pub fn spaces_rename(
+    spaces: State<'_, Arc<Spaces>>,
+    id: String,
+    name: String,
+) -> Result<SpacesState, AppError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(AppError::new(ErrorCode::InvalidArgument).with_details("empty space name"));
+    }
+    let mut state = spaces.guard();
+    let space = state
+        .spaces
+        .iter_mut()
+        .find(|space| space.id == id)
+        .ok_or_else(|| AppError::new(ErrorCode::InvalidArgument).with_details("unknown space"))?;
+    space.name = name.to_owned();
+    let out = state.clone();
+    drop(state);
+    spaces.persist();
+    Ok(out)
+}
+
+/// Removes only the local registry entry. Music and `.sirtone` data are deliberately untouched.
+/// An active entry is first switched to a remaining one, so readers never observe no space.
+#[tauri::command]
+#[specta::specta]
+pub fn spaces_delete(
+    app: AppHandle,
+    spaces: State<'_, Arc<Spaces>>,
+    id: String,
+) -> Result<SpacesState, AppError> {
+    let next = {
+        let state = spaces.guard();
+        if state.spaces.len() < 2 {
+            return Err(AppError::new(ErrorCode::InvalidArgument).with_details("last space"));
+        }
+        if !state.spaces.iter().any(|space| space.id == id) {
+            return Err(AppError::new(ErrorCode::InvalidArgument).with_details("unknown space"));
+        }
+        (state.active_id == id)
+            .then(|| {
+                state
+                    .spaces
+                    .iter()
+                    .find(|space| space.id != id)
+                    .cloned()
+                    .ok_or_else(|| {
+                        AppError::new(ErrorCode::Internal).with_details("no replacement space")
+                    })
+            })
+            .transpose()?
+    };
+    if let Some(next) = &next {
+        if let Some(playback) = app.try_state::<Playback>() {
+            playback.stop_for_space_switch();
+        }
+        app.state::<Library>().set_root(Path::new(&next.root))?;
+    }
+    let mut state = spaces.guard();
+    state.spaces.retain(|space| space.id != id);
+    if let Some(next) = &next {
+        state.active_id = next.id.clone();
+    }
+    let out = state.clone();
+    drop(state);
+    spaces.persist();
+    Ok(out)
+}
+
 /// Switches the fully isolated library service. Playback is stopped by the caller before this
 /// command is exposed in the UI; this command never mutates audio source files.
 #[tauri::command]
