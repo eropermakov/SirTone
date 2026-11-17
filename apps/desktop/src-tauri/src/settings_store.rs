@@ -202,6 +202,16 @@ pub fn settings_patch(
     if changed.iter().any(|k| k == "network") {
         crate::net::apply(&app); // T3.1: the offline switch, at once
     }
+    if changed
+        .iter()
+        .any(|key| matches!(key.as_str(), "appearance" | "library" | "wave"))
+        && let (Some(spaces), Some(store)) = (
+            tauri::Manager::try_state::<Arc<crate::spaces::Spaces>>(&app),
+            tauri::Manager::try_state::<Arc<SettingsStore>>(&app),
+        )
+    {
+        spaces.save_active_preferences(store.space_preferences());
+    }
     let _ = app.emit("settings://changed", &changed);
     Ok(Json(doc))
 }

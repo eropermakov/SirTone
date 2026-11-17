@@ -127,7 +127,9 @@ impl Spaces {
         Ok(())
     }
 
-    fn save_active_preferences(&self, preferences: serde_json::Value) {
+    /// Captures a personal-settings edit immediately, so closing the app before the next switch
+    /// cannot make the active space inherit another person's appearance or library policy.
+    pub fn save_active_preferences(&self, preferences: serde_json::Value) {
         let mut state = self.guard();
         let active_id = state.active_id.clone();
         if let Some(active) = state.spaces.iter_mut().find(|space| space.id == active_id) {
