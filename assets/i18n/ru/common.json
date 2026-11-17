@@ -9,6 +9,9 @@
     "albums": "{count, plural, one {# альбом} few {# альбома} many {# альбомов} other {# альбома}}",
     "artists": "{count, plural, one {# исполнитель} few {# исполнителя} many {# исполнителей} other {# исполнителя}}"
   },
+  "actions": {
+    "cancel": "Отмена"
+  },
   "errors": {
     "title": "Не удалось воспроизвести",
     "retry": "Повторить",

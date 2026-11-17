@@ -8,6 +8,9 @@
     "albums": "",
     "artists": ""
   },
+  "actions": {
+    "cancel": ""
+  },
   "errors": {
     "title": "",
     "retry": "",

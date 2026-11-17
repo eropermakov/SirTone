@@ -61,6 +61,7 @@ import { DndRoot } from "./dnd/dnd";
 import type { Open } from "./library/CollectionScreen";
 import { DropOverlay } from "./library/DropOverlay";
 import { DuplicatesDialog } from "./library/DuplicatesDialog";
+import { type ImportQualityKey, ImportQualityDialog } from "./library/ImportQualityDialog";
 import { ImportReportDialog } from "./library/ImportReportDialog";
 import type { GoTo } from "./library/TrackList";
 import { Onboarding, Tips } from "./onboarding/Onboarding";
@@ -102,6 +103,7 @@ type Appearance = {
   seasonal: boolean;
   themeAccents: Record<string, AccentSource>;
 };
+type PendingImport = { folder: string; quality: ImportQualityKey };
 const DEFAULT: Appearance = {
   theme: "system",
   accent: { kind: "preset", slug: "sirkov" },
@@ -189,6 +191,7 @@ export function App() {
   };
   // «Добавить папку» pressed before a library folder existed: pick sources right after.
   const [addAfterRoot, setAddAfterRoot] = useState(false);
+  const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [appearance, setAppearanceState] = useState<Appearance>(DEFAULT);
   const [manualCollapsed, setManualCollapsed] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
@@ -467,7 +470,14 @@ export function App() {
       return;
     }
     const folder = await pickFolder();
-    if (folder) await importPaths([folder]);
+    if (folder) await askImportQuality(folder);
+  };
+  const askImportQuality = async (folder: string) => {
+    const current = await getSettings().catch(() => null);
+    const value = (current?.library as { import_quality?: string } | undefined)?.import_quality;
+    const quality: ImportQualityKey =
+      value === "high" || value === "standard" || value === "compact" ? value : "original";
+    setPendingImport({ folder, quality });
   };
   const rootChosen = async (s: LibraryStatus) => {
     lib.setStatus(s);
@@ -475,7 +485,7 @@ export function App() {
     if (addAfterRoot) {
       setAddAfterRoot(false);
       const folder = await pickFolder();
-      if (folder) await importPaths([folder]);
+      if (folder) await askImportQuality(folder);
     }
   };
   const hasMusic = lib.status.tracks > 0;
@@ -754,6 +764,19 @@ export function App() {
           )}
           {onboard === "tips" && <Tips onClose={() => setOnboard(null)} />}
           {dupsOpen && <DuplicatesDialog onClose={() => setDupsOpen(false)} />}
+          {pendingImport && (
+            <ImportQualityDialog
+              initial={pendingImport.quality}
+              onClose={() => setPendingImport(null)}
+              onChoose={(quality) => {
+                const folder = pendingImport.folder;
+                setPendingImport(null);
+                patchSettings({ library: { import_quality: quality } } as never)
+                  .then(() => importPaths([folder]))
+                  .catch(() => notify(t("importQuality.saveFailed")));
+              }}
+            />
+          )}
           {reportBatch !== null && (
             <ImportReportDialog
               batch={reportBatch}

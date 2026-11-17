@@ -55,7 +55,7 @@
     "repeatOne": "Repeat track",
     "shuffleOn": "Shuffled"
   },
-  "importQuality": { "title": "", "hint": "", "original": "", "high": "", "standard": "", "compact": "" },
+  "importQuality": { "title": "", "chooseTitle": "", "chooseHint": "", "start": "", "saveFailed": "", "hint": "", "original": "", "high": "", "standard": "", "compact": "" },
   "settings": {
     "title": "",
     "appearance": "",
