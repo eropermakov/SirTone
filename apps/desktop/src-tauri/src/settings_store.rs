@@ -60,6 +60,48 @@ impl SettingsStore {
         self.doc.lock().map(|d| d.clone()).unwrap_or(Value::Null)
     }
 
+    /// The preferences that describe a person's local space. Device-wide controls (audio
+    /// endpoint, hotkeys, window, performance and privacy switches) deliberately stay outside
+    /// this envelope. The library identity is also owned by `spaces.json`, never copied here.
+    pub fn space_preferences(&self) -> Value {
+        Self::select_space_preferences(self.get())
+    }
+
+    pub fn default_space_preferences() -> Value {
+        Self::select_space_preferences(settings::default_document())
+    }
+
+    fn select_space_preferences(doc: Value) -> Value {
+        let mut out = serde_json::Map::new();
+        for key in ["appearance", "library", "wave"] {
+            if let Some(value) = doc.get(key).cloned() {
+                out.insert(key.to_owned(), value);
+            }
+        }
+        if let Some(library) = out.get_mut("library").and_then(Value::as_object_mut) {
+            library.remove("root");
+            library.remove("uid");
+        }
+        Value::Object(out)
+    }
+
+    /// Replaces the active space's personal envelope while preserving device-wide controls.
+    /// The writer still persists the active document as a crash-safe cache; `Spaces` owns the
+    /// durable per-space copies and captures it before every switch.
+    pub fn apply_space_preferences(
+        &self,
+        preferences: &Value,
+    ) -> Result<Vec<String>, settings::SettingsError> {
+        let mut guard = self
+            .doc
+            .lock()
+            .map_err(|_| settings::SettingsError::NotAnObject)?;
+        let (next, _typed, changed) = settings::apply_patch(&guard, preferences)?;
+        *guard = next.clone();
+        let _ = self.writer.send(next);
+        Ok(changed)
+    }
+
     /// Like [`Self::patch`], but the file is on disk when it returns — for settings that must
     /// survive a crash right after the change (the library folder: losing it orphans an import).
     pub fn patch_durable(
@@ -222,5 +264,20 @@ mod tests {
         );
         assert_eq!(store.get(), before);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn space_preferences_keep_personal_settings_but_not_library_identity() {
+        let prefs = SettingsStore::select_space_preferences(json!({
+            "appearance": { "theme": "dark" },
+            "library": { "root": "D:/Music", "uid": "library-a", "import_quality": "compact" },
+            "wave": { "enabled": true },
+            "window": { "autostart": true }
+        }));
+        assert_eq!(prefs["appearance"]["theme"], "dark");
+        assert_eq!(prefs["library"]["import_quality"], "compact");
+        assert!(prefs["library"].get("root").is_none());
+        assert!(prefs["library"].get("uid").is_none());
+        assert!(prefs.get("window").is_none());
     }
 }

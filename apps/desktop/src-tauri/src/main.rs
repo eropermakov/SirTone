@@ -82,12 +82,7 @@ fn main() {
     diagnostics::install_panic_hook(data_dir.clone());
     tracing::info!(target: "sirtone::startup", version = env!("CARGO_PKG_VERSION"), "starting");
     let settings = settings_store::SettingsStore::open(&data_dir);
-    let spaces = spaces::Spaces::open(
-        &data_dir,
-        settings.get()["library"]["root"]
-            .as_str()
-            .map(str::to_owned),
-    );
+    let spaces = spaces::Spaces::open(&data_dir, &settings);
 
     let specta = ipc::builder();
     let mut context = tauri::generate_context!();

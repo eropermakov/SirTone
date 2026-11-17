@@ -8,9 +8,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use sirtone_core::error::{AppError, ErrorCode};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::{library::Library, playback::Playback, settings_store::write_atomic};
+use crate::{
+    library::Library,
+    playback::Playback,
+    settings_store::{SettingsStore, write_atomic},
+};
 
 const FILE: &str = "spaces.json";
 
@@ -20,6 +24,13 @@ pub struct Space {
     pub id: String,
     pub name: String,
     pub root: String,
+    #[serde(default = "empty_preferences")]
+    #[specta(skip)]
+    pub preferences: serde_json::Value,
+}
+
+fn empty_preferences() -> serde_json::Value {
+    serde_json::Value::Object(Default::default())
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
@@ -35,28 +46,43 @@ pub struct Spaces {
 }
 
 impl Spaces {
-    pub fn open(data_dir: &Path, legacy_root: Option<String>) -> Arc<Self> {
+    pub fn open(data_dir: &Path, settings: &SettingsStore) -> Arc<Self> {
         let path = data_dir.join(FILE);
-        let fallback_root = legacy_root.unwrap_or_else(|| {
-            crate::library::default_root()
-                .to_string_lossy()
-                .into_owned()
-        });
+        let fallback_root = settings.get()["library"]["root"]
+            .as_str()
+            .map(str::to_owned)
+            .unwrap_or_else(|| {
+                crate::library::default_root()
+                    .to_string_lossy()
+                    .into_owned()
+            });
         let fallback = SpacesState {
             active_id: "default".into(),
             spaces: vec![Space {
                 id: "default".into(),
                 name: "Моё пространство".into(),
                 root: fallback_root,
+                preferences: settings.space_preferences(),
             }],
         };
-        let state = std::fs::read_to_string(&path)
+        let mut state = std::fs::read_to_string(&path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .filter(|s: &SpacesState| {
                 !s.spaces.is_empty() && s.spaces.iter().any(|x| x.id == s.active_id)
             })
             .unwrap_or(fallback);
+        // Registry versions before per-space preferences inherit the active legacy settings
+        // exactly once. Other spaces start from defaults when created.
+        for space in &mut state.spaces {
+            if space.preferences.as_object().is_some_and(|p| p.is_empty()) {
+                space.preferences = if space.id == state.active_id {
+                    settings.space_preferences()
+                } else {
+                    SettingsStore::default_space_preferences()
+                };
+            }
+        }
         let this = Arc::new(Self {
             path,
             state: Mutex::new(state),
@@ -100,6 +126,16 @@ impl Spaces {
         self.persist();
         Ok(())
     }
+
+    fn save_active_preferences(&self, preferences: serde_json::Value) {
+        let mut state = self.guard();
+        let active_id = state.active_id.clone();
+        if let Some(active) = state.spaces.iter_mut().find(|space| space.id == active_id) {
+            active.preferences = preferences;
+        }
+        drop(state);
+        self.persist();
+    }
 }
 
 #[tauri::command]
@@ -136,6 +172,7 @@ pub fn spaces_create(
         id,
         name: name.trim().to_owned(),
         root: root.to_string_lossy().into_owned(),
+        preferences: SettingsStore::default_space_preferences(),
     });
     let out = s.clone();
     drop(s);
@@ -197,6 +234,15 @@ pub fn spaces_delete(
             })
             .transpose()?
     };
+    let settings = app.state::<Arc<SettingsStore>>();
+    spaces.save_active_preferences(settings.space_preferences());
+    let changed = if let Some(next) = &next {
+        settings
+            .apply_space_preferences(&next.preferences)
+            .map_err(|e| AppError::new(ErrorCode::InvalidConfig).with_details(e))?
+    } else {
+        Vec::new()
+    };
     if let Some(next) = &next {
         if let Some(playback) = app.try_state::<Playback>() {
             playback.stop_for_space_switch();
@@ -211,6 +257,7 @@ pub fn spaces_delete(
     let out = state.clone();
     drop(state);
     spaces.persist();
+    let _ = app.emit("settings://changed", &changed);
     Ok(out)
 }
 
@@ -223,12 +270,18 @@ pub fn spaces_select(
     spaces: State<'_, Arc<Spaces>>,
     id: String,
 ) -> Result<SpacesState, AppError> {
+    let settings = app.state::<Arc<SettingsStore>>();
+    spaces.save_active_preferences(settings.space_preferences());
     let selected = spaces.find(&id)?;
+    let changed = settings
+        .apply_space_preferences(&selected.preferences)
+        .map_err(|e| AppError::new(ErrorCode::InvalidConfig).with_details(e))?;
     if let Some(playback) = app.try_state::<Playback>() {
         playback.stop_for_space_switch();
     }
     let library = app.state::<Library>();
     library.set_root(Path::new(&selected.root))?;
     spaces.activate(&selected.id)?;
+    let _ = app.emit("settings://changed", &changed);
     Ok(spaces.snapshot())
 }
