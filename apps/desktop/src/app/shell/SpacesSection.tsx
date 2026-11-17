@@ -57,7 +57,7 @@ export function SpacesSection({ onChanged }: { onChanged: () => void }) {
             type="button"
             disabled={busy || space.id === state.activeId}
             onClick={() => choose(space.id)}
-            className="flex min-h-(--row-height) items-center justify-between gap-3 rounded-(--radius-md) px-3 text-left hover:bg-bg-hover disabled:cursor-default disabled:bg-selected"
+            className="micro-press flex min-h-(--row-height) items-center justify-between gap-3 rounded-(--radius-md) px-3 text-left hover:bg-bg-hover disabled:cursor-default disabled:bg-selected"
           >
             <span className="min-w-0">
               <span className="t-body-strong block truncate text-text-primary">{space.name}</span>

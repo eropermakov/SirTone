@@ -510,7 +510,7 @@ export function App() {
               onNewPlaylist={lib.status.tracks > 0 ? newPlaylist : undefined}
               onNewSmart={lib.status.tracks > 0 ? newSmart : undefined}
             />
-            <main className="flex min-w-0 flex-1 flex-col overflow-auto rounded-tl-(--radius-xl) bg-bg-layer p-6">
+            <main key={screen} className="screen-in flex min-w-0 flex-1 flex-col overflow-auto rounded-tl-(--radius-xl) bg-bg-layer p-6">
               {lib.rootNeeded && <RootPanel status={lib.status} onDone={rootChosen} />}
               {screen === "settings" ? (
                 <SettingsScreen

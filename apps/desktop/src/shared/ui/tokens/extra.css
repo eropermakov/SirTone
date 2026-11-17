@@ -104,6 +104,31 @@
   animation: flyout-in var(--dur-fast) var(--ease-out);
 }
 
+/* Screen changes should orient the user, not hold up navigation: the next page is already
+   interactive while its contents settle in. Reused by the shell and deliberately limited to
+   compositor-friendly properties. */
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.screen-in {
+  animation: screen-in var(--dur-base) var(--ease-out);
+}
+
+/* Rows and cards get a small physical acknowledgement without layout animation. */
+.micro-press {
+  transition: transform var(--dur-instant) var(--ease-out), opacity var(--dur-instant) var(--ease-out);
+}
+.micro-press:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
 /* Performance presets (T2.3, docs/06 §6): the level scales the DESIGN.md duration tokens;
    «Очень слабое» (motion 0) turns every animation and transition off. Weak machines also drop
    blur. Set by `applyPerformance` as one write to <html>. */
