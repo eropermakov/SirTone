@@ -91,7 +91,7 @@ export function SpaceMenu({ collapsed }: { collapsed: boolean }) {
         )}
       </button>
       {open && (
-        <div className="glass absolute z-30 mt-1 flex w-[calc(var(--sidebar-width)-2rem)] flex-col gap-1 rounded-(--radius-md) p-2 shadow-lg">
+        <div className="glass flyout-in absolute z-30 mt-1 flex w-[calc(var(--sidebar-width)-2rem)] flex-col gap-1 rounded-(--radius-md) p-2 shadow-lg">
           <span className="t-group-label px-2 py-1 text-text-secondary">{t("spaces.title")}</span>
           {spaces.map((space) => (
             <div
