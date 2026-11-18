@@ -196,6 +196,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             library::ImportFinished,
             library::LibraryChanged,
             library::LibraryRootNeeded,
+            library::ImportQualityNeeded,
             hotkeys::HotkeyConflict,
             playback::QueueChanged,
             playlists::PlaylistsChanged,

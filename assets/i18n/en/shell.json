@@ -11,6 +11,15 @@
     "removeConfirm": "",
     "error": ""
   },
+  "importQuality": {
+    "title": "",
+    "description": "",
+    "original": { "title": "", "description": "" },
+    "economy": { "title": "", "description": "" },
+    "max": { "title": "", "description": "" },
+    "note": "",
+    "failed": ""
+  },
   "proto": "",
   "drop": {
     "title": "",

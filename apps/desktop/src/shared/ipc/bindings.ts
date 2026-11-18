@@ -146,7 +146,7 @@ export const commands = {
 	/**  Folder picker (native dialog); `None` when the user cancels. */
 	libraryPickFolder: () => __TAURI_INVOKE<string | null>("library_pick_folder"),
 	librarySetRoot: (path: string) => typedError<LibraryStatus, AppError>(__TAURI_INVOKE("library_set_root", { path })),
-	importPaths: (paths: string[]) => __TAURI_INVOKE<ImportStart>("import_paths", { paths }),
+	importPaths: (paths: string[], quality: ImportQuality) => __TAURI_INVOKE<ImportStart>("import_paths", { paths, quality }),
 	importCancel: () => __TAURI_INVOKE<void>("import_cancel"),
 	libraryConfirmMissing: () => __TAURI_INVOKE<void>("library_confirm_missing"),
 	libraryDismissQuestion: () => __TAURI_INVOKE<void>("library_dismiss_question"),
@@ -389,6 +389,7 @@ export const events = {
 	hotkeyConflict: makeEvent<HotkeyConflict>("hotkey-conflict"),
 	importFinished: makeEvent<ImportFinished>("import-finished"),
 	importProgress: makeEvent<ImportProgress>("import-progress"),
+	importQualityNeeded: makeEvent<ImportQualityNeeded>("import-quality-needed"),
 	libraryChanged: makeEvent<LibraryChanged>("library-changed"),
 	libraryRootNeeded: makeEvent<LibraryRootNeeded>("library-root-needed"),
 	organizeSuggested: makeEvent<OrganizeSuggested>("organize-suggested"),
@@ -686,6 +687,20 @@ export type ImportProgress = {
 	total: number,
 	/**  All source files copied and verified: the medium can be removed (docs/05 §3.2). */
 	sourcesReleased: boolean,
+};
+
+/**
+ *  Quality selected for exactly one import request (D-179). It deliberately is not persisted in
+ *  settings: another drop and another local space must start with the safe original choice.
+ */
+export type ImportQuality = "original" | "economy" | "max";
+
+/**
+ *  A native drag/drop cannot show a browser dialog before Windows has delivered its paths. The
+ *  UI receives this event, asks once, and calls `import_paths` with the answer.
+ */
+export type ImportQualityNeeded = {
+	paths: string[],
 };
 
 /**

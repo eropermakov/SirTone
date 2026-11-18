@@ -57,6 +57,7 @@ use std::time::Duration;
 
 use tauri::webview::PageLoadEvent;
 use tauri::{DragDropEvent, Manager, WindowEvent};
+use tauri_specta::Event;
 
 /// Fallback: if the page never reports "finished" (JS error, slow disk), show the window anyway.
 const SHOW_FALLBACK: Duration = Duration::from_secs(3);
@@ -169,7 +170,7 @@ fn main() {
                 return;
             }
             if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event
-                && let Some(lib) = window.try_state::<library::Library>()
+                && window.try_state::<library::Library>().is_some()
             {
                 // Video clips become «Видео» backgrounds (T4.4); everything else is music.
                 let (videos, music): (Vec<_>, Vec<_>) =
@@ -181,7 +182,13 @@ fn main() {
                     backgrounds::add_dropped(window.app_handle(), videos);
                 }
                 if !music.is_empty() {
-                    lib.import_paths(window.app_handle(), music);
+                    let _ = library::ImportQualityNeeded {
+                        paths: music
+                            .into_iter()
+                            .map(|path| path.to_string_lossy().into_owned())
+                            .collect(),
+                    }
+                    .emit(window.app_handle());
                 }
             }
         })

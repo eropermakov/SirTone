@@ -7,6 +7,7 @@ import {
   type GenreItem,
   type ImportFinished,
   type ImportProgress,
+  type ImportQuality,
   type ImportReport,
   type LibraryStatus,
   type PageCursor,
@@ -33,6 +34,7 @@ export type {
   ArtistPage,
   ImportFinished,
   ImportProgress,
+  ImportQuality,
   ImportReport,
   LibraryStatus,
   PageCursor,
@@ -72,8 +74,8 @@ export const setRoot = async (path: string): Promise<LibraryStatus> =>
   unwrap(await commands.librarySetRoot(path));
 
 /** Imports files/folders; `"rootNeeded"` when no library folder has been chosen yet. */
-export const importPaths = async (paths: string[]) =>
-  isTauri() ? commands.importPaths(paths) : ("started" as const);
+export const importPaths = async (paths: string[], quality: ImportQuality) =>
+  isTauri() ? commands.importPaths(paths, quality) : ("started" as const);
 
 export const cancelImport = (): void => {
   if (isTauri()) void commands.importCancel();
@@ -126,6 +128,8 @@ export const onImportFinished = (cb: (p: ImportFinished) => void) =>
   listen(events.importFinished, cb);
 export const onLibraryChanged = (cb: () => void) => listen(events.libraryChanged, () => cb());
 export const onRootNeeded = (cb: () => void) => listen(events.libraryRootNeeded, () => cb());
+export const onImportQualityNeeded = (cb: (paths: string[]) => void) =>
+  listen(events.importQualityNeeded, (e) => cb(e.paths));
 
 /** T3.19: files added in Explorer lie elsewhere than the layout rules say. */
 export const onOrganizeSuggested = (cb: (tracks: number) => void) =>

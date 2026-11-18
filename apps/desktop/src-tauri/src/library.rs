@@ -167,12 +167,40 @@ pub enum ImportStart {
     RootNeeded,
 }
 
+/// Quality selected for exactly one import request (D-179). It deliberately is not persisted in
+/// settings: another drop and another local space must start with the safe original choice.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum ImportQuality {
+    Original,
+    Economy,
+    Max,
+}
+
+impl ImportQuality {
+    fn encoder_level(self) -> Option<sirtone_audio::encode::Level> {
+        match self {
+            Self::Original => None,
+            Self::Economy => Some(sirtone_audio::encode::Level::Economy),
+            Self::Max => Some(sirtone_audio::encode::Level::Maximum),
+        }
+    }
+}
+
+/// A native drag/drop cannot show a browser dialog before Windows has delivered its paths. The
+/// UI receives this event, asks once, and calls `import_paths` with the answer.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Event)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportQualityNeeded {
+    pub paths: Vec<String>,
+}
+
 // ---------- service ----------
 
 /// Work for the import thread: imports and reconcile passes never run at the same time, so the
 /// pipeline's own placements can never race the watcher (docs/05 §7).
 enum Job {
-    Import(Vec<PathBuf>),
+    Import(ImportRequest),
     /// «Забрать с телефона»: apply a transfer package (new music imported, then the journal).
     ApplyPackage {
         pkg: PathBuf,
@@ -214,6 +242,12 @@ enum Job {
     },
 }
 
+#[derive(Debug)]
+struct ImportRequest {
+    paths: Vec<PathBuf>,
+    quality: ImportQuality,
+}
+
 /// A library track ready to play: absolute path, title, artists, album cover hash.
 #[derive(Debug, Clone)]
 pub struct Resolved {
@@ -235,7 +269,7 @@ struct Shared {
     root: Option<PathBuf>,
     read: Option<Connection>,
     counts: Option<Counts>,
-    pending: Vec<PathBuf>,
+    pending: Vec<ImportRequest>,
     offline: bool,
     gone_question: Option<u32>,
     watch: Option<sirtone_library::watch::Watch>,
@@ -469,18 +503,23 @@ impl Library {
         };
         tracing::info!(target: "sirtone::library", "library folder set");
         let _ = self.jobs.send(Job::Reconcile { confirmed: false });
-        if !pending.is_empty() {
-            let _ = self.jobs.send(Job::Import(pending));
+        for request in pending {
+            let _ = self.jobs.send(Job::Import(request));
         }
         Ok(())
     }
 
     /// Drop / «Добавить папку»: imports into the library, or parks the paths until a folder is
     /// chosen (FR-IMP-001).
-    pub fn import_paths(&self, app: &AppHandle, paths: Vec<PathBuf>) -> ImportStart {
+    pub fn import_paths(
+        &self,
+        app: &AppHandle,
+        paths: Vec<PathBuf>,
+        quality: ImportQuality,
+    ) -> ImportStart {
         let mut s = lock(&self.shared);
         if s.root.is_none() {
-            s.pending.extend(paths);
+            s.pending.push(ImportRequest { paths, quality });
             let _ = LibraryRootNeeded {
                 pending: s.pending.len() as u32,
             }
@@ -489,7 +528,9 @@ impl Library {
         }
         drop(s);
         self.cancel.store(false, Ordering::Relaxed);
-        let _ = self.jobs.send(Job::Import(paths));
+        let _ = self
+            .jobs
+            .send(Job::Import(ImportRequest { paths, quality }));
         ImportStart::Started
     }
 
@@ -769,14 +810,14 @@ fn import_worker(
             jobs.push(more);
         }
         let mut reconcile_pass: Option<bool> = None;
-        let mut imports: Vec<PathBuf> = Vec::new();
+        let mut imports: Vec<ImportRequest> = Vec::new();
         let mut assigns = Vec::new();
         let mut merges = Vec::new();
         let mut organize = Vec::new();
         let mut applies = Vec::new();
         for j in jobs {
             match j {
-                Job::Import(p) => imports.extend(p),
+                Job::Import(request) => imports.push(request),
                 Job::ApplyPackage { pkg, reply } => applies.push((pkg, reply)),
                 Job::Assign {
                     track,
@@ -913,7 +954,7 @@ fn import_worker(
             emit_changed(&app, &shared);
             refresh_queue(&app);
         }
-        let paths = imports;
+        let imports = imports;
         if let Err(e) = import::recover(db, &root, deps.fs.as_ref()) {
             tracing::error!(target: "sirtone::import", error = %e, "recovery failed");
         }
@@ -937,16 +978,29 @@ fn import_worker(
                 Err(e) => tracing::warn!(target: "sirtone::import", error = %e, "language tags"),
             }
         }
-        let mut batches = import::unfinished_batches(db).unwrap_or_default();
-        importing.store(!batches.is_empty() || !paths.is_empty(), Ordering::Relaxed);
-        if !paths.is_empty() {
-            match import::start_batch(db, &paths, "drop") {
-                Ok(b) => batches.push(b),
-                Err(e) => tracing::error!(target: "sirtone::import", error = %e, "start failed"),
-            }
-        }
+        let batches = import::unfinished_batches(db).unwrap_or_default();
+        importing.store(
+            !batches.is_empty() || !imports.is_empty(),
+            Ordering::Relaxed,
+        );
         for batch in batches {
             let _ = run_one_batch(&app, &shared, db, &root, &deps, &cancel, batch);
+        }
+        // Do not coalesce different quality choices. A batch owns the answer that opened it,
+        // which keeps simultaneous drops and local spaces isolated (D-179).
+        for request in imports {
+            let before = sirtone_library::copies::last_id(db).unwrap_or_default();
+            match import::start_batch(db, &request.paths, "drop") {
+                Ok(batch) => {
+                    if run_one_batch(&app, &shared, db, &root, &deps, &cancel, batch).is_ok()
+                        && let Some(level) = request.quality.encoder_level()
+                    {
+                        encode_import_copies(db, &root, before, level, &cancel);
+                        emit_changed(&app, &shared);
+                    }
+                }
+                Err(e) => tracing::error!(target: "sirtone::import", error = %e, "start failed"),
+            }
         }
         // «Забрать с телефона»: the package's new music through the same import, then plays,
         // marks and playlists once each (D-140).
@@ -1035,6 +1089,67 @@ fn run_one_batch(
     };
     emit_changed(app, shared);
     out
+}
+
+/// Creates optional, space-saving Opus siblings after the original import has completed. The
+/// database only records an atomically finished file; a failed encoder leaves the original
+/// untouched and the next candidate can proceed.
+fn encode_import_copies(
+    db: &Connection,
+    root: &Path,
+    after: i64,
+    level: sirtone_audio::encode::Level,
+    cancel: &AtomicBool,
+) {
+    use sirtone_audio::encode::{self, Tags};
+
+    let jobs = match sirtone_library::copies::candidates(db, root, level.kbps(), after, u32::MAX) {
+        Ok(jobs) => jobs,
+        Err(e) => {
+            tracing::warn!(target: "sirtone::import", error = %e, "copy candidates failed");
+            return;
+        }
+    };
+    for job in jobs {
+        if cancel.load(Ordering::Relaxed) {
+            break;
+        }
+        let src = job
+            .rel_path
+            .split('/')
+            .fold(root.to_path_buf(), |path, part| path.join(part));
+        let rel = sirtone_library::copies::copy_rel_for(&job.rel_path, job.id);
+        let dst = rel
+            .split('/')
+            .fold(root.to_path_buf(), |path, part| path.join(part));
+        let tags = Tags {
+            title: Some(job.title),
+            artist: Some(job.artists).filter(|artists| !artists.is_empty()),
+            album: job.album,
+            album_artist: job.album_artist,
+            track_no: job.track_no,
+            disc_no: job.disc_no,
+            year: job.year,
+            genre: job.genre,
+            cover: job.cover.and_then(|path| std::fs::read(path).ok()),
+        };
+        if !dst.exists() && encode::to_opus(&src, &dst, level, &tags, cancel).is_err() {
+            tracing::warn!(target: "sirtone::import", track = job.id, "economy copy failed");
+            continue;
+        }
+        match std::fs::metadata(&dst) {
+            Ok(meta) => {
+                if let Err(e) =
+                    sirtone_library::copies::set_copy(db, job.id, &rel, meta.len(), level.as_str())
+                {
+                    tracing::warn!(target: "sirtone::import", track = job.id, error = %e, "could not record economy copy");
+                }
+            }
+            Err(e) => {
+                tracing::warn!(target: "sirtone::import", track = job.id, error = %e, "economy copy missing")
+            }
+        }
+    }
 }
 
 /// One reconcile pass after the journal is settled (`recover` runs first on every job).
@@ -1244,8 +1359,17 @@ pub fn library_set_root(lib: State<'_, Library>, path: String) -> Result<Library
 
 #[tauri::command(async)]
 #[specta::specta]
-pub fn import_paths(app: AppHandle, lib: State<'_, Library>, paths: Vec<String>) -> ImportStart {
-    lib.import_paths(&app, paths.into_iter().map(PathBuf::from).collect())
+pub fn import_paths(
+    app: AppHandle,
+    lib: State<'_, Library>,
+    paths: Vec<String>,
+    quality: ImportQuality,
+) -> ImportStart {
+    lib.import_paths(
+        &app,
+        paths.into_iter().map(PathBuf::from).collect(),
+        quality,
+    )
 }
 
 #[tauri::command]
@@ -1844,4 +1968,100 @@ pub fn cover_protocol(app: &AppHandle, path: &str) -> tauri::http::Response<Vec<
             .body(Vec::new()),
     }
     .unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
+}
+
+#[cfg(test)]
+mod import_quality_tests {
+    use super::*;
+    use sirtone_library::repo::{Identity, NewTrack, artist_get_or_create, track_insert};
+
+    fn wav(path: &Path) {
+        let (rate, frames) = (44_100u32, 44_100u32);
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&(36 + frames * 2).to_le_bytes());
+        bytes.extend_from_slice(b"WAVEfmt ");
+        bytes.extend_from_slice(&16u32.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&rate.to_le_bytes());
+        bytes.extend_from_slice(&(rate * 2).to_le_bytes());
+        bytes.extend_from_slice(&2u16.to_le_bytes());
+        bytes.extend_from_slice(&16u16.to_le_bytes());
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&(frames * 2).to_le_bytes());
+        for i in 0..frames {
+            bytes.extend_from_slice(&(((i as f32 * 0.05).sin() * 7_000.0) as i16).to_le_bytes());
+        }
+        std::fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn economy_import_adds_a_copy_without_replacing_the_original() {
+        let root = std::env::temp_dir().join(format!("sirtone-import-copy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Кино")).unwrap();
+        let original = root.join("Кино/01 Ёлка.wav");
+        wav(&original);
+        let mut db = sirtone_library::open(
+            &root.join(".sirtone/library.db"),
+            sirtone_library::Medium::Fixed,
+        )
+        .unwrap();
+        let artist = artist_get_or_create(&db, "Кино").unwrap();
+        let id = track_insert(
+            &mut db,
+            &NewTrack {
+                rel_path: "Кино/01 Ёлка.wav".into(),
+                size_bytes: 88_244,
+                mtime_ms: 0,
+                content_hash: "h".into(),
+                container: "wav".into(),
+                codec: "pcm_s16le".into(),
+                lossless: true,
+                sample_rate: Some(44_100),
+                channels: Some(1),
+                duration_ms: 1_000,
+                title: "Ёлка".into(),
+                album_id: None,
+                disc_no: None,
+                track_no: Some(1),
+                year: None,
+                identity: Identity::Inferred,
+                identity_conf: 0.9,
+                unknown_reason: None,
+                artists: vec![artist],
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            sirtone_library::copies::candidates(&db, &root, 128, 0, u32::MAX)
+                .unwrap()
+                .len(),
+            1,
+            "the newly imported lossless track is eligible"
+        );
+        encode_import_copies(
+            &db,
+            &root,
+            0,
+            sirtone_audio::encode::Level::Economy,
+            &AtomicBool::new(false),
+        );
+        let (copy, bytes): (Option<String>, Option<i64>) = db
+            .query_row(
+                "SELECT copy_rel_path, copy_bytes FROM track WHERE id = ?1",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let copy = copy.expect("economy copy is recorded");
+        assert!(original.exists(), "the original is preserved");
+        assert!(
+            root.join(copy).exists(),
+            "the copy is present beside the original"
+        );
+        assert!(bytes.unwrap_or_default() > 0);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

@@ -19,8 +19,10 @@ import {
   confirmMissing,
   dismissQuestion,
   type GenreItem,
+  type ImportQuality,
   importPaths,
   type LibraryStatus,
+  onImportQualityNeeded,
   onOrganizeSuggested,
   organizeLibrary,
   pickFolder,
@@ -69,6 +71,7 @@ import { DndRoot } from "./dnd/dnd";
 import type { Open } from "./library/CollectionScreen";
 import { DropOverlay } from "./library/DropOverlay";
 import { DuplicatesDialog } from "./library/DuplicatesDialog";
+import { ImportQualityDialog } from "./library/ImportQualityDialog";
 import { ImportReportDialog } from "./library/ImportReportDialog";
 import type { GoTo } from "./library/TrackList";
 import { Onboarding, Tips } from "./onboarding/Onboarding";
@@ -222,6 +225,8 @@ export function App() {
   };
   // «Добавить папку» pressed before a library folder existed: pick sources right after.
   const [addAfterRoot, setAddAfterRoot] = useState(false);
+  const [importRequests, setImportRequests] = useState<string[][]>([]);
+  const activeImport = importRequests[0] ?? null;
   const [appearance, setAppearanceState] = useState<Appearance>(DEFAULT);
   const [manualCollapsed, setManualCollapsed] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
@@ -238,6 +243,13 @@ export function App() {
   useEffect(() => {
     let off: (() => void) | undefined;
     void onOrganizeSuggested(setOrganize).then((f) => {
+      off = f;
+    });
+    return () => off?.();
+  }, []);
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    void onImportQualityNeeded((paths) => setImportRequests((all) => [...all, paths])).then((f) => {
       off = f;
     });
     return () => off?.();
@@ -498,7 +510,7 @@ export function App() {
       return;
     }
     const folder = await pickFolder();
-    if (folder) await importPaths([folder]);
+    if (folder) setImportRequests((all) => [...all, [folder]]);
   };
   const rootChosen = async (s: LibraryStatus) => {
     lib.setStatus(s);
@@ -506,7 +518,7 @@ export function App() {
     if (addAfterRoot) {
       setAddAfterRoot(false);
       const folder = await pickFolder();
-      if (folder) await importPaths([folder]);
+      if (folder) setImportRequests((all) => [...all, [folder]]);
     }
   };
   const hasMusic = lib.status.tracks > 0;
@@ -809,6 +821,17 @@ export function App() {
             />
           )}
           {onboard === "tips" && <Tips onClose={() => setOnboard(null)} />}
+          {activeImport && (
+            <ImportQualityDialog
+              paths={activeImport}
+              onClose={() => setImportRequests((all) => all.slice(1))}
+              onChoose={(quality: ImportQuality) => {
+                const paths = activeImport;
+                setImportRequests((all) => all.slice(1));
+                void importPaths(paths, quality).catch(() => notify(t("importQuality.failed")));
+              }}
+            />
+          )}
           {dupsOpen && <DuplicatesDialog onClose={() => setDupsOpen(false)} />}
           {reportBatch !== null && (
             <ImportReportDialog
