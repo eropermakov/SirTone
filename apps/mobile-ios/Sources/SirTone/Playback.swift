@@ -140,8 +140,18 @@ final class Playback: ObservableObject {
     }
 
     func resume() {
-        activateSession()
-        if !engine.isRunning { try? engine.start() }
+        guard activateSession() else {
+            notice = L.t("player.open_failed")
+            return
+        }
+        if !engine.isRunning {
+            do { try engine.start() }
+            catch {
+                recordPlaybackError("IOS_AUDIO_ENGINE_START_FAILED", operation: "engine_start", code: "DeviceUnavailable")
+                notice = L.t("player.open_failed")
+                return
+            }
+        }
         core.play()
         playing = true
         startTimer()
@@ -325,6 +335,7 @@ final class Playback: ObservableObject {
             }.value
             guard index == i else { return }
             guard let (f, h, liked, art) = opened else {
+                recordPlaybackError("IOS_PLAYBACK_OPEN_FAILED", operation: "open_track", code: "DecodeFailed")
                 failures += 1
                 notice = L.t("player.open_failed")
                 if failures < 5 { next(user: false) } else { pause(); failures = 0 }
@@ -604,10 +615,26 @@ final class Playback: ObservableObject {
 
     // MARK: Session, lock screen, buttons
 
-    private func activateSession() {
+    private func activateSession() -> Bool {
         let s = AVAudioSession.sharedInstance()
-        try? s.setCategory(.playback, mode: .default)
-        try? s.setActive(true)
+        do {
+            try s.setCategory(.playback, mode: .default)
+            try s.setActive(true)
+            return true
+        } catch {
+            recordPlaybackError("IOS_AUDIO_SESSION_FAILED", operation: "activate_session", code: "DeviceUnavailable")
+            return false
+        }
+    }
+
+    /// Called only from UI/session work. The AVAudioSourceNode render callback must never reach
+    /// this method because JSONL recording allocates and writes to disk.
+    private func recordPlaybackError(_ eventID: String, operation: String, code: String) {
+        Task {
+            await Diagnostics.shared.record(
+                level: "ERROR", eventID: eventID, component: "playback", operation: operation,
+                errorCode: code, recoverable: true)
+        }
     }
 
     private func observeSession() {
@@ -625,14 +652,22 @@ final class Playback: ObservableObject {
             // Headphones pulled out: pause, as every player does.
             let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
             let gone = raw == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue
-            MainActor.assumeIsolated { if gone { self?.pause() } }
+            MainActor.assumeIsolated {
+                if gone {
+                    self?.recordPlaybackError("IOS_AUDIO_OUTPUT_LOST", operation: "route_change", code: "DeviceUnavailable")
+                    self?.pause()
+                }
+            }
         })
         observers.append(nc.addObserver(
             forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.playing else { return }
-                try? self.engine.start()
+                do { try self.engine.start() }
+                catch {
+                    self.recordPlaybackError("IOS_AUDIO_ENGINE_RESTART_FAILED", operation: "configuration_change", code: "DeviceUnavailable")
+                }
             }
         })
     }

@@ -100,7 +100,12 @@ final class AppModel: ObservableObject {
                 return (lib, try? Wave.start(library: lib))
             }.value
             if let w = made?.1 { _ = try? w.tune(tuning: tuning) }
-            guard let (lib, wave) = made else { return }
+            guard let (lib, wave) = made else {
+                await Diagnostics.shared.record(
+                    level: "ERROR", eventID: "IOS_LIBRARY_OPEN_FAILED", component: "library", operation: "open",
+                    errorCode: "LibraryOffline", recoverable: true)
+                return
+            }
             library = lib
             self.wave = wave
             context.refresh()
@@ -183,6 +188,11 @@ final class AppModel: ObservableObject {
                 return try? lib.importFilesAs(paths: urls.map(\.path), levelName: level)
             }
             importing = false
+            if summary == nil {
+                await Diagnostics.shared.record(
+                    level: "ERROR", eventID: "IOS_IMPORT_FAILED", component: "library", operation: "import",
+                    errorCode: "Internal", recoverable: true)
+            }
             report(summary)
             await refresh()
         }
