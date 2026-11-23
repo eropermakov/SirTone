@@ -1,6 +1,8 @@
 import { connect as connectNet } from "node:net";
 import { connect as connectTls } from "node:tls";
 
+const DEFAULT_TIMEOUT_MS = 30_000;
+
 /**
  * Narrow SMTP submission transport. Production uses implicit TLS; plaintext is allowed solely
  * for a localhost test relay. The destination remains fixed by the Feedback API, never client input.
@@ -14,6 +16,7 @@ export class SmtpMailer {
     username = null,
     password = null,
     allowInsecureLocal = false,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
   }) {
     if (!host || !from) throw new TypeError("SMTP host and from are required");
     if (!secure && !allowInsecureLocal) throw new TypeError("plaintext SMTP is test-only");
@@ -27,7 +30,10 @@ export class SmtpMailer {
     if ([username, password].some((value) => value?.includes("\0"))) {
       throw new TypeError("SMTP credentials must not contain NUL");
     }
-    this.options = { host, port, secure, from, username, password };
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 60_000) {
+      throw new TypeError("SMTP timeout must be between 100 and 60000 ms");
+    }
+    this.options = { host, port, secure, from, username, password, timeoutMs };
   }
 
   async send(message) {
@@ -54,11 +60,15 @@ export class SmtpMailer {
   }
 }
 
-function connect({ host, port, secure }) {
+function connect({ host, port, secure, timeoutMs }) {
   return new Promise((resolve, reject) => {
     const socket = secure
       ? connectTls({ host, port, servername: host })
       : connectNet({ host, port });
+    // Kept for the whole SMTP conversation: outbound delivery is synchronous from the API's
+    // point of view, and a silent provider must release the report reservation for retry.
+    socket.setTimeout(timeoutMs);
+    socket.once("timeout", () => socket.destroy(new Error("SMTP connection timed out")));
     socket.once("error", reject);
     socket.once(secure ? "secureConnect" : "connect", () => {
       socket.off("error", reject);

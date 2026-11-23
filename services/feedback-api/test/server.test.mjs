@@ -314,6 +314,29 @@ test("SMTP transport delivers a test email to a local simulator", async () => {
   }
 });
 
+test("SMTP submission times out against a silent relay", async () => {
+  const relay = createServer(() => {});
+  relay.listen(0, "127.0.0.1");
+  await once(relay, "listening");
+  try {
+    const mailer = new SmtpMailer({
+      host: "127.0.0.1",
+      port: relay.address().port,
+      secure: false,
+      from: "noreply@example.test",
+      allowInsecureLocal: true,
+      timeoutMs: 100,
+    });
+    await assert.rejects(
+      mailer.send({ to: "sir.kov.mail@gmail.com", subject: "[SIRTONE] timeout", text: "hello", attachment: null }),
+      /timed out/,
+    );
+  } finally {
+    relay.close();
+    await once(relay, "close");
+  }
+});
+
 test("SMTP credentials require an authenticated TLS submission channel", () => {
   assert.throws(
     () =>
