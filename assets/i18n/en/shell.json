@@ -174,7 +174,10 @@
     "saving": "",
     "saved": "",
     "savedAt": "",
-    "failed": ""
+    "failed": "",
+    "reset": "Reset diagnostic identifier",
+    "resetDone": "Diagnostic identifier reset",
+    "resetFailed": "Could not reset diagnostic data. Try again."
   },
   "feedback": {
     "title": "Feedback",

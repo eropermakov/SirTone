@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
@@ -48,7 +49,7 @@ const CONTEXT_ALLOWLIST: &[&str] = &[
 /// has a stable, portable schema. Never call its disk-writing methods from an audio callback.
 #[derive(Debug, Clone)]
 pub struct DiagnosticSession {
-    installation_id: String,
+    installation_id: Arc<Mutex<String>>,
     session_id: String,
     dir: PathBuf,
     previous_unclean_shutdown: bool,
@@ -153,7 +154,7 @@ impl DiagnosticSession {
             let _ = fs::write(&marker, bytes);
         }
         Self {
-            installation_id,
+            installation_id: Arc::new(Mutex::new(installation_id)),
             session_id,
             dir,
             previous_unclean_shutdown,
@@ -162,7 +163,7 @@ impl DiagnosticSession {
 
     pub fn status(&self) -> DiagnosticStatus {
         DiagnosticStatus {
-            installation_id: self.installation_id.clone(),
+            installation_id: lock(&self.installation_id).clone(),
             session_id: self.session_id.clone(),
             previous_unclean_shutdown: self.previous_unclean_shutdown,
         }
@@ -277,7 +278,7 @@ impl DiagnosticSession {
         let manifest = serde_json::json!({
             "schema_version": 1,
             "report_id": report_id,
-            "installation_id": self.installation_id,
+            "installation_id": lock(&self.installation_id).clone(),
             "session_id": self.session_id,
             "platform": "windows",
             "app_version": env!("CARGO_PKG_VERSION"),
@@ -341,6 +342,39 @@ impl DiagnosticSession {
             let _ = fs::remove_file(marker);
         }
     }
+
+    /// Deletes only local diagnostic data and replaces the installation-scoped random ID.
+    /// The music, settings, spaces and library database are outside `self.dir` and untouched.
+    pub fn reset_identity_and_data(&self) {
+        let _ = fs::remove_dir_all(&self.dir);
+        let _ = fs::create_dir_all(&self.dir);
+        let id = Uuid::now_v7().to_string();
+        let _ = fs::write(self.dir.join(INSTALLATION_ID_FILE), format!("{id}\n"));
+        *lock(&self.installation_id) = id;
+        let marker = SessionMarker {
+            schema_version: 1,
+            session_id: &self.session_id,
+            started_at_unix_ms: unix_ms(),
+        };
+        if let Ok(bytes) = serde_json::to_vec(&marker) {
+            let _ = fs::write(self.dir.join(SESSION_MARKER_FILE), bytes);
+        }
+        self.record(
+            "INFO",
+            "DIAGNOSTICS_ID_RESET",
+            "diagnostics",
+            "reset_identity",
+            None,
+            &BTreeMap::new(),
+            true,
+        );
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn safe_atom(value: &str) -> String {
@@ -521,6 +555,14 @@ pub fn diagnostics_export(session: State<'_, DiagnosticSession>) -> Result<Repor
     session
         .export_report(&data_dir().join("reports"), None)
         .map_err(|error| AppError::new(ErrorCode::Internal).with_details(error.to_string()))
+}
+
+/// Explicit privacy control: replaces the random Installation ID and clears diagnostic files.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn diagnostics_reset(session: State<'_, DiagnosticSession>) -> DiagnosticStatus {
+    session.reset_identity_and_data();
+    session.status()
 }
 
 /// Sends only after an explicit UI action. The destination is deployment configuration, never a
@@ -879,6 +921,38 @@ mod tests {
         assert_eq!(one.status().installation_id, two.status().installation_id);
         assert_ne!(one.status().session_id, two.status().session_id);
         two.finish();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn reset_replaces_identity_and_clears_only_diagnostics() {
+        let dir = tmp("reset");
+        let unrelated = dir.join("library.db");
+        fs::write(&unrelated, b"must stay").unwrap();
+        let session = DiagnosticSession::start(&dir);
+        let before = session.status().installation_id;
+        session.record(
+            "ERROR",
+            "IMPORT_OPEN_FAILED",
+            "library",
+            "open_file",
+            None,
+            &BTreeMap::new(),
+            true,
+        );
+        session.reset_identity_and_data();
+        let after = session.status().installation_id;
+        assert_ne!(before, after);
+        assert_eq!(fs::read(&unrelated).unwrap(), b"must stay");
+        let events = fs::read_to_string(dir.join(DIAGNOSTICS_DIR).join(format!(
+            "{EVENT_PREFIX}{}.{}",
+            utc_date(),
+            EVENT_SUFFIX
+        )))
+        .unwrap();
+        assert!(events.contains("DIAGNOSTICS_ID_RESET"));
+        assert!(!events.contains("IMPORT_OPEN_FAILED"));
+        session.finish();
         let _ = fs::remove_dir_all(dir);
     }
 

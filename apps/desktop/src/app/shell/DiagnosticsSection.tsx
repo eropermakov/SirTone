@@ -5,6 +5,7 @@ import {
   diagnosticsStatus,
   exportDiagnostics,
   type ReportExport,
+  resetDiagnostics,
 } from "@/shared/ipc/diagnostics";
 import { Button } from "@/shared/ui/Button";
 import { notify } from "@/shared/ui/notify";
@@ -38,6 +39,19 @@ export function DiagnosticsSection() {
       .finally(() => setBusy(false));
   };
 
+  const reset = () => {
+    setBusy(true);
+    resetDiagnostics()
+      .then((next) => {
+        if (!next) return;
+        setStatus(next);
+        setReport(null);
+        notify(t("diagnostics.resetDone"));
+      })
+      .catch(() => notify(t("diagnostics.resetFailed")))
+      .finally(() => setBusy(false));
+  };
+
   return (
     <div className="flex flex-col gap-2">
       <h2 className="t-body-strong text-text-primary">{t("diagnostics.title")}</h2>
@@ -64,6 +78,9 @@ export function DiagnosticsSection() {
           </Button>
           <Button variant="secondary" disabled={busy} onClick={save}>
             {t(busy ? "diagnostics.saving" : "diagnostics.save")}
+          </Button>
+          <Button variant="ghost" disabled={busy} onClick={reset}>
+            {t("diagnostics.reset")}
           </Button>
         </div>
         {report && (

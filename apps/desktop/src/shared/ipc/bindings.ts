@@ -230,6 +230,8 @@ export const commands = {
 	 *  but it never sends diagnostics itself.
 	 */
 	diagnosticsExport: () => typedError<ReportExport, AppError>(__TAURI_INVOKE("diagnostics_export")),
+	/**  Explicit privacy control: replaces the random Installation ID and clears diagnostic files. */
+	diagnosticsReset: () => __TAURI_INVOKE<DiagnosticStatus>("diagnostics_reset"),
 	/**
 	 *  Sends only after an explicit UI action. The destination is deployment configuration, never a
 	 *  client secret or a user-controlled recipient. An absent endpoint leaves the saved draft/report local.

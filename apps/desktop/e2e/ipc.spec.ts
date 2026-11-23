@@ -78,6 +78,12 @@ async function mockTauri(page: Page) {
               path: "C:/Temp/sirtone-report.zip",
               truncated: false,
             };
+          case "diagnostics_reset":
+            return {
+              installationId: "00000000-0000-4000-8000-000000000099",
+              sessionId: "00000000-0000-4000-8000-000000000002",
+              previousUncleanShutdown: false,
+            };
           case "feedback_submit":
             return {
               referenceId: "00000000-0000-4000-8000-000000000004",
@@ -479,6 +485,15 @@ test("feedback is explicit, keeps a failed draft, and sends only consented diagn
   expect(sent[0]?.args).toMatchObject({
     submission: { kind: "bug", message: description, includeDiagnostics: true },
   });
+});
+
+test("diagnostic identity reset stays local and explicit", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки", exact: true }).click();
+  await page.getByRole("button", { name: "Сбросить диагностический идентификатор" }).click();
+  await expect(page.getByText("Диагностический идентификатор сброшен")).toBeVisible();
+  expect(await calls(page, "diagnostics_reset")).toHaveLength(1);
 });
 
 test("commands go out, events come back, errors become a toast", async ({ page }) => {

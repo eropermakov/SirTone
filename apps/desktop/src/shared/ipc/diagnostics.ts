@@ -22,6 +22,10 @@ export const diagnosticsStatus = async (): Promise<DiagnosticStatus | null> =>
 export const exportDiagnostics = async (): Promise<ReportExport | null> =>
   isTauri() ? unwrap(await commands.diagnosticsExport()) : null;
 
+/** Explicit privacy control; it clears only diagnostics and creates a new random installation ID. */
+export const resetDiagnostics = async (): Promise<DiagnosticStatus | null> =>
+  isTauri() ? commands.diagnosticsReset() : null;
+
 /** Explicit, consented support request. No report leaves the device unless `includeDiagnostics` is on. */
 export const submitFeedback = async (
   submission: FeedbackSubmission,
