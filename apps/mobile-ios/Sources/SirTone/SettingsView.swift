@@ -108,6 +108,12 @@ struct SettingsView: View {
                         .font(.sirtone(Ty.caption, relativeTo: .caption)).foregroundStyle(p.textSecondary)
                         .listRowBackground(p.bgRaised)
                 }
+                Section(L.t("feedback.settings")) {
+                    NavigationLink { FeedbackView() } label: {
+                        Label(L.t("feedback.title"), systemImage: "questionmark.bubble")
+                    }
+                    .listRowBackground(p.bgRaised)
+                }
                 Section(L.t("settings.about")) {
                     Text(verbatim: L.t("settings.about.line")).listRowBackground(p.bgRaised)
                     Text(verbatim: L.t("settings.version", version))

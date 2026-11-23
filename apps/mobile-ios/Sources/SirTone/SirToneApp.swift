@@ -22,6 +22,7 @@ struct SirToneApp: App {
                 .environmentObject(app)
                 .environmentObject(app.playback)
                 .onOpenURL { url in app.pendingImport.append(url) }
+                .task { await Diagnostics.shared.start() }
             #else
             Text(verbatim: "core not linked").padding()
             #endif
@@ -64,7 +65,11 @@ struct RootView: View {
         .onAppear { app.open() }
         .onChange(of: phase) { _, now in
             app.playback.setOnScreen(now == .active)
-            if now == .active { app.becameActive() }
+            if now == .active {
+                Task { await Diagnostics.shared.start() }
+                app.becameActive()
+            }
+            if now == .background { Task { await Diagnostics.shared.finish() } }
         }
     }
 
