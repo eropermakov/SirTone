@@ -32,6 +32,8 @@ FEEDBACK_SMTP_HOST=smtp.provider.example
 FEEDBACK_SMTP_PORT=465
 FEEDBACK_SMTP_SECURE=true
 FEEDBACK_SMTP_FROM=noreply@your-feedback-domain.example
+FEEDBACK_SMTP_USERNAME=submission-user       # optional, with PASSWORD only
+FEEDBACK_SMTP_PASSWORD=stored-only-in-secret-manager
 FEEDBACK_AUDIT_PATH=/var/lib/sirtone-feedback/audit.json
 FEEDBACK_AUDIT_SALT=generate-a-long-random-secret-in-the-secret-manager
 ```
@@ -41,7 +43,7 @@ FEEDBACK_AUDIT_SALT=generate-a-long-random-secret-in-the-secret-manager
 Перед открытием endpoint необходимо:
 
 1. Развернуть сервис за HTTPS reverse proxy и ограничить допустимые origin/rate limit на proxy.
-2. Создать отдельный SMTP submission credential у почтового провайдера и поместить его в secret manager. Текущий минимальный SMTP adapter не выполняет SMTP AUTH; выберите provider/relay с IP allow-list или расширьте adapter с проверенным auth-механизмом до production.
+2. Создать отдельный SMTP submission credential у почтового провайдера и поместить его в secret manager. Для обычного SMTP submission задайте одновременно `FEEDBACK_SMTP_USERNAME` и `FEEDBACK_SMTP_PASSWORD`: transport использует стандартный `AUTH PLAIN` только внутри implicit TLS (`FEEDBACK_SMTP_SECURE=true`). Для relay с IP allow-list оба поля можно не задавать. Никогда не включайте credentials при тестовом plaintext localhost-транспорте.
 3. Выполнить тестовое обращение, подтвердить письмо в `sir.kov.mail@gmail.com` и проверить Reply-To.
 4. Настроить `FEEDBACK_AUDIT_PATH` на каталог, доступный только service account, а `FEEDBACK_AUDIT_SALT` — в secret manager. Встроенный file-backed store хранит 30 дней только Report ID, UTC-время и salted IP hashes; ни тела, ZIP, email, SMTP secrets или IP в открытом виде там нет. Один экземпляр сервиса поддерживается сразу; для нескольких replicas замените его эквивалентным общим транзакционным TTL-store.
 

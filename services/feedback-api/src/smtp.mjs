@@ -6,13 +6,28 @@ import { connect as connectTls } from "node:tls";
  * for a localhost test relay. The destination remains fixed by the Feedback API, never client input.
  */
 export class SmtpMailer {
-  constructor({ host, port = 465, secure = true, from, allowInsecureLocal = false }) {
+  constructor({
+    host,
+    port = 465,
+    secure = true,
+    from,
+    username = null,
+    password = null,
+    allowInsecureLocal = false,
+  }) {
     if (!host || !from) throw new TypeError("SMTP host and from are required");
     if (!secure && !allowInsecureLocal) throw new TypeError("plaintext SMTP is test-only");
     if (!secure && !["127.0.0.1", "::1", "localhost"].includes(host)) {
       throw new TypeError("plaintext SMTP is only allowed for localhost");
     }
-    this.options = { host, port, secure, from };
+    if (Boolean(username) !== Boolean(password)) {
+      throw new TypeError("SMTP username and password must be configured together");
+    }
+    if (!secure && username) throw new TypeError("SMTP authentication requires TLS");
+    if ([username, password].some((value) => value?.includes("\0"))) {
+      throw new TypeError("SMTP credentials must not contain NUL");
+    }
+    this.options = { host, port, secure, from, username, password };
   }
 
   async send(message) {
@@ -21,6 +36,13 @@ export class SmtpMailer {
     try {
       await client.expect(220);
       await client.command("EHLO sirtone-feedback", 250);
+      if (this.options.username) {
+        const auth = Buffer.from(
+          `\0${this.options.username}\0${this.options.password}`,
+          "utf8",
+        ).toString("base64");
+        await client.command(`AUTH PLAIN ${auth}`, 235);
+      }
       await client.command(`MAIL FROM:<${this.options.from}>`, 250);
       await client.command(`RCPT TO:<${message.to}>`, 250);
       await client.command("DATA", 354);

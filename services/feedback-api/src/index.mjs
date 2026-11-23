@@ -10,6 +10,8 @@ const smtpHost = required("FEEDBACK_SMTP_HOST");
 const smtpPort = Number.parseInt(process.env.FEEDBACK_SMTP_PORT ?? "465", 10);
 const secure = process.env.FEEDBACK_SMTP_SECURE !== "false";
 const local = process.env.FEEDBACK_ALLOW_INSECURE_LOCAL_SMTP === "true";
+const username = process.env.FEEDBACK_SMTP_USERNAME ?? null;
+const password = process.env.FEEDBACK_SMTP_PASSWORD ?? null;
 const audit = new FileAuditStore({
   path: required("FEEDBACK_AUDIT_PATH"),
   salt: required("FEEDBACK_AUDIT_SALT"),
@@ -19,6 +21,8 @@ const mailer = new SmtpMailer({
   port: smtpPort,
   secure,
   from,
+  username,
+  password,
   allowInsecureLocal: local,
 });
 const server = createFeedbackServer({ mailer, supportTo, audit });

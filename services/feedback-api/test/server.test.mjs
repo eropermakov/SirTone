@@ -303,3 +303,27 @@ test("SMTP transport delivers a test email to a local simulator", async () => {
     await once(relay, "close");
   }
 });
+
+test("SMTP credentials require an authenticated TLS submission channel", () => {
+  assert.throws(
+    () =>
+      new SmtpMailer({
+        host: "smtp.example.test",
+        from: "noreply@example.test",
+        username: "submission-user",
+      }),
+    /configured together/,
+  );
+  assert.throws(
+    () =>
+      new SmtpMailer({
+        host: "localhost",
+        secure: false,
+        allowInsecureLocal: true,
+        from: "noreply@example.test",
+        username: "submission-user",
+        password: "test-only-password",
+      }),
+    /requires TLS/,
+  );
+});
