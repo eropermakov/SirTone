@@ -57,6 +57,7 @@ import { Slider } from "@/shared/ui/Slider";
 import { Switch } from "@/shared/ui/Switch";
 import { FX_TYPES, type FxType, isFxType } from "@/shared/viz/fxPlan";
 import EQ_PRESETS_JSON from "../../../../../assets/eq/presets.json";
+import { DiagnosticsSection } from "./DiagnosticsSection";
 import { openHelp } from "./HelpDialog";
 import { LicensesDialog } from "./LicensesDialog";
 
@@ -263,6 +264,8 @@ export function SettingsScreen({
       <SleepSection />
 
       <FocusSection />
+
+      <DiagnosticsSection />
 
       <NeverSection />
 

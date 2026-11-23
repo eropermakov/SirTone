@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use sirtone_core::error::{AppError, ErrorCode};
 use tauri::State;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{Builder, Rotation};
@@ -30,6 +31,8 @@ const EVENT_PREFIX: &str = "events-";
 const EVENT_SUFFIX: &str = "jsonl";
 const EVENT_KEEP_DAYS: u64 = 7;
 const EVENT_MAX_TOTAL_BYTES: u64 = 10 * 1024 * 1024;
+const REPORT_MAX_BYTES: u64 = 5 * 1024 * 1024;
+const REPORT_EVENT_BYTES: usize = 4 * 1024 * 1024;
 const CONTEXT_ALLOWLIST: &[&str] = &[
     "attempt",
     "audio_device_kind",
@@ -60,6 +63,14 @@ pub struct DiagnosticStatus {
     pub previous_unclean_shutdown: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportExport {
+    pub report_id: String,
+    pub path: String,
+    pub truncated: bool,
+}
+
 #[derive(Debug, Serialize)]
 struct SessionMarker<'a> {
     schema_version: u8,
@@ -69,7 +80,7 @@ struct SessionMarker<'a> {
 
 /// A portable, intentionally small event. `technical_context` is created only through the
 /// allow-list below; arbitrary error strings, paths and account details cannot enter it.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct DiagnosticEvent {
     schema_version: u8,
     timestamp_utc: String,
@@ -180,6 +191,85 @@ impl DiagnosticSession {
         enforce_event_retention(&self.dir, EVENT_KEEP_DAYS, EVENT_MAX_TOTAL_BYTES);
     }
 
+    /// Exports a portable diagnostic ZIP after an explicit user action. Events are parsed and
+    /// serialised again, which drops unknown fields from a damaged or manually edited JSONL file.
+    pub fn export_report(&self, destination: &Path) -> std::io::Result<ReportExport> {
+        fs::create_dir_all(destination)?;
+        let report_id = Uuid::now_v7().to_string();
+        let events = recent_events(&self.dir, std::time::Duration::from_secs(86_400));
+        let (events, truncated) = cap_events(events, REPORT_EVENT_BYTES);
+        let event_lines = events
+            .iter()
+            .filter_map(|event| serde_json::to_string(event).ok())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let errors: Vec<&DiagnosticEvent> = events
+            .iter()
+            .filter(|event| event.level == "ERROR")
+            .collect();
+        let primary = errors
+            .first()
+            .map_or("none", |event| event.event_id.as_str());
+        let summary = format!(
+            "SIRTONE Diagnostic Report\nReport ID: {report_id}\nPlatform: Windows\nVersion: {}\nBuild ID: {}\nOperating system: {} {}\nGenerated: {}\nPrimary error: {primary}\nRelated errors: {}\nCrash event: no native crash evidence in this export\nDiagnostics truncated: {}\n",
+            env!("CARGO_PKG_VERSION"),
+            env!("CARGO_PKG_VERSION"),
+            std::env::consts::OS,
+            std::env::consts::ARCH,
+            iso8601_utc(unix_ms()),
+            errors.len(),
+            if truncated { "yes" } else { "no" },
+        );
+        let manifest = serde_json::json!({
+            "schema_version": 1,
+            "report_id": report_id,
+            "installation_id": self.installation_id,
+            "session_id": self.session_id,
+            "platform": "windows",
+            "app_version": env!("CARGO_PKG_VERSION"),
+            "build_id": env!("CARGO_PKG_VERSION"),
+            "release_channel": "development",
+            "truncated": truncated,
+        });
+        let environment = serde_json::json!({
+            "os": std::env::consts::OS,
+            "architecture": std::env::consts::ARCH,
+        });
+        let readme = "SIRTONE diagnostic report format 1.\nThis archive contains no music, library database, track names, file paths, listening history, account data, passwords or tokens.\n";
+        let path = destination.join(format!("sirtone-report-{report_id}.zip"));
+        write_zip(
+            &path,
+            [
+                ("summary.txt", summary.into_bytes()),
+                (
+                    "manifest.json",
+                    serde_json::to_vec_pretty(&manifest).map_err(json_io)?,
+                ),
+                (
+                    "environment.json",
+                    serde_json::to_vec_pretty(&environment).map_err(json_io)?,
+                ),
+                ("events.jsonl", event_lines.into_bytes()),
+                (
+                    "errors.json",
+                    serde_json::to_vec_pretty(&errors).map_err(json_io)?,
+                ),
+                ("README.txt", readme.as_bytes().to_vec()),
+            ],
+        )?;
+        if fs::metadata(&path)?.len() > REPORT_MAX_BYTES {
+            let _ = fs::remove_file(&path);
+            return Err(std::io::Error::other(
+                "diagnostic report exceeds its size limit",
+            ));
+        }
+        Ok(ReportExport {
+            report_id,
+            path: path.to_string_lossy().into_owned(),
+            truncated,
+        })
+    }
+
     /// Marks only this process's session as clean. A different marker is preserved rather than
     /// hiding another process's diagnostic evidence.
     pub fn finish(&self) {
@@ -261,6 +351,60 @@ fn enforce_event_retention(dir: &Path, keep_days: u64, cap: u64) {
     }
 }
 
+fn recent_events(dir: &Path, period: std::time::Duration) -> Vec<DiagnosticEvent> {
+    let now = SystemTime::now();
+    let mut files = event_files(dir);
+    files.sort_by_key(|(modified, _, _)| *modified);
+    files
+        .into_iter()
+        .filter(|(modified, _, _)| now.duration_since(*modified).is_ok_and(|age| age <= period))
+        .flat_map(|(_, _, path)| fs::read_to_string(path).ok().into_iter())
+        .flat_map(|text| {
+            text.lines()
+                .filter_map(|line| serde_json::from_str::<DiagnosticEvent>(line).ok())
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn cap_events(events: Vec<DiagnosticEvent>, limit: usize) -> (Vec<DiagnosticEvent>, bool) {
+    let original_count = events.len();
+    let mut kept = Vec::new();
+    let mut total = 0usize;
+    for event in events.into_iter().rev() {
+        let size = serde_json::to_vec(&event).map_or(0, |bytes| bytes.len().saturating_add(1));
+        if total.saturating_add(size) > limit {
+            continue;
+        }
+        total = total.saturating_add(size);
+        kept.push(event);
+    }
+    let truncated = kept.len() < original_count;
+    kept.reverse();
+    (kept, truncated)
+}
+
+fn json_io(error: serde_json::Error) -> std::io::Error {
+    std::io::Error::other(error)
+}
+
+fn zip_io(error: zip::result::ZipError) -> std::io::Error {
+    std::io::Error::other(error)
+}
+
+fn write_zip(path: &Path, entries: [(&str, Vec<u8>); 6]) -> std::io::Result<()> {
+    let file = fs::File::create(path)?;
+    let mut zip = zip::ZipWriter::new(file);
+    let options =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    for (name, content) in entries {
+        zip.start_file(name, options).map_err(zip_io)?;
+        zip.write_all(&content)?;
+    }
+    zip.finish().map_err(zip_io)?;
+    Ok(())
+}
+
 fn utc_date() -> String {
     let seconds = unix_ms().saturating_div(1_000) as i64;
     let (year, month, day, _, _, _) = civil_utc(seconds);
@@ -303,6 +447,16 @@ fn civil_utc(seconds: i64) -> (i64, i64, i64, i64, i64, i64) {
 #[specta::specta]
 pub fn diagnostics_status(session: State<'_, DiagnosticSession>) -> DiagnosticStatus {
     session.status()
+}
+
+/// Writes a report to the app-local exports folder. The frontend may offer that file for sharing,
+/// but it never sends diagnostics itself.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn diagnostics_export(session: State<'_, DiagnosticSession>) -> Result<ReportExport, AppError> {
+    session
+        .export_report(&data_dir().join("reports"))
+        .map_err(|error| AppError::new(ErrorCode::Internal).with_details(error.to_string()))
 }
 
 fn unix_ms() -> u128 {
@@ -632,6 +786,76 @@ mod tests {
             .collect();
         assert_eq!(names.len(), 2);
         assert!(!names.iter().any(|name| name == "events-2026-10-10.jsonl"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn exported_report_has_required_files_and_no_unapproved_data() {
+        use std::io::{Cursor, Read};
+
+        let dir = tmp("report");
+        let session = DiagnosticSession::start(&dir);
+        let context = BTreeMap::from([
+            ("attempt".to_owned(), "1".to_owned()),
+            (
+                "file_path".to_owned(),
+                "C:\\Users\\Ava\\private.flac".to_owned(),
+            ),
+            ("authorization".to_owned(), "Bearer test-token".to_owned()),
+        ]);
+        session.record(
+            "ERROR",
+            "IMPORT_OPEN_FAILED",
+            "library",
+            "open_file",
+            Some("FileUnavailable"),
+            &context,
+            true,
+        );
+        fs::OpenOptions::new()
+            .append(true)
+            .open(dir.join(DIAGNOSTICS_DIR).join(format!(
+                "{EVENT_PREFIX}{}.{}",
+                utc_date(),
+                EVENT_SUFFIX
+            )))
+            .unwrap()
+            .write_all(b"{broken json}\n")
+            .unwrap();
+        // Restore one valid event after the intentionally corrupt line.
+        session.record(
+            "INFO",
+            "APP_STARTED",
+            "lifecycle",
+            "startup",
+            None,
+            &BTreeMap::new(),
+            true,
+        );
+        let report = session.export_report(&dir.join("exports")).unwrap();
+        assert!(Uuid::parse_str(&report.report_id).is_ok());
+        let bytes = fs::read(&report.path).unwrap();
+        assert!(bytes.len() <= REPORT_MAX_BYTES as usize);
+        let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+        for name in [
+            "summary.txt",
+            "manifest.json",
+            "environment.json",
+            "events.jsonl",
+            "errors.json",
+            "README.txt",
+        ] {
+            assert!(zip.by_name(name).is_ok(), "missing {name}");
+        }
+        let mut events = String::new();
+        zip.by_name("events.jsonl")
+            .unwrap()
+            .read_to_string(&mut events)
+            .unwrap();
+        assert!(events.contains("IMPORT_OPEN_FAILED"));
+        assert!(!events.contains("private.flac"));
+        assert!(!events.contains("test-token"));
+        session.finish();
         let _ = fs::remove_dir_all(dir);
     }
 }

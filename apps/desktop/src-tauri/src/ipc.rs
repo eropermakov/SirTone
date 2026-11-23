@@ -134,6 +134,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             storage::storage_info,
             storage::storage_clear_logs,
             diagnostics::diagnostics_status,
+            diagnostics::diagnostics_export,
             wave::wave_start,
             wave::wave_reset_learning,
             wave::wave_why,

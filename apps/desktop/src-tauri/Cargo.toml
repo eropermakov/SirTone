@@ -53,4 +53,5 @@ uuid = { workspace = true }
 trash.workspace = true
 webview2-com = { workspace = true }
 windows = { workspace = true }
+zip = { workspace = true }
 # Release profile (panic = "unwind") comes from the workspace root — no [profile] here.

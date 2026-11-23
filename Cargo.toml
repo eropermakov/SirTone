@@ -87,6 +87,9 @@ reqwest = { version = "0.13", default-features = false, features = ["native-tls"
 proptest = "1.12"
 insta = "1.49"
 criterion = "0.8"
+# Reports are written only; no untrusted ZIP is extracted in the client. Pin a fixed release
+# newer than the RUSTSEC-2026 ZIP fixes rather than inheriting an older transitive copy.
+zip = { version = "=9.0.5", default-features = false }
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

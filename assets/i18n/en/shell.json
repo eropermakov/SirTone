@@ -165,6 +165,17 @@
     "notChosen": "",
     "change": ""
   },
+  "diagnostics": {
+    "title": "",
+    "description": "",
+    "contents": "",
+    "previousUnclean": "",
+    "save": "",
+    "saving": "",
+    "saved": "",
+    "savedAt": "",
+    "failed": ""
+  },
   "library": {
     "offline": "Library folder unavailable — connect the drive",
     "goneTitle": "Files vanished from the folder",

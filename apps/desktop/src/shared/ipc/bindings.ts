@@ -226,6 +226,11 @@ export const commands = {
 	/**  Gives the UI only the non-sensitive lifecycle facts needed to offer a voluntary report. */
 	diagnosticsStatus: () => __TAURI_INVOKE<DiagnosticStatus>("diagnostics_status"),
 	/**
+	 *  Writes a report to the app-local exports folder. The frontend may offer that file for sharing,
+	 *  but it never sends diagnostics itself.
+	 */
+	diagnosticsExport: () => typedError<ReportExport, AppError>(__TAURI_INVOKE("diagnostics_export")),
+	/**
 	 *  «Моя волна» or another built-in profile (`seasonal` — «Сезонная волна», FR-SEAS-003) with
 	 *  optional «Настроить волну» filters: the engine picks and plays.
 	 */
@@ -1015,6 +1020,12 @@ export type RemovalInfo = {
 
 /**  FR-PLAY-007 repeat mode over IPC. */
 export type RepeatMode = "off" | "one" | "all";
+
+export type ReportExport = {
+	reportId: string,
+	path: string,
+	truncated: boolean,
+};
 
 export type SearchResults = {
 	best: BestMatch | null,
