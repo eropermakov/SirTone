@@ -150,6 +150,29 @@ test("rejects malformed reports and does not create email", async () => {
   });
 });
 
+test("rejects a report whose local ZIP header disagrees with its central directory", async () => {
+  await withServer(async ({ mailer, url }) => {
+    const forged = Buffer.from(reportZipBase64(), "base64");
+    // First local entry's `summary.txt` name starts at byte 30; leave the central directory
+    // unchanged to model a deceptive archive.
+    forged[30] = "x".charCodeAt(0);
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "bug",
+        message: "Тест ZIP",
+        reportId: "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa02",
+        platform: "Windows",
+        version: "0.2.7",
+        reportZipBase64: forged.toString("base64"),
+      }),
+    });
+    assert.equal(response.status, 400);
+    assert.equal(mailer.messages.length, 0);
+  });
+});
+
 test("rate limits a sixth request from the same client", async () => {
   await withServer(async ({ url }) => {
     for (let i = 0; i < 6; i += 1) {

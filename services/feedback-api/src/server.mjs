@@ -196,6 +196,31 @@ export function validateReportZip(bytes) {
     const name = bytes.subarray(at + 46, at + 46 + nameLength).toString("utf8");
     if (!ALLOWED_REPORT_FILES.has(name) || names.has(name))
       throw new FeedbackError(400, "invalid_report");
+    // The support inbox receives this attachment rather than extracting it, but requiring both
+    // ZIP name records to agree prevents a central-directory-only allow-list from accepting a
+    // misleading local header if the report is later inspected with another tool.
+    const local = bytes.readUInt32LE(at + 42);
+    if (local + 30 > at || bytes.readUInt32LE(local) !== 0x04034b50) {
+      throw new FeedbackError(400, "invalid_report");
+    }
+    const localFlags = bytes.readUInt16LE(local + 6);
+    const localMethod = bytes.readUInt16LE(local + 8);
+    const localCompressed = bytes.readUInt32LE(local + 18);
+    const localUncompressed = bytes.readUInt32LE(local + 22);
+    const localNameLength = bytes.readUInt16LE(local + 26);
+    const localExtraLength = bytes.readUInt16LE(local + 28);
+    const localNameEnd = local + 30 + localNameLength + localExtraLength;
+    const localName = bytes.subarray(local + 30, local + 30 + localNameLength).toString("utf8");
+    if (
+      localNameEnd > at ||
+      localFlags !== flags ||
+      localMethod !== method ||
+      localCompressed !== compressed ||
+      localUncompressed !== uncompressed ||
+      localName !== name
+    ) {
+      throw new FeedbackError(400, "invalid_report");
+    }
     names.add(name);
     totalUncompressed += uncompressed;
     if (totalUncompressed > MAX_REPORT_BYTES) throw new FeedbackError(413, "report_too_large");
