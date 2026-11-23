@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import { FileAuditStore } from "../src/audit-store.mjs";
 import { createFeedbackServer, MemoryMailer } from "../src/server.mjs";
 import { SmtpMailer } from "../src/smtp.mjs";
 
@@ -154,6 +158,104 @@ test("rate limits a sixth request from the same client", async () => {
       assert.equal(response.status, i < 5 ? 202 : 429);
     }
   });
+});
+
+test("persistent audit store survives restart without storing an IP or report contents", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "sirtone-feedback-audit-"));
+  const path = join(directory, "audit.json");
+  const now = 1_700_000_000_000;
+  try {
+    const first = new FileAuditStore({ path, salt: "test-only-audit-salt-with-enough-length" });
+    assert.equal(await first.enforceRateLimit("127.0.0.1", now, 1), true);
+    assert.deepEqual(await first.reserve(REPORT_ID, now), { kind: "new" });
+    await first.commitDelivery(REPORT_ID, REPORT_ID, now);
+    const second = new FileAuditStore({ path, salt: "test-only-audit-salt-with-enough-length" });
+    assert.equal(await second.enforceRateLimit("127.0.0.1", now, 1), false);
+    assert.deepEqual(await second.reserve(REPORT_ID, now), {
+      kind: "delivered",
+      referenceId: REPORT_ID,
+    });
+    const stored = await readFile(path, "utf8");
+    assert.doesNotMatch(stored, /127\.0\.0\.1|Не включается|reader@example/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("concurrent report attempts reserve one delivery and never email twice", async () => {
+  const mailer = new MemoryMailer();
+  let release;
+  mailer.send = async (message) => {
+    mailer.messages.push(message);
+    await new Promise((resolve) => {
+      release = resolve;
+    });
+  };
+  const server = createFeedbackServer({ mailer, supportTo: "sir.kov.mail@gmail.com" });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const url = `http://127.0.0.1:${server.address().port}/v1/feedback/reports`;
+  const body = JSON.stringify({
+    type: "bug",
+    message: "Один отчёт",
+    reportId: REPORT_ID,
+    platform: "Windows",
+    version: "0.2.7",
+  });
+  try {
+    const first = fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+    assert.equal(second.status, 409);
+    release();
+    assert.equal((await first).status, 202);
+    assert.equal(mailer.messages.length, 1);
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
+});
+
+test("mail delivery failure releases a report ID for a deliberate retry", async () => {
+  let attempts = 0;
+  const mailer = {
+    async send() {
+      attempts += 1;
+      if (attempts === 1) throw new Error("test SMTP outage");
+    },
+  };
+  const server = createFeedbackServer({ mailer, supportTo: "sir.kov.mail@gmail.com" });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const url = `http://127.0.0.1:${server.address().port}/v1/feedback/reports`;
+  const body = JSON.stringify({
+    type: "bug",
+    message: "Повтор после SMTP ошибки",
+    reportId: REPORT_ID,
+    platform: "Windows",
+    version: "0.2.7",
+  });
+  try {
+    for (const expected of [500, 202]) {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      assert.equal(response.status, expected);
+    }
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
 });
 
 test("SMTP transport delivers a test email to a local simulator", async () => {

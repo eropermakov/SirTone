@@ -1,3 +1,4 @@
+import { FileAuditStore } from "./audit-store.mjs";
 import { createFeedbackServer } from "./server.mjs";
 import { SmtpMailer } from "./smtp.mjs";
 
@@ -9,6 +10,10 @@ const smtpHost = required("FEEDBACK_SMTP_HOST");
 const smtpPort = Number.parseInt(process.env.FEEDBACK_SMTP_PORT ?? "465", 10);
 const secure = process.env.FEEDBACK_SMTP_SECURE !== "false";
 const local = process.env.FEEDBACK_ALLOW_INSECURE_LOCAL_SMTP === "true";
+const audit = new FileAuditStore({
+  path: required("FEEDBACK_AUDIT_PATH"),
+  salt: required("FEEDBACK_AUDIT_SALT"),
+});
 const mailer = new SmtpMailer({
   host: smtpHost,
   port: smtpPort,
@@ -16,7 +21,7 @@ const mailer = new SmtpMailer({
   from,
   allowInsecureLocal: local,
 });
-const server = createFeedbackServer({ mailer, supportTo });
+const server = createFeedbackServer({ mailer, supportTo, audit });
 
 server.listen(port, host, () => {
   // Never emit request bodies, email addresses, reports, SMTP credentials or headers.

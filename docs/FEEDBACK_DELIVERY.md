@@ -32,6 +32,8 @@ FEEDBACK_SMTP_HOST=smtp.provider.example
 FEEDBACK_SMTP_PORT=465
 FEEDBACK_SMTP_SECURE=true
 FEEDBACK_SMTP_FROM=noreply@your-feedback-domain.example
+FEEDBACK_AUDIT_PATH=/var/lib/sirtone-feedback/audit.json
+FEEDBACK_AUDIT_SALT=generate-a-long-random-secret-in-the-secret-manager
 ```
 
 Сервис запускается `node services/feedback-api/src/index.mjs`. В production SMTP должен использовать implicit TLS. `FEEDBACK_SMTP_SECURE=false` допустим только для `localhost` вместе с `FEEDBACK_ALLOW_INSECURE_LOCAL_SMTP=true`, исключительно в тесте.
@@ -41,7 +43,7 @@ FEEDBACK_SMTP_FROM=noreply@your-feedback-domain.example
 1. Развернуть сервис за HTTPS reverse proxy и ограничить допустимые origin/rate limit на proxy.
 2. Создать отдельный SMTP submission credential у почтового провайдера и поместить его в secret manager. Текущий минимальный SMTP adapter не выполняет SMTP AUTH; выберите provider/relay с IP allow-list или расширьте adapter с проверенным auth-механизмом до production.
 3. Выполнить тестовое обращение, подтвердить письмо в `sir.kov.mail@gmail.com` и проверить Reply-To.
-4. Настроить хранение минимального delivery-audit без тела обращения, ZIP или email. Память текущего процесса предназначена для локального теста; production требует TTL storage для дедупликации и rate limiting.
+4. Настроить `FEEDBACK_AUDIT_PATH` на каталог, доступный только service account, а `FEEDBACK_AUDIT_SALT` — в secret manager. Встроенный file-backed store хранит 30 дней только Report ID, UTC-время и salted IP hashes; ни тела, ZIP, email, SMTP secrets или IP в открытом виде там нет. Один экземпляр сервиса поддерживается сразу; для нескольких replicas замените его эквивалентным общим транзакционным TTL-store.
 
 ## Защита
 

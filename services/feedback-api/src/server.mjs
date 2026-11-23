@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { MemoryAuditStore } from "./audit-store.mjs";
 
 const MAX_BODY_BYTES = 7 * 1024 * 1024;
 const MAX_REPORT_BYTES = 5 * 1024 * 1024;
@@ -34,11 +35,24 @@ export class MemoryMailer {
  * A minimal server-side API. It deliberately accepts JSON plus a base64 report rather than
  * parsing multipart uploads; report ZIPs are never extracted by the server.
  */
-export function createFeedbackServer({ mailer, supportTo, now = () => Date.now(), rateLimit = 5 }) {
+export function createFeedbackServer({
+  mailer,
+  supportTo,
+  now = () => Date.now(),
+  rateLimit = 5,
+  audit = new MemoryAuditStore(),
+}) {
   if (!mailer || typeof mailer.send !== "function") throw new TypeError("mailer.send is required");
   if (!isEmail(supportTo)) throw new TypeError("a fixed supportTo email is required");
-  const deliveries = new Map();
-  const attempts = new Map();
+  if (
+    !audit ||
+    typeof audit.enforceRateLimit !== "function" ||
+    typeof audit.reserve !== "function" ||
+    typeof audit.commitDelivery !== "function" ||
+    typeof audit.release !== "function"
+  ) {
+    throw new TypeError("an audit store is required");
+  }
 
   return createServer(async (request, response) => {
     try {
@@ -46,16 +60,23 @@ export function createFeedbackServer({ mailer, supportTo, now = () => Date.now()
         throw new FeedbackError(404, "not_found");
       }
       const ip = request.socket.remoteAddress ?? "unknown";
-      enforceRateLimit(attempts, ip, now(), rateLimit);
+      if (!(await audit.enforceRateLimit(ip, now(), rateLimit)))
+        throw new FeedbackError(429, "rate_limited");
       const payload = validatePayload(await readJson(request));
-      const previous = deliveries.get(payload.reportId);
-      if (previous) {
-        return respond(response, 200, { referenceId: previous.referenceId, duplicate: true });
+      const reservation = await audit.reserve(payload.reportId, now());
+      if (reservation.kind === "delivered") {
+        return respond(response, 200, { referenceId: reservation.referenceId, duplicate: true });
       }
+      if (reservation.kind === "pending") throw new FeedbackError(409, "report_pending");
       const referenceId = payload.reportId;
       const message = mailFor(payload, supportTo, referenceId, now());
-      await mailer.send(message);
-      deliveries.set(payload.reportId, { referenceId, receivedAt: now() });
+      try {
+        await mailer.send(message);
+        await audit.commitDelivery(payload.reportId, referenceId, now());
+      } catch (error) {
+        await audit.release(payload.reportId);
+        throw error;
+      }
       return respond(response, 202, { referenceId, duplicate: false });
     } catch (error) {
       const status = error instanceof FeedbackError ? error.status : 500;
@@ -63,14 +84,6 @@ export function createFeedbackServer({ mailer, supportTo, now = () => Date.now()
       return respond(response, status, { error: code });
     }
   });
-}
-
-function enforceRateLimit(attempts, ip, now, limit) {
-  const windowStart = now - 60 * 60 * 1000;
-  const recent = (attempts.get(ip) ?? []).filter((time) => time >= windowStart);
-  if (recent.length >= limit) throw new FeedbackError(429, "rate_limited");
-  recent.push(now);
-  attempts.set(ip, recent);
 }
 
 async function readJson(request) {
