@@ -15,6 +15,7 @@
 - `cargo nextest run --workspace --no-tests=warn` прошёл: 414 tests passed, 8 skipped. Debug NSIS bundle собран локально: `SirTone_0.2.7_x64-setup.exe`, SHA-256 `5EA53698106CAE3BE39D3E4E132A1CB48F45B023051520FF22F1FB4FFF42049F`; он ожидаемо **NotSigned** и не устанавливался.
 - Полный браузерный Playwright smoke прошёл: 50 из 50. Во время production-сборки Vite всё ещё предупреждает о JavaScript-чанках больше 500 kB; это не блокирует тест, но требует отдельного performance-аудита до 1.0.
 - `cargo deny check licenses bans sources` проходит (есть предупреждения о дублирующихся версиях в iPhone-цепочке). Проверка advisories намеренно не подавлена: она документированно блокирует бета-выпуск ниже.
+- Регенерация `THIRD_PARTY_NOTICES.txt` и `assets/legal/notices.json` согласована с lockfile; проверка генератора и `git diff --check` проходят. Wave benchmark укладывается в бюджет: p95 5,40 ms при лимите 15 ms на 50 000 треков.
 
 ## Блокеры
 

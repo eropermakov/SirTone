@@ -41,7 +41,11 @@ def license_texts(path):
         if low.startswith(LICENSE_FILES) and os.path.isfile(os.path.join(path, n)):
             try:
                 with open(os.path.join(path, n), encoding="utf-8", errors="replace") as f:
-                    out.append((n, f.read().strip()))
+                    # Package-provided texts are reproduced verbatim in substance, but normalize
+                    # line endings and trailing whitespace so generated notices pass `git diff
+                    # --check` on every platform.
+                    text = f.read().replace("\r\n", "\n").replace("\r", "\n").strip()
+                    out.append((n, "\n".join(line.rstrip() for line in text.split("\n"))))
             except OSError:
                 pass
     return out
