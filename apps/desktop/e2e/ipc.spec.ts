@@ -64,6 +64,25 @@ async function mockTauri(page: Page) {
                 goneQuestion: null,
               }
             );
+          case "spaces_list":
+            return [];
+          case "diagnostics_status":
+            return {
+              installationId: "00000000-0000-4000-8000-000000000001",
+              sessionId: "00000000-0000-4000-8000-000000000002",
+              previousUncleanShutdown: false,
+            };
+          case "diagnostics_export":
+            return {
+              reportId: "00000000-0000-4000-8000-000000000003",
+              path: "C:/Temp/sirtone-report.zip",
+              truncated: false,
+            };
+          case "feedback_submit":
+            return {
+              referenceId: "00000000-0000-4000-8000-000000000004",
+              reportId: "00000000-0000-4000-8000-000000000003",
+            };
           case "app_bootstrap":
             return {
               version: "0.1.2",
@@ -426,6 +445,37 @@ test("bootstrap hydrates settings and the player in one call", async ({ page }) 
   expect(await calls(page, "app_bootstrap")).toHaveLength(1);
   const theme = await calls(page, "window_set_theme");
   expect(theme.at(-1)?.args).toEqual({ dark: true, palette: null });
+});
+
+test("feedback is explicit, keeps a failed draft, and sends only consented diagnostics", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки", exact: true }).click();
+  await page.getByRole("button", { name: "Сообщить об ошибке" }).click();
+  const dialog = page.getByRole("dialog", { name: "Обратная связь" });
+  const description = "Выход звука пропал после переключения устройства";
+  await dialog.locator("textarea").fill(description);
+  await dialog.getByRole("switch", { name: "Приложить технический отчёт" }).click();
+  await page.evaluate(() => {
+    (window as unknown as { __mockOverride: Record<string, () => never> }).__mockOverride = {
+      feedback_submit: () => {
+        throw { code: "NetworkOffline", retryable: true, details: null };
+      },
+    };
+  });
+  await dialog.getByRole("button", { name: "Отправить" }).click();
+  await expect(dialog.getByText("Черновик сохранён.")).toBeVisible();
+  await expect(dialog.locator("textarea")).toHaveValue(description);
+  await page.evaluate(() => {
+    delete (window as unknown as { __mockOverride?: unknown }).__mockOverride;
+  });
+  await dialog.getByRole("button", { name: "Отправить" }).click();
+  await expect(dialog.getByText("Номер обращения:")).toBeVisible();
+  const sent = await calls(page, "feedback_submit");
+  expect(sent).toHaveLength(2);
+  expect(sent[0]?.args).toMatchObject({
+    submission: { kind: "bug", message: description, includeDiagnostics: true },
+  });
 });
 
 test("commands go out, events come back, errors become a toast", async ({ page }) => {
