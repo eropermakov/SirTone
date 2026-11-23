@@ -496,6 +496,18 @@ test("diagnostic identity reset stays local and explicit", async ({ page }) => {
   expect(await calls(page, "diagnostics_reset")).toHaveLength(1);
 });
 
+test("first-run tips cover music, playback, sound and support", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Настройки", exact: true }).click();
+  await page.getByRole("button", { name: "Показать подсказки" }).click();
+  const tips = page.getByRole("dialog", { name: "Как пользоваться Сиртоном" });
+  await expect(tips.getByText("Перетащите папку с музыкой в окно")).toBeVisible();
+  await expect(tips.getByText("Выберите трек и нажмите «Слушать»")).toBeVisible();
+  await expect(tips.getByText("Звук — в настройках")).toBeVisible();
+  await expect(tips.getByText("Нужна помощь или что-то не работает?")).toBeVisible();
+});
+
 test("commands go out, events come back, errors become a toast", async ({ page }) => {
   await mockTauri(page);
   await page.goto("/");

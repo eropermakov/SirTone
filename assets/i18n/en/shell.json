@@ -101,6 +101,39 @@
     "version": "",
     "badge": ""
   },
+  "tips": {
+    "title": "How to use SirTone",
+    "ok": "Got it",
+    "again": "Show tips",
+    "drop": {
+      "title": "Drop a music folder into the window",
+      "text": "SirTone copies it into its library and organises it by artist and album."
+    },
+    "menu": {
+      "title": "Right-click a track for its menu",
+      "text": "Play next, add to a playlist, edit details or remove it."
+    },
+    "search": {
+      "title": "Ctrl+F searches your library",
+      "text": "It finds tracks, artists, albums and playlists as you type."
+    },
+    "wave": {
+      "title": "♡ and “Not now” teach your flow",
+      "text": "Use them on My Flow to tune future selections."
+    },
+    "play": {
+      "title": "Select a track and press Play",
+      "text": "Double-clicking a track also starts playback; controls and volume are at the bottom."
+    },
+    "sound": {
+      "title": "Sound controls are in Settings",
+      "text": "Choose an output, equalizer, volume and transitions in Settings."
+    },
+    "help": {
+      "title": "Need help or found a problem?",
+      "text": "Open Settings → Help and diagnostics → Report a problem. Technical data is attached only with your consent."
+    }
+  },
   "accent": {
     "sirkov": "",
     "blue": "",

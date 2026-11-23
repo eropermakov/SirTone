@@ -1,4 +1,12 @@
-import { FolderDown, Heart, MousePointerClick, Search } from "lucide-react";
+import {
+  CircleHelp,
+  FolderDown,
+  Heart,
+  MousePointerClick,
+  Play,
+  Search,
+  SlidersHorizontal,
+} from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { RootPanel } from "@/app/library/RootPanel";
@@ -131,6 +139,9 @@ const TIPS = [
   { icon: MousePointerClick, key: "menu" },
   { icon: Search, key: "search" },
   { icon: Heart, key: "wave" },
+  { icon: Play, key: "play" },
+  { icon: SlidersHorizontal, key: "sound" },
+  { icon: CircleHelp, key: "help" },
 ] as const;
 
 /** The tips (FR-ONB-002): how to bring music in and the main moves; again from Settings. */
