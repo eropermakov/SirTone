@@ -4,6 +4,11 @@ import { MemoryAuditStore } from "./audit-store.mjs";
 const MAX_BODY_BYTES = 7 * 1024 * 1024;
 const MAX_REPORT_BYTES = 5 * 1024 * 1024;
 const MAX_MESSAGE_CHARS = 6000;
+// A 5 MiB base64 report must have time to cross an ordinary mobile connection, but a client
+// must not be able to occupy a Node request indefinitely by sending it byte by byte.
+const REQUEST_TIMEOUT_MS = 60_000;
+const HEADERS_TIMEOUT_MS = 15_000;
+const KEEP_ALIVE_TIMEOUT_MS = 5_000;
 const ALLOWED_TYPES = new Set(["bug", "suggestion", "question", "other"]);
 const ALLOWED_REPORT_FILES = new Set([
   "summary.txt",
@@ -54,7 +59,7 @@ export function createFeedbackServer({
     throw new TypeError("an audit store is required");
   }
 
-  return createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     try {
       if (request.method !== "POST" || request.url !== "/v1/feedback/reports") {
         throw new FeedbackError(404, "not_found");
@@ -84,6 +89,10 @@ export function createFeedbackServer({
       return respond(response, status, { error: code });
     }
   });
+  server.requestTimeout = REQUEST_TIMEOUT_MS;
+  server.headersTimeout = HEADERS_TIMEOUT_MS;
+  server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
+  return server;
 }
 
 async function readJson(request) {

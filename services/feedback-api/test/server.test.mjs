@@ -22,12 +22,20 @@ async function withServer(run) {
   await once(server, "listening");
   const { port } = server.address();
   try {
-    await run({ mailer, url: `http://127.0.0.1:${port}/v1/feedback/reports` });
+    await run({ mailer, server, url: `http://127.0.0.1:${port}/v1/feedback/reports` });
   } finally {
     server.close();
     await once(server, "close");
   }
 }
+
+test("sets bounded HTTP deadlines before accepting feedback", async () => {
+  await withServer(async ({ server }) => {
+    assert.equal(server.requestTimeout, 60_000);
+    assert.equal(server.headersTimeout, 15_000);
+    assert.equal(server.keepAliveTimeout, 5_000);
+  });
+});
 
 function reportZipBase64() {
   // A prebuilt stored ZIP whose central directory lists the six allowed empty report files.
