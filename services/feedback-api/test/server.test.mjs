@@ -209,13 +209,31 @@ test("rate limits a sixth request from the same client", async () => {
 
 test("ignores spoofed forwarding headers unless a loopback proxy is explicitly trusted", async () => {
   const mailer = new MemoryMailer();
-  const server = createFeedbackServer({ mailer, supportTo: "sir.kov.mail@gmail.com", rateLimit: 1 });
+  const server = createFeedbackServer({
+    mailer,
+    supportTo: "sir.kov.mail@gmail.com",
+    rateLimit: 1,
+  });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const url = `http://127.0.0.1:${server.address().port}/v1/feedback/reports`;
   try {
-    assert.equal((await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa11", { "x-forwarded-for": "203.0.113.10" })).status, 202);
-    assert.equal((await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa12", { "x-forwarded-for": "203.0.113.11" })).status, 429);
+    assert.equal(
+      (
+        await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa11", {
+          "x-forwarded-for": "203.0.113.10",
+        })
+      ).status,
+      202,
+    );
+    assert.equal(
+      (
+        await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa12", {
+          "x-forwarded-for": "203.0.113.11",
+        })
+      ).status,
+      429,
+    );
   } finally {
     server.close();
     await once(server, "close");
@@ -225,16 +243,41 @@ test("ignores spoofed forwarding headers unless a loopback proxy is explicitly t
 test("uses a valid forwarded IP only behind an opted-in loopback proxy", async () => {
   const mailer = new MemoryMailer();
   const server = createFeedbackServer({
-    mailer, supportTo: "sir.kov.mail@gmail.com", rateLimit: 1, trustLoopbackProxy: true,
+    mailer,
+    supportTo: "sir.kov.mail@gmail.com",
+    rateLimit: 1,
+    trustLoopbackProxy: true,
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const url = `http://127.0.0.1:${server.address().port}/v1/feedback/reports`;
   try {
-    assert.equal((await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa13", { "x-forwarded-for": "203.0.113.10" })).status, 202);
-    assert.equal((await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa14", { "x-forwarded-for": "203.0.113.11" })).status, 202);
-    assert.equal((await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa15", { "x-forwarded-for": "invalid" })).status, 202);
-    assert.equal((await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa16", { "x-forwarded-for": "invalid" })).status, 429);
+    assert.equal(
+      (
+        await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa13", {
+          "x-forwarded-for": "203.0.113.10",
+        })
+      ).status,
+      202,
+    );
+    assert.equal(
+      (
+        await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa14", {
+          "x-forwarded-for": "203.0.113.11",
+        })
+      ).status,
+      202,
+    );
+    assert.equal(
+      (await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa15", { "x-forwarded-for": "invalid" }))
+        .status,
+      202,
+    );
+    assert.equal(
+      (await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa16", { "x-forwarded-for": "invalid" }))
+        .status,
+      429,
+    );
   } finally {
     server.close();
     await once(server, "close");
@@ -432,7 +475,12 @@ test("SMTP submission times out against a silent relay", async () => {
       timeoutMs: 100,
     });
     await assert.rejects(
-      mailer.send({ to: "sir.kov.mail@gmail.com", subject: "[SIRTONE] timeout", text: "hello", attachment: null }),
+      mailer.send({
+        to: "sir.kov.mail@gmail.com",
+        subject: "[SIRTONE] timeout",
+        text: "hello",
+        attachment: null,
+      }),
       /timed out/,
     );
   } finally {
