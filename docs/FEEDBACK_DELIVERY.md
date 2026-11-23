@@ -50,5 +50,5 @@ FEEDBACK_AUDIT_SALT=generate-a-long-random-secret-in-the-secret-manager
 - Тип обращения — только `bug`, `suggestion`, `question`, `other`.
 - Сообщение ограничено 6000 символами; request — 7 МБ, ZIP — 5 МБ.
 - ZIP проверяется по central directory: ровно шесть известный файлов отчёта, только stored entries, без encryption и без распаковки. Path traversal невозможен, так как сервис ничего не извлекает.
-- Report ID идемпотентен в пределах живого процесса: повтор не посылает второе письмо.
+- Report ID идемпотентен в настроенном audit store: повтор после перезапуска не посылает второе письмо. Один экземпляр резервирует ID до SMTP-отправки; несколько replicas требуют общего транзакционного TTL-store.
 - Получатель фиксирован серверной переменной. User email используется только как Reply-To.
