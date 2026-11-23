@@ -12,6 +12,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use sirtone_core::error::{AppError, ErrorCode};
 use tauri::State;
@@ -71,6 +72,23 @@ pub struct ReportExport {
     pub truncated: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct FeedbackSubmission {
+    /// bug · suggestion · question · other; validated again by the server.
+    pub kind: String,
+    pub message: String,
+    pub email: Option<String>,
+    pub include_diagnostics: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct FeedbackReceipt {
+    pub reference_id: String,
+    pub report_id: String,
+}
+
 #[derive(Debug, Serialize)]
 struct SessionMarker<'a> {
     schema_version: u8,
@@ -87,6 +105,8 @@ struct DiagnosticEvent {
     level: String,
     event_id: String,
     session_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    report_id: Option<String>,
     platform: String,
     app_version: String,
     build_id: String,
@@ -160,12 +180,36 @@ impl DiagnosticSession {
         technical_context: &BTreeMap<String, String>,
         recoverable: bool,
     ) {
+        self.record_for_report(
+            level,
+            event_id,
+            component,
+            operation,
+            error_code,
+            technical_context,
+            recoverable,
+            None,
+        );
+    }
+
+    fn record_for_report(
+        &self,
+        level: &str,
+        event_id: &str,
+        component: &str,
+        operation: &str,
+        error_code: Option<&str>,
+        technical_context: &BTreeMap<String, String>,
+        recoverable: bool,
+        report_id: Option<&str>,
+    ) {
         let event = DiagnosticEvent {
             schema_version: 1,
             timestamp_utc: iso8601_utc(unix_ms()),
             level: safe_atom(level),
             event_id: safe_atom(event_id),
             session_id: self.session_id.clone(),
+            report_id: report_id.map(safe_atom),
             platform: "windows".to_owned(),
             app_version: env!("CARGO_PKG_VERSION").to_owned(),
             build_id: env!("CARGO_PKG_VERSION").to_owned(),
@@ -457,6 +501,108 @@ pub fn diagnostics_export(session: State<'_, DiagnosticSession>) -> Result<Repor
     session
         .export_report(&data_dir().join("reports"))
         .map_err(|error| AppError::new(ErrorCode::Internal).with_details(error.to_string()))
+}
+
+/// Sends only after an explicit UI action. The destination is deployment configuration, never a
+/// client secret or a user-controlled recipient. An absent endpoint leaves the saved draft/report local.
+#[tauri::command(async)]
+#[specta::specta]
+pub async fn feedback_submit(
+    session: State<'_, DiagnosticSession>,
+    net: State<'_, crate::net::NetState>,
+    submission: FeedbackSubmission,
+) -> Result<FeedbackReceipt, AppError> {
+    validate_submission(&submission)?;
+    if net.0.is_offline() {
+        return Err(AppError::new(ErrorCode::NetworkOffline).retryable());
+    }
+    let endpoint = std::env::var("SIRTONE_FEEDBACK_API_URL")
+        .ok()
+        .filter(|url| url.starts_with("https://"))
+        .ok_or_else(|| AppError::new(ErrorCode::NotSupported))?;
+    let (report_id, report) = if submission.include_diagnostics {
+        let session = session.inner().clone();
+        let exported = tauri::async_runtime::spawn_blocking(move || {
+            session.export_report(&data_dir().join("reports"))
+        })
+        .await
+        .map_err(|_| AppError::new(ErrorCode::Internal))?
+        .map_err(|error| AppError::new(ErrorCode::Internal).with_details(error.to_string()))?;
+        let report = fs::read(&exported.path)
+            .map(|bytes| base64::engine::general_purpose::STANDARD.encode(bytes))
+            .map_err(|error| AppError::new(ErrorCode::Internal).with_details(error.to_string()))?;
+        (exported.report_id, Some(report))
+    } else {
+        (Uuid::now_v7().to_string(), None)
+    };
+    let payload = serde_json::json!({
+        "type": submission.kind,
+        "message": submission.message,
+        "email": submission.email,
+        "reportId": report_id,
+        "platform": "Windows",
+        "version": env!("CARGO_PKG_VERSION"),
+        "reportZipBase64": report,
+    });
+    let response = reqwest::Client::builder()
+        .https_only(true)
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|_| AppError::new(ErrorCode::NetworkOffline).retryable())?
+        .post(endpoint)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|_| AppError::new(ErrorCode::NetworkOffline).retryable())?;
+    let status = response.status().as_u16();
+    if !(200..300).contains(&status) {
+        return Err(if status == 429 {
+            AppError::new(ErrorCode::RateLimited).retryable()
+        } else {
+            AppError::new(ErrorCode::RemoteError).retryable()
+        });
+    }
+    let value: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|_| AppError::new(ErrorCode::RemoteError).retryable())?;
+    let reference_id = value
+        .get("referenceId")
+        .and_then(serde_json::Value::as_str)
+        .filter(|id| Uuid::parse_str(id).is_ok())
+        .ok_or_else(|| AppError::new(ErrorCode::RemoteError).retryable())?
+        .to_owned();
+    session.record_for_report(
+        "INFO",
+        "FEEDBACK_SENT",
+        "feedback",
+        "submit",
+        None,
+        &BTreeMap::new(),
+        true,
+        Some(&report_id),
+    );
+    Ok(FeedbackReceipt {
+        reference_id,
+        report_id,
+    })
+}
+
+fn validate_submission(submission: &FeedbackSubmission) -> Result<(), AppError> {
+    if !matches!(
+        submission.kind.as_str(),
+        "bug" | "suggestion" | "question" | "other"
+    ) || submission.message.trim().is_empty()
+        || submission.message.chars().count() > 6_000
+        || submission
+            .email
+            .as_deref()
+            .is_some_and(|email| email.len() > 254 || !email.contains('@'))
+    {
+        return Err(AppError::new(ErrorCode::InvalidArgument));
+    }
+    Ok(())
 }
 
 fn unix_ms() -> u128 {
@@ -790,6 +936,61 @@ mod tests {
     }
 
     #[test]
+    fn feedback_validation_rejects_empty_or_invalid_payloads() {
+        let valid = FeedbackSubmission {
+            kind: "bug".to_owned(),
+            message: "The player stopped after changing output.".to_owned(),
+            email: Some("listener@example.test".to_owned()),
+            include_diagnostics: false,
+        };
+        assert!(validate_submission(&valid).is_ok());
+        assert!(
+            validate_submission(&FeedbackSubmission {
+                message: "  ".to_owned(),
+                ..valid.clone()
+            })
+            .is_err()
+        );
+        assert!(
+            validate_submission(&FeedbackSubmission {
+                kind: "unknown".to_owned(),
+                ..valid.clone()
+            })
+            .is_err()
+        );
+        assert!(
+            validate_submission(&FeedbackSubmission {
+                email: Some("not-an-email".to_owned()),
+                ..valid
+            })
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn report_link_is_a_top_level_event_field() {
+        let dir = tmp("report-event");
+        let session = DiagnosticSession::start(&dir);
+        let report_id = Uuid::now_v7().to_string();
+        session.record_for_report(
+            "INFO",
+            "FEEDBACK_SENT",
+            "feedback",
+            "submit",
+            None,
+            &BTreeMap::new(),
+            true,
+            Some(&report_id),
+        );
+        let file = event_files(&dir.join(DIAGNOSTICS_DIR)).pop().unwrap().2;
+        let text = fs::read_to_string(file).unwrap();
+        let event: serde_json::Value = serde_json::from_str(text.trim()).unwrap();
+        assert_eq!(event["report_id"], report_id);
+        session.finish();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn exported_report_has_required_files_and_no_unapproved_data() {
         use std::io::{Cursor, Read};
 
@@ -853,6 +1054,7 @@ mod tests {
             .read_to_string(&mut events)
             .unwrap();
         assert!(events.contains("IMPORT_OPEN_FAILED"));
+        assert!(!events.contains("report_id"));
         assert!(!events.contains("private.flac"));
         assert!(!events.contains("test-token"));
         session.finish();

@@ -176,6 +176,40 @@
     "savedAt": "",
     "failed": ""
   },
+  "feedback": {
+    "title": "Feedback",
+    "reportBug": "Report a problem",
+    "suggest": "Suggest an improvement",
+    "kind": "Request type",
+    "kinds": {
+      "bug": "Problem",
+      "suggestion": "Suggestion",
+      "question": "Question",
+      "other": "Other"
+    },
+    "description": "Description",
+    "descriptionHint": "Describe what happened or what you would like to improve",
+    "bugHint": "What were you doing before the problem appeared?",
+    "email": "Email for a reply",
+    "emailHint": "Optional",
+    "attachTitle": "Include a technical report",
+    "attachHint": "Only the categories described in Diagnostics are included, with your consent.",
+    "send": "Send",
+    "sending": "Sending…",
+    "saveReport": "Save report",
+    "cancel": "Cancel",
+    "close": "Close",
+    "sent": "Report sent. Thank you — this will help us fix the problem.",
+    "receipt": "Request number: {id}",
+    "errors": {
+      "NetworkOffline": "Could not send the report. Check your connection and try again. Your draft is saved.",
+      "RateLimited": "Too many requests. Try again later. Your draft is saved.",
+      "NotSupported": "Sending has not been configured yet. Save the report and send it manually. Your draft is saved.",
+      "RemoteError": "The server did not confirm receipt. Try again or save the file. Your draft is saved.",
+      "InvalidArgument": "Check the entered fields and try again.",
+      "Internal": "Could not send the report. Your draft is saved."
+    }
+  },
   "library": {
     "offline": "Library folder unavailable — connect the drive",
     "goneTitle": "Files vanished from the folder",

@@ -24,7 +24,7 @@ export function Dialog({
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const back = document.activeElement as HTMLElement | null;
-    ref.current?.querySelector<HTMLElement>("input, select, button")?.focus();
+    ref.current?.querySelector<HTMLElement>("input, textarea, select, button")?.focus();
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
@@ -33,7 +33,7 @@ export function Dialog({
         // Focus stays inside the dialog (WAI-ARIA modal dialog, T2.16).
         const items = [
           ...ref.current.querySelectorAll<HTMLElement>(
-            "button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])",
+            "button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])",
           ),
         ];
         const first = items[0];

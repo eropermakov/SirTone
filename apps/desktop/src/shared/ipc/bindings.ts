@@ -231,6 +231,11 @@ export const commands = {
 	 */
 	diagnosticsExport: () => typedError<ReportExport, AppError>(__TAURI_INVOKE("diagnostics_export")),
 	/**
+	 *  Sends only after an explicit UI action. The destination is deployment configuration, never a
+	 *  client secret or a user-controlled recipient. An absent endpoint leaves the saved draft/report local.
+	 */
+	feedbackSubmit: (submission: FeedbackSubmission) => typedError<FeedbackReceipt, AppError>(__TAURI_INVOKE("feedback_submit", { submission })),
+	/**
 	 *  «Моя волна» or another built-in profile (`seasonal` — «Сезонная волна», FR-SEAS-003) with
 	 *  optional «Настроить волну» filters: the engine picks and plays.
 	 */
@@ -616,6 +621,19 @@ export type ExportRequest = {
 	keepStructure: boolean,
 	/**  `01 - …` in the list's order. */
 	number: boolean,
+};
+
+export type FeedbackReceipt = {
+	referenceId: string,
+	reportId: string,
+};
+
+export type FeedbackSubmission = {
+	/**  bug · suggestion · question · other; validated again by the server. */
+	kind: string,
+	message: string,
+	email: string | null,
+	includeDiagnostics: boolean,
 };
 
 /**  What the UI and the tray show (FR-FOCUS-002). */

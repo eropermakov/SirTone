@@ -8,13 +8,17 @@ import {
 } from "@/shared/ipc/diagnostics";
 import { Button } from "@/shared/ui/Button";
 import { notify } from "@/shared/ui/notify";
+import { FeedbackDialog } from "./FeedbackDialog";
 
-/** Local report export. Sending is deliberately not attempted until a configured Feedback API exists. */
+/** Local report export and explicit feedback. No data is sent until the user confirms the form. */
 export function DiagnosticsSection() {
   const { t } = useTranslation("shell");
   const [status, setStatus] = useState<DiagnosticStatus | null>(null);
   const [report, setReport] = useState<ReportExport | null>(null);
   const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<"bug" | "suggestion" | "question" | "other" | null>(
+    null,
+  );
 
   useEffect(() => {
     void diagnosticsStatus()
@@ -46,6 +50,12 @@ export function DiagnosticsSection() {
           </p>
         )}
         <div className="flex flex-wrap gap-3">
+          <Button variant="primary" onClick={() => setFeedback("bug")}>
+            {t("feedback.reportBug")}
+          </Button>
+          <Button variant="secondary" onClick={() => setFeedback("suggestion")}>
+            {t("feedback.suggest")}
+          </Button>
           <Button variant="secondary" disabled={busy} onClick={save}>
             {t(busy ? "diagnostics.saving" : "diagnostics.save")}
           </Button>
@@ -56,6 +66,7 @@ export function DiagnosticsSection() {
           </p>
         )}
       </div>
+      {feedback && <FeedbackDialog kind={feedback} onClose={() => setFeedback(null)} />}
     </div>
   );
 }
