@@ -82,7 +82,15 @@ struct FeedbackView: View {
         sending = true; result = ""
         Task {
             do {
-                let reference = try await Diagnostics.shared.submit(kind: kind, message: message, email: email, includeDiagnostics: includeDiagnostics)
+                let report = if includeDiagnostics {
+                    try await Diagnostics.shared.exportReport(userMessage: message)
+                } else {
+                    nil
+                }
+                // Retain the prepared ZIP on a delivery failure: the person can share it or
+                // use the system Mail fallback without regenerating a different report.
+                if let report { export = report }
+                let reference = try await Diagnostics.shared.submit(kind: kind, message: message, email: email, report: report)
                 result = L.t("feedback.sent", reference)
                 message = ""; email = ""; includeDiagnostics = false
             } catch { result = error.localizedDescription }

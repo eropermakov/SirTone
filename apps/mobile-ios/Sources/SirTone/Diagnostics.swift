@@ -160,18 +160,14 @@ actor Diagnostics {
         return DiagnosticReport(reportID: reportID, url: url)
     }
 
-    func submit(kind: String, message: String, email: String?, includeDiagnostics: Bool) async throws -> String {
+    /// Sends a previously prepared voluntary report. Keeping report preparation separate means a
+    /// failed HTTPS request leaves the exact ZIP available to the UI for Share Sheet or Mail.
+    func submit(kind: String, message: String, email: String?, report: DiagnosticReport?) async throws -> String {
         guard ["bug", "suggestion", "question", "other"].contains(kind), !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw FeedbackDeliveryError.rejected
         }
         guard let raw = Bundle.main.object(forInfoDictionaryKey: "SirToneFeedbackAPIURL") as? String,
               let endpoint = URL(string: raw), endpoint.scheme == "https" else { throw FeedbackDeliveryError.unavailable }
-        let report: DiagnosticReport?
-        if includeDiagnostics {
-            report = try exportReport(userMessage: message)
-        } else {
-            report = nil
-        }
         let reportID = report?.reportID ?? UUID().uuidString.lowercased()
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
