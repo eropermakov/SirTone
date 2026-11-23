@@ -239,7 +239,11 @@ impl DiagnosticSession {
 
     /// Exports a portable diagnostic ZIP after an explicit user action. Events are parsed and
     /// serialised again, which drops unknown fields from a damaged or manually edited JSONL file.
-    pub fn export_report(&self, destination: &Path) -> std::io::Result<ReportExport> {
+    pub fn export_report(
+        &self,
+        destination: &Path,
+        user_message: Option<&str>,
+    ) -> std::io::Result<ReportExport> {
         fs::create_dir_all(destination)?;
         let report_id = Uuid::now_v7().to_string();
         let events = recent_events(&self.dir, std::time::Duration::from_secs(86_400));
@@ -256,8 +260,12 @@ impl DiagnosticSession {
         let primary = errors
             .first()
             .map_or("none", |event| event.event_id.as_str());
+        let user_description = user_message
+            .filter(|message| !message.trim().is_empty())
+            .map(|message| format!("User description:\n{}\n", message.trim()))
+            .unwrap_or_default();
         let summary = format!(
-            "SIRTONE Diagnostic Report\nReport ID: {report_id}\nPlatform: Windows\nVersion: {}\nBuild ID: {}\nOperating system: {} {}\nGenerated: {}\nPrimary error: {primary}\nRelated errors: {}\nCrash event: no native crash evidence in this export\nDiagnostics truncated: {}\n",
+            "SIRTONE Diagnostic Report\nReport ID: {report_id}\nPlatform: Windows\nVersion: {}\nBuild ID: {}\nOperating system: {} {}\nGenerated: {}\nPrimary error: {primary}\nRelated errors: {}\nCrash event: no native crash evidence in this export\n{user_description}Diagnostics truncated: {}\n",
             env!("CARGO_PKG_VERSION"),
             env!("CARGO_PKG_VERSION"),
             std::env::consts::OS,
@@ -511,7 +519,7 @@ pub fn diagnostics_status(session: State<'_, DiagnosticSession>) -> DiagnosticSt
 #[specta::specta]
 pub fn diagnostics_export(session: State<'_, DiagnosticSession>) -> Result<ReportExport, AppError> {
     session
-        .export_report(&data_dir().join("reports"))
+        .export_report(&data_dir().join("reports"), None)
         .map_err(|error| AppError::new(ErrorCode::Internal).with_details(error.to_string()))
 }
 
@@ -534,8 +542,9 @@ pub async fn feedback_submit(
         .ok_or_else(|| AppError::new(ErrorCode::NotSupported))?;
     let (report_id, report) = if submission.include_diagnostics {
         let session = session.inner().clone();
+        let report_message = submission.message.clone();
         let exported = tauri::async_runtime::spawn_blocking(move || {
-            session.export_report(&data_dir().join("reports"))
+            session.export_report(&data_dir().join("reports"), Some(&report_message))
         })
         .await
         .map_err(|_| AppError::new(ErrorCode::Internal))?
@@ -1045,7 +1054,12 @@ mod tests {
             &BTreeMap::new(),
             true,
         );
-        let report = session.export_report(&dir.join("exports")).unwrap();
+        let report = session
+            .export_report(
+                &dir.join("exports"),
+                Some("User says: device switching stopped audio."),
+            )
+            .unwrap();
         assert!(Uuid::parse_str(&report.report_id).is_ok());
         assert!(
             !Path::new(&report.path)
@@ -1074,6 +1088,12 @@ mod tests {
         assert!(!events.contains("report_id"));
         assert!(!events.contains("private.flac"));
         assert!(!events.contains("test-token"));
+        let mut summary = String::new();
+        zip.by_name("summary.txt")
+            .unwrap()
+            .read_to_string(&mut summary)
+            .unwrap();
+        assert!(summary.contains("User says: device switching stopped audio."));
         session.finish();
         let _ = fs::remove_dir_all(dir);
     }
