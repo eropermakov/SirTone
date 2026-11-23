@@ -264,6 +264,8 @@ importers:
         specifier: 8.3.4
         version: 8.3.4(@types/node@24.19.2)(jiti@2.7.0)
 
+  services/feedback-api: {}
+
 packages:
 
   '@axe-core/playwright@4.10.2':

@@ -1,5 +1,6 @@
 packages:
   - "apps/*"
+  - "services/*"
   - "tools/*"
 
 # Build scripts reviewed: core-js 2 (dev-only, via butterchurn-presets → babel-runtime 6) only
