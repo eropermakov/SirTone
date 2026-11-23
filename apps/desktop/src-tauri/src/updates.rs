@@ -109,6 +109,14 @@ pub fn start(app: &AppHandle) {
                     let result = tauri::async_runtime::block_on(check_and_download(&app));
                     if let Err(e) = &result {
                         tracing::info!(target: "sirtone::update", code = ?e.code, details = ?e.details, "update check skipped");
+                        if let Some(session) = app.try_state::<crate::diagnostics::DiagnosticSession>() {
+                            session.record_app_error(
+                                "UPDATE_CHECK_FAILED",
+                                "updater",
+                                "check_and_download",
+                                e,
+                            );
+                        }
                     }
                     next_check = Instant::now() + if result.is_ok() { CHECK_EVERY } else { RETRY_AFTER };
                 }

@@ -256,6 +256,14 @@ fn main() {
                 }
                 Err(e) => {
                     tracing::error!(target: "sirtone::startup", code = ?e.code, "audio engine failed to start");
+                    if let Some(session) = app.try_state::<diagnostics::DiagnosticSession>() {
+                        session.record_app_error(
+                            "AUDIO_ENGINE_INIT_FAILED",
+                            "playback",
+                            "initialize",
+                            &e,
+                        );
+                    }
                 }
             }
             if let Some(window) = app.get_webview_window("main") {

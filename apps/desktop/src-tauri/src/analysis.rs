@@ -179,6 +179,9 @@ fn step(
         }),
         Err(e) => {
             tracing::warn!(target: "sirtone::analysis", track, code = ?e.code, "B0 failed");
+            if let Some(session) = app.try_state::<crate::diagnostics::DiagnosticSession>() {
+                session.record_app_error("ANALYSIS_B0_FAILED", "analysis", "b0", &e);
+            }
             // FR-IMP-008: a library file the decoder no longer reads (imported playable, so it
             // broke since) goes to the quarantine — the user decides; nothing is deleted.
             let broken = matches!(

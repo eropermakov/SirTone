@@ -656,6 +656,31 @@ impl Playback {
                     }
                 });
         }
+        // The engine must never write diagnostics itself. Its callback runs on the decoding
+        // thread, so an error crosses this bounded, non-blocking channel to a separate worker.
+        // Dropping a burst is preferable to blocking audio preparation.
+        let (diagnostic_errors, diagnostic_error_events) =
+            std::sync::mpsc::sync_channel::<(ErrorCode, bool)>(16);
+        {
+            let app = app.clone();
+            let _ = std::thread::Builder::new()
+                .name("sirtone-playback-diagnostics".into())
+                .spawn(move || {
+                    while let Ok((code, recoverable)) = diagnostic_error_events.recv() {
+                        if let Some(session) =
+                            app.try_state::<crate::diagnostics::DiagnosticSession>()
+                        {
+                            session.record_error_code(
+                                "PLAYBACK_ENGINE_ERROR",
+                                "playback",
+                                "engine",
+                                code,
+                                recoverable,
+                            );
+                        }
+                    }
+                });
+        }
         let engine = sirtone_audio::start(Box::new(move |ev| match ev {
             EngineEvent::Snapshot(s) => {
                 let mut q = sink_queue.lock().unwrap_or_else(|p| p.into_inner());
@@ -775,6 +800,7 @@ impl Playback {
             EngineEvent::Error { error, path } => {
                 sink_journal.on_error(path.as_deref());
                 tracing::warn!(target: "sirtone::playback", code = ?error.code, "playback error");
+                let _ = diagnostic_errors.try_send((error.code, error.retryable));
                 let _ = PlaybackError {
                     error,
                     file: path.as_deref().and_then(file_name),

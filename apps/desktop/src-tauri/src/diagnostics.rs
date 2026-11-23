@@ -196,6 +196,41 @@ impl DiagnosticSession {
         );
     }
 
+    /// Records a stable application error without its free-form details. `AppError::details`
+    /// frequently contains an OS error, and may therefore contain a user path or remote URL.
+    /// Callers that need a diagnostic event must use this helper instead of serialising it.
+    pub fn record_error_code(
+        &self,
+        event_id: &str,
+        component: &str,
+        operation: &str,
+        error_code: ErrorCode,
+        recoverable: bool,
+    ) {
+        let code = format!("{error_code:?}");
+        self.record(
+            "ERROR",
+            event_id,
+            component,
+            operation,
+            Some(&code),
+            &BTreeMap::new(),
+            recoverable,
+        );
+    }
+
+    /// Convenience form for normal application boundaries. The details deliberately do not
+    /// cross into the structured event.
+    pub fn record_app_error(
+        &self,
+        event_id: &str,
+        component: &str,
+        operation: &str,
+        error: &AppError,
+    ) {
+        self.record_error_code(event_id, component, operation, error.code, error.retryable);
+    }
+
     #[allow(clippy::too_many_arguments)] // keeps `record` compatible while adding the optional report link
     fn record_for_report(
         &self,
@@ -1012,6 +1047,28 @@ mod tests {
             event["timestamp_utc"].as_str().map(|s| s.ends_with('Z')),
             Some(true)
         );
+        session.finish();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn structured_error_event_keeps_the_code_not_error_details() {
+        let dir = tmp("error-code-privacy");
+        let session = DiagnosticSession::start(&dir);
+        let error = AppError::new(ErrorCode::PermissionDenied)
+            .retryable()
+            .with_details("C:\\Users\\Ava\\Music\\private.mp3 Bearer super-secret-token");
+        session.record_app_error("IMPORT_OPEN_FAILED", "library", "open_file", &error);
+
+        let events = fs::read_to_string(dir.join(DIAGNOSTICS_DIR).join(format!(
+            "{EVENT_PREFIX}{}.{}",
+            utc_date(),
+            EVENT_SUFFIX
+        )))
+        .unwrap();
+        assert!(events.contains("PermissionDenied"));
+        assert!(!events.contains("C:\\\\Users"));
+        assert!(!events.contains("super-secret-token"));
         session.finish();
         let _ = fs::remove_dir_all(dir);
     }
