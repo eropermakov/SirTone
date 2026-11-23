@@ -16,6 +16,7 @@ struct FeedbackView: View {
     @State private var result = ""
     @State private var export: DiagnosticReport?
     @State private var showMail = false
+    @State private var confirmDiagnosticsReset = false
 
     var body: some View {
         Form {
@@ -38,6 +39,10 @@ struct FeedbackView: View {
                     .font(.sirtone(Ty.caption, relativeTo: .caption)).foregroundStyle(p.textSecondary)
                 Button(L.t("feedback.save_report")) { exportReport() }
                     .disabled(sending).foregroundStyle(p.accent.text)
+                Button(L.t("feedback.reset_diagnostics"), role: .destructive) {
+                    confirmDiagnosticsReset = true
+                }
+                .disabled(sending)
                 if let export {
                     ShareLink(item: export.url) { Text(verbatim: L.t("feedback.share_report")) }
                 }
@@ -56,6 +61,13 @@ struct FeedbackView: View {
         .font(.sirtone(Ty.body)).scrollContentBackground(.hidden).background(p.bgLayer)
         .navigationTitle(L.t("feedback.title")).navigationBarTitleDisplayMode(.inline)
         .task { await Diagnostics.shared.start() }
+        .confirmationDialog(
+            L.t("feedback.reset_diagnostics_confirm"),
+            isPresented: $confirmDiagnosticsReset,
+            titleVisibility: .visible,
+        ) {
+            Button(L.t("feedback.reset_diagnostics"), role: .destructive) { resetDiagnostics() }
+        }
         #if canImport(MessageUI)
         .sheet(isPresented: $showMail) {
             if let export { MailComposer(report: export, kind: kind, message: message, email: email) }
@@ -95,6 +107,14 @@ struct FeedbackView: View {
                 message = ""; email = ""; includeDiagnostics = false
             } catch { result = error.localizedDescription }
             sending = false
+        }
+    }
+
+    private func resetDiagnostics() {
+        Task {
+            await Diagnostics.shared.resetIdentityAndData()
+            export = nil
+            result = L.t("feedback.reset_diagnostics_done")
         }
     }
 }
