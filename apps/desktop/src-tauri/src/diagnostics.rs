@@ -170,6 +170,7 @@ impl DiagnosticSession {
 
     /// Appends one safe JSONL event. This is for control/UI/background work only, never an audio
     /// real-time callback: it may allocate, sort a small directory and write a file.
+    #[allow(clippy::too_many_arguments)] // stable event schema is clearer at call sites than a mutable builder
     pub fn record(
         &self,
         level: &str,
@@ -192,6 +193,7 @@ impl DiagnosticSession {
         );
     }
 
+    #[allow(clippy::too_many_arguments)] // keeps `record` compatible while adding the optional report link
     fn record_for_report(
         &self,
         level: &str,
