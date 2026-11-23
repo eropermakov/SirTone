@@ -29,6 +29,7 @@ pnpm --filter @sirtone/feedback-api test
 ```text
 HOST=127.0.0.1                 # за reverse proxy; публичный TLS завершает proxy
 PORT=8080
+FEEDBACK_TRUST_LOOPBACK_PROXY=true  # только когда proxy подключается с loopback
 FEEDBACK_SUPPORT_TO=sir.kov.mail@gmail.com
 FEEDBACK_SMTP_HOST=smtp.provider.example
 FEEDBACK_SMTP_PORT=465
@@ -55,6 +56,7 @@ FEEDBACK_AUDIT_SALT=generate-a-long-random-secret-in-the-secret-manager
 - Сообщение ограничено 6000 символами; request — 7 МБ, ZIP — 5 МБ.
 - HTTP server ограничивает получение всего запроса 60 секундами, заголовков — 15 секундами, а keep-alive — 5 секундами; reverse proxy должен иметь не более строгие совместимые лимиты.
 - SMTP submission имеет 30-секундный сокетный дедлайн на соединение и ответ каждой команды; молчащий почтовый сервер освобождает Report ID для явной повторной попытки.
+- `X-Forwarded-For` учитывается только с `FEEDBACK_TRUST_LOOPBACK_PROXY=true` и только при loopback `HOST`; иначе применяется прямой peer IP. Не выставляйте этот сервис непосредственно в интернет с доверенным forwarding header.
 - ZIP проверяется по central directory и соответствующим local headers: ровно шесть известных файлов отчёта, совпадающие имена/размеры, только stored entries, без encryption и без распаковки. Path traversal невозможен, так как сервис ничего не извлекает.
 - Report ID идемпотентен в настроенном audit store: повтор после перезапуска не посылает второе письмо. Один экземпляр резервирует ID до SMTP-отправки; несколько replicas требуют общего транзакционного TTL-store.
 - Получатель фиксирован серверной переменной. User email используется только как Reply-To.

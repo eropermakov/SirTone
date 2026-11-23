@@ -29,6 +29,20 @@ async function withServer(run) {
   }
 }
 
+async function request(url, reportId, headers = {}) {
+  return fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify({
+      type: "other",
+      message: "Проверка rate limit",
+      reportId,
+      platform: "Windows",
+      version: "0.2.7",
+    }),
+  });
+}
+
 test("sets bounded HTTP deadlines before accepting feedback", async () => {
   await withServer(async ({ server }) => {
     assert.equal(server.requestTimeout, 60_000);
@@ -191,6 +205,40 @@ test("rate limits a sixth request from the same client", async () => {
       assert.equal(response.status, i < 5 ? 202 : 429);
     }
   });
+});
+
+test("ignores spoofed forwarding headers unless a loopback proxy is explicitly trusted", async () => {
+  const mailer = new MemoryMailer();
+  const server = createFeedbackServer({ mailer, supportTo: "sir.kov.mail@gmail.com", rateLimit: 1 });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const url = `http://127.0.0.1:${server.address().port}/v1/feedback/reports`;
+  try {
+    assert.equal((await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa11", { "x-forwarded-for": "203.0.113.10" })).status, 202);
+    assert.equal((await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa12", { "x-forwarded-for": "203.0.113.11" })).status, 429);
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
+});
+
+test("uses a valid forwarded IP only behind an opted-in loopback proxy", async () => {
+  const mailer = new MemoryMailer();
+  const server = createFeedbackServer({
+    mailer, supportTo: "sir.kov.mail@gmail.com", rateLimit: 1, trustLoopbackProxy: true,
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const url = `http://127.0.0.1:${server.address().port}/v1/feedback/reports`;
+  try {
+    assert.equal((await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa13", { "x-forwarded-for": "203.0.113.10" })).status, 202);
+    assert.equal((await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa14", { "x-forwarded-for": "203.0.113.11" })).status, 202);
+    assert.equal((await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa15", { "x-forwarded-for": "invalid" })).status, 202);
+    assert.equal((await request(url, "018f1bb2-3b91-7cc5-8cf0-6c0ce0e5aa16", { "x-forwarded-for": "invalid" })).status, 429);
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
 });
 
 test("persistent audit store survives restart without storing an IP or report contents", async () => {

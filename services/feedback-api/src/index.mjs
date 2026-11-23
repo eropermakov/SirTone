@@ -10,6 +10,7 @@ const smtpHost = required("FEEDBACK_SMTP_HOST");
 const smtpPort = Number.parseInt(process.env.FEEDBACK_SMTP_PORT ?? "465", 10);
 const secure = process.env.FEEDBACK_SMTP_SECURE !== "false";
 const local = process.env.FEEDBACK_ALLOW_INSECURE_LOCAL_SMTP === "true";
+const trustLoopbackProxy = process.env.FEEDBACK_TRUST_LOOPBACK_PROXY === "true";
 const username = process.env.FEEDBACK_SMTP_USERNAME ?? null;
 const password = process.env.FEEDBACK_SMTP_PASSWORD ?? null;
 const audit = new FileAuditStore({
@@ -25,7 +26,10 @@ const mailer = new SmtpMailer({
   password,
   allowInsecureLocal: local,
 });
-const server = createFeedbackServer({ mailer, supportTo, audit });
+if (trustLoopbackProxy && !["127.0.0.1", "::1", "localhost"].includes(host)) {
+  throw new Error("FEEDBACK_TRUST_LOOPBACK_PROXY requires a loopback HOST");
+}
+const server = createFeedbackServer({ mailer, supportTo, audit, trustLoopbackProxy });
 
 server.listen(port, host, () => {
   // Never emit request bodies, email addresses, reports, SMTP credentials or headers.

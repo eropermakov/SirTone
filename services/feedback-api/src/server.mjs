@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { isIP } from "node:net";
 import { MemoryAuditStore } from "./audit-store.mjs";
 
 const MAX_BODY_BYTES = 7 * 1024 * 1024;
@@ -45,6 +46,7 @@ export function createFeedbackServer({
   supportTo,
   now = () => Date.now(),
   rateLimit = 5,
+  trustLoopbackProxy = false,
   audit = new MemoryAuditStore(),
 }) {
   if (!mailer || typeof mailer.send !== "function") throw new TypeError("mailer.send is required");
@@ -64,7 +66,7 @@ export function createFeedbackServer({
       if (request.method !== "POST" || request.url !== "/v1/feedback/reports") {
         throw new FeedbackError(404, "not_found");
       }
-      const ip = request.socket.remoteAddress ?? "unknown";
+      const ip = clientAddress(request, trustLoopbackProxy);
       if (!(await audit.enforceRateLimit(ip, now(), rateLimit)))
         throw new FeedbackError(429, "rate_limited");
       const payload = validatePayload(await readJson(request));
@@ -93,6 +95,18 @@ export function createFeedbackServer({
   server.headersTimeout = HEADERS_TIMEOUT_MS;
   server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
   return server;
+}
+
+function clientAddress(request, trustLoopbackProxy) {
+  const direct = request.socket.remoteAddress ?? "unknown";
+  if (!trustLoopbackProxy || !isLoopback(direct)) return direct;
+  const forwarded = request.headers["x-forwarded-for"];
+  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim();
+  return first && isIP(first) !== 0 ? first : direct;
+}
+
+function isLoopback(address) {
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
 }
 
 async function readJson(request) {
