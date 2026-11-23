@@ -439,16 +439,26 @@ fn zip_io(error: zip::result::ZipError) -> std::io::Error {
 }
 
 fn write_zip(path: &Path, entries: [(&str, Vec<u8>); 6]) -> std::io::Result<()> {
-    let file = fs::File::create(path)?;
-    let mut zip = zip::ZipWriter::new(file);
-    let options =
-        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
-    for (name, content) in entries {
-        zip.start_file(name, options).map_err(zip_io)?;
-        zip.write_all(&content)?;
+    // Never leave a truncated file under the user-visible final name. The Report ID is unique,
+    // so `rename` does not replace an existing report on Windows.
+    let partial = path.with_extension("zip.partial");
+    let result = (|| {
+        let file = fs::File::create(&partial)?;
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        for (name, content) in entries {
+            zip.start_file(name, options).map_err(zip_io)?;
+            zip.write_all(&content)?;
+        }
+        let file = zip.finish().map_err(zip_io)?;
+        file.sync_all()?;
+        fs::rename(&partial, path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(partial);
     }
-    zip.finish().map_err(zip_io)?;
-    Ok(())
+    result
 }
 
 fn utc_date() -> String {
@@ -1037,6 +1047,11 @@ mod tests {
         );
         let report = session.export_report(&dir.join("exports")).unwrap();
         assert!(Uuid::parse_str(&report.report_id).is_ok());
+        assert!(
+            !Path::new(&report.path)
+                .with_extension("zip.partial")
+                .exists()
+        );
         let bytes = fs::read(&report.path).unwrap();
         assert!(bytes.len() <= REPORT_MAX_BYTES as usize);
         let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
