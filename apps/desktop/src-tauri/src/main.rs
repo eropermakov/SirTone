@@ -196,6 +196,28 @@ fn main() {
         })
         .setup(move |app| {
             specta.mount_events(app);
+            if let Some(session) = app.try_state::<diagnostics::DiagnosticSession>() {
+                session.record(
+                    "INFO",
+                    "APP_STARTED",
+                    "lifecycle",
+                    "startup",
+                    None,
+                    &Default::default(),
+                    true,
+                );
+                if session.status().previous_unclean_shutdown {
+                    session.record(
+                        "WARN",
+                        "PREVIOUS_SESSION_UNCLEAN",
+                        "lifecycle",
+                        "startup",
+                        None,
+                        &Default::default(),
+                        true,
+                    );
+                }
+            }
             // A stray WM_CLOSE must not undo the single-instance lock (D-124).
             if !sirtone_platform::instance::guard_lock_window(&app.config().identifier) {
                 tracing::warn!(target: "sirtone::startup", "single-instance window not guarded");
@@ -279,6 +301,15 @@ fn main() {
                     pb.shutdown();
                 }
                 if let Some(session) = handle.try_state::<diagnostics::DiagnosticSession>() {
+                    session.record(
+                        "INFO",
+                        "APP_STOPPED",
+                        "lifecycle",
+                        "shutdown",
+                        None,
+                        &Default::default(),
+                        true,
+                    );
                     session.finish();
                 }
                 // A downloaded update installs on a full exit (docs/07 §9.3).

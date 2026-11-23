@@ -6,6 +6,7 @@
 //!
 //! No user paths or track names at info/warn level (docs/12 §3.7).
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -25,6 +26,18 @@ const MAX_TOTAL_BYTES: u64 = 20 * 1024 * 1024;
 const DIAGNOSTICS_DIR: &str = "diagnostics";
 const INSTALLATION_ID_FILE: &str = "installation-id";
 const SESSION_MARKER_FILE: &str = "active-session.json";
+const EVENT_PREFIX: &str = "events-";
+const EVENT_SUFFIX: &str = "jsonl";
+const EVENT_KEEP_DAYS: u64 = 7;
+const EVENT_MAX_TOTAL_BYTES: u64 = 10 * 1024 * 1024;
+const CONTEXT_ALLOWLIST: &[&str] = &[
+    "attempt",
+    "audio_device_kind",
+    "error_kind",
+    "network_state",
+    "operation_state",
+    "retry_after_ms",
+];
 
 /// Identity and lifecycle state for the voluntary diagnostic report. This is deliberately
 /// separate from `tracing`: `tracing` remains the operational developer log, while this state
@@ -52,6 +65,29 @@ struct SessionMarker<'a> {
     schema_version: u8,
     session_id: &'a str,
     started_at_unix_ms: u128,
+}
+
+/// A portable, intentionally small event. `technical_context` is created only through the
+/// allow-list below; arbitrary error strings, paths and account details cannot enter it.
+#[derive(Debug, Serialize, Deserialize)]
+struct DiagnosticEvent {
+    schema_version: u8,
+    timestamp_utc: String,
+    level: String,
+    event_id: String,
+    session_id: String,
+    platform: String,
+    app_version: String,
+    build_id: String,
+    release_channel: String,
+    component: String,
+    operation: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_code: Option<String>,
+    message: String,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    technical_context: BTreeMap<String, String>,
+    recoverable: bool,
 }
 
 impl DiagnosticSession {
@@ -101,6 +137,49 @@ impl DiagnosticSession {
         }
     }
 
+    /// Appends one safe JSONL event. This is for control/UI/background work only, never an audio
+    /// real-time callback: it may allocate, sort a small directory and write a file.
+    pub fn record(
+        &self,
+        level: &str,
+        event_id: &str,
+        component: &str,
+        operation: &str,
+        error_code: Option<&str>,
+        technical_context: &BTreeMap<String, String>,
+        recoverable: bool,
+    ) {
+        let event = DiagnosticEvent {
+            schema_version: 1,
+            timestamp_utc: iso8601_utc(unix_ms()),
+            level: safe_atom(level),
+            event_id: safe_atom(event_id),
+            session_id: self.session_id.clone(),
+            platform: "windows".to_owned(),
+            app_version: env!("CARGO_PKG_VERSION").to_owned(),
+            build_id: env!("CARGO_PKG_VERSION").to_owned(),
+            release_channel: "development".to_owned(),
+            component: safe_atom(component),
+            operation: safe_atom(operation),
+            error_code: error_code.map(safe_atom),
+            message: safe_atom(event_id),
+            technical_context: allowed_context(technical_context),
+            recoverable,
+        };
+        let Ok(line) = serde_json::to_vec(&event) else {
+            return;
+        };
+        let file = self
+            .dir
+            .join(format!("{EVENT_PREFIX}{}.{}", utc_date(), EVENT_SUFFIX));
+        if let Ok(mut output) = fs::OpenOptions::new().create(true).append(true).open(file) {
+            let _ = output
+                .write_all(&line)
+                .and_then(|_| output.write_all(b"\n"));
+        }
+        enforce_event_retention(&self.dir, EVENT_KEEP_DAYS, EVENT_MAX_TOTAL_BYTES);
+    }
+
     /// Marks only this process's session as clean. A different marker is preserved rather than
     /// hiding another process's diagnostic evidence.
     pub fn finish(&self) {
@@ -118,6 +197,105 @@ impl DiagnosticSession {
             let _ = fs::remove_file(marker);
         }
     }
+}
+
+fn safe_atom(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'))
+        .take(96)
+        .collect()
+}
+
+fn allowed_context(raw: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+    raw.iter()
+        .filter(|(key, _)| CONTEXT_ALLOWLIST.contains(&key.as_str()))
+        .filter_map(|(key, value)| {
+            let cleaned = safe_atom(value);
+            (!cleaned.is_empty()).then(|| (key.clone(), cleaned))
+        })
+        .collect()
+}
+
+fn event_files(dir: &Path) -> Vec<(SystemTime, u64, PathBuf)> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.starts_with(EVENT_PREFIX) && name.ends_with(EVENT_SUFFIX))
+        })
+        .filter_map(|entry| {
+            let metadata = entry.metadata().ok()?;
+            Some((metadata.modified().ok()?, metadata.len(), entry.path()))
+        })
+        .collect()
+}
+
+fn enforce_event_retention(dir: &Path, keep_days: u64, cap: u64) {
+    let now = SystemTime::now();
+    let max_age = std::time::Duration::from_secs(keep_days.saturating_mul(86_400));
+    let mut files = event_files(dir);
+    for (modified, _, path) in &files {
+        if now
+            .duration_since(*modified)
+            .map_or(true, |age| age > max_age)
+        {
+            let _ = fs::remove_file(path);
+        }
+    }
+    files = event_files(dir);
+    files.sort_by_key(|(modified, _, _)| *modified);
+    let mut total: u64 = files.iter().map(|(_, size, _)| *size).sum();
+    for (_, size, path) in files {
+        if total <= cap {
+            break;
+        }
+        if fs::remove_file(&path).is_ok() {
+            total = total.saturating_sub(size);
+        }
+    }
+}
+
+fn utc_date() -> String {
+    let seconds = unix_ms().saturating_div(1_000) as i64;
+    let (year, month, day, _, _, _) = civil_utc(seconds);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
+fn iso8601_utc(ms: u128) -> String {
+    let seconds = ms.saturating_div(1_000) as i64;
+    let millis = ms % 1_000;
+    let (year, month, day, hour, minute, second) = civil_utc(seconds);
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z")
+}
+
+/// UTC calendar conversion without a date/time dependency. Based on the same civil-day method
+/// already used by `storage.rs`, extended with a time-of-day for the portable event schema.
+fn civil_utc(seconds: i64) -> (i64, i64, i64, i64, i64, i64) {
+    let days = seconds.div_euclid(86_400);
+    let second_of_day = seconds.rem_euclid(86_400);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    (
+        year,
+        month,
+        day,
+        second_of_day / 3_600,
+        (second_of_day % 3_600) / 60,
+        second_of_day % 60,
+    )
 }
 
 /// Gives the UI only the non-sensitive lifecycle facts needed to offer a voluntary report.
@@ -391,6 +569,69 @@ mod tests {
         let two = DiagnosticSession::start(&dir);
         assert!(two.status().previous_unclean_shutdown);
         two.finish();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn jsonl_events_keep_only_allowlisted_non_sensitive_context() {
+        let dir = tmp("event-privacy");
+        let session = DiagnosticSession::start(&dir);
+        let context = BTreeMap::from([
+            ("attempt".to_owned(), "2".to_owned()),
+            (
+                "file_path".to_owned(),
+                "C:\\Users\\Ava\\Music\\private.mp3".to_owned(),
+            ),
+            (
+                "authorization".to_owned(),
+                "Bearer super-secret-token".to_owned(),
+            ),
+        ]);
+        session.record(
+            "ERROR",
+            "IMPORT_OPEN_FAILED",
+            "library",
+            "open_file",
+            Some("FileUnavailable"),
+            &context,
+            true,
+        );
+        let file = event_files(&dir.join(DIAGNOSTICS_DIR))
+            .pop()
+            .expect("event file")
+            .2;
+        let text = fs::read_to_string(file).expect("event text");
+        let event: serde_json::Value = serde_json::from_str(text.trim()).expect("json event");
+        assert_eq!(event["technical_context"]["attempt"], "2");
+        assert!(event["technical_context"].get("file_path").is_none());
+        assert!(!text.contains("private.mp3"));
+        assert!(!text.contains("super-secret-token"));
+        assert_eq!(
+            event["timestamp_utc"].as_str().map(|s| s.ends_with('Z')),
+            Some(true)
+        );
+        session.finish();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn event_cap_removes_oldest_files_first() {
+        let dir = tmp("event-cap");
+        for (i, size) in [400usize, 400, 400].iter().enumerate() {
+            fs::write(
+                dir.join(format!("{EVENT_PREFIX}2026-10-1{i}.{EVENT_SUFFIX}")),
+                vec![b'x'; *size],
+            )
+            .unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        enforce_event_retention(&dir, u64::MAX / 86_400, 900);
+        let names: Vec<_> = event_files(&dir)
+            .into_iter()
+            .filter_map(|(_, _, path)| path.file_name().map(|name| name.to_owned()))
+            .collect();
+        assert_eq!(names.len(), 2);
+        assert!(!names.iter().any(|name| name == "events-2026-10-10.jsonl"));
         let _ = fs::remove_dir_all(dir);
     }
 }
