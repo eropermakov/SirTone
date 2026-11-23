@@ -13,13 +13,14 @@
 - Есть локально тестируемый `services/feedback-api`: валидация, ZIP central-directory проверка без распаковки, rate limit, idempotency и SMTP simulator. iOS-код использует тот же JSONL/ZIP формат, форму, Share Sheet и `MFMailComposeViewController`; он не собран в этой Windows-среде.
 - `pnpm typecheck`, `pnpm lint`, `pnpm test`, `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, тесты diagnostics и проверка IPC bindings прошли на рабочем ПК.
 - `cargo nextest run --workspace --no-tests=warn` прошёл: 414 tests passed, 8 skipped. Debug NSIS bundle собран локально: `SirTone_0.2.7_x64-setup.exe`, SHA-256 `5EA53698106CAE3BE39D3E4E132A1CB48F45B023051520FF22F1FB4FFF42049F`; он ожидаемо **NotSigned** и не устанавливался.
+- Полный браузерный Playwright smoke прошёл: 50 из 50. Во время production-сборки Vite всё ещё предупреждает о JavaScript-чанках больше 500 kB; это не блокирует тест, но требует отдельного performance-аудита до 1.0.
 
 ## Блокеры
 
 1. `cargo deny check` не проходит: RUSTSEC-2026-0545 и RUSTSEC-2026-0548 затрагивают `zip` 2.6.1 и 4.6.1; RUSTSEC-2026-0545…0548 — `zip` 8.6.0. Цепочки идут через `isideload`/`apple-codesign-quick` и `tauri-plugin-updater`. Нужен совместимый upgrade либо безопасное upstream-исправление с проверкой переноса iPhone и обновления Windows.
 2. Production Feedback API не развёрнут: нет домена/HTTPS endpoint, настроенного persistent audit path/salt и SMTP credential в secret manager. Локальный тест не доказывает доставку в Gmail.
 3. Нельзя подтвердить iOS-сборку или iPhone на физическом устройстве, установщик/обновление в изолированной среде и 24-часовое Windows-воспроизведение из этой среды.
-4. Полный выпускной прогон и ручная приёмка ещё нужны. Точечные наборы `quality.spec.ts` (10 проверок, в том числе axe) и `ipc.spec.ts` (33 проверки) проходят; снимки обновлены после проверки: старые эталоны 0.2.2 не включали локальные пространства D-178.
+4. Нужны выпускной прогон в изолированной среде и ручная приёмка. Автоматический браузерный набор проходит; снимки обновлены после проверки: старые эталоны 0.2.2 не включали локальные пространства D-178.
 
 ## Неотслеживаемые файлы
 
