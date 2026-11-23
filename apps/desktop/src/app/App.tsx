@@ -80,6 +80,7 @@ import { blankDraft, SmartEditor } from "./playlists/SmartEditor";
 import { nextName, usePlaylists } from "./playlists/usePlaylists";
 import { SearchScreen } from "./search/SearchScreen";
 import { EmptyScreen } from "./shell/EmptyScreen";
+import { FeedbackDialog } from "./shell/FeedbackDialog";
 import { FocusBanner } from "./shell/FocusBanner";
 import { HelpHost, openHelp } from "./shell/HelpDialog";
 import { PlayerBar } from "./shell/PlayerBar";
@@ -238,6 +239,7 @@ export function App() {
   const [dupsFound, setDupsFound] = useState<number | null>(null);
   const [dupsOpen, setDupsOpen] = useState(false);
   const [reportBatch, setReportBatch] = useState<number | null>(null);
+  const [reportErrorCode, setReportErrorCode] = useState<string | null>(null);
   // «Навести порядок» (T3.19): files added in Explorer, not where the rules say.
   const [organize, setOrganize] = useState<number | null>(null);
   useEffect(() => {
@@ -806,7 +808,20 @@ export function App() {
                     }
                   : undefined
               }
+              actions={[
+                {
+                  label: t("feedback.reportBug"),
+                  onClick: () => setReportErrorCode(error.error.code),
+                },
+              ]}
               onClose={clearError}
+            />
+          )}
+          {reportErrorCode && (
+            <FeedbackDialog
+              kind="bug"
+              errorCode={reportErrorCode}
+              onClose={() => setReportErrorCode(null)}
             />
           )}
           {onboard === "setup" && (

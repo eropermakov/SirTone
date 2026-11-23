@@ -122,8 +122,15 @@ function validatePayload(raw) {
   }
   const email = raw.email == null || raw.email === "" ? null : raw.email;
   if (email !== null && !isEmail(email)) throw new FeedbackError(400, "invalid_email");
+  const errorCode = raw.errorCode == null || raw.errorCode === "" ? null : raw.errorCode;
+  if (
+    errorCode !== null &&
+    (typeof errorCode !== "string" || !/^[A-Za-z0-9_.-]{1,96}$/.test(errorCode))
+  ) {
+    throw new FeedbackError(400, "invalid_error_code");
+  }
   const report = raw.reportZipBase64 == null ? null : decodeAndValidateReport(raw.reportZipBase64);
-  return { type, message, reportId, platform, version, email, report };
+  return { type, message, reportId, platform, version, email, errorCode, report };
 }
 
 function decodeAndValidateReport(base64) {
@@ -202,6 +209,7 @@ function mailFor(payload, supportTo, referenceId, now) {
       `Тип: ${payload.type}`,
       `Платформа: ${payload.platform}`,
       `Версия: ${payload.version}`,
+      `Основная ошибка: ${payload.errorCode ?? "не указана"}`,
       `Дата UTC: ${new Date(now).toISOString()}`,
       `Контакт: ${payload.email ?? "не указан"}`,
       "",

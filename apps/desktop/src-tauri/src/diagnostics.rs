@@ -81,6 +81,8 @@ pub struct FeedbackSubmission {
     pub message: String,
     pub email: Option<String>,
     pub include_diagnostics: bool,
+    /// Optional stable code from a user-visible error toast.
+    pub error_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
@@ -606,6 +608,7 @@ pub async fn feedback_submit(
         "platform": "Windows",
         "version": env!("CARGO_PKG_VERSION"),
         "reportZipBase64": report,
+        "errorCode": submission.error_code,
     });
     let response = reqwest::Client::builder()
         .https_only(true)
@@ -662,6 +665,10 @@ fn validate_submission(submission: &FeedbackSubmission) -> Result<(), AppError> 
             .email
             .as_deref()
             .is_some_and(|email| email.len() > 254 || !email.contains('@'))
+        || submission
+            .error_code
+            .as_deref()
+            .is_some_and(|code| safe_atom(code) != code)
     {
         return Err(AppError::new(ErrorCode::InvalidArgument));
     }
@@ -1037,6 +1044,7 @@ mod tests {
             message: "The player stopped after changing output.".to_owned(),
             email: Some("listener@example.test".to_owned()),
             include_diagnostics: false,
+            error_code: None,
         };
         assert!(validate_submission(&valid).is_ok());
         assert!(
@@ -1049,6 +1057,13 @@ mod tests {
         assert!(
             validate_submission(&FeedbackSubmission {
                 kind: "unknown".to_owned(),
+                ..valid.clone()
+            })
+            .is_err()
+        );
+        assert!(
+            validate_submission(&FeedbackSubmission {
+                error_code: Some("Decode failed: D:/Music/private.flac".to_owned()),
                 ..valid.clone()
             })
             .is_err()

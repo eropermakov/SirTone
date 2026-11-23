@@ -6,6 +6,7 @@ type Props = {
   message: string;
   closeLabel: string;
   action?: { label: string; onClick: () => void } | undefined;
+  actions?: Array<{ label: string; onClick: () => void }>;
   onClose: () => void;
   /** Auto-hide after this many ms (0 = stay). */
   timeoutMs?: number;
@@ -22,6 +23,7 @@ export function Toast({
   message,
   closeLabel,
   action,
+  actions,
   onClose,
   timeoutMs = 6000,
   tone = "error",
@@ -46,15 +48,16 @@ export function Toast({
       <div className="min-w-0 flex-1">
         <div className="t-body-strong text-text-primary">{heading}</div>
         <div className="t-caption break-words text-text-secondary">{message}</div>
-        {action && (
+        {[...(action ? [action] : []), ...(actions ?? [])].map((item) => (
           <button
+            key={item.label}
             type="button"
-            onClick={action.onClick}
-            className="t-body-strong mt-2 text-accent-text"
+            onClick={item.onClick}
+            className="t-body-strong mt-2 mr-3 text-accent-text"
           >
-            {action.label}
+            {item.label}
           </button>
-        )}
+        ))}
       </div>
       <button
         type="button"

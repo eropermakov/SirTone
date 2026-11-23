@@ -636,6 +636,8 @@ export type FeedbackSubmission = {
 	message: string,
 	email: string | null,
 	includeDiagnostics: boolean,
+	/**  Optional stable code from a user-visible error toast. */
+	errorCode: string | null,
 };
 
 /**  What the UI and the tray show (FR-FOCUS-002). */

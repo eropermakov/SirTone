@@ -31,7 +31,16 @@ const readDraft = (kind: Kind): Draft => {
 };
 
 /** User-initiated support form. The draft remains local until the API confirms receipt. */
-export function FeedbackDialog({ kind, onClose }: { kind: Kind; onClose: () => void }) {
+export function FeedbackDialog({
+  kind,
+  onClose,
+  errorCode: contextErrorCode = null,
+}: {
+  kind: Kind;
+  onClose: () => void;
+  /** Stable error code from an in-app toast; never displayed as raw diagnostic detail. */
+  errorCode?: string | null;
+}) {
   const { t } = useTranslation("shell");
   const [draft, setDraft] = useState<Draft>(() => readDraft(kind));
   const [busy, setBusy] = useState(false);
@@ -47,7 +56,12 @@ export function FeedbackDialog({ kind, onClose }: { kind: Kind; onClose: () => v
     if (!draft.message.trim()) return;
     setBusy(true);
     setError(null);
-    submitFeedback({ ...draft, message: draft.message.trim(), email: draft.email?.trim() || null })
+    submitFeedback({
+      ...draft,
+      message: draft.message.trim(),
+      email: draft.email?.trim() || null,
+      errorCode: contextErrorCode,
+    })
       .then((receipt) => {
         if (!receipt) throw { code: "NotSupported" };
         localStorage.removeItem(DRAFT_KEY);

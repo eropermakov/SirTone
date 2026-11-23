@@ -520,6 +520,16 @@ test("commands go out, events come back, errors become a toast", async ({ page }
   await expect(page.getByRole("status").filter({ hasText: "broken.flac" })).toContainText(
     "Файл повреждён или не читается · broken.flac",
   );
+  const errorToast = page.getByRole("status").filter({ hasText: "broken.flac" });
+  await errorToast.getByRole("button", { name: "Сообщить об ошибке" }).click();
+  const feedback = page.getByRole("dialog", { name: "Обратная связь" });
+  await feedback.locator("textarea").fill("Не удалось продолжить воспроизведение.");
+  await feedback.getByRole("button", { name: "Отправить" }).click();
+  const feedbackCall = (await calls(page, "feedback_submit")).at(-1)?.args as {
+    submission: { errorCode: string | null };
+  };
+  expect(feedbackCall.submission.errorCode).toBe("DecodeFailed");
+  await feedback.getByRole("button", { name: "Закрыть" }).click();
 
   await page.getByRole("button", { name: "Настройки" }).click();
   await page.getByRole("button", { name: "Светлая" }).click();

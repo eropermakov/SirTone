@@ -86,6 +86,7 @@ test("accepts an opted-in report and produces a readable fixed-recipient email",
         reportId: REPORT_ID,
         platform: "Windows",
         version: "0.2.7",
+        errorCode: "AudioOutputLost",
         reportZipBase64: reportZipBase64(),
       }),
     });
@@ -96,6 +97,7 @@ test("accepts an opted-in report and produces a readable fixed-recipient email",
     assert.equal(mailer.messages[0].replyTo, "reader@example.test");
     assert.match(mailer.messages[0].subject, /\[BUG\] \[Windows\] \[0\.2\.7\]/);
     assert.match(mailer.messages[0].text, /Не включается/);
+    assert.match(mailer.messages[0].text, /AudioOutputLost/);
     assert.equal(mailer.messages[0].attachment?.bytes.length > 0, true);
   });
 });
