@@ -7289,6 +7289,7 @@ dependencies = [
  "sirtone-transfer",
  "sirtone-wave",
  "tokio",
+ "zip 9.0.5",
 ]
 
 [[package]]
