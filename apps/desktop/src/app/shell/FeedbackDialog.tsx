@@ -12,6 +12,8 @@ import { notify } from "@/shared/ui/notify";
 import { Switch } from "@/shared/ui/Switch";
 
 const DRAFT_KEY = "sirtone.feedback-draft.v1";
+const SUPPORT_EMAIL = "sir.kov.mail@gmail.com";
+const MAIL_FALLBACK_ERRORS = new Set(["NetworkOffline", "NotSupported", "RemoteError", "Internal"]);
 const FIELD =
   "t-body min-h-(--button-height) rounded-(--radius-md) border border-border bg-bg-layer px-3 text-text-primary";
 const KINDS = ["bug", "suggestion", "question", "other"] as const;
@@ -61,6 +63,25 @@ export function FeedbackDialog({ kind, onClose }: { kind: Kind; onClose: () => v
     exportDiagnostics()
       .then((report) => {
         if (report) notify(t("diagnostics.saved"));
+      })
+      .catch(() => notify(t("diagnostics.failed")))
+      .finally(() => setSaving(false));
+  };
+
+  const openMailFallback = () => {
+    setSaving(true);
+    const exportReport = draft.includeDiagnostics ? exportDiagnostics() : Promise.resolve(null);
+    exportReport
+      .then((report) => {
+        const subject = `[SIRTONE] [${draft.kind.toUpperCase()}] [Windows] [${__APP_VERSION__}]${report ? ` [${report.reportId}]` : ""}`;
+        const body = t("feedback.mailBody", {
+          message: draft.message.trim(),
+          email: draft.email?.trim() || t("feedback.mailNoEmail"),
+          attachment: report
+            ? t("feedback.mailAttachment", { id: report.reportId })
+            : t("feedback.mailNoAttachment"),
+        });
+        window.location.assign(`mailto:${SUPPORT_EMAIL}?${new URLSearchParams({ subject, body })}`);
       })
       .catch(() => notify(t("diagnostics.failed")))
       .finally(() => setSaving(false));
@@ -134,9 +155,20 @@ export function FeedbackDialog({ kind, onClose }: { kind: Kind; onClose: () => v
           />
         </div>
         {error && (
-          <p role="alert" className="t-caption text-danger">
-            {t(`feedback.errors.${error}`, { defaultValue: t("feedback.errors.Internal") })}
-          </p>
+          <div className="flex flex-wrap items-center gap-2" role="alert">
+            <p className="t-caption text-danger">
+              {t(`feedback.errors.${error}`, { defaultValue: t("feedback.errors.Internal") })}
+            </p>
+            {MAIL_FALLBACK_ERRORS.has(error) && (
+              <Button
+                variant="secondary"
+                disabled={saving || Boolean(reference)}
+                onClick={openMailFallback}
+              >
+                {t(saving ? "diagnostics.saving" : "feedback.openMail")}
+              </Button>
+            )}
+          </div>
         )}
         {reference && (
           <p role="status" className="t-caption text-text-secondary">

@@ -56,6 +56,12 @@ export function DiagnosticsSection() {
           <Button variant="secondary" onClick={() => setFeedback("suggestion")}>
             {t("feedback.suggest")}
           </Button>
+          <Button variant="secondary" onClick={() => setFeedback("question")}>
+            {t("feedback.ask")}
+          </Button>
+          <Button variant="secondary" onClick={() => setFeedback("other")}>
+            {t("feedback.other")}
+          </Button>
           <Button variant="secondary" disabled={busy} onClick={save}>
             {t(busy ? "diagnostics.saving" : "diagnostics.save")}
           </Button>

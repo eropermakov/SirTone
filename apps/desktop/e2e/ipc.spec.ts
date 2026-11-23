@@ -468,6 +468,7 @@ test("feedback is explicit, keeps a failed draft, and sends only consented diagn
   await dialog.getByRole("button", { name: "Отправить" }).click();
   await expect(dialog.getByText("Черновик сохранён.")).toBeVisible();
   await expect(dialog.locator("textarea")).toHaveValue(description);
+  await expect(dialog.getByRole("button", { name: "Открыть почтовое приложение" })).toBeVisible();
   await page.evaluate(() => {
     delete (window as unknown as { __mockOverride?: unknown }).__mockOverride;
   });
