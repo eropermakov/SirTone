@@ -447,7 +447,9 @@ test("bootstrap hydrates settings and the player in one call", async ({ page }) 
   expect(theme.at(-1)?.args).toEqual({ dark: true, palette: null });
 });
 
-test("feedback is explicit, keeps a failed draft, and sends only consented diagnostics", async ({ page }) => {
+test("feedback is explicit, keeps a failed draft, and sends only consented diagnostics", async ({
+  page,
+}) => {
   await mockTauri(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Настройки", exact: true }).click();
