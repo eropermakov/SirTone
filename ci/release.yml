@@ -43,10 +43,29 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny,cargo-nextest
       - name: Install
         run: pnpm install --frozen-lockfile
+      - name: Quality gates
+        shell: pwsh
+        run: |
+          node scripts/tokens.mjs --check-gen
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo deny check
+          cargo nextest run --workspace --no-tests=warn
+          python tools/notices.py
+          git diff --exit-code -- assets/legal/notices.json THIRD_PARTY_NOTICES.txt
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm --dir apps/desktop e2e
       - name: Release
         shell: pwsh
         env:

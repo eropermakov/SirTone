@@ -2,8 +2,6 @@
 # GitHub prerelease. Updater signing (TAURI_SIGNING_PRIVATE_KEY) is added in T6.1 (OWN-04).
 name: release
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
 
 jobs:

@@ -33,8 +33,11 @@ Write-Host "release $tag"
 if (git -C $root status --porcelain) { throw 'working tree is not clean' }
 $head = (git -C $root rev-parse HEAD).Trim()
 git -C $root fetch -q origin
-$branch = (git -C $root rev-parse --abbrev-ref HEAD).Trim()
-if ((git -C $root rev-parse "origin/$branch").Trim() -ne $head) { throw 'HEAD is not pushed' }
+if (-not $Ci) {
+    $branch = (git -C $root rev-parse --abbrev-ref HEAD).Trim()
+    if ($branch -eq 'HEAD') { throw 'local release must start from a branch' }
+    if ((git -C $root rev-parse "origin/$branch").Trim() -ne $head) { throw 'HEAD is not pushed' }
+}
 if ($Ci) {
     if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw 'secret TAURI_SIGNING_PRIVATE_KEY is not set' }
     $key = $env:TAURI_SIGNING_PRIVATE_KEY.Trim()

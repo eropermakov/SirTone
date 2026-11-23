@@ -16,6 +16,7 @@
 - Полный браузерный Playwright smoke прошёл: 50 из 50. Во время production-сборки Vite всё ещё предупреждает о JavaScript-чанках больше 500 kB; это не блокирует тест, но требует отдельного performance-аудита до 1.0.
 - `cargo deny check licenses bans sources` проходит (есть предупреждения о дублирующихся версиях в iPhone-цепочке). Проверка advisories намеренно не подавлена: она документированно блокирует бета-выпуск ниже.
 - Регенерация `THIRD_PARTY_NOTICES.txt` и `assets/legal/notices.json` согласована с lockfile; проверка генератора и `git diff --check` проходят. Wave benchmark укладывается в бюджет: p95 5,40 ms при лимите 15 ms на 50 000 треков.
+- Release workflow остаётся выключенным до действия владельца, но теперь закрепляет Rust 1.99, запускает полный набор quality gates перед релизом и работает с detached checkout GitHub Actions. Старый pending workflow больше не срабатывает автоматически по тегу.
 
 ## Блокеры
 
