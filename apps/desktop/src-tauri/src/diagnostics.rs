@@ -92,6 +92,15 @@ pub struct FeedbackReceipt {
     pub report_id: String,
 }
 
+/// Fixed categories only: the WebView never passes exception text, paths or arbitrary context
+/// into a diagnostic event.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum FrontendDiagnosticKind {
+    JsUnhandledException,
+    PromiseRejection,
+}
+
 #[derive(Debug, Serialize)]
 struct SessionMarker<'a> {
     schema_version: u8,
@@ -600,6 +609,25 @@ pub fn diagnostics_export(session: State<'_, DiagnosticSession>) -> Result<Repor
 pub fn diagnostics_reset(session: State<'_, DiagnosticSession>) -> DiagnosticStatus {
     session.reset_identity_and_data();
     session.status()
+}
+
+/// Records a privacy-safe frontend failure category. Global WebView handlers deliberately send
+/// no `Error.message`, stack trace, URL, rejected value, or IPC payload.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn diagnostics_record_frontend(
+    session: State<'_, DiagnosticSession>,
+    kind: FrontendDiagnosticKind,
+) {
+    let (event_id, operation) = match kind {
+        FrontendDiagnosticKind::JsUnhandledException => {
+            ("FRONTEND_JS_UNHANDLED_EXCEPTION", "window_error")
+        }
+        FrontendDiagnosticKind::PromiseRejection => {
+            ("FRONTEND_UNHANDLED_REJECTION", "promise_rejection")
+        }
+    };
+    session.record_error_code(event_id, "frontend", operation, ErrorCode::Internal, true);
 }
 
 /// Sends only after an explicit UI action. The destination is deployment configuration, never a

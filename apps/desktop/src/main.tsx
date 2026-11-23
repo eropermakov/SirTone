@@ -3,11 +3,17 @@ import { createRoot } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
 import { App } from "./app/App";
 import { createI18n } from "./shared/i18n";
+import { recordFrontendDiagnostic } from "./shared/ipc/diagnostics";
 import { getSettings } from "./shared/ipc/settings";
 import "./index.css";
 
 const root = document.getElementById("root");
 if (root) {
+  // Do not serialize Error text: it can contain a user path, a track title or a URL token.
+  window.addEventListener("error", () => recordFrontendDiagnostic("js_unhandled_exception"));
+  window.addEventListener("unhandledrejection", () =>
+    recordFrontendDiagnostic("promise_rejection"),
+  );
   // The language of the settings (T6.5); Russian when unknown.
   const lang = await getSettings()
     .then((s) => (s.language === "en" ? "en" : "ru"))

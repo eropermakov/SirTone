@@ -233,6 +233,11 @@ export const commands = {
 	/**  Explicit privacy control: replaces the random Installation ID and clears diagnostic files. */
 	diagnosticsReset: () => __TAURI_INVOKE<DiagnosticStatus>("diagnostics_reset"),
 	/**
+	 *  Records a privacy-safe frontend failure category. Global WebView handlers deliberately send
+	 *  no `Error.message`, stack trace, URL, rejected value, or IPC payload.
+	 */
+	diagnosticsRecordFrontend: (kind: FrontendDiagnosticKind) => __TAURI_INVOKE<void>("diagnostics_record_frontend", { kind }),
+	/**
 	 *  Sends only after an explicit UI action. The destination is deployment configuration, never a
 	 *  client secret or a user-controlled recipient. An absent endpoint leaves the saved draft/report local.
 	 */
@@ -657,6 +662,12 @@ export type FocusStatus = {
  *  only while the focus timer is off.
  */
 export type FocusSuggest = null;
+
+/**
+ *  Fixed categories only: the WebView never passes exception text, paths or arbitrary context
+ *  into a diagnostic event.
+ */
+export type FrontendDiagnosticKind = "js_unhandled_exception" | "promise_rejection";
 
 /**
  *  The live effects' sources right now (T4.20, T5.15, `14` §13.1, supplement §31): «По сезону»

@@ -136,6 +136,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             diagnostics::diagnostics_status,
             diagnostics::diagnostics_export,
             diagnostics::diagnostics_reset,
+            diagnostics::diagnostics_record_frontend,
             diagnostics::feedback_submit,
             wave::wave_start,
             wave::wave_reset_learning,

@@ -4,10 +4,17 @@ import {
   type DiagnosticStatus,
   type FeedbackReceipt,
   type FeedbackSubmission,
+  type FrontendDiagnosticKind,
   type ReportExport,
 } from "./bindings";
 
-export type { DiagnosticStatus, FeedbackReceipt, FeedbackSubmission, ReportExport };
+export type {
+  DiagnosticStatus,
+  FeedbackReceipt,
+  FeedbackSubmission,
+  FrontendDiagnosticKind,
+  ReportExport,
+};
 
 const unwrap = <T>(result: { status: "ok"; data: T } | { status: "error"; error: unknown }): T => {
   if (result.status === "error") throw result.error;
@@ -25,6 +32,12 @@ export const exportDiagnostics = async (): Promise<ReportExport | null> =>
 /** Explicit privacy control; it clears only diagnostics and creates a new random installation ID. */
 export const resetDiagnostics = async (): Promise<DiagnosticStatus | null> =>
   isTauri() ? commands.diagnosticsReset() : null;
+
+/** Only fixed categories reach Rust; exception messages, stacks and rejected values stay out. */
+export const recordFrontendDiagnostic = (kind: FrontendDiagnosticKind): void => {
+  if (!isTauri()) return;
+  void commands.diagnosticsRecordFrontend(kind).catch(() => undefined);
+};
 
 /** Explicit, consented support request. No report leaves the device unless `includeDiagnostics` is on. */
 export const submitFeedback = async (
