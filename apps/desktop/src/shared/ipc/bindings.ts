@@ -223,6 +223,8 @@ export const commands = {
 	storageInfo: () => __TAURI_INVOKE<StorageInfo>("storage_info"),
 	/**  «Удалить старые журналы»: diagnostic logs of earlier days (the app's own files, not music). */
 	storageClearLogs: () => typedError<number, AppError>(__TAURI_INVOKE("storage_clear_logs")),
+	/**  Gives the UI only the non-sensitive lifecycle facts needed to offer a voluntary report. */
+	diagnosticsStatus: () => __TAURI_INVOKE<DiagnosticStatus>("diagnostics_status"),
 	/**
 	 *  «Моя волна» or another built-in profile (`seasonal` — «Сезонная волна», FR-SEAS-003) with
 	 *  optional «Настроить волну» filters: the engine picks and plays.
@@ -493,6 +495,16 @@ export type City = {
 	admin: string | null,
 	lat: number | null,
 	lon: number | null,
+};
+
+export type DiagnosticStatus = {
+	installationId: string,
+	sessionId: string,
+	/**
+	 *  A leftover marker means only that the previous process did not record an orderly exit.
+	 *  It is intentionally not called a crash.
+	 */
+	previousUncleanShutdown: boolean,
 };
 
 export type DupPair = {

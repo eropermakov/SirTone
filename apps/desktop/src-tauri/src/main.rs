@@ -82,6 +82,7 @@ fn main() {
     }
     let debug = cfg!(debug_assertions) || std::env::args().any(|a| a == "--debug");
     let _log_guard = diagnostics::init_logging(&data_dir, debug);
+    let diagnostic_session = diagnostics::DiagnosticSession::start(&data_dir);
     // TLS for the hub's Apple login (anisette websocket): one process-wide provider.
     let _ = rustls::crypto::ring::default_provider().install_default();
     diagnostics::install_panic_hook(data_dir.clone());
@@ -150,6 +151,7 @@ fn main() {
         .manage(ShownOnce(Arc::new(AtomicBool::new(autostart::started_minimized()))))
         .manage(tray::TrayMenu::default())
         .manage(settings)
+        .manage(diagnostic_session)
         .manage(spaces::Spaces::open())
         .invoke_handler(specta.invoke_handler())
         // Native file drop (D-07): paths stay in Rust and go to the library import (FR-IMP-001).
@@ -275,6 +277,9 @@ fn main() {
                 let _ = handle.global_shortcut().unregister_all();
                 if let Some(pb) = handle.try_state::<playback::Playback>() {
                     pb.shutdown();
+                }
+                if let Some(session) = handle.try_state::<diagnostics::DiagnosticSession>() {
+                    session.finish();
                 }
                 // A downloaded update installs on a full exit (docs/07 §9.3).
                 updates::install_on_exit(handle);

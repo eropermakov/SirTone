@@ -11,14 +11,128 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use serde::{Deserialize, Serialize};
+use tauri::State;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{Builder, Rotation};
 use tracing_subscriber::EnvFilter;
+use uuid::Uuid;
 
 const LOG_PREFIX: &str = "sirtone";
 const LOG_SUFFIX: &str = "log";
 const KEEP_FILES: usize = 7;
 const MAX_TOTAL_BYTES: u64 = 20 * 1024 * 1024;
+const DIAGNOSTICS_DIR: &str = "diagnostics";
+const INSTALLATION_ID_FILE: &str = "installation-id";
+const SESSION_MARKER_FILE: &str = "active-session.json";
+
+/// Identity and lifecycle state for the voluntary diagnostic report. This is deliberately
+/// separate from `tracing`: `tracing` remains the operational developer log, while this state
+/// has a stable, portable schema. Never call its disk-writing methods from an audio callback.
+#[derive(Debug, Clone)]
+pub struct DiagnosticSession {
+    installation_id: String,
+    session_id: String,
+    dir: PathBuf,
+    previous_unclean_shutdown: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticStatus {
+    pub installation_id: String,
+    pub session_id: String,
+    /// A leftover marker means only that the previous process did not record an orderly exit.
+    /// It is intentionally not called a crash.
+    pub previous_unclean_shutdown: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct SessionMarker<'a> {
+    schema_version: u8,
+    session_id: &'a str,
+    started_at_unix_ms: u128,
+}
+
+impl DiagnosticSession {
+    /// Opens one application session. Failures to persist are non-fatal: playback must never be
+    /// blocked by diagnostics, but the returned IDs are still useful for the current process.
+    pub fn start(data_dir: &Path) -> Self {
+        let dir = data_dir.join(DIAGNOSTICS_DIR);
+        let _ = fs::create_dir_all(&dir);
+        let id_path = dir.join(INSTALLATION_ID_FILE);
+        let installation_id = fs::read_to_string(&id_path)
+            .ok()
+            .and_then(|text| Uuid::parse_str(text.trim()).ok())
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| {
+                let id = Uuid::now_v7().to_string();
+                // A replace, rather than append, also repairs a truncated ID file safely.
+                let _ = fs::write(&id_path, format!("{id}\n"));
+                id
+            });
+        let marker = dir.join(SESSION_MARKER_FILE);
+        let previous_unclean_shutdown = marker.is_file();
+        let session_id = Uuid::now_v7().to_string();
+        let value = SessionMarker {
+            schema_version: 1,
+            session_id: &session_id,
+            started_at_unix_ms: unix_ms(),
+        };
+        if let Ok(bytes) = serde_json::to_vec(&value) {
+            // Windows does not replace an existing destination with `rename`. A small marker is
+            // deliberately overwritten after its fact has been recorded above; a partial marker
+            // is still conservatively treated as an unclean next launch.
+            let _ = fs::write(&marker, bytes);
+        }
+        Self {
+            installation_id,
+            session_id,
+            dir,
+            previous_unclean_shutdown,
+        }
+    }
+
+    pub fn status(&self) -> DiagnosticStatus {
+        DiagnosticStatus {
+            installation_id: self.installation_id.clone(),
+            session_id: self.session_id.clone(),
+            previous_unclean_shutdown: self.previous_unclean_shutdown,
+        }
+    }
+
+    /// Marks only this process's session as clean. A different marker is preserved rather than
+    /// hiding another process's diagnostic evidence.
+    pub fn finish(&self) {
+        let marker = self.dir.join(SESSION_MARKER_FILE);
+        let matches_current = fs::read_to_string(&marker)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+            .and_then(|v| {
+                v.get("session_id")
+                    .and_then(|id| id.as_str())
+                    .map(str::to_owned)
+            })
+            .is_some_and(|id| id == self.session_id);
+        if matches_current {
+            let _ = fs::remove_file(marker);
+        }
+    }
+}
+
+/// Gives the UI only the non-sensitive lifecycle facts needed to offer a voluntary report.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn diagnostics_status(session: State<'_, DiagnosticSession>) -> DiagnosticStatus {
+    session.status()
+}
+
+fn unix_ms() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+}
 
 /// Application data directory: `%LOCALAPPDATA%\SirTone` (installed mode, docs/03 §8.2);
 /// `Data` next to the exe in portable mode (T6.4).
@@ -254,6 +368,29 @@ mod tests {
             .collect();
         assert_eq!(left.len(), 2);
         assert!(!left.iter().any(|n| n == "sirtone.2026-10-10.log"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn installation_id_survives_and_session_id_changes() {
+        let dir = tmp("identity");
+        let one = DiagnosticSession::start(&dir);
+        one.finish();
+        let two = DiagnosticSession::start(&dir);
+        assert_eq!(one.status().installation_id, two.status().installation_id);
+        assert_ne!(one.status().session_id, two.status().session_id);
+        two.finish();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn leftover_marker_is_not_labeled_as_a_crash() {
+        let dir = tmp("unclean");
+        let one = DiagnosticSession::start(&dir);
+        drop(one); // Simulates a process that did not reach its orderly-exit handler.
+        let two = DiagnosticSession::start(&dir);
+        assert!(two.status().previous_unclean_shutdown);
+        two.finish();
         let _ = fs::remove_dir_all(dir);
     }
 }
