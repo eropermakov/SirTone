@@ -17,7 +17,7 @@
 ## Блокеры
 
 1. `cargo deny check` не проходит: RUSTSEC-2026-0545 и RUSTSEC-2026-0548 затрагивают `zip` 2.6.1 и 4.6.1; RUSTSEC-2026-0545…0548 — `zip` 8.6.0. Цепочки идут через `isideload`/`apple-codesign-quick` и `tauri-plugin-updater`. Нужен совместимый upgrade либо безопасное upstream-исправление с проверкой переноса iPhone и обновления Windows.
-2. Production Feedback API не развёрнут: нет домена/HTTPS endpoint, persistent TTL storage для dedupe/rate limit и SMTP credential в secret manager. Локальный тест не доказывает доставку в Gmail.
+2. Production Feedback API не развёрнут: нет домена/HTTPS endpoint, настроенного persistent audit path/salt и SMTP credential в secret manager. Локальный тест не доказывает доставку в Gmail.
 3. Нельзя подтвердить iOS-сборку или iPhone на физическом устройстве, установщик/обновление в изолированной среде и 24-часовое Windows-воспроизведение из этой среды.
 4. Полный Playwright smoke пока не зелёный: новые IPC mocks и feedback-сценарий проходят, но визуальные baselines требуют отдельной ревизии, а не автоматического перезаписывания.
 
