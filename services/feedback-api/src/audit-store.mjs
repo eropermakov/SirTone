@@ -122,10 +122,15 @@ async function readState(path) {
     const candidate = JSON.parse(await readFile(path, "utf8"));
     if (candidate?.schemaVersion === 1 && candidate.deliveries && candidate.attempts)
       return candidate;
-  } catch {
-    // A corrupted audit file is replaced. It contains no support content to recover.
+    throw new Error("feedback audit store has an unsupported schema");
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return { schemaVersion: 1, deliveries: {}, attempts: {} };
+    }
+    // Replacing a malformed store would forget delivered IDs and could send duplicate support
+    // emails. Fail closed until an operator restores or deliberately rotates this tiny audit file.
+    throw new Error("feedback audit store is unreadable", { cause: error });
   }
-  return { schemaVersion: 1, deliveries: {}, attempts: {} };
 }
 
 function prune(state, now) {

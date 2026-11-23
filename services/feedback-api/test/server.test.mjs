@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -211,6 +211,39 @@ test("persistent audit store survives restart without storing an IP or report co
     const stored = await readFile(path, "utf8");
     assert.doesNotMatch(stored, /127\.0\.0\.1|Не включается|reader@example/);
   } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("a corrupt persistent audit store fails closed before delivery", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "sirtone-feedback-audit-corrupt-"));
+  const path = join(directory, "audit.json");
+  let server;
+  try {
+    await writeFile(path, "not json");
+    const audit = new FileAuditStore({ path, salt: "test-only-audit-salt-with-enough-length" });
+    const mailer = new MemoryMailer();
+    server = createFeedbackServer({ mailer, supportTo: "sir.kov.mail@gmail.com", audit });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/v1/feedback/reports`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "bug",
+        message: "Проверка fail closed",
+        reportId: REPORT_ID,
+        platform: "Windows",
+        version: "0.2.7",
+      }),
+    });
+    assert.equal(response.status, 500);
+    assert.equal(mailer.messages.length, 0);
+  } finally {
+    if (server) {
+      server.close();
+      await once(server, "close");
+    }
     await rm(directory, { recursive: true, force: true });
   }
 });

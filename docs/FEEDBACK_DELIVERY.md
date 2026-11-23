@@ -47,7 +47,7 @@ FEEDBACK_AUDIT_SALT=generate-a-long-random-secret-in-the-secret-manager
 1. Развернуть сервис за HTTPS reverse proxy и ограничить допустимые origin/rate limit на proxy.
 2. Создать отдельный SMTP submission credential у почтового провайдера и поместить его в secret manager. Для обычного SMTP submission задайте одновременно `FEEDBACK_SMTP_USERNAME` и `FEEDBACK_SMTP_PASSWORD`: transport использует стандартный `AUTH PLAIN` только внутри implicit TLS (`FEEDBACK_SMTP_SECURE=true`). Для relay с IP allow-list оба поля можно не задавать. Никогда не включайте credentials при тестовом plaintext localhost-транспорте.
 3. Выполнить тестовое обращение, подтвердить письмо в `sir.kov.mail@gmail.com` и проверить Reply-To.
-4. Настроить `FEEDBACK_AUDIT_PATH` на каталог, доступный только service account, а `FEEDBACK_AUDIT_SALT` — в secret manager. Встроенный file-backed store хранит 30 дней только Report ID, UTC-время и salted IP hashes; ни тела, ZIP, email, SMTP secrets или IP в открытом виде там нет. Один экземпляр сервиса поддерживается сразу; для нескольких replicas замените его эквивалентным общим транзакционным TTL-store.
+4. Настроить `FEEDBACK_AUDIT_PATH` на каталог, доступный только service account, а `FEEDBACK_AUDIT_SALT` — в secret manager. Встроенный file-backed store хранит 30 дней только Report ID, UTC-время и salted IP hashes; ни тела, ZIP, email, SMTP secrets или IP в открытом виде там нет. При повреждённом или неподдерживаемом файле сервис отказывает в доставке (fail closed), чтобы не забыть уже отправленные ID: восстановите файл из резервной копии либо осознанно начните новый audit store. Один экземпляр сервиса поддерживается сразу; для нескольких replicas замените его эквивалентным общим транзакционным TTL-store.
 
 ## Защита
 
