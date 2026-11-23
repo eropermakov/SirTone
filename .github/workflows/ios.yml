@@ -1,0 +1,51 @@
+# Build-only iOS gate. It is deliberately separate from the release/mobile template:
+# no signing identity, Apple ID, device access, artifact publication or Android work is involved.
+name: iOS build
+
+on:
+  pull_request:
+    paths:
+      - "crates/**"
+      - "apps/mobile-ios/**"
+      - "design/**"
+      - "scripts/build-ios-core.sh"
+      - "scripts/tokens.mjs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ios-build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check generated design tokens
+        run: node scripts/tokens.mjs --check-gen
+      - name: Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ios-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+      - name: Core XCFramework and Swift bindings
+        run: bash scripts/build-ios-core.sh
+      - name: Swift simulator build
+        working-directory: apps/mobile-ios
+        run: |
+          xcodebuild -scheme SirTone -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ../../target/xcode-sim CODE_SIGNING_ALLOWED=NO build
