@@ -23,7 +23,8 @@ mod transfer;
 mod wave;
 
 use sirtone_audio::engine::NextTrack as EngineNext;
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -33,7 +34,7 @@ use sirtone_audio::{EngineCmd, EngineEvent, PlayState};
 
 fn usage() -> ExitCode {
     eprintln!(
-        "sirtone-cli {}\nusage: sirtone-cli probe <file>... | play <file> [--volume 0..1] | render <file>... --out <wav> [--rate N] [--volume V] | soak --minutes N [--volume V] <file>... | latency [--runs N] <file> | drift --minutes N <file> | import <root> [src]... | verify <root> | wave calendar <year> | wave coverage <library.db copy> [days] | smtc [toggle <title>] | fuzz --minutes N [--out DIR] | transfer export|import ... | phone list|wifi-find | phone login|adopt|forget <apple-id> | phone install <apple-id> <udid|usb> <app> | phone renew <apple-id> <udid|usb> | phone wifi-pair|send|pull-library <udid|usb> ... | phone bonjour <_svc._tcp.local>",
+        "sirtone-cli {}\nusage: sirtone-cli probe <file>... | play <file> [--volume 0..1] | render <file>... --out <wav> [--rate N] [--volume V] | soak --minutes N [--volume V] <file>... | latency [--runs N] <file> | drift --minutes N <file> | diagnostics inspect <report.zip> [--json] | import <root> [src]... | verify <root> | wave calendar <year> | wave coverage <library.db copy> [days] | smtc [toggle <title>] | fuzz --minutes N [--out DIR] | transfer export|import ... | phone list|wifi-find | phone login|adopt|forget <apple-id> | phone install <apple-id> <udid|usb> <app> | phone renew <apple-id> <udid|usb> | phone wifi-pair|send|pull-library <udid|usb> ... | phone bonjour <_svc._tcp.local>",
         env!("CARGO_PKG_VERSION")
     );
     ExitCode::from(2)
@@ -298,6 +299,101 @@ fn similar(files: &[String]) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+const REPORT_FILES: [&str; 6] = [
+    "summary.txt",
+    "manifest.json",
+    "environment.json",
+    "events.jsonl",
+    "errors.json",
+    "README.txt",
+];
+const MAX_REPORT_BYTES: u64 = 5 * 1024 * 1024;
+const MAX_ENTRY_BYTES: u64 = 4 * 1024 * 1024;
+
+struct InspectedReport {
+    summary: String,
+    manifest: serde_json::Value,
+    errors: serde_json::Value,
+    events: Vec<serde_json::Value>,
+}
+
+/// Opens only SirTone's six portable report files. It never extracts an untrusted archive to
+/// disk and rejects oversized or compressed entries before reading them.
+fn inspect_report(path: &Path) -> Result<InspectedReport, String> {
+    let metadata = std::fs::metadata(path).map_err(|error| error.to_string())?;
+    if metadata.len() > MAX_REPORT_BYTES {
+        return Err("report exceeds 5 MiB limit".to_owned());
+    }
+    let file = std::fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|error| error.to_string())?;
+    if archive.len() != REPORT_FILES.len() {
+        return Err("report has an unexpected file count".to_owned());
+    }
+    let mut contents = std::collections::BTreeMap::new();
+    for name in REPORT_FILES {
+        let mut entry = archive
+            .by_name(name)
+            .map_err(|_| format!("report lacks {name}"))?;
+        if entry.size() > MAX_ENTRY_BYTES || entry.compression() != zip::CompressionMethod::Stored {
+            return Err(format!(
+                "report entry {name} is not an allowed stored entry"
+            ));
+        }
+        let mut text = String::new();
+        entry
+            .read_to_string(&mut text)
+            .map_err(|error| format!("cannot read {name}: {error}"))?;
+        contents.insert(name, text);
+    }
+    let manifest = serde_json::from_str(contents["manifest.json"].as_str())
+        .map_err(|error| format!("invalid manifest: {error}"))?;
+    let errors = serde_json::from_str(contents["errors.json"].as_str())
+        .map_err(|error| format!("invalid errors: {error}"))?;
+    let events = contents["events.jsonl"]
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_str(line).map_err(|error| format!("invalid event: {error}")))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(InspectedReport {
+        summary: contents["summary.txt"].clone(),
+        manifest,
+        errors,
+        events,
+    })
+}
+
+fn diagnostics_inspect(path: &str, json: bool) -> ExitCode {
+    let report = match inspect_report(Path::new(path)) {
+        Ok(report) => report,
+        Err(error) => {
+            eprintln!("diagnostics: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "summary": report.summary,
+                "manifest": report.manifest,
+                "errors": report.errors,
+                "events": report.events,
+            })
+        );
+    } else {
+        print!("{}", report.summary);
+        println!("\nEvents: {}", report.events.len());
+        for event in &report.events {
+            let timestamp = event["timestamp_utc"].as_str().unwrap_or("?");
+            let level = event["level"].as_str().unwrap_or("?");
+            let event_id = event["event_id"].as_str().unwrap_or("?");
+            let code = event["error_code"].as_str().unwrap_or("-");
+            println!("{timestamp}\t{level}\t{event_id}\t{code}");
+        }
+    }
+    ExitCode::SUCCESS
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
@@ -329,6 +425,11 @@ fn main() -> ExitCode {
         }
         Some("transfer") if args.get(1).map(String::as_str) == Some("import") && args.len() > 3 => {
             transfer::import(&args[2], &args[3])
+        }
+        Some("diagnostics")
+            if args.get(1).map(String::as_str) == Some("inspect") && args.len() > 2 =>
+        {
+            diagnostics_inspect(&args[2], args.iter().any(|arg| arg == "--json"))
         }
         Some("phone") if args.get(1).map(String::as_str) == Some("list") => phone_list(),
         Some("phone") if args.get(1).map(String::as_str) == Some("wifi-find") => phone::wifi_find(),
@@ -417,4 +518,60 @@ fn phone_list() -> ExitCode {
         println!("no phones");
     }
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod diagnostics_tests {
+    use super::*;
+    use std::io::Write;
+
+    fn report_path(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "sirtone-cli-{label}-{}-{}.zip",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    fn write_report(path: &Path, names: &[&str]) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        for name in names {
+            archive.start_file(name, options).unwrap();
+            let content = match *name {
+                "summary.txt" => "SIRTONE Diagnostic Report\nReport ID: test\n",
+                "manifest.json" => "{\"report_id\":\"test\"}",
+                "environment.json" => "{\"os\":\"Windows\"}",
+                "events.jsonl" => "{\"event_id\":\"APP_STARTED\",\"level\":\"INFO\"}\n",
+                "errors.json" => "[]",
+                "README.txt" => "format 1\n",
+                _ => unreachable!(),
+            };
+            archive.write_all(content.as_bytes()).unwrap();
+        }
+        archive.finish().unwrap();
+    }
+
+    #[test]
+    fn inspects_the_portable_report_without_extracting_it() {
+        let path = report_path("valid");
+        write_report(&path, &REPORT_FILES);
+        let report = inspect_report(&path).unwrap();
+        assert_eq!(report.manifest["report_id"], "test");
+        assert_eq!(report.events.len(), 1);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn rejects_an_incomplete_report() {
+        let path = report_path("incomplete");
+        write_report(&path, &REPORT_FILES[..5]);
+        assert!(inspect_report(&path).is_err());
+        let _ = std::fs::remove_file(path);
+    }
 }
