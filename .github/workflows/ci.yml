@@ -40,6 +40,7 @@ jobs:
           cargo nextest run --workspace --no-tests=warn
       - name: JavaScript gates
         run: |
+          node scripts/tokens.mjs --check-gen
           pnpm lint
           pnpm typecheck
           pnpm test
