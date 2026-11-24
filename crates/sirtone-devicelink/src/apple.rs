@@ -673,6 +673,30 @@ mod tests {
         archive.finish().unwrap();
     }
 
+    fn write_ipa_with_symlink(path: &Path) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        let regular = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        archive
+            .start_file("Payload/SirTone.app/Info.plist", regular)
+            .unwrap();
+        archive.write_all(b"test").unwrap();
+        // The downstream isideload version extracts archives with an older ZIP crate. Its
+        // extractor is never allowed to see symlink entries: validate_ipa rejects this archive
+        // with the fixed reader before handing it over.
+        // ZIP stores the Unix mode in the high 16 bits of external attributes; unlike
+        // unix_permissions(), this retains the S_IFLNK file-type bit.
+        let symlink = regular
+            .system(zip::System::Unix)
+            .external_attributes(0o120777 << 16);
+        archive
+            .start_file("Payload/SirTone.app/escape", symlink)
+            .unwrap();
+        archive.write_all(b"../../outside").unwrap();
+        archive.finish().unwrap();
+    }
+
     #[test]
     fn ipa_preflight_requires_one_safe_bundle() {
         let valid = ipa_path("valid");
@@ -720,6 +744,11 @@ mod tests {
         );
         assert_eq!(validate_ipa(&multiple).unwrap_err().code(), "phone.install");
         let _ = std::fs::remove_file(multiple);
+
+        let symlink = ipa_path("symlink");
+        write_ipa_with_symlink(&symlink);
+        assert_eq!(validate_ipa(&symlink).unwrap_err().code(), "phone.install");
+        let _ = std::fs::remove_file(symlink);
     }
 
     #[test]
