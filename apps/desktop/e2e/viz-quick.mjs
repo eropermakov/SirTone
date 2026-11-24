@@ -43,7 +43,10 @@ const invoke = (cmd, args) =>
 await invoke("settings_patch", { patch: { onboarding: { done: true, tips_seen: true } } });
 await page.reload();
 await page.waitForSelector("footer");
-await invoke("import_paths", { paths: [join(root, "fixtures", "generated", "import500", "Air")] });
+await invoke("import_paths", {
+  paths: [join(root, "fixtures", "generated", "import500", "Air")],
+  quality: "original",
+});
 await page.getByRole("button", { name: "Продолжить" }).click();
 await page.getByRole("status").filter({ hasText: "Музыка добавлена" }).waitFor({ timeout: 60000 });
 await page.getByRole("navigation").getByRole("button", { name: "Мой поток" }).click();

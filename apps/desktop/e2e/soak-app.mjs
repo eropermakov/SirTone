@@ -159,7 +159,7 @@ try {
     });
     await page.reload();
     await page.waitForSelector("footer");
-    await invoke("import_paths", { paths: [first] });
+    await invoke("import_paths", { paths: [first], quality: "original" });
     await page.getByRole("button", { name: "Продолжить" }).click();
     await page
       .getByRole("status")
@@ -193,7 +193,7 @@ try {
       } else {
         const dir = batch(2);
         await withPage(async (page, invoke) => {
-          await invoke("import_paths", { paths: [dir] });
+          await invoke("import_paths", { paths: [dir], quality: "original" });
           await page
             .getByRole("button", { name: "Продолжить" })
             .click({ timeout: 10000 })

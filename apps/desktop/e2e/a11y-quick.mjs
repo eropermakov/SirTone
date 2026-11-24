@@ -98,7 +98,7 @@ try {
   await invoke("settings_patch", { patch: { onboarding: { done: true, tips_seen: true } } });
   await page.reload();
   await page.waitForSelector("footer");
-  await invoke("import_paths", { paths: [join(dataDir, "in", "Artist")] });
+  await invoke("import_paths", { paths: [join(dataDir, "in", "Artist")], quality: "original" });
   await page.getByRole("button", { name: "Продолжить" }).click();
   await page
     .getByRole("status")

@@ -151,7 +151,7 @@ try {
   await page.reload();
   await page.waitForSelector("footer");
   const paths = titles.map((_, i) => join(src, `Artist ${i}`));
-  await invoke("import_paths", { paths });
+  await invoke("import_paths", { paths, quality: "original" });
   await page.getByRole("button", { name: "Продолжить" }).click();
   await page
     .getByRole("status")

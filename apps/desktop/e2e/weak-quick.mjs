@@ -156,7 +156,7 @@ try {
   );
 
   // —— auto-degrade on a weak machine set too high ——
-  await invoke("import_paths", { paths: [join(dataDir, "in", "Artist")] });
+  await invoke("import_paths", { paths: [join(dataDir, "in", "Artist")], quality: "original" });
   await page.getByRole("button", { name: "Продолжить" }).click();
   await page
     .getByRole("status")

@@ -63,7 +63,7 @@ try {
   await invoke("settings_patch", { patch: { onboarding: { done: true, tips_seen: true } } });
   await page.reload();
   await page.waitForSelector("footer");
-  await invoke("import_paths", { paths: [src] });
+  await invoke("import_paths", { paths: [src], quality: "original" });
   await page.getByRole("button", { name: "Продолжить" }).click();
   await page
     .getByRole("status")
@@ -168,7 +168,7 @@ try {
   // measured in the background, the plan becomes L3 (a stretch in the log), no silence.
   copyFileSync(join(sig, "click-120.wav"), join(src, "03 clicks 120.wav"));
   copyFileSync(join(sig, "click-128.wav"), join(src, "04 clicks 128.wav"));
-  await invoke("import_paths", { paths: [src] });
+  await invoke("import_paths", { paths: [src], quality: "original" });
   let clicks = [];
   for (let i = 0; i < 240; i++) {
     clicks = db("SELECT id, title, bpm FROM track WHERE title LIKE 'clicks%' ORDER BY title");

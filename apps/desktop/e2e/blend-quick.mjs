@@ -79,7 +79,7 @@ try {
   await page.reload();
   await page.waitForSelector("footer");
   await invoke("playback_set_volume", { volume: 0.05 });
-  await invoke("import_paths", { paths: [src] });
+  await invoke("import_paths", { paths: [src], quality: "original" });
   await page.getByRole("button", { name: "Продолжить" }).click();
   await page
     .getByRole("status")

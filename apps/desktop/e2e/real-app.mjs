@@ -313,7 +313,7 @@ check("second launch forwards the file", t2 === "flac-16-44", t2);
 // 9. Library (Stage 1): import without a folder → «Папка для музыки»; folder set → import runs,
 //    report; Albums → album → double click plays the context; «вперёд» moves on.
 if (existsSync(corpus)) {
-  const start = await invoke("import_paths", { paths: [corpus] });
+  const start = await invoke("import_paths", { paths: [corpus], quality: "original" });
   check("import without a folder asks for one", start === "rootNeeded", String(start));
   await page.getByRole("heading", { name: "Папка для музыки" }).waitFor({ timeout: 3000 });
   check("folder panel shown", true);
@@ -385,14 +385,23 @@ if (existsSync(corpus)) {
   check("double click plays the track", playing === firstTitle, `${playing} / ${firstTitle}`);
   // T1.23: Windows media controls (flyout, media keys, widgets) show the track and their ⏯
   // reaches the player — on this isolated instance only (matched by the track title).
-  const smtcList = spawnSync(cli, ["smtc"], { encoding: "utf8" }).stdout;
-  check("media controls show the track", smtcList.includes(playing), smtcList.trim());
-  spawnSync(cli, ["smtc", "toggle", playing], { encoding: "utf8" });
-  await sleep(600);
-  const paused = await invoke("playback_snapshot", {});
-  check("media-controls ⏯ pauses", paused.state === "paused", paused.state);
-  spawnSync(cli, ["smtc", "toggle", playing], { encoding: "utf8" });
-  await sleep(600);
+  if (existsSync(cli)) {
+    const smtc = spawnSync(cli, ["smtc"], { encoding: "utf8" });
+    const smtcList = smtc.stdout ?? "";
+    check(
+      "media controls show the track",
+      smtcList.includes(playing),
+      smtcList.trim() || smtc.stderr,
+    );
+    spawnSync(cli, ["smtc", "toggle", playing], { encoding: "utf8" });
+    await sleep(600);
+    const paused = await invoke("playback_snapshot", {});
+    check("media-controls ⏯ pauses", paused.state === "paused", paused.state);
+    spawnSync(cli, ["smtc", "toggle", playing], { encoding: "utf8" });
+    await sleep(600);
+  } else {
+    console.log("SKIP  media-controls checks (build `cargo build -p sirtone-cli --release`)");
+  }
   // The album continues by itself (gapless handoff from the queue): no button pressed.
   const auto = await page
     .waitForFunction(
@@ -2019,7 +2028,7 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
     }
     writeFileSync(join(at04Dir, "Сплин - Романс.wav"), buf);
   }
-  await invoke("import_paths", { paths: [at04Dir] });
+  await invoke("import_paths", { paths: [at04Dir], quality: "original" });
   const at04Row = () => {
     const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
     try {
@@ -2313,7 +2322,7 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
       "language=rus",
       join(langDir, "lesnik.mp3"),
     ]);
-    await invoke("import_paths", { paths: [langDir] });
+    await invoke("import_paths", { paths: [langDir], quality: "original" });
     const langRow = () => {
       const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
       try {
@@ -2344,7 +2353,10 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
 
   // AT-12 (T3.11, FR-IMP-007): a 3-hour mix lands in «Неизвестные» as «возможно, не трек»;
   // «нормальный» + an artist for it (the bulk action) moves it, and it goes into a playlist.
-  await invoke("import_paths", { paths: [join(fixtures, "long", "mix-3h.mp3")] });
+  await invoke("import_paths", {
+    paths: [join(fixtures, "long", "mix-3h.mp3")],
+    quality: "original",
+  });
   const mixRow = () => {
     const db = new DatabaseSync(join(libDir, ".sirtone", "library.db"), { readOnly: true });
     try {
@@ -2456,7 +2468,7 @@ check(
 );
 
 // T1.23 «при закрытом окне»: ✕ hides the window, media controls still drive the player.
-if (existsSync(join(libDir, ".sirtone", "library.db"))) {
+if (existsSync(join(libDir, ".sirtone", "library.db")) && existsSync(cli)) {
   // The longest track, so it is still playing while the window is closed.
   const page1 = await invoke("collection_tracks", { after: null, limit: 200 });
   const longest = page1.rows.reduce((a, b) => (b.durationMs > a.durationMs ? b : a));
@@ -2485,6 +2497,8 @@ if (existsSync(join(libDir, ".sirtone", "library.db"))) {
     afterClose === "hidden" && st2.state === "paused",
     `${afterClose}, ${st2.state}; want «${playingNow}»; toggle exit ${tog.status} ${tog.stderr}; smtc: ${seen}`,
   );
+} else if (existsSync(join(libDir, ".sirtone", "library.db"))) {
+  console.log("SKIP  closed-window media-controls check (sirtone-cli is not built)");
 }
 
 // 10. Autostart launches with --minimized (T1.24): straight to the tray, no window shown.

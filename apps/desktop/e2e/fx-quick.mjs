@@ -85,6 +85,7 @@ try {
   await page.waitForSelector("footer");
   await invoke("import_paths", {
     paths: [join(root, "fixtures", "generated", "import500", "Air")],
+    quality: "original",
   });
   await page.getByRole("button", { name: "Продолжить" }).click();
   await page

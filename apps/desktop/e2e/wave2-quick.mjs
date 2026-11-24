@@ -81,6 +81,7 @@ try {
   await page.waitForSelector("footer");
   await invoke("import_paths", {
     paths: Array.from({ length: N }, (_, i) => join(src, `Artist ${i}`)),
+    quality: "original",
   });
   await page.getByRole("button", { name: "Продолжить" }).click();
   await page

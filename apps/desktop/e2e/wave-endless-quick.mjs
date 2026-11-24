@@ -92,7 +92,7 @@ try {
   });
   await page.reload();
   await page.waitForSelector("footer");
-  await invoke("import_paths", { paths: [dir] });
+  await invoke("import_paths", { paths: [dir], quality: "original" });
   await page.getByRole("button", { name: "Продолжить" }).click();
   await page
     .getByRole("status")

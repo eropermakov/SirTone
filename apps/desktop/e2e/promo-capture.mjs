@@ -187,7 +187,10 @@ try {
   await page.waitForSelector("footer");
   await viewport();
   await setLook("dark", "sirkov");
-  await invoke("import_paths", { paths: ALBUMS.map(([a]) => join(dataDir, "in", a)) });
+  await invoke("import_paths", {
+    paths: ALBUMS.map(([a]) => join(dataDir, "in", a)),
+    quality: "original",
+  });
   await page.getByRole("button", { name: "Продолжить" }).click();
   await page
     .getByRole("status")

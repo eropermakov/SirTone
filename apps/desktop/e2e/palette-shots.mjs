@@ -128,7 +128,10 @@ try {
   await page.reload();
   await page.waitForSelector("footer");
   console.log("step: import");
-  await invoke("import_paths", { paths: ALBUMS.map((a) => join(dataDir, "in", a.artist)) });
+  await invoke("import_paths", {
+    paths: ALBUMS.map((a) => join(dataDir, "in", a.artist)),
+    quality: "original",
+  });
   await page.getByRole("button", { name: "Продолжить" }).click();
   await page
     .getByRole("status")

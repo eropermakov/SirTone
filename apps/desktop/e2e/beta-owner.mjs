@@ -95,7 +95,7 @@ try {
   await invoke("playback_set_volume", { volume: 0.05 });
 
   const t0 = Date.now();
-  await invoke("import_paths", { paths: [inDir] });
+  await invoke("import_paths", { paths: [inDir], quality: "original" });
   await page.getByRole("button", { name: "Продолжить" }).click();
   await page
     .getByRole("status")
