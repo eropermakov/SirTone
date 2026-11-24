@@ -14,7 +14,7 @@
 //! reaches errors or logs: errors keep the first line of a report only (its attachments may carry
 //! Apple plists), and callers cap `isideload` at WARN and `apple_codesign` at ERROR.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use idevice::usbmuxd::{Connection, UsbmuxdAddr, UsbmuxdConnection};
 use isideload::anisette::remote_v3::RemoteV3AnisetteProvider;
@@ -41,6 +41,81 @@ pub const SPIKE_SERVICE: &str = "sirtone-p4";
 const MACHINE: &str = "SirTone-PC";
 /// Anisette servers (D-133, Q-26): tried in order. One for now — more after П4б.
 const ANISETTE: &[&str] = &["https://ani.iloader.app"];
+
+/// The IPA has already had its channel signature checked by the hub, but the CLI also accepts a
+/// local file. Validate it with the fixed ZIP reader before passing it to isideload's older ZIP
+/// extractor. No entry is extracted here.
+fn validate_ipa(app: &Path) -> Result<(), LinkError> {
+    if !app
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("ipa"))
+    {
+        return Ok(());
+    }
+    let file = std::fs::File::open(app)
+        .map_err(|_| LinkError::Apple("phone.install", "ipa_open".into()))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|_| LinkError::Apple("phone.install", "ipa_zip".into()))?;
+    archive
+        .validate_header_consistency()
+        .map_err(|_| LinkError::Apple("phone.install", "ipa_headers".into()))?;
+
+    let mut bundle_root: Option<PathBuf> = None;
+    let mut saw_info_plist = false;
+    for index in 0..archive.len() {
+        let entry = archive
+            .by_index(index)
+            .map_err(|_| LinkError::Apple("phone.install", "ipa_entry".into()))?;
+        if entry.is_symlink() {
+            return Err(LinkError::Apple("phone.install", "ipa_symlink".into()));
+        }
+        let Some(path) = entry.enclosed_name() else {
+            return Err(LinkError::Apple("phone.install", "ipa_path".into()));
+        };
+        if path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        }) {
+            return Err(LinkError::Apple("phone.install", "ipa_path".into()));
+        }
+        let mut parts = path.components();
+        let Some(Component::Normal(payload)) = parts.next() else {
+            return Err(LinkError::Apple("phone.install", "ipa_layout".into()));
+        };
+        if payload != "Payload" {
+            return Err(LinkError::Apple("phone.install", "ipa_layout".into()));
+        }
+        let Some(Component::Normal(bundle)) = parts.next() else {
+            if entry.is_dir() && path == Path::new("Payload") {
+                continue;
+            }
+            return Err(LinkError::Apple("phone.install", "ipa_layout".into()));
+        };
+        if !bundle.to_string_lossy().ends_with(".app") {
+            return Err(LinkError::Apple("phone.install", "ipa_layout".into()));
+        }
+        let root = PathBuf::from("Payload").join(bundle);
+        if let Some(previous) = &bundle_root {
+            if previous != &root {
+                return Err(LinkError::Apple(
+                    "phone.install",
+                    "ipa_multiple_apps".into(),
+                ));
+            }
+        } else {
+            bundle_root = Some(root.clone());
+        }
+        if path == root.join("Info.plist") {
+            saw_info_plist = true;
+        }
+    }
+    if bundle_root.is_none() || !saw_info_plist {
+        return Err(LinkError::Apple("phone.install", "ipa_layout".into()));
+    }
+    Ok(())
+}
 
 fn sha_hex(s: &str) -> String {
     let d = Sha256::digest(s.trim().to_lowercase().as_bytes());
@@ -328,6 +403,7 @@ pub async fn install(
     if !app.exists() {
         return Err(LinkError::Apple("phone.app_missing", String::new()));
     }
+    validate_ipa(app)?;
     let started = std::time::Instant::now();
     // The cable first; without the Apple service or the cable — Wi-Fi, if set up.
     let cable = match UsbmuxdConnection::default().await {
@@ -572,6 +648,79 @@ pub async fn renew(apple_id: &str, udid: &str) -> Result<String, LinkError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+
+    fn ipa_path(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "sirtone-ipa-{label}-{}-{}.ipa",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    fn write_ipa(path: &Path, entries: &[&str]) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        for entry in entries {
+            archive.start_file(*entry, options).unwrap();
+            archive.write_all(b"test").unwrap();
+        }
+        archive.finish().unwrap();
+    }
+
+    #[test]
+    fn ipa_preflight_requires_one_safe_bundle() {
+        let valid = ipa_path("valid");
+        write_ipa(
+            &valid,
+            &[
+                "Payload/SirTone.app/Info.plist",
+                "Payload/SirTone.app/SirTone",
+            ],
+        );
+        assert!(validate_ipa(&valid).is_ok());
+        let _ = std::fs::remove_file(valid);
+
+        let inconsistent = ipa_path("inconsistent");
+        write_ipa(
+            &inconsistent,
+            &[
+                "Payload/SirTone.app/Info.plist",
+                "Payload/SirTone.app/SirTone",
+            ],
+        );
+        let mut bytes = std::fs::read(&inconsistent).unwrap();
+        // A ZIP local header starts at byte 0 and its filename at byte 30. Keep the length the
+        // same but make it disagree with the central-directory name.
+        bytes[30] = b'X';
+        std::fs::write(&inconsistent, bytes).unwrap();
+        assert_eq!(
+            validate_ipa(&inconsistent).unwrap_err().code(),
+            "phone.install"
+        );
+        let _ = std::fs::remove_file(inconsistent);
+
+        let malformed = ipa_path("malformed");
+        write_ipa(&malformed, &["not-an-ipa.txt"]);
+        assert_eq!(
+            validate_ipa(&malformed).unwrap_err().code(),
+            "phone.install"
+        );
+        let _ = std::fs::remove_file(malformed);
+
+        let multiple = ipa_path("multiple");
+        write_ipa(
+            &multiple,
+            &["Payload/One.app/Info.plist", "Payload/Two.app/Info.plist"],
+        );
+        assert_eq!(validate_ipa(&multiple).unwrap_err().code(), "phone.install");
+        let _ = std::fs::remove_file(multiple);
+    }
 
     #[test]
     fn iso_dates_become_unix_ms() {

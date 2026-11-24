@@ -25,6 +25,7 @@ base64 = "0.22"
 isideload = { version = "=0.5.2", default-features = false, features = ["install", "keyring-storage", "tokio-mt"] }
 rootcause = "0.12"
 sha2 = "0.10"
+zip = { workspace = true }
 
 # П4б: Bonjour browse through Windows' own DNS-SD (dnsapi `DnsServiceBrowse`).
 [target.'cfg(windows)'.dependencies]
