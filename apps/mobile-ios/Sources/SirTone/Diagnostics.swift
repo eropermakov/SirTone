@@ -98,7 +98,7 @@ actor Diagnostics {
         let event = DiagnosticEvent(
             schemaVersion: 1, timestampUtc: ISO8601DateFormatter().string(from: Date()), level: atom(level),
             eventID: atom(eventID), sessionID: sessionID, platform: "ios", appVersion: appVersion,
-            buildID: buildID, releaseChannel: "development", component: atom(component), operation: atom(operation),
+            buildID: buildID, releaseChannel: releaseChannel, component: atom(component), operation: atom(operation),
             errorCode: errorCode.map(atom), reportID: reportID.map(atom), message: atom(eventID),
             technicalContext: allowed(context), recoverable: recoverable)
         guard let line = try? JSONEncoder().encode(event) else { return }
@@ -106,7 +106,7 @@ actor Diagnostics {
         if !FileManager.default.fileExists(atPath: file.path) { FileManager.default.createFile(atPath: file.path, contents: nil) }
         if let handle = try? FileHandle(forWritingTo: file) {
             defer { try? handle.close() }
-            try? handle.seekToEnd()
+            _ = try? handle.seekToEnd()
             try? handle.write(contentsOf: line + Data([10]))
         }
         enforceRetention()
@@ -221,7 +221,7 @@ actor Diagnostics {
     private func recentEvents() -> [DiagnosticEvent] {
         let cutoff = Date().addingTimeInterval(-86_400)
         let files = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        return files.filter { $0.lastPathComponent.hasPrefix("events-") }.flatMap { url in
+        return files.filter { $0.lastPathComponent.hasPrefix("events-") }.flatMap { url -> [DiagnosticEvent] in
             guard let text = try? String(contentsOf: url) else { return [] }
             return text.split(separator: "\n").compactMap { try? JSONDecoder().decode(DiagnosticEvent.self, from: Data($0.utf8)) }
         }.filter { ISO8601DateFormatter().date(from: $0.timestampUtc).map { $0 >= cutoff } ?? false }
@@ -265,7 +265,13 @@ private enum StoredZip {
         out.u32(0x06054b50); out.u16(0); out.u16(0); out.u16(UInt16(entries.count)); out.u16(UInt16(entries.count)); out.u32(UInt32(directory.count)); out.u32(centralOffset); out.u16(0)
         try out.write(to: url, options: .atomic)
     }
-    static func crc32(_ data: Data) -> UInt32 { data.reduce(UInt32.max) { crc, byte in (0..<8).reduce(crc ^ UInt32(byte)) { ($0 >> 1) ^ (($0 & 1 == 1) ? 0xedb88320 : 0) } } ^ UInt32.max }
+    static func crc32(_ data: Data) -> UInt32 {
+        data.reduce(UInt32.max) { crc, byte in
+            (0..<8).reduce(crc ^ UInt32(byte)) { value, _ in
+                (value >> 1) ^ ((value & 1 == 1) ? 0xedb88320 : 0)
+            }
+        } ^ UInt32.max
+    }
 }
 
 private extension Data {

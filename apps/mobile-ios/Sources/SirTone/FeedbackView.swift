@@ -53,7 +53,7 @@ struct FeedbackView: View {
                     .disabled(sending || message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .foregroundStyle(p.accent.text)
                 if !result.isEmpty { Text(verbatim: result).foregroundStyle(p.textSecondary) }
-                if canSendMail, let export {
+                if canSendMail, export != nil {
                     Button(L.t("feedback.mail_fallback")) { showMail = true }.foregroundStyle(p.accent.text)
                 }
             }
@@ -94,7 +94,7 @@ struct FeedbackView: View {
         sending = true; result = ""
         Task {
             do {
-                let report = if includeDiagnostics {
+                let report: DiagnosticReport? = if includeDiagnostics {
                     try await Diagnostics.shared.exportReport(userMessage: message)
                 } else {
                     nil

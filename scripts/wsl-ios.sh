@@ -9,6 +9,10 @@
 # Usage (from Windows): wsl -d Ubuntu-24.04 -- bash -lc "bash /mnt/d/SirVault/SirTone-mobile/scripts/wsl-ios.sh core|app|package"
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# `wsl ... bash -lc` does not always source the interactive profile where Rust and Swiftly are
+# installed. Keep the build runnable from the documented Windows command as well.
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+[ -f "$HOME/.local/share/swiftly/env.sh" ] && . "$HOME/.local/share/swiftly/env.sh"
 case "${1:-}" in
   core)
     SDK="$HOME/.swiftpm/swift-sdks/darwin.artifactbundle/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
