@@ -67,6 +67,15 @@ try { pnpm tauri build @buildArgs; Must 'tauri build' } finally { Pop-Location }
 Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY, Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
 Remove-Item Env:SIRTONE_RELEASE_CHANNEL, Env:SIRTONE_BUILD_COMMIT -ErrorAction SilentlyContinue
 
+# A public installer must not embed browser source maps: they expose TS/React sources and make
+# the artifact materially larger. `vite.config.ts` disables them; keep this release-time guard
+# so a future configuration change cannot silently ship them.
+$dist = Join-Path $root 'apps\desktop\dist'
+$sourceMaps = @(Get-ChildItem $dist -Recurse -File -Filter '*.map' -ErrorAction SilentlyContinue)
+if ($sourceMaps.Count -ne 0) {
+    throw "production source maps found: $($sourceMaps.FullName -join ', ')"
+}
+
 $bundle = Join-Path $root 'target\release\bundle\nsis'
 $exe = Join-Path $bundle "SirTone_${version}_x64-setup.exe"
 $sig = "$exe.sig"
