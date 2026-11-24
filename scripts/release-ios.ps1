@@ -23,6 +23,7 @@ $tag = "mobile-v$version"
 $name = "sirtone-ios-$version-unsigned.ipa"
 if (git -C $root status --porcelain) { throw 'working tree is not clean' }
 $head = (git -C $root rev-parse HEAD).Trim()
+$buildId = "$version-beta-$($head.Substring(0, 12))"
 git -C $root fetch -q origin
 $branch = (git -C $root rev-parse --abbrev-ref HEAD).Trim()
 if ((git -C $root rev-parse "origin/$branch").Trim() -ne $head) { throw 'HEAD is not pushed' }
@@ -36,7 +37,7 @@ New-Item -ItemType Directory -Force $outDir | Out-Null
 $ipa = Join-Path $outDir $name
 $wslIpa = "$wslRepo/target/ios/$name"
 foreach ($step in 'core', 'app') {
-    wsl -d Ubuntu-24.04 -- bash -lc "SIRTONE_IOS_VERSION=$version bash $wslRepo/scripts/wsl-ios.sh $step"; Must "wsl-ios $step"
+    wsl -d Ubuntu-24.04 -- bash -lc "SIRTONE_IOS_VERSION=$version SIRTONE_IOS_RELEASE_CHANNEL=beta SIRTONE_IOS_BUILD_ID=$buildId bash $wslRepo/scripts/wsl-ios.sh $step"; Must "wsl-ios $step"
 }
 wsl -d Ubuntu-24.04 -- bash -lc "SIRTONE_IOS_IPA=$wslIpa bash $wslRepo/scripts/wsl-ios.sh ipa"; Must 'wsl-ios ipa'
 if (-not (Test-Path $ipa)) { throw "missing artifact: $ipa" }

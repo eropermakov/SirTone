@@ -7,9 +7,10 @@ in compatibility mode: no Liquid Glass, the old tab bar (D-169 never shows). Xco
 SDK there and the DT* keys into Info.plist; this does the same, before any signature (the hub
 signs the package afterwards, D-154).
 
-Usage: ios-sdk-stamp.py <SirTone.app> <iPhoneOS.sdk> [version]
+Usage: ios-sdk-stamp.py <SirTone.app> <iPhoneOS.sdk> [version] [build-id] [release-channel]
 With a version (release-ios.ps1), it also goes into CFBundleShortVersionString/CFBundleVersion,
-so the phone's Settings show which build is installed.
+so the phone's Settings show which build is installed. Build metadata is written only after the
+app is built and before it is signed.
 """
 import json
 import plistlib
@@ -50,6 +51,8 @@ def stamp_binary(path: Path, sdk: int) -> None:
 def main() -> None:
     app, sdk_dir = Path(sys.argv[1]), Path(sys.argv[2])
     release = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else None
+    build_id = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] else None
+    release_channel = sys.argv[5] if len(sys.argv) > 5 and sys.argv[5] else "development"
     settings = json.loads((sdk_dir / "SDKSettings.json").read_text())
     version = settings["Version"]  # e.g. "27.1"
     name = settings.get("CanonicalName", f"iphoneos{version}")
@@ -67,9 +70,15 @@ def main() -> None:
     if release:
         info["CFBundleShortVersionString"] = release
         info["CFBundleVersion"] = release
+    if build_id:
+        info["SirToneBuildID"] = build_id
+    info["SirToneReleaseChannel"] = release_channel
     with info_path.open("wb") as f:
         plistlib.dump(info, f)
-    print(f"stamped: SDK {version} ({name}), version {release or info.get('CFBundleShortVersionString')}")
+    print(
+        f"stamped: SDK {version} ({name}), version {release or info.get('CFBundleShortVersionString')}, "
+        f"channel {release_channel}, build {build_id or 'Xcode build number'}"
+    )
 
 
 if __name__ == "__main__":
