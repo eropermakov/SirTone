@@ -67,8 +67,14 @@ def rust_packages():
             wanted.add((parts[0], parts[1].lstrip("v")))
     out = []
     for p in by_id.values():
-        if (p["name"], p["version"]) not in wanted or p.get("source") is None:
-            continue  # our own crates are not third-party
+        if (p["name"], p["version"]) not in wanted:
+            continue
+        # Workspace crates have no registry source too, but source-only security maintenance
+        # forks under third_party/ ship in the binary and must remain in legal notices.
+        manifest = os.path.normcase(os.path.abspath(p["manifest_path"]))
+        third_party = os.path.normcase(os.path.join(ROOT, "third_party")) + os.sep
+        if p.get("source") is None and not manifest.startswith(third_party):
+            continue
         out.append({
             "name": p["name"],
             "version": p["version"],

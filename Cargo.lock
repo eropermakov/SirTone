@@ -192,8 +192,6 @@ dependencies = [
 [[package]]
 name = "apple-codesign"
 version = "0.29.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f24e9ebdb70a2aee3ca1cea217009fb50776955f0d7678c31d22e48c1524667f"
 dependencies = [
  "anyhow",
  "apple-bundles",
@@ -264,7 +262,7 @@ dependencies = [
  "xml-rs",
  "yasna 0.5.2",
  "zeroize",
- "zip 2.6.1",
+ "zip",
  "zip_structs",
 ]
 
@@ -324,15 +322,6 @@ dependencies = [
  "x509-certificate",
  "xml-rs",
  "xz2",
-]
-
-[[package]]
-name = "arbitrary"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bc62ac97cc33321f50863d514c3bc38a453947a8f9e781137e47c7401020aed"
-dependencies = [
- "derive_arbitrary",
 ]
 
 [[package]]
@@ -1975,17 +1964,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "derive_arbitrary"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b034bd7d5f032402a2479444dcc6f74e36a03f31854d41680fb240ef682a1ac"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.9",
 ]
 
 [[package]]
@@ -3731,8 +3709,6 @@ checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 [[package]]
 name = "isideload"
 version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7cab6348bffd8f32c9358b80c8723bc1da45ad97b0c1f30a1533ade22d4d9496"
 dependencies = [
  "aes 0.9.4",
  "aes-gcm",
@@ -3773,7 +3749,7 @@ dependencies = [
  "uuid",
  "web-time",
  "x509-cert 0.2.5",
- "zip 8.6.0",
+ "zip",
 ]
 
 [[package]]
@@ -7246,7 +7222,7 @@ dependencies = [
  "uuid",
  "webview2-com",
  "windows",
- "zip 9.0.5",
+ "zip",
 ]
 
 [[package]]
@@ -7289,7 +7265,7 @@ dependencies = [
  "sirtone-transfer",
  "sirtone-wave",
  "tokio",
- "zip 9.0.5",
+ "zip",
 ]
 
 [[package]]
@@ -7317,7 +7293,7 @@ dependencies = [
  "tokio",
  "tracing",
  "windows",
- "zip 9.0.5",
+ "zip",
 ]
 
 [[package]]
@@ -11059,44 +11035,17 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "2.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1dcb24d0152526ae49b9b96c1dcf71850ca1e0b882e4e28ed898a93c41334744"
-dependencies = [
- "arbitrary",
- "crc32fast",
- "crossbeam-utils",
- "flate2",
- "indexmap 2.14.2",
- "memchr",
- "zopfli",
-]
-
-[[package]]
-name = "zip"
-version = "8.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
-dependencies = [
- "crc32fast",
- "flate2",
- "indexmap 2.14.2",
- "memchr",
- "typed-path",
- "zopfli",
-]
-
-[[package]]
-name = "zip"
 version = "9.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e04976da629d3b04204ba8105b396a193af8ad2583b2c79bfb3ab8af580a11e"
 dependencies = [
  "crc32fast",
+ "flate2",
  "indexmap 2.14.2",
  "memchr",
  "nix",
  "typed-path",
+ "zopfli",
 ]
 
 [[package]]

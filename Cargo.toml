@@ -118,4 +118,9 @@ strip = "symbols"
 # D-143: isideload signs through `apple-codesign-quick` (LGPL-2.1); our shim with the same
 # interface over apple-codesign (MPL-2.0) takes its place. Check: `cargo tree -i apple-codesign-quick`.
 [patch.crates-io]
+# Minimal, reproducible ZIP-security maintenance forks. Their upstream versions are pinned by
+# dependent crates; the only functional change is the fixed `zip = 9.0.5` requirement. See
+# third_party/README.md before updating either source.
+apple-codesign = { path = "third_party/apple-codesign" }
 apple-codesign-quick = { path = "crates/apple-codesign-quick" }
+isideload = { path = "third_party/isideload" }

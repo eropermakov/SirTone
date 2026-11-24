@@ -38,6 +38,13 @@ models/*.onnx
 *.pfx
 tauri-signing*
 
+# Vendored security-maintenance sources keep only the runtime code. Upstream documentation and
+# tests include fixture certificates/keys and are neither compiled nor distributed by SirTone.
+/third_party/**/docs/
+/third_party/**/tests/
+/third_party/**/src/testdata/
+/third_party/**/src/*-testuser.p12
+
 # OS / editors
 Thumbs.db
 .DS_Store
