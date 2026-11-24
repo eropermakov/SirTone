@@ -13,7 +13,9 @@ export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   build: {
     target: "chrome120",
-    sourcemap: true,
+    // Source maps expose the TypeScript/React sources and add ~10 MB to the Tauri bundle.
+    // Keep production artifacts compact; the Vite dev server retains its normal diagnostics.
+    sourcemap: false,
     // The desktop widget is its own small page (T5.1, ≤ 100 KB of JS).
     rollupOptions: {
       input: {
