@@ -20,6 +20,7 @@ const PORT = Number(process.env.SMOKE_PORT ?? 9361);
 const appleId = process.env.PHONE_APPLE_ID;
 const udid = process.env.PHONE_UDID;
 const shot = process.env.SHOT;
+const debug = process.env.SMOKE_DEBUG === "1";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failed = false;
 const check = (name, ok, detail = "") => {
@@ -58,6 +59,10 @@ for (let i = 0; i < 80 && !page; i++) {
 try {
   check("app window", page !== null);
   if (page) {
+    if (debug) {
+      console.log(`UI: ${(await page.locator("body").innerText()).slice(0, 2_000)}`);
+      if (shot) await page.screenshot({ path: shot });
+    }
     await page.getByRole("button", { name: "Телефоны", exact: true }).click({ timeout: 20000 });
     const install = page.getByRole("button", { name: "Установить Сиртон" }).first();
     await install.waitFor({ timeout: 20000 });
