@@ -6,6 +6,10 @@
     <string>Сиртон</string>
     <key>SirToneFeedbackAPIURL</key>
     <string></string>
+    <key>SirToneReleaseChannel</key>
+    <string>development</string>
+    <key>SirToneBuildID</key>
+    <string></string>
     <key>UIBackgroundModes</key>
     <array>
         <string>audio</string>

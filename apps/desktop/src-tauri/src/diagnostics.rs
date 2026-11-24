@@ -261,8 +261,8 @@ impl DiagnosticSession {
             report_id: report_id.map(safe_atom),
             platform: "windows".to_owned(),
             app_version: env!("CARGO_PKG_VERSION").to_owned(),
-            build_id: env!("CARGO_PKG_VERSION").to_owned(),
-            release_channel: "development".to_owned(),
+            build_id: env!("SIRTONE_BUILD_ID").to_owned(),
+            release_channel: env!("SIRTONE_RELEASE_CHANNEL").to_owned(),
             component: safe_atom(component),
             operation: safe_atom(operation),
             error_code: error_code.map(safe_atom),
@@ -328,8 +328,8 @@ impl DiagnosticSession {
             "session_id": self.session_id,
             "platform": "windows",
             "app_version": env!("CARGO_PKG_VERSION"),
-            "build_id": env!("CARGO_PKG_VERSION"),
-            "release_channel": "development",
+            "build_id": env!("SIRTONE_BUILD_ID"),
+            "release_channel": env!("SIRTONE_RELEASE_CHANNEL"),
             "truncated": truncated,
         });
         let environment = serde_json::json!({
@@ -1253,6 +1253,19 @@ mod tests {
         ] {
             assert!(zip.by_name(name).is_ok(), "missing {name}");
         }
+        let mut manifest = String::new();
+        zip.by_name("manifest.json")
+            .unwrap()
+            .read_to_string(&mut manifest)
+            .unwrap();
+        let manifest: serde_json::Value = serde_json::from_str(&manifest).unwrap();
+        assert_eq!(manifest["release_channel"], env!("SIRTONE_RELEASE_CHANNEL"));
+        assert_eq!(manifest["build_id"], env!("SIRTONE_BUILD_ID"));
+        assert!(
+            manifest["build_id"]
+                .as_str()
+                .is_some_and(|value| value.starts_with(env!("CARGO_PKG_VERSION")))
+        );
         let mut events = String::new();
         zip.by_name("events.jsonl")
             .unwrap()

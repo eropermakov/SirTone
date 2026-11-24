@@ -144,7 +144,7 @@ actor Diagnostics {
         let manifest: [String: Any] = [
             "schema_version": 1, "report_id": reportID, "installation_id": installationID,
             "session_id": sessionID, "platform": "ios", "app_version": appVersion, "build_id": buildID,
-            "release_channel": "development", "truncated": truncated
+            "release_channel": releaseChannel, "truncated": truncated
         ]
         let environment: [String: Any] = ["os": "iOS", "os_version": osVersion, "architecture": "arm64"]
         let entries: [(String, Data)] = [
@@ -197,7 +197,18 @@ actor Diagnostics {
         return id
     }
     private var appVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown" }
-    private var buildID: String { "\(appVersion)-\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown")" }
+    private var releaseChannel: String {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: "SirToneReleaseChannel") as? String,
+              !value.isEmpty else { return "development" }
+        return value
+    }
+
+    private var buildID: String {
+        let configured = Bundle.main.object(forInfoDictionaryKey: "SirToneBuildID") as? String
+        if let configured, !configured.isEmpty { return configured }
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+        return "\(appVersion)-\(releaseChannel)-\(build)"
+    }
     private var osVersion: String { ProcessInfo.processInfo.operatingSystemVersionString }
     private func dayString() -> String { ISO8601DateFormatter().string(from: Date()).prefix(10).description }
     private func atom(_ value: String) -> String { String(value.prefix(120).filter { $0.isLetter || $0.isNumber || "_-.".contains($0) }) }

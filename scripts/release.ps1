@@ -49,6 +49,8 @@ if ($Ci) {
 # 1. Signed build: the bundler writes SirTone_<v>_x64-setup.exe and its .sig.
 $env:TAURI_SIGNING_PRIVATE_KEY = $key
 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ''
+$env:SIRTONE_RELEASE_CHANNEL = 'stable'
+$env:SIRTONE_BUILD_COMMIT = $head.Substring(0, 12)
 $buildArgs = @()
 if ($CertThumbprint) {
     $sign = Join-Path $env:TEMP 'sirtone-sign.json'
@@ -63,6 +65,7 @@ if ($CertThumbprint) {
 Push-Location (Join-Path $root 'apps\desktop')
 try { pnpm tauri build @buildArgs; Must 'tauri build' } finally { Pop-Location }
 Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY, Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
+Remove-Item Env:SIRTONE_RELEASE_CHANNEL, Env:SIRTONE_BUILD_COMMIT -ErrorAction SilentlyContinue
 
 $bundle = Join-Path $root 'target\release\bundle\nsis'
 $exe = Join-Path $bundle "SirTone_${version}_x64-setup.exe"
