@@ -149,6 +149,55 @@
   animation-play-state: paused;
 }
 
+/* Transfer route: a restrained moving marker makes long file preparation visibly alive. */
+@keyframes transfer-route-pulse {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: scale(0.7);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1.3);
+  }
+}
+
+@keyframes transfer-route-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.transfer-timeline-node {
+  position: relative;
+}
+
+.transfer-timeline-node::after {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--accent-fill);
+  border-radius: inherit;
+  content: "";
+  animation: transfer-route-pulse var(--dur-theme) var(--ease-out) infinite;
+}
+
+.transfer-timeline-segment {
+  overflow: hidden;
+}
+
+.transfer-timeline-segment::after {
+  display: block;
+  width: 40%;
+  height: 100%;
+  content: "";
+  background: var(--accent-text);
+  opacity: 0.45;
+  animation: transfer-route-sweep var(--dur-theme) linear infinite;
+}
+
 /* D-61: reduced motion = short fades only, no movement. */
 @media (prefers-reduced-motion: reduce) {
   *,

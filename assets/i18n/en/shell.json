@@ -385,7 +385,12 @@
       "title": "",
       "progress": "",
       "preparing": "",
-      "encoding": ""
+      "encoding": "",
+      "steps": {
+        "preparing": "",
+        "encoding": "",
+        "sending": ""
+      }
     },
     "pull": {
       "action": "Take from phone",

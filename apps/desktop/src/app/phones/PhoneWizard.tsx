@@ -16,12 +16,12 @@ import {
   selectionSize,
   sendToPhone,
   type TwoFactorRequest,
-  transferStage,
 } from "@/shared/ipc/phones";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/Button";
 import { Skeleton } from "@/shared/ui/Skeleton";
 import { MusicPicker } from "./MusicPicker";
+import { TransferTimeline } from "./TransferTimeline";
 
 type Choice = "all" | "pick" | "app";
 const CHOICES: Choice[] = ["all", "pick", "app"];
@@ -204,8 +204,6 @@ export function PhoneWizard({
   };
 
   const title = mode === "send" ? t("phones.send.title") : t("phones.choose.title");
-  const transferStatus = step.k === "transfer" ? transferStage(quality, step.fraction) : null;
-
   return (
     <div className="flex flex-col gap-3">
       {step.k === "choose" && (
@@ -488,26 +486,7 @@ export function PhoneWizard({
           <span role="status" className="t-body-strong text-text-primary">
             {t("phones.transferring.title")}
           </span>
-          <div
-            role="progressbar"
-            aria-label={t("phones.transferring.title")}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(step.fraction * 100)}
-            className="h-1 w-full overflow-hidden rounded-full bg-bg-layer"
-          >
-            <div
-              className="h-full origin-left bg-accent-fill transition-transform motion-reduce:transition-none"
-              style={{ transform: `scaleX(${step.fraction})` }}
-            />
-          </div>
-          <span className="t-caption text-text-secondary">
-            {transferStatus === "preparing"
-              ? t("phones.transferring.preparing")
-              : transferStatus === "encoding"
-                ? t("phones.transferring.encoding", { percent: Math.round(step.fraction * 100) })
-                : t("phones.transferring.progress", { percent: Math.round(step.fraction * 100) })}
-          </span>
+          <TransferTimeline quality={quality} fraction={step.fraction} />
         </div>
       )}
 
