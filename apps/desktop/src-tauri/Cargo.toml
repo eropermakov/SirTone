@@ -55,4 +55,5 @@ webview2-com = { workspace = true }
 windows = { workspace = true }
 zip = { workspace = true }
 reqwest = { workspace = true }
+rayon = { workspace = true }
 # Release profile (panic = "unwind") comes from the workspace root — no [profile] here.

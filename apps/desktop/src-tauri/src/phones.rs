@@ -1230,18 +1230,20 @@ fn encode_package(
     progress_start: f32,
     progress_span: f32,
 ) -> Result<Vec<(PathBuf, String)>, AppError> {
+    use rayon::prelude::*;
     use sirtone_audio::encode::{self, Tags};
     let fail = |c: &'static str| AppError::new(ErrorCode::PhoneTransfer).with_details(c);
     let mut manifest =
         sirtone_transfer::Manifest::read(out).map_err(|_| fail("transfer.manifest"))?;
-    let none = std::sync::atomic::AtomicBool::new(false);
     let total = music.len().max(1);
     let mut left = Vec::new();
+    let mut work = Vec::new();
     for (i, ((src, file), job)) in music.into_iter().zip(jobs).enumerate() {
-        let Some(entry) = manifest.tracks.iter_mut().find(|t| t.file == file) else {
+        let Some(entry_index) = manifest.tracks.iter().position(|t| t.file == file) else {
             left.push((src, file));
             continue;
         };
+        let entry = &manifest.tracks[entry_index];
         let id = entry
             .key
             .rsplit_once(':')
@@ -1270,9 +1272,43 @@ fn encode_package(
                 ..Tags::default()
             },
         };
-        if dst.exists() || encode::to_opus(&src, &dst, level, &tags, &none).is_ok() {
+        work.push((i, entry_index, src, file, copy_file, dst, tags));
+    }
+
+    // A single Opus encoder uses only one CPU core. Limit package encoding to four independent
+    // tracks so a large transfer uses the PC meaningfully without starving playback or the UI.
+    let workers = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(4);
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(workers)
+        .build()
+        .map_err(|_| AppError::new(ErrorCode::Internal))?;
+    let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let completed = std::sync::atomic::AtomicUsize::new(0);
+    let encoded = pool.install(|| {
+        work.into_par_iter()
+            .map(|(_i, entry_index, src, file, copy_file, dst, tags)| {
+                let ok =
+                    dst.exists() || encode::to_opus(&src, &dst, level, &tags, &cancelled).is_ok();
+                let size = if ok {
+                    std::fs::metadata(&dst).map(|m| m.len()).unwrap_or(0)
+                } else {
+                    0
+                };
+                let done = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                let _ = progress.send(TransferProgress {
+                    fraction: progress_start + progress_span * done as f32 / total as f32,
+                });
+                (entry_index, src, file, copy_file, ok, size)
+            })
+            .collect::<Vec<_>>()
+    });
+    for (entry_index, src, file, copy_file, ok, size) in encoded {
+        if ok {
+            let entry = &mut manifest.tracks[entry_index];
             entry.file = copy_file;
-            entry.size = std::fs::metadata(&dst).map(|m| m.len()).unwrap_or(0);
+            entry.size = size;
             // Another file than the original: the phone must not take it for the same bytes.
             entry.hash = None;
             entry.copy = Some(level.as_str().to_string());
@@ -1280,9 +1316,6 @@ fn encode_package(
             // An unreadable original is sent as is.
             left.push((src, file));
         }
-        let _ = progress.send(TransferProgress {
-            fraction: progress_start + progress_span * (i + 1) as f32 / total as f32,
-        });
     }
     manifest.write(out).map_err(|_| fail("transfer.manifest"))?;
     Ok(left)

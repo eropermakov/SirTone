@@ -16,6 +16,7 @@ import {
   selectionSize,
   sendToPhone,
   type TwoFactorRequest,
+  transferStage,
 } from "@/shared/ipc/phones";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/Button";
@@ -203,6 +204,7 @@ export function PhoneWizard({
   };
 
   const title = mode === "send" ? t("phones.send.title") : t("phones.choose.title");
+  const transferStatus = step.k === "transfer" ? transferStage(quality, step.fraction) : null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -500,9 +502,11 @@ export function PhoneWizard({
             />
           </div>
           <span className="t-caption text-text-secondary">
-            {step.fraction === 0
+            {transferStatus === "preparing"
               ? t("phones.transferring.preparing")
-              : t("phones.transferring.progress", { percent: Math.round(step.fraction * 100) })}
+              : transferStatus === "encoding"
+                ? t("phones.transferring.encoding", { percent: Math.round(step.fraction * 100) })
+                : t("phones.transferring.progress", { percent: Math.round(step.fraction * 100) })}
           </span>
         </div>
       )}

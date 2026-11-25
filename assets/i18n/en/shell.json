@@ -384,7 +384,8 @@
     "transferring": {
       "title": "",
       "progress": "",
-      "preparing": ""
+      "preparing": "",
+      "encoding": ""
     },
     "pull": {
       "action": "Take from phone",

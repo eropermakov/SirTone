@@ -86,6 +86,19 @@ export async function installOnPhone(udid: string, onProgress: (f: number) => vo
 export type Quality = "original" | "economy" | "max";
 
 /**
+ * The core reserves 0…15 % for building the package and 15…60 % for optional
+ * Opus encoding.  Keeping that mapping here makes the UI describe a long
+ * encoding pass truthfully instead of looking stuck while the PC is busy.
+ */
+export type TransferStage = "preparing" | "encoding" | "sending";
+
+export function transferStage(quality: Quality, fraction: number): TransferStage {
+  if (fraction < 0.15) return "preparing";
+  if (quality !== "original" && fraction < 0.6) return "encoding";
+  return "sending";
+}
+
+/**
  * Only what the phone lacks goes (D-152); `selection` — «Выбранная» музыка (`null` — all of it).
  * `already` in the answer: the phone had everything, nothing was sent.
  */

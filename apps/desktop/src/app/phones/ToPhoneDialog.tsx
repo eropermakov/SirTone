@@ -11,6 +11,7 @@ import {
   type Quality,
   selectionSize,
   sendToPhone,
+  transferStage,
 } from "@/shared/ipc/phones";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/Button";
@@ -112,6 +113,7 @@ function ToPhoneDialog({ what }: { what: ToPhoneWhat }) {
       : KBPS[quality] === null
         ? (size.bytes ?? 0)
         : ((size.durationSec ?? 0) * (KBPS[quality] ?? 0) * 1000) / 8;
+  const transferStatus = run.k === "sending" ? transferStage(quality, run.fraction) : null;
 
   return (
     <Dialog
@@ -189,18 +191,27 @@ function ToPhoneDialog({ what }: { what: ToPhoneWhat }) {
           </>
         )}
         {run.k === "sending" && (
-          <div
-            role="progressbar"
-            aria-label={t("phones.transferring.title")}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(run.fraction * 100)}
-            className="h-1 w-full overflow-hidden rounded-full bg-bg-layer"
-          >
+          <div className="flex flex-col gap-2">
             <div
-              className="h-full origin-left bg-accent-fill transition-transform motion-reduce:transition-none"
-              style={{ transform: `scaleX(${run.fraction})` }}
-            />
+              role="progressbar"
+              aria-label={t("phones.transferring.title")}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(run.fraction * 100)}
+              className="h-1 w-full overflow-hidden rounded-full bg-bg-layer"
+            >
+              <div
+                className="h-full origin-left bg-accent-fill transition-transform motion-reduce:transition-none"
+                style={{ transform: `scaleX(${run.fraction})` }}
+              />
+            </div>
+            <span role="status" className="t-caption text-text-secondary">
+              {transferStatus === "preparing"
+                ? t("phones.transferring.preparing")
+                : transferStatus === "encoding"
+                  ? t("phones.transferring.encoding", { percent: Math.round(run.fraction * 100) })
+                  : t("phones.transferring.progress", { percent: Math.round(run.fraction * 100) })}
+            </span>
           </div>
         )}
         {run.k === "done" && (
