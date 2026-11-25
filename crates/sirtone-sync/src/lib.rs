@@ -109,6 +109,11 @@ pub fn export_with(
 
 /// As [`export_with`], reporting manifest preparation progress as `(done, total)`. The callback
 /// is deliberately invoked in bounded batches: callers may forward it to a UI channel.
+///
+/// This deliberately mirrors the established `export_with` argument order and adds only the
+/// callback. A configuration struct would make a one-off progress extension less clear at each
+/// call site and would unnecessarily churn the stable export boundary.
+#[allow(clippy::too_many_arguments)]
 pub fn export_with_progress<F>(
     conn: &Connection,
     root: &Path,
