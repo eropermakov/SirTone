@@ -10,6 +10,7 @@
 //! sirtone-cli verify <library_root>      database and disk agree
 //! sirtone-cli phone list                 phones the hub sees (stage 8, check П4)
 //! sirtone-cli phone login|adopt|forget <apple-id>, phone install <apple-id> <udid|usb> <app>  (П4)
+//! sirtone-cli phone storage <udid|usb>              read-only capacity diagnostic
 //! sirtone-cli transfer export <library_root> <out_dir> [--no-music]  transfer package (П7)
 //! sirtone-cli transfer import <library_root> <package_dir>  apply a phone package (D-140)
 //! ```
@@ -438,6 +439,7 @@ fn main() -> ExitCode {
             ("adopt", _, _) => phone::adopt(&args[2]),
             ("forget", _, _) => phone::forget(&args[2]),
             ("wifi-pair", _, _) => phone::wifi_pair(&args[2]),
+            ("storage", _, _) => phone::storage(&args[2]),
             ("bonjour", _, _) => phone::bonjour(&args[2]),
             ("send", Some(pkg), _) => phone::send(&args[2], pkg),
             ("pull-library", Some(out), _) => phone::pull_library(&args[2], out),

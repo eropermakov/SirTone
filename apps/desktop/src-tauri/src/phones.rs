@@ -1052,8 +1052,9 @@ async fn send(
         }
         None => None,
     };
+    let prep = progress.clone();
     let summary = lib.with_write(|c| {
-        sirtone_sync::export_with(
+        sirtone_sync::export_with_progress(
             c,
             &root,
             &out,
@@ -1061,6 +1062,15 @@ async fn send(
             env!("CARGO_PKG_VERSION"),
             parts,
             false,
+            |done, total| {
+                let done = done as f32;
+                let total = total.max(1) as f32;
+                let _ = prep.send(TransferProgress {
+                    // Preparing the manifest can inspect a large library. Make that work visible
+                    // instead of leaving the UI at its initial 2%.
+                    fraction: 0.02 + 0.13 * (done / total),
+                });
+            },
         )
         .map_err(|e| match e {
             sirtone_sync::SyncError::Library(l) => l,
@@ -1162,16 +1172,17 @@ async fn send(
             })
             .collect();
         let (out2, prog) = (out.clone(), progress.clone());
-        music =
-            tokio::task::spawn_blocking(move || encode_package(&out2, music, jobs, level, &prog))
-                .await
-                .map_err(|_| AppError::new(ErrorCode::Internal))??;
+        music = tokio::task::spawn_blocking(move || {
+            encode_package(&out2, music, jobs, level, &prog, 0.15, 0.45)
+        })
+        .await
+        .map_err(|_| AppError::new(ErrorCode::Internal))??;
     }
     // With copies the first half of the bar was the encoding.
     let (from, span) = if level.is_some() {
-        (0.5, 0.5)
+        (0.6, 0.4)
     } else {
-        (0.0, 1.0)
+        (0.15, 0.85)
     };
     let report = |done: u64, total: u64| {
         let f = if total == 0 {
@@ -1216,6 +1227,8 @@ fn encode_package(
     jobs: Vec<Option<sirtone_library::copies::CopyJob>>,
     level: sirtone_audio::encode::Level,
     progress: &Channel<TransferProgress>,
+    progress_start: f32,
+    progress_span: f32,
 ) -> Result<Vec<(PathBuf, String)>, AppError> {
     use sirtone_audio::encode::{self, Tags};
     let fail = |c: &'static str| AppError::new(ErrorCode::PhoneTransfer).with_details(c);
@@ -1268,7 +1281,7 @@ fn encode_package(
             left.push((src, file));
         }
         let _ = progress.send(TransferProgress {
-            fraction: 0.5 * (i + 1) as f32 / total as f32,
+            fraction: progress_start + progress_span * (i + 1) as f32 / total as f32,
         });
     }
     manifest.write(out).map_err(|_| fail("transfer.manifest"))?;
@@ -1382,7 +1395,7 @@ mod copy_package_tests {
             let music = sirtone_sync::music_sources(&root, &out).unwrap();
             assert_eq!(music.len(), if round == 0 { 1 } else { 0 }, "round {round}");
             let jobs = music.iter().map(|_| None).collect();
-            let left = encode_package(&out, music, jobs, level, &progress).unwrap();
+            let left = encode_package(&out, music, jobs, level, &progress, 0.15, 0.45).unwrap();
             assert!(left.is_empty());
             let m = sirtone_transfer::Manifest::read(&out).unwrap();
             assert_eq!(m.tracks[0].copy.as_deref(), Some("economy"));

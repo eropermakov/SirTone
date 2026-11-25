@@ -8,6 +8,7 @@
 //! sirtone-cli phone renew <apple-id> <udid|usb>   new profile only, no reinstall (check П3)
 //! sirtone-cli phone wifi-pair <udid|usb>          once, on the cable: Wi-Fi access (RPPairing, П4б)
 //! sirtone-cli phone wifi-find                     paired phones seen on the network now
+//! sirtone-cli phone storage <udid|usb>             read-only app-container capacity check
 //! sirtone-cli phone send <udid|usb> <package_dir>   package (`transfer export`) → the app's inbox
 //! sirtone-cli phone pull-library <udid|usb> <dir>  the phone's library (db + music) → a PC folder,
 //!                                                 then `transfer export` on it + `transfer import`
@@ -149,6 +150,36 @@ pub fn wifi_find() -> ExitCode {
                 println!("{} port {} [{}]", s.udid, s.port, addrs.join(", "));
             }
             println!("{} seen", seen.len());
+            ExitCode::SUCCESS
+        }
+        Err(e) => fail(&e),
+    }
+}
+
+/// Prints only aggregate capacity data. It neither lists nor reads the person's music.
+pub fn storage(phone: &str) -> ExitCode {
+    use sirtone_devicelink::appfiles;
+    let Some(rt) = runtime() else {
+        return ExitCode::FAILURE;
+    };
+    let Some(udid) = resolve(&rt, phone) else {
+        return ExitCode::FAILURE;
+    };
+    let r = rt.block_on(async {
+        let mut files = appfiles::open(&udid).await?;
+        Ok::<_, sirtone_devicelink::LinkError>(files.storage_bytes().await)
+    });
+    match r {
+        Ok(Some((total, free))) => {
+            println!(
+                "container storage: {} MB total, {} MB free",
+                total / 1_000_000,
+                free / 1_000_000
+            );
+            ExitCode::SUCCESS
+        }
+        Ok(None) => {
+            println!("container storage: unavailable");
             ExitCode::SUCCESS
         }
         Err(e) => fail(&e),

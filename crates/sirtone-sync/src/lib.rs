@@ -95,6 +95,33 @@ pub fn export_with(
     parts: Parts,
     copy_music: bool,
 ) -> Result<ExportSummary, SyncError> {
+    export_with_progress(
+        conn,
+        root,
+        out,
+        platform,
+        app_version,
+        parts,
+        copy_music,
+        |_, _| {},
+    )
+}
+
+/// As [`export_with`], reporting manifest preparation progress as `(done, total)`. The callback
+/// is deliberately invoked in bounded batches: callers may forward it to a UI channel.
+pub fn export_with_progress<F>(
+    conn: &Connection,
+    root: &Path,
+    out: &Path,
+    platform: Platform,
+    app_version: &str,
+    parts: Parts,
+    copy_music: bool,
+    mut progress: F,
+) -> Result<ExportSummary, SyncError>
+where
+    F: FnMut(usize, usize),
+{
     let uid = transfer::library_uid(conn)?;
     let key = |track: i64| format!("{uid}:{track}");
 
@@ -111,7 +138,9 @@ pub fn export_with(
                 },
                 parts,
             );
-            for t in transfer::tracks(conn)? {
+            let tracks = transfer::tracks(conn)?;
+            let total = tracks.len().max(1);
+            for (i, t) in tracks.into_iter().enumerate() {
                 m.tracks.push(TrackEntry {
                     key: key(t.id),
                     file: format!("{MUSIC_DIR}/{}", t.rel_path),
@@ -128,6 +157,9 @@ pub fn export_with(
                     copy: t.copy,
                     analysis: transfer::analysis_of(conn, t.id)?,
                 });
+                if i % 32 == 0 || i + 1 == total {
+                    progress(i + 1, total);
+                }
             }
             if parts.playlists {
                 for p in sirtone_library::playlists::list(conn)? {
@@ -146,6 +178,7 @@ pub fn export_with(
             m
         }
     };
+    progress(1, 1);
 
     let events: Vec<Event> = if parts.taste {
         transfer::journal(conn)?
@@ -774,8 +807,20 @@ mod tests {
             taste: true,
             settings: false,
         };
-        let s = export_with(&conn, &root, &out, Platform::Windows, "t", parts, false).unwrap();
+        let mut progress = Vec::new();
+        let s = export_with_progress(
+            &conn,
+            &root,
+            &out,
+            Platform::Windows,
+            "t",
+            parts,
+            false,
+            |done, total| progress.push((done, total)),
+        )
+        .unwrap();
         assert_eq!((s.tracks, s.copied), (1, 0));
+        assert_eq!(progress.last(), Some(&(1, 1)));
         assert!(
             !out.join(MUSIC_DIR).exists(),
             "no music copied into the package"

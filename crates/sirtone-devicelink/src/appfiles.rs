@@ -37,10 +37,11 @@ const CHUNK: usize = 1 << 20;
 /// Kept free on the phone after a transfer.
 const RESERVE: u64 = 256 << 20;
 
-/// Whether a package of `package_bytes` fits: the inbox copy and the library copy the app makes
-/// while applying it (~2×), minus what an earlier cut transfer already left, plus a reserve.
+/// Whether a package of `package_bytes` fits, accounting for a previous cut transfer and a
+/// reserve. The iOS importer moves each accepted file from the inbox into the library within the
+/// same app container, so it does not need a second full copy of the package.
 pub fn fits(free: u64, package_bytes: u64, already: u64) -> bool {
-    let need = (package_bytes * 2).saturating_sub(already) + RESERVE;
+    let need = package_bytes.saturating_sub(already) + RESERVE;
     free >= need
 }
 
@@ -200,11 +201,17 @@ impl AppFiles {
 
     /// Free space on the phone (bytes), if the phone says.
     pub async fn free_bytes(&mut self) -> Option<u64> {
+        self.storage_bytes().await.map(|(_, free)| free)
+    }
+
+    /// Total and free bytes reported by AFC for the app's container filesystem. This is
+    /// read-only and is intended for the hub's preflight diagnostics.
+    pub async fn storage_bytes(&mut self) -> Option<(u64, u64)> {
         self.afc
             .get_device_info()
             .await
             .ok()
-            .map(|d| d.free_bytes as u64)
+            .map(|d| (d.total_bytes as u64, d.free_bytes as u64))
     }
 
     /// Bytes already in the inbox for this package (a resumed transfer).
@@ -471,12 +478,12 @@ mod tests {
     }
 
     #[test]
-    fn room_counts_both_copies_resume_and_reserve() {
+    fn room_counts_only_missing_package_and_reserve() {
         let gb = 1u64 << 30;
-        assert!(fits(5 * gb, 2 * gb, 0));
-        assert!(!fits(4 * gb, 2 * gb, 0), "the reserve on top of 2×");
+        assert!(fits(3 * gb, 2 * gb, 0));
+        assert!(!fits(2 * gb, 2 * gb, 0), "the reserve stays free");
         assert!(
-            fits(3 * gb, 2 * gb, gb + gb / 2),
+            fits(gb, 2 * gb, gb + gb / 2),
             "what is already there counts"
         );
     }
